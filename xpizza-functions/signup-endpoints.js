@@ -220,9 +220,17 @@ async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff
   // owner ruling 11-18 (card items 1): the provider-side delete obligation — every saved token is CAPTURED, in this same update, at
   // card_delete_pending/{uid} = { at, tokens: { <token_hash>: <token> } } (per-key paths: a repeat deletion never clobbers the record).
   // The drain (the PixelPay delete) is a later slice. Never logged.
-  const cardsGone = require('./payments/sdk/cards').deletePendingUpdates(uid, at, (await db.ref(`customer_cards/${uid}`).once('value')).val());
+  // owner 11-18 «airtight» (PLAN-card-token-cleanup (a).1): the snapshot is the CLOSING transaction (cards.markClosing) — every vault after
+  // it drops, so no token is saved between this capture and the fence; a failed update releases the mark (the account stays live)
+  const CARDS = require('./payments/sdk/cards');
+  const cardsGone = CARDS.deletePendingUpdates(uid, at, await CARDS.markClosing(db, uid, at));
   const audienceIdsGone = Object.fromEntries(historyIds.map((id) => [`orders/${id}/audience_ids`, null]));
-  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`customer_cards/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone, ...cardsGone });   // r4: `at` only — a fence's version v is never clobbered
+  try {
+    await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`customer_cards/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone, ...cardsGone });   // r4: `at` only — a fence's version v is never clobbered
+  } catch (e) {
+    try { await CARDS.releaseClosing(db, uid, at); } catch (e2) { console.error(`deleteAccountCore: closing-mark release failed (${e2 && e2.code ? e2.code : 'error'}) — vaults drop until the deletion is retried`); }
+    throw e;
+  }
   // PLAN-3a-capp-push-tokens (Codex push r1): the push prefs FENCE rode the update above; NOW the devices are discovered and drained
   // (compare-and-clear on uid + claim). The update above also opened the DURABLE drain obligation: a failure here leaves it open
   // (incomplete) and pruneResidual re-drains it until zero tokens remain; the sender also refuses a tombstoned uid.

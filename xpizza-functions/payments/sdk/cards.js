@@ -44,6 +44,7 @@ async function completeVault(deps, { uid, token, token_hash: h, display: rawDisp
   await node(deps.db, uid).transaction((cur) => {
     outcome = null;
     if (isObj(cur) && cur._deleted !== undefined) { outcome = 'dropped'; return undefined; }   // the account-deletion fence (signup-endpoints deleteAccountCore): never a card after deletion
+    if (isObj(cur) && cur._closing !== undefined) { outcome = 'dropped'; return undefined; }   // a deletion in progress (markClosing): its capture snapshot is already taken
     const c = isObj(cur) ? JSON.parse(JSON.stringify(cur)) : {};
     const t = isObj(c.tomb) ? c.tomb[h] : null;
     if (t && Number.isInteger(t.gen) && t.gen > (Number.isInteger(gen) ? gen : 0)) { outcome = 'dropped'; return cur == null ? null : undefined; }
@@ -146,4 +147,23 @@ function deletePendingUpdates(uid, at, cur) {
   return out;
 }
 
-module.exports = { deletePendingUpdates, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };
+// owner 11-18 «airtight» (PLAN-card-token-cleanup (a).1): the deletion's capture snapshot IS this transaction — it marks the node
+// { ..., _closing: at } and returns the committed value, so every vault after it drops (completeVault) and no token can be saved between
+// the capture and the fence. A fence already there ⇒ unchanged (a repeat deletion captures nothing). The mark is replaced by the fence
+// in the deletion's update; releaseClosing undoes it when that update fails (a live account vaults again).
+async function markClosing(db, uid, at) {
+  const r = await node(db, uid).transaction((cur) => {
+    if (isObj(cur) && cur._deleted !== undefined) return undefined;
+    return { ...(isObj(cur) ? cur : {}), _closing: at };
+  });
+  return r && r.snapshot ? r.snapshot.val() : null;
+}
+async function releaseClosing(db, uid, at) {
+  await node(db, uid).transaction((cur) => {
+    if (!isObj(cur) || cur._deleted !== undefined || cur._closing !== at) return undefined;   // fenced, or another deletion's mark: untouched
+    const c = { ...cur }; delete c._closing;
+    return Object.keys(c).length ? c : null;
+  });
+}
+
+module.exports = { markClosing, releaseClosing, deletePendingUpdates, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };

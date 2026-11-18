@@ -23,7 +23,9 @@ function fakeDb() {
   const tree = {};
   const parts = (p) => String(p).split('/').filter(Boolean);
   const get = (p) => parts(p).reduce((o, k) => (o == null ? undefined : o[k]), tree);
-  const set = (p, v) => { const ks = parts(p); let o = tree; for (const k of ks.slice(0, -1)) { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; } if (v === null || v === undefined) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = clone(v); };
+  // as RTDB: a removal that empties a parent removes the parent too (no empty nodes exist)
+  const prune = (ks) => { for (let i = ks.length - 1; i > 0; i--) { const par = ks.slice(0, i).reduce((o, k) => (o == null ? undefined : o[k]), tree); if (par && typeof par === 'object' && !Object.keys(par).length) { const gp = ks.slice(0, i - 1).reduce((o, k) => o[k], tree); delete gp[ks[i - 1]]; } else break; } };
+  const set = (p, v) => { const ks = parts(p); let o = tree; for (const k of ks.slice(0, -1)) { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; } if (v === null || v === undefined) { delete o[ks[ks.length - 1]]; prune(ks); } else o[ks[ks.length - 1]] = clone(v); };
   const snap = (v) => { const c = clone(v); return { exists: () => c != null, val: () => (c == null ? null : clone(c)) }; };
   const query = (p, child) => {
     const filt = { eq: undefined, start: undefined, end: undefined, limit: undefined };
@@ -46,8 +48,10 @@ function fakeDb() {
   };
   const FAIL = { update: false, txnAt: null };   // inject: the next multi-path update throws (nothing applied) / a txn on a path prefix throws
   const HOOK = { after: null, fn: null };        // run fn ONCE right after the next txn on a path prefix (an interleaving)
+  const TOUCH = { at: null, fn: null };          // run fn ONCE right after the next read OR txn of EXACTLY this path (the gap after a snapshot)
+  const touched = async (p) => { if (TOUCH.at !== null && String(p) === TOUCH.at) { const f = TOUCH.fn; TOUCH.at = null; TOUCH.fn = null; await f(); } };
   const ref = (p = '') => ({
-    get: async () => snap(get(p)), once: async () => snap(get(p)),
+    get: async () => { const s = snap(get(p)); await touched(p); return s; }, once: async () => { const s = snap(get(p)); await touched(p); return s; },
     set: async (v) => set(p, v), remove: async () => set(p, null),
     update: async (m) => { if (FAIL.update) { FAIL.update = false; throw new Error('injected update failure'); } for (const [k, v] of Object.entries(m)) set(p ? `${p}/${k}` : k, v); },
     orderByChild: (c) => query(p, c),
@@ -56,10 +60,11 @@ function fakeDb() {
       const next = fn(clone(get(p)) ?? null);
       const out = next === undefined ? { committed: false, snapshot: snap(get(p)) } : (set(p, next), { committed: true, snapshot: snap(get(p)) });
       if (HOOK.after && String(p).startsWith(HOOK.after)) { const f = HOOK.fn; HOOK.after = null; HOOK.fn = null; await f(); }
+      await touched(p);
       return out;
     },
   });
-  return { tree, get, set, ref, FAIL, HOOK };
+  return { tree, get, set, ref, FAIL, HOOK, TOUCH };
 }
 const UID = 'u_' + 'a'.repeat(24), PH = 'ph_a';
 const seedAccount = (db, { lastActive = 5 } = {}) => {
@@ -418,6 +423,34 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
     const db4 = fakeDb(); seedAccount(db4);
     await SE.deleteAccountCore(db4, ACCOUNT, { uid: UID, phoneHash: PH, now: 500, revoke: recorder() });
     assert.strictEqual(db4.get('card_delete_pending'), undefined, '🔴 CARD-PENDING: D7: no saved card ⇒ no card_delete_pending node');
+    // D8 (owner 11-18 «airtight», PLAN (a).1) — a vault that completes in the GAP: right after the deletion's snapshot of customer_cards/{uid}
+    // and before its update. The deletion first marks the node CLOSING in a transaction (the snapshot IS that transaction's), every vault
+    // drops on the mark — so no token is ever saved that the obligation did not capture
+    const db5 = fakeDb(); seedAccount(db5); await seedCard(db5);
+    let gap = null;
+    db5.TOUCH.at = `customer_cards/${UID}`;
+    db5.TOUCH.fn = async () => { gap = (await CARDS.completeVault(cdeps(db5, 90), { uid: UID, token: 'tok_G', token_hash: H('tok_G'), display: DISP, vault_gen: 0 })).outcome; };
+    await quietly(() => SE.deleteAccountCore(db5, ACCOUNT, { uid: UID, phoneHash: PH, now: 600, revoke: recorder() }));
+    assert.ok(gap !== null, 'premise: the vault ran in the gap');
+    const p5 = db5.get(`card_delete_pending/${UID}`) || {};
+    assert.ok(gap !== 'created' || (p5.tokens || {})[H('tok_G')] === 'tok_G', `🔴 CARD-CLOSING: D8: a vault that completes between the deletion's read and its update saves a token the obligation never captured (vault ${gap})`);
+    assert.strictEqual(gap, 'dropped', '🔴 CARD-CLOSING: D8: a vault in the gap drops on the closing mark');
+    assert.deepStrictEqual(p5, { at: 600, tokens: { [H('tok_A')]: 'tok_A' } }, '🔴 CARD-CLOSING: D8: the obligation is exactly the cards saved before the mark');
+    assert.deepStrictEqual(db5.get(`customer_cards/${UID}`), { _deleted: 600 }, '🔴 CARD-CLOSING: D8: the node ends EXACTLY the fence (the mark is not left behind)');
+    // D9 — a failed deletion update RELEASES the mark: the live account can save cards again, the cards are untouched
+    const db6 = fakeDb(); seedAccount(db6); await seedCard(db6);
+    const before6 = JSON.stringify(db6.get(`customer_cards/${UID}`));
+    db6.FAIL.update = true;
+    await quietly(() => assert.rejects(() => SE.deleteAccountCore(db6, ACCOUNT, { uid: UID, phoneHash: PH, now: 700, revoke: recorder() }), /injected update failure/));
+    assert.strictEqual(JSON.stringify(db6.get(`customer_cards/${UID}`)), before6, '🔴 CARD-CLOSING: D9: a failed deletion releases the closing mark (cards exactly as they were)');
+    assert.strictEqual((await CARDS.completeVault(cdeps(db6, 710), { uid: UID, token: 'tok_H', token_hash: H('tok_H'), display: DISP, vault_gen: 0 })).outcome, 'created', '🔴 CARD-CLOSING: D9: after a failed deletion the live account vaults again');
+    // D10 — the release only undoes ITS OWN mark: a fence (the update did commit) and another deletion's mark are left exactly as they are
+    const db7 = fakeDb(); db7.set(`customer_cards/${UID}`, { _deleted: 800 });
+    await CARDS.releaseClosing(db7, UID, 800);
+    assert.deepStrictEqual(db7.get(`customer_cards/${UID}`), { _deleted: 800 }, '🔴 CARD-CLOSING: D10: a release never touches the fence');
+    db7.set(`customer_cards/${UID}`, { _closing: 900 });
+    await CARDS.releaseClosing(db7, UID, 800);
+    assert.deepStrictEqual(db7.get(`customer_cards/${UID}`), { _closing: 900 }, '🔴 CARD-CLOSING: D10: a release never clears another deletion\'s mark');
   }
   ok('saved cards: deleteAccount and the sweep replace customer_cards/{uid} with the fence { _deleted: at } and capture every token in card_delete_pending/{uid} { at, tokens } atomically (never logged; none ⇒ no node); listCards [] / resolveSavedCard null; a late vault write is dropped; a repeat keeps the first instant; a failed update changes nothing');
 

@@ -59,21 +59,28 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === ${BASE.s
   '8746d49c4cf602528b716ca22554105f8527b07ecc4e0d4e7f5e88bba86ed1a5',   // whatsapp.js
   'b572897d42f5b856b558937b197c773016c8d1d4ea8ffa6b2b0c8f416a2d2cd7',   // whatsapp.js
   'e0dfcb9656ca27a383d0e459fed46a7115b4fb1d1fd6936fa83b64f44d32992a',   // whatsapp.js
-  '9a138005678b065acdf7e59b7335d6bedb52c145a774933ff424b8b34f9e2be3',   // signup-endpoints.js
-  'c7fe4b08763fedbdc9e975c1718db9f8093ae0451bcaa5b1b24d165138e45ebe',   // signup-endpoints.js
+  '471ff9c3d3455f0190662a9706902a05ea4982220c31543fe419c61922617605',   // signup-endpoints.js
+  '65ae1b767c268d6dd09c5a51ea98b950935a02795556c53f8871d0d5968e24de',   // signup-endpoints.js
   'a38163cb885c336bda75f3caec54a192918fa2dfff862d5a49225f0003335848',   // payments/sdk/cards.js
-  '3f3e6520f798f53379963cfcd93ad0c0299eab3c36f42c256009a5254ce1c327',   // payments/sdk/cards.js
-  '87f6f01748e833643ee098a9abebafff731a2a7762e4b78ff738e2ab33861d51',   // payments/sdk/cards.js
+  'f51fe039aa6058f041c455b472129c2dc62fbf365c2b2d0680258f027f2b492e',   // payments/sdk/cards.js
+  'a22bff80504b8e0da7277f2b2245e7b99a210dcdea94a018bf9c66cfc76716e0',   // payments/sdk/cards.js
     ],
   });
   const NON_LOG = [
   ["index.js","now","    const why = email ? 'not a staff email' : 'no email';   // rule 20: never the address itself"],
   ["whatsapp.js","now","    const digits = cleaned.length;   // rule 20: never the number itself"],
   ["whatsapp.js","now","      const code = data && data.error ? 'provider_error' : 'http_error';   // rule 20: never the number or the provider's raw response"],
-  ["signup-endpoints.js","now","  const cardsGone = require('./payments/sdk/cards').deletePendingUpdates(uid, at, (await db.ref(`customer_cards/${uid}`).once('value')).val());"],
-  ["signup-endpoints.js","now","  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`customer_cards/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone, ...cardsGone });   // r4: `at` only — a fence's version v is never clobbered"],
+  ["signup-endpoints.js","now","  const CARDS = require('./payments/sdk/cards');"],
+  ["signup-endpoints.js","now","  const cardsGone = CARDS.deletePendingUpdates(uid, at, await CARDS.markClosing(db, uid, at));"],
+  ["signup-endpoints.js","now","  try {"],
+  ["signup-endpoints.js","now","    await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`customer_cards/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone, ...cardsGone });   // r4: `at` only — a fence's version v is never clobbered"],
+  ["signup-endpoints.js","now","  } catch (e) {"],
+  ["signup-endpoints.js","now","    try { await CARDS.releaseClosing(db, uid, at); } catch (e2) { console.error(`deleteAccountCore: closing-mark release failed (${e2 && e2.code ? e2.code : 'error'}) — vaults drop until the deletion is retried`); }"],
+  ["signup-endpoints.js","now","    throw e;"],
+  ["signup-endpoints.js","now","  }"],
   ["signup-endpoints.js","was","  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });   // r4: `at` only — a fence's version v is never clobbered"],
   ["payments/sdk/cards.js","now","    if (isObj(cur) && cur._deleted !== undefined) { outcome = 'dropped'; return undefined; }   // the account-deletion fence (signup-endpoints deleteAccountCore): never a card after deletion"],
+  ["payments/sdk/cards.js","now","    if (isObj(cur) && cur._closing !== undefined) { outcome = 'dropped'; return undefined; }   // a deletion in progress (markClosing): its capture snapshot is already taken"],
   ["payments/sdk/cards.js","now","function deletePendingUpdates(uid, at, cur) {"],
   ["payments/sdk/cards.js","now","  const out = {};"],
   ["payments/sdk/cards.js","now","  for (const c of isObj(cur) && isObj(cur.cards) ? Object.values(cur.cards) : []) {"],
@@ -84,7 +91,18 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === ${BASE.s
   ["payments/sdk/cards.js","now","  if (Object.keys(out).length) out[`card_delete_pending/${uid}/at`] = at;"],
   ["payments/sdk/cards.js","now","  return out;"],
   ["payments/sdk/cards.js","now","}"],
-  ["payments/sdk/cards.js","now","module.exports = { deletePendingUpdates, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };"],
+  ["payments/sdk/cards.js","now","async function markClosing(db, uid, at) {"],
+  ["payments/sdk/cards.js","now","  const r = await node(db, uid).transaction((cur) => {"],
+  ["payments/sdk/cards.js","now","    if (isObj(cur) && cur._deleted !== undefined) return undefined;"],
+  ["payments/sdk/cards.js","now","    return { ...(isObj(cur) ? cur : {}), _closing: at };"],
+  ["payments/sdk/cards.js","now","  });"],
+  ["payments/sdk/cards.js","now","  return r && r.snapshot ? r.snapshot.val() : null;"],
+  ["payments/sdk/cards.js","now","async function releaseClosing(db, uid, at) {"],
+  ["payments/sdk/cards.js","now","  await node(db, uid).transaction((cur) => {"],
+  ["payments/sdk/cards.js","now","    if (!isObj(cur) || cur._deleted !== undefined || cur._closing !== at) return undefined;   // fenced, or another deletion's mark: untouched"],
+  ["payments/sdk/cards.js","now","    const c = { ...cur }; delete c._closing;"],
+  ["payments/sdk/cards.js","now","    return Object.keys(c).length ? c : null;"],
+  ["payments/sdk/cards.js","now","module.exports = { markClosing, releaseClosing, deletePendingUpdates, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };"],
   ["payments/sdk/cards.js","was","module.exports = { completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };"],
   ];
   const shaOf = (h) => crypto.createHash('sha256').update(`${h.file}\0${h.now}\0${h.was}`).digest('hex');
