@@ -38,7 +38,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // origin/main as a LITERAL sha (never computed at run time, so the guard cannot drift lax), CAPP_TIP = the lane tip. The offers-r20 /
 // push pins (827373d6..2b4aae89) and their merges landed on main with asm11 and sit below BASE now (MERGE_ALLOW pruned to above BASE).
 const BASE = '31f05c8a';
-const CAPP_TIP = '0895a17c';
+const CAPP_TIP = 'c3cd42e7';
 // ASSEMBLY STEPS (asm11 step 4, advisor 11-17): a capp commit made ON THE TRAIN line, before the lane's merge — it can't be the pin (a pin on
 // the train line pulls the train into the lane range). Each is listed by full sha with its EXACT file set: excused from the «after the pin» walk
 // only while that set is unchanged, and only while it is in HEAD's history (a step that left the tree is a stale entry). None touches a live
@@ -224,6 +224,7 @@ test(`no server change beyond S2-srv-tip + S2-srv-app + colonia: the capp range 
     .concat(git('ls-files', '--others', '--exclude-standard', '--', 'xpizza-functions').trim().split('\n').filter(Boolean));
   const allowed = (p) => /\.test\.(m?js|cjs)$/.test(p) || /^xpizza-functions\/test\//.test(p) || /\.golden\.json$|\.expect\.json$/.test(p)
     || p === 'xpizza-functions/tools/form-source-inventory.json' || p === 'xpizza-functions/package.json' || S2TIP_SERVER.has(p)
+    || p === 'xpizza-functions/tools/provenance-pins.json'   // the reviewed provenance REGISTRY: read only by tools/form-source-inventory.js, never shipped (advisor 11-18, dish-stats option A)
     || p === 'xpizza-functions/tools/app-suites.js';   // the test:apps RUNNER (never shipped): its KNOWN_RED holds the rule-20 url-token guard (advisor 11-13)
   const bad = changed.filter((p) => !allowed(p));
   assert.deepEqual(bad, [], `🔴 production files changed: ${bad.join(', ')}`);
