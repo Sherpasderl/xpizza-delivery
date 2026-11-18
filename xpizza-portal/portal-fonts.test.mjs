@@ -114,7 +114,8 @@ test('preconnects: www.gstatic.com + the Functions origin (tied to their source 
 // requested weights, and every §4 state is in it (P-crop only with the dish-photos B tip)
 // the newer panes (PLAN-portal-fonts-census-gaps-r0 §1, advisor 11-16), answered by the lanes' REAL cores. Extras is NOT here: it is dark
 // (catalog/platform-structure.js EXTRAS_CATALOG = false) — its state joins with the commit that turns the page on
-const CORE = ['IN-inicio', 'V-rend', 'V-detail', 'C-calif', 'C-filters', 'C-earlier', 'M-ofertas', 'M-builder', 'M-review', 'M-detail', 'N-envio'];
+const CORE = ['IN-inicio', 'V-rend', 'V-detail', 'C-calif', 'C-filters', 'C-earlier', 'M-ofertas', 'M-builder', 'M-review', 'M-detail', 'N-envio',
+  'M-builder-bogo', 'M-review-bogo'];   // owed 2 (advisor 11-18): the 2×1 builder / review draw the dishes (marketing-builder.js:133/195/540)
 test('the committed census (platform/fonts/census/portal.census.json): gate (b) per declaration × requested weight, every state', () => {
   const c = JSON.parse(readFileSync(join(DIR, '..', 'platform/fonts/census/portal.census.json'), 'utf8'));
   // the census must have MEASURED the hosted face — a record of the previous face is stale evidence (the subsets' ranges can start
@@ -137,6 +138,7 @@ test('the committed census (platform/fonts/census/portal.census.json): gate (b) 
     assert.ok(!c.unserved[s].includes(d.fn), `🔴 ${s}: its own data function ${d.fn} went unserved`);
   }
   assert.ok(Array.isArray(c.owed), '🔴 the census record carries no «owed» list');
+  assert.deepEqual(c.owed, [], '🔴 a section is owed: its real-data render is measured nowhere (owed 2, advisor 11-18: none may stay owed)');
   // Codex #105 r3: measured only on POSITIVE evidence in the measuredIn state's own record — it was served the function (2xx), never
   // went without it, and rendered that very section (its root measured on that state's pane); an existing state alone proves nothing
   const measured = (x) => x.section !== null && x.measuredIn !== null && !!c.states[x.measuredIn] && !c.unserved[x.measuredIn].includes(x.fn)

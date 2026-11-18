@@ -146,6 +146,8 @@ const clickSel = (sel, n = 0, ms = 700) => at(`(() => { const e = __q(${JSON.str
 const clickHas = (sel, t, ms = 900) => at(`(() => { const e = __q(${JSON.stringify(sel)}).find((x) => x.offsetParent !== null && x.textContent.includes(${JSON.stringify(t)})); if (!e) throw new Error('premise: no ' + ${JSON.stringify(sel)} + ' with ' + ${JSON.stringify(t)}); e.click(); return true; })()`, ms);
 const waitFor = (sel, ms = 6000) => async (c) => { for (let i = 0; i * 100 < ms; i++) { if (await c.ev(`!!document.querySelector(${JSON.stringify(sel)})`)) return; await sleep(100); } throw new Error(`premise: ${sel} never appeared`); };
 const OFERTAS = seq(nav('navsuc'), navAny('Marketing'), waitFor('.mk5-row'));
+const BOGO = seq(OFERTAS, clickHas('.mk5-tabs *', 'Crear campaña'), clickSel('.mk5-card[data-otype="bogo"]'), clickSel('.mk5b-row[data-row="prod"] .mk5b-rowh'),
+  clickSel('.mk5b-row[data-row="prod"] .mk5b-add'), waitFor('.mk5b-row[data-row="prod"] .mk5b-opt'));   // the picker lists the served dishes
 const CALIF = seq(navAny('Calificaciones'), waitFor('.calif .dist'));
 const VENTAS = seq(nav('navventas'), waitFor('.vd-fig'));
 const STATES = {
@@ -215,6 +217,11 @@ const STATES = {
   'M-builder':       { page: 'index', cores: 'ofertas', scn: 'populated', container: '.mk5b-dlg', text: 'Nueva oferta', drive: seq(OFERTAS, clickHas('.mk5-tabs *', 'Crear campaña'), clickSel('.mk5-card[data-otype="pct"]')) },
   'M-review':        { page: 'index', cores: 'ofertas', scn: 'populated', container: '.mk5r-modal', text: 'Revisá tu oferta',
     drive: seq(OFERTAS, clickHas('.mk5-tabs *', 'Crear campaña'), clickSel('.mk5-card[data-otype="pct"]'), clickSel('.mk5b-go')) },
+  // owed 2 (advisor 11-18): the dish list draws ONLY in a 2×1 (marketing-builder.js:133 loadMenu, :195 «Productos», :540 the review row) — the
+  // builder with the «Productos» picker open (every served dish a row), then the review with one dish ticked; plain visible clicks only
+  'M-builder-bogo':  { page: 'index', cores: 'ofertas', scn: 'populated', container: '.mk5b-dlg', text: 'Agregar producto', drive: BOGO },
+  'M-review-bogo':   { page: 'index', cores: 'ofertas', scn: 'populated', container: '.mk5r-modal', text: 'Revisá tu oferta',
+    drive: seq(BOGO, clickSel('.mk5b-row[data-row="prod"] .mk5b-opt input'), clickSel('.mk5b-go')) },
   'M-detail':        { page: 'index', cores: 'ofertas', scn: 'populated', container: '.mk5d-head', text: 'Almuerzo: 15 % en todo el menú', drive: seq(OFERTAS, clickHas('.mk5-lnk', 'Almuerzo: 15 %')) },
   'N-envio':         { page: 'index', cores: 'zones', scn: 'closed', container: '.envio', text: 'Tarifas de envío', drive: seq(navAny('Envío'), waitFor('.envio')) },
 };
@@ -369,6 +376,8 @@ const offerNames = (A) => served(A, 'getMarketing', (x) => { const n = (x.body.o
 // review row shortens it to «Las N» (marketing-builder.js:538, v5's review)
 const branchAny = (A, review) => served(A, 'getMyBranches', (x) => { const b = (x.body.branches || []).filter((r) => r && r.name);
   return b.length ? [review ? `Las ${b.length}` : `Las ${b.length} sucursales`, `Solo ${b[0].name}`, ...b.map((r) => r.name)] : undefined; });
+// the 2×1 builder's dishes: the served source's dish names, as loadMenu reads them (marketing-builder.js:145 display.name || key)
+const dishNames = (A) => served(A, 'getEditableCatalog', (x) => { const n = ((x.body.source && x.body.source.items) || []).map((i) => (i.display && i.display.name) || i.key).filter(Boolean); return n.length ? n : undefined; });
 const CORE_DATA = {
   'IN-inicio': { fn: 'getSalesStats', at: (A) => ({ scope: '#viewinicio', any: salesAny(A, true) }) },
   'V-rend':    { fn: 'getSalesStats', at: (A) => ({ scope: '#viewventas', any: salesAny(A, false) }) },
@@ -380,6 +389,8 @@ const CORE_DATA = {
   'M-builder': { fn: 'getMyBranches', at: (A) => ({ scope: '.mk5b-dlg', any: branchAny(A) }) },
   'M-review':  { fn: 'getMyBranches', at: (A) => ({ scope: '.mk5r-modal', any: branchAny(A, true) }) },
   'M-detail':  { fn: 'getMarketing', at: (A) => ({ scope: '.mk5d-head', any: offerNames(A) }) },
+  'M-builder-bogo': { fn: 'getEditableCatalog', at: (A) => ({ scope: '.mk5b-dlg', any: dishNames(A) }) },
+  'M-review-bogo':  { fn: 'getEditableCatalog', at: (A) => ({ scope: '.mk5r-modal', any: dishNames(A) }) },
   // the zone names draw inside the map iframe (its own origin, not in the pane's text); the fee table is the pane's own: every served band
   // as the portal's rowsFromBands writes it into the km / fee inputs, in order (envio.js:634-635)
   'N-envio':   { fn: 'getDeliveryPricing', at: (A) => ({ scope: '.envio', any: [['envio-logic.js', 'rowsFromBands', served(A, 'getDeliveryPricing', (x) => (Array.isArray(x.body.bands) && x.body.bands.length ? x.body.bands : undefined))]] }) },
@@ -393,10 +404,9 @@ const UNSERVED = {
   getSalesStats:             [{ section: 'Inicio · Ventas / Pedidos / Ticket promedio', root: '#viewinicio', measuredIn: 'IN-inicio' },
                               { section: 'Ventas · rendimiento', root: '#viewventas', measuredIn: 'V-rend' }],
   getEditableCatalog:        [{ section: 'Productos · el menú (rail + detalle)', root: '#viewmenu', measuredIn: 'P-editor' },
-                              // marketing-builder.js:138 reads the dishes for «Productos» in the builder and its review: no census state
-                              // renders the builder with a served catalog (the ofertas core serves none) ⇒ owed
-                              { section: 'Marketing · builder: los platos de la oferta', root: '.mk5b-dlg', measuredIn: null },
-                              { section: 'Marketing · revisión: los platos de la oferta', root: '.mk5r-modal', measuredIn: null }],
+                              // marketing-builder.js:138 reads the dishes for «Productos» in a 2×1's builder and its review (owed 2, advisor 11-18)
+                              { section: 'Marketing · builder: los platos de la oferta', root: '.mk5b-dlg', measuredIn: 'M-builder-bogo' },
+                              { section: 'Marketing · revisión: los platos de la oferta', root: '.mk5r-modal', measuredIn: 'M-review-bogo' }],
   getBranchAvailability:     [{ section: 'Productos · agotados por sucursal', root: '#availdrawer', measuredIn: 'A-drawer' }],
   getMarketing:              [{ section: 'Marketing · Ofertas', root: '.mk5-sect', measuredIn: 'M-ofertas' }],
   getMerchantReviews:        [{ section: 'Calificaciones · reseñas', root: '.calif', measuredIn: 'C-calif' }],

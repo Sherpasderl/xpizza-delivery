@@ -19,13 +19,13 @@ const CALLS = {
     ['getSalesStats', { restaurantId: 'r_centro', from: '2026-11-12', to: '2026-11-12', granularity: 'day', compare: 'previous_week' }]],
   calificaciones2: [['getMyBranches', {}], ['getMerchantReviews', { rids: 'x_pizza', weeks: '4' }], ['getMerchantReviews', { rids: 'x_pizza,xp_sur', weeks: '4' }],
     ['getMerchantRatingComments', { rid: 'x_pizza' }]],
-  ofertas: [['getMyBranches', {}], ['getMarketing', { rid: 'pv_centro' }]],
+  ofertas: [['getMyBranches', {}], ['getMarketing', { rid: 'pv_centro' }], ['getEditableCatalog', { restaurantId: 'pv_centro' }]],   // the 2×1 builder's dishes (marketing-builder.js:138)
   zones: [['getMyBranches', {}], ['getDeliveryPricing', {}]],
 };
 const DATA_TEXT = new Set(['Ana P.', 'Almuerzo: 15 % en todo el menú', 'Centro']);   // the rest are UI copy (headings, buttons)
 
-test('the census tool names exactly the 11 core states of the plan, each on a backend this file can drive', () => {
-  assert.deepEqual(Object.keys(CORE_STATES).sort(), ['C-calif', 'C-earlier', 'C-filters', 'IN-inicio', 'M-builder', 'M-detail', 'M-ofertas', 'M-review', 'N-envio', 'V-detail', 'V-rend'],
+test('the census tool names exactly the 13 core states of the plan (+ the 2×1 builder / review, owed 2), each on a backend this file can drive', () => {
+  assert.deepEqual(Object.keys(CORE_STATES).sort(), ['C-calif', 'C-earlier', 'C-filters', 'IN-inicio', 'M-builder', 'M-builder-bogo', 'M-detail', 'M-ofertas', 'M-review', 'M-review-bogo', 'N-envio', 'V-detail', 'V-rend'],
     'the core states read from portal-fonts.cdp.mjs');
   for (const [s, [cores]] of Object.entries(CORE_STATES)) assert.ok(CALLS[cores], `${s}: backend ${cores} has its page calls here`);
 });
@@ -49,3 +49,25 @@ for (const pair of pairs) {
     for (const [s, [c, sc, text]] of Object.entries(CORE_STATES)) if (c === cores && sc === scn && DATA_TEXT.has(text)) assert.ok(all.includes(text), `${s}: «${text}» is in the real answers`);
   });
 }
+
+// owed 2 (advisor 11-18): the 2×1 builder's dishes come from 5f's REAL getEditableCatalogCore over the catalog the REAL first-publish path
+// (contract/third-brand publishThirdBrand: source doc → build → publishVersion + the RTDB mirror) wrote — ONE menu in both stores: the
+// seeded «2 por 1» offer's dishes (saved by the real offers core, which checks them against that published menu) are dishes of the source
+test('ofertas:populated — the 2×1 dishes: getEditableCatalog is the real core over the published source; the seeded 2×1 offer names its dishes', async () => {
+  const { backend } = await import(pathToFileURL(path.join(ROOT, 'review', 'portal-cores', 'ofertas.mjs')).href);
+  const b = await backend(ROOT); await b.reset('populated');
+  const ask = (fn, query) => b.call({ fn, method: 'GET', query, headers: { authorization: 'Bearer T' } });
+  for (const [rid] of [['pv_centro'], ['pv_proceres'], ['pv_trapiche']]) {
+    const r = await ask('getEditableCatalog', { restaurantId: rid });
+    assert.ok(r && r.status === 200, `${rid}: getEditableCatalog → ${r && r.status} ${JSON.stringify(r && r.body).slice(0, 200)}`);
+    const items = (r.body.source && r.body.source.items) || [];
+    assert.ok(items.length > 0 && items.every((i) => typeof i.key === 'string' && i.display && typeof i.display.name === 'string'), `${rid}: the source carries named dishes`);
+    assert.equal(typeof r.body.activeVersionId, 'string', `${rid}: the core read the published version pointer`);
+  }
+  const src = (await ask('getEditableCatalog', { restaurantId: 'pv_centro' })).body.source;
+  const keys = new Set(src.items.map((i) => i.key));
+  const m = await ask('getMarketing', { rid: 'pv_centro' });
+  const bogo = (m.body.offers || []).find((o) => o.type === 'bogo');
+  assert.ok(bogo && Array.isArray(bogo.params.items) && bogo.params.items.length === 2, 'the seeded 2×1 offer carries its two dishes');
+  for (const k of bogo.params.items) assert.ok(keys.has(k), `the 2×1 dish ${k} is a dish of the published source`);
+});

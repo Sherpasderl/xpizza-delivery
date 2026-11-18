@@ -1,7 +1,8 @@
 // REVIEW ONLY — the «Marketing › Ofertas» SBS backend (advisor 11-15): every call the Marketing page makes is answered by 3a's REAL
 // cores at the Ofertas lane's ONE pin — read from the worktree's own marketing-harness.mjs REF (94e6b7ae9 at aed2c4a56), git-archived by
 // its ref-tree.mjs — over production's transaction semantics (the harness's prodDb). The world is made by the REAL writers only: the
-// roster writer (the owner), the catalog mirror writer (the published menus), the config writer (offers_enabled), and every offer by
+// roster writer (the owner), the REAL first-publish path for every branch's catalog (contract/third-brand publishThirdBrand: the source doc
+// → build → publishVersion + the RTDB mirror — ONE menu in both stores; owed 2, advisor 11-18), the config writer (offers_enabled), and every offer by
 // the REAL marketingOfferSave / SetState cores — seeded at EARLIER server times (deps.now) so the offers have real pasts. No
 // hand-built record, no canned reply. Offers v1 (owner 11-15): no caps, no «Envío gratis» — the mockup's envío row and every cap are
 // NOT seeded (the v1 writer refuses them); that diff is derived-from-owner-decision.
@@ -28,7 +29,6 @@ import { pathToFileURL } from 'node:url';
 const OWNER = 'ownerShoot';
 const BRAND = 'pv', BRAND_NAME = 'Pizzería Del Valle';
 const ROWS = [['pv_centro', 'Centro'], ['pv_proceres', 'Los Próceres'], ['pv_trapiche', 'El Trapiche']];
-const K1 = 'i_margarita00', K2 = 'i_hawaiana000', K3 = 'i_pepperoni00', K4 = 'i_refresco000';
 const DAY = 86400000, HN = 6 * 3600000;
 const hn = (y, m, d, h = 0, min = 0) => Date.UTC(y, m - 1, d, h, min) + HN;   // a wall-clock time in Honduras (UTC−6)
 export const T0 = hn(2026, 11, 12, 12);   // Thu 12 Nov 2026, noon HN — the mockup's «today» (its period ends 12 nov)
@@ -43,19 +43,26 @@ export async function backend(root) {
   const REF = m[1];
   const { refTree } = await import(pathToFileURL(path.join(root, 'xpizza-portal', 'ref-tree.mjs')).href);
   const q = refTree(REF);
+  // the catalog pieces (owed 2, advisor 11-18) at 5f's pinned fix: thirdBrandSource(rid) stamps the source's restaurant_id, so the REAL reader
+  // serves it (200, was 503 «restaurant_id mismatch»). Every catalog module below is byte-identical at both pins but third-brand.js; the
+  // train swaps this pin for main
+  const CAT_REF = '15cbf832903cf12acce27acaf8e3daeb56ce38cb';   // fix/third-brand-rid-5f (off 31f05c8a4)
+  const qc = refTree(CAT_REF);
   const C = q('./marketing/offers-core'), CFG = q('./marketing/config'), OPS = q('./portal/ops-core');
   const { createFakeDb } = q('./merchant/_fake-db');
   const R = q('./access/roster');
   const { makeRtdbMirror } = q('./catalog/mirror-rtdb');
   const { makeRtdbMirrorReader } = q('./catalog/snapshot-fallback');
-  const { buildMenu } = q('./catalog/catalog-menu');
+  const { getRestaurantMenu } = qc('./catalog/catalog-menu');
+  const { makeDb } = qc('./catalog/firestore-fake');
+  const { publishThirdBrand } = qc('./contract/third-brand');
+  const { getEditableCatalogCore } = qc('./catalog/portal-reads');
+  const { getActiveVersionId } = qc('./catalog/catalog-firestore');
+  const { authorizeCatalogEdit } = qc('./catalog/catalog-edit-auth');
   void createRequire;
 
-  const MENU = [[K1, 150, 'pizzas'], [K2, 220, 'pizzas'], [K3, 190, 'pizzas'], [K4, 35, 'bebidas']];
-  const snap = (docs) => ({ empty: docs.length === 0, docs: docs.map((v, i) => ({ id: `d${i}`, data: () => v })) });
-  const versionMenu = () => buildMenu(snap(MENU.map(([key, price, cat]) => ({ key, price, display: { price, cat, name: key } }))), snap([]),
-    { exists: true, data: () => ({ categories: [{ id: 'pizzas' }, { id: 'bebidas' }], item_order: MENU.map((r) => r[0]) }) }, 'shoot');
-  let fake = null, failTx = null, clockNow = T0, plan = null;
+  // fs: 5f's Firestore double (catalog/firestore-fake) — the source docs, the versions and their pointers, as the publish path writes them
+  let fake = null, fs = null, bogoItems = null, failTx = null, clockNow = T0, plan = null;
   const PLANS = { 'cfm-confirming': ['fail', 'hold'], 'cfm-saved': ['fail', 'pass'], 'cfm-refused': ['judge-lost', 'pass'], 'cfm-fallback': ['fail', 'fail'] };
   // production's transaction semantics (marketing-harness prodDb) + an OUTAGE switch on a path prefix (the `unknown` scenario)
   const prodDb = (f) => ({ ref(p = '') {
@@ -70,7 +77,7 @@ export async function backend(root) {
   } });
   const verifyIdToken = async () => ({ uid: OWNER });
   const http = (method, query, body) => ({ method, query: query || {}, body, get: (h) => (String(h).toLowerCase() === 'authorization' ? 'Bearer shoot' : undefined) });
-  const deps = () => { const db = prodDb(fake); return { db, verifyIdToken, log: quiet, now: () => clockNow, readMirror: makeRtdbMirrorReader(db), readCategoryMenu: async () => versionMenu() }; };
+  const deps = () => { const db = prodDb(fake); return { db, verifyIdToken, log: quiet, now: () => clockNow, readMirror: makeRtdbMirrorReader(db), readCategoryMenu: (rid) => getRestaurantMenu(fs, rid) }; };   // production's (marketing/functions.js:18)
   const CORES = { getMarketing: C.getMarketingCore, marketingOfferSave: C.marketingOfferSaveCore, marketingOfferSetState: C.marketingOfferSetStateCore, marketingOfferRepeat: C.marketingOfferRepeatCore };
 
   // a write by the REAL core, at server time `at` — a refusal is a broken premise, never a seeded record
@@ -89,7 +96,7 @@ export async function backend(root) {
       schedule: { start: hn(2026, 11, 2), end: hn(2026, 11, 27, 23, 59) + 59999, days: [1, 2, 3, 4, 5], window: { from: 660, to: 840 } } }) }, hn(2026, 10, 30, 10));
     await write('marketingOfferSetState', { rid, offer_id: a.id, to: 'active', expected_rev: a.rev }, hn(2026, 10, 30, 10, 5));
     // Programada — «2 por 1 en pizzas clásicas», Vie y Sáb 21:00–00:00, from Fri 13 nov
-    const b = await write('marketingOfferSave', { rid, expected_rev: 0, offer: offer({ name: '2 por 1 en pizzas clásicas', type: 'bogo', params: { items: [K1, K2], free_per_order: 1 },
+    const b = await write('marketingOfferSave', { rid, expected_rev: 0, offer: offer({ name: '2 por 1 en pizzas clásicas', type: 'bogo', params: { items: bogoItems, free_per_order: 1 },
       schedule: { start: hn(2026, 11, 13), end: hn(2026, 11, 30, 23, 59) + 59999, days: [5, 6], window: { from: 1260, to: 0 } } }) }, hn(2026, 11, 11, 9));
     await write('marketingOfferSetState', { rid, offer_id: b.id, to: 'active', expected_rev: b.rev }, hn(2026, 11, 11, 9, 5));
     // Pausada por vos — «L 50 de bienvenida» (Clientes nuevos), every day, since 15 oct; paused by the owner on 9 nov
@@ -121,8 +128,14 @@ export async function backend(root) {
     const db = prodDb(fake);
     const o = await R.mutateRoster({ db: fake, now: () => 1 }, BRAND, { kind: 'cli', operator: 'shoot' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'Marcela Pineda', email: 'duena@pv.hn' } });
     if (!o || o.ok === false) throw new Error(`premise: the roster writer bootstrapped the owner (${JSON.stringify(o)})`);
+    fs = makeDb();
     const mirror = makeRtdbMirror(db);
-    for (const [rid] of ROWS) await mirror(rid, { version: 'v1', seq: 1, rid, menu: Object.fromEntries(MENU.map(([k, p]) => [k, p])), extras: {} });
+    for (const [rid] of ROWS) await publishThirdBrand(fs, { rid, mirror });
+    // the «2 por 1» dishes: the first two of the published menu's first category (the active version's own order)
+    const items = ((await getRestaurantMenu(fs, ROWS[0][0])) || {}).items || [];
+    const cat = items[0] && items[0].display && items[0].display.cat;
+    bogoItems = items.filter((i) => i.display && i.display.cat === cat).slice(0, 2).map((i) => i.key);
+    if (bogoItems.length !== 2) throw new Error(`premise: the published menu has two dishes in its first category (${JSON.stringify(bogoItems)})`);
     const cfg = await CFG.writeMarketingConfig(db, { expected: 0, actor: 'cli:shoot', now: 1,
       config: { offers_enabled: true, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } } });
     if (!cfg || cfg.ok !== true) throw new Error(`premise: the config writer turned offers ON (${JSON.stringify(cfg)})`);
@@ -153,6 +166,10 @@ export async function backend(root) {
       }
       failTx = step === 'fail' ? `marketing_brand/${BRAND}` : null;
       try { return await CORES[fn](deps(), http(method, query, body)); } finally { failTx = null; }
+    }
+    if (fn === 'getEditableCatalog') {   // the 2×1 builder's dishes (marketing-builder.js:138): 5f's REAL core; the caller resolved by the REAL authorizeCatalogEdit
+      const authorize = (rid, req) => authorizeCatalogEdit({ db: fake, verifyIdToken }, req, rid);
+      return getEditableCatalogCore({ db: fake, fsdb: fs, readActiveVersionId: getActiveVersionId, authorize, now: () => clockNow }, http(method, query));
     }
     if (fn === 'getMyBranches') return OPS.getMyBranchesCore({ db: prodDb(fake), verifyIdToken, now: () => clockNow, log: quiet }, http(method, query));
     if (CORES[fn]) return CORES[fn](deps(), http(method, query, body));
