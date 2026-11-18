@@ -47,7 +47,7 @@ function fakeDb() {
     };
     return q;
   };
-  const FAIL = { update: false, txnAt: null, txnAlways: new Set() };   // txnAlways: every txn on these exact paths throws (a permanently failing entry)   // inject: the next multi-path update throws (nothing applied) / a txn on a path prefix throws
+  const FAIL = { update: false, txnAt: null, txnAlways: new Set(), noCommitAt: null };   // noCommitAt: the next txn on this exact path runs its fn but is NOT committed (the server rejected it)   // txnAlways: every txn on these exact paths throws (a permanently failing entry)   // inject: the next multi-path update throws (nothing applied) / a txn on a path prefix throws
   const HOOK = { after: null, fn: null };        // run fn ONCE right after the next txn on a path prefix (an interleaving)
   const AFTER = { fn: null };                    // run fn ONCE right after the next ROOT multi-path update commits (the deletion's step 1)
   const TOUCH = { at: null, fn: null };          // run fn ONCE right after the next read OR txn of EXACTLY this path (the gap after a snapshot)
@@ -60,6 +60,7 @@ function fakeDb() {
     transaction: async (fn) => {
       if (FAIL.txnAt && String(p).startsWith(FAIL.txnAt)) { FAIL.txnAt = null; throw new Error('injected transaction failure'); }
       if (FAIL.txnAlways.has(String(p))) throw new Error('injected permanent transaction failure');
+      if (FAIL.noCommitAt === String(p)) { FAIL.noCommitAt = null; fn(clone(get(p)) ?? null); return { committed: false, snapshot: snap(get(p)) }; }
       const next = fn(clone(get(p)) ?? null);
       const out = next === undefined ? { committed: false, snapshot: snap(get(p)) } : (set(p, next), { committed: true, snapshot: snap(get(p)) });
       if (HOOK.after && String(p).startsWith(HOOK.after)) { const f = HOOK.fn; HOOK.after = null; HOOK.fn = null; await f(); }
@@ -413,6 +414,9 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
     // D4 — a repeat deletion keeps the FIRST instant and the captured tokens
     await del(db, 300);
     assert.deepStrictEqual([db.get(`customer_cards/${UID}`), db.get(`card_delete_pending/${UID}`)], [FENCE(100, 'tok_A', 'tok_B'), { at: 100 }], '🔴 D4: a repeat deletion keeps the first fence and work list byte-for-byte');
+    // D4b (Codex #155 r1 F4) — the REAL helper called again with a LATER instant keeps the fence's first instant AND the work list's
+    await CARDS.fenceCards(db, UID, 999);
+    assert.deepStrictEqual([db.get(`customer_cards/${UID}`), db.get(`card_delete_pending/${UID}`)], [FENCE(100, 'tok_A', 'tok_B'), { at: 100 }], '🔴 D4: fenceCards with a later instant keeps the FIRST instant on the fence and the work list');
     // D2 — the inactivity sweep (the same core, sweepCutoff)
     const db2 = fakeDb(); seedAccount(db2, { lastActive: 5 }); const id2 = await seedCard(db2);
     assert.strictEqual((await del(db2, 200, { sweepCutoff: 50 })).r, true);
@@ -487,6 +491,22 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
     for (let run = 0; run < 2; run++) await quietly(() => CARDS.drainCardFences(dbF, { batch: 2 }));
     assert.deepStrictEqual(dbF.get(`customer_cards/${U('3')}`), { _deleted: 50 }, '🔴 CARD-FENCE: D15: an entry behind permanently failing ones is fenced within a bounded number of runs');
     assert.deepStrictEqual(Object.keys(dbF.get('card_fence_owed') || {}).sort(), [U('1'), U('2')], '🔴 CARD-FENCE: D15: the failing entries stay open (retried), the fenced one is closed');
+    // D16 (Codex #155 r1 F1) — a removal whose admission passed BEFORE the deletion lands in the stall between the tombstone and the fence:
+    // the removed token is RETAINED atomically in the card node, so the fence still captures it (a removal never erases a needed token)
+    const dbR = fakeDb(); seedAccount(dbR); const idR = await seedCard(dbR); await seedCard(dbR, 'tok_B');
+    dbR.AFTER.fn = async () => { await CARDS.removeCard(cdeps(dbR, 1150), UID, idR); };
+    await del(dbR, 1200);
+    assert.deepStrictEqual(dbR.get(`customer_cards/${UID}`), FENCE(1200, 'tok_A', 'tok_B'), '🔴 CARD-FENCE: D16: a card removed in the stall is still captured by the fence (its token retained by the removal)');
+    assert.deepStrictEqual(dbR.get(`card_delete_pending/${UID}`), { at: 1200 }, '🔴 CARD-FENCE: D16: the provider-delete work list is opened');
+    // D17 (Codex #155 r1 F2) — a fence transaction the server did NOT commit (e.g. built on another call's uncommitted local write) never
+    // clears the fence work list: the drain retries it
+    const dbN = fakeDb(); seedAccount(dbN); await seedCard(dbN);
+    dbN.FAIL.noCommitAt = `customer_cards/${UID}`;
+    const dN = await del(dbN, 1300);
+    assert.strictEqual(dbN.get(`card_fence_owed/${UID}`), 1300, '🔴 CARD-FENCE: D17: an uncommitted fence transaction leaves the work list OPEN');
+    assert.ok(!dN.logs.some((l) => l.includes(UID) || l.includes('tok_')), 'D17: the failure is logged without uid or token');
+    await quietly(() => SE.pruneResidual(dbN, 1400));
+    assert.deepStrictEqual([dbN.get(`customer_cards/${UID}`), dbN.get(`card_fence_owed/${UID}`)], [FENCE(1300, 'tok_A'), undefined], '🔴 CARD-FENCE: D17: the drain then fences it');
   }
   ok('saved cards (Codex #154 r1): the deletion tombstones first, then ONE transaction fences customer_cards/{uid} with every token captured inside it (a vault in the gap, a stall, concurrent user/sweep deletions — all captured; after it a vault drops); card_delete_pending/{uid} = { at } (none ⇒ no node); a crash is finished by pruneResidual; a failed step 1 writes nothing; a deleted uid is refused at list / charge lookup / remove before the fence');
 
@@ -547,6 +567,15 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
     const again = JSON.stringify(db.tree);
     assert.deepStrictEqual(await FENCE.fence({ rtdb: db, apply: true }), { dryRun: false, tombstoned: 4, live: 2, noCards: 0, alreadyFenced: 2, fenced: 0 }, 'D6: a re-run finds both already fenced');
     assert.strictEqual(JSON.stringify(db.tree), again, 'D6: a re-run writes nothing');
+    // D6b (Codex #155 r1 F3) — the fence commits but the work-list update fails: a RERUN repairs the index (already-fenced accounts go through
+    // the helper), and the owed entry written BEFORE the helper lets the drain finish it too
+    const db3 = fakeDb(); assert.strictEqual(await vault(db3, OLD, 'tok_R'), 'created'); db3.set(`user_private/${OLD}`, { deleted_at: 77 });
+    db3.FAIL.update = true;
+    await quietly(() => FENCE.fence({ rtdb: db3, apply: true }).catch(() => null));
+    assert.ok(db3.get(`customer_cards/${OLD}/_deleted`) === 77 && db3.get(`card_delete_pending/${OLD}`) === undefined, 'premise: fenced, the work-list update failed');
+    assert.strictEqual(db3.get(`card_fence_owed/${OLD}`), 77, '🔴 D6: the tool opens the fence work list BEFORE the helper (the drain can finish a half-done fence)');
+    await quietly(() => FENCE.fence({ rtdb: db3, apply: true }));
+    assert.deepStrictEqual([db3.get(`card_delete_pending/${OLD}`), db3.get(`card_fence_owed/${OLD}`)], [{ at: 77 }, undefined], '🔴 D6: a rerun repairs the work list of an already-fenced account');
     // the current core's own deletion is already fenced: the tool counts it, never rewrites it
     const db2 = fakeDb(); seedAccount(db2); assert.strictEqual(await vault(db2, UID, 'tok_A'), 'created');
     await SE.deleteAccountCore(db2, ACCOUNT, { uid: UID, phoneHash: PH, now: 400, revoke: recorder() });

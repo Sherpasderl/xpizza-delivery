@@ -65,10 +65,11 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === ${BASE.s
   'a38163cb885c336bda75f3caec54a192918fa2dfff862d5a49225f0003335848',   // payments/sdk/cards.js
   'f8f8c5cf1890b11834fe04c0c1490b0654e6bfd79b3780cb318fcbe444916e17',   // payments/sdk/cards.js
   '3f3e6520f798f53379963cfcd93ad0c0299eab3c36f42c256009a5254ce1c327',   // payments/sdk/cards.js
+  '055262a33e9e09edf0ec69974d5d58ce3f7d3f1ef8a04a43cfbadaa2959c8494',   // payments/sdk/cards.js
   '25ccb39e19ebf4374a12a3f2f93e8d633a20c962de20ee5b1c005139b21cfd2b',   // payments/sdk/cards.js
   '6dd9800e290f06eed59fa23c55fc8caff7414fb633d5c767b60305a5c8353ab5',   // payments/sdk/cards.js
   'eb8ba401ffcbdee66632b95dffe5c4b9a13c5a8ad17b4486c14bd934b82e1ed8',   // payments/sdk/cards.js
-  'c5363c40af2296ca4e46b87dbf9a01599f2d7c6fe40253bdbaaa08c7e872ab1a',   // payments/sdk/cards.js
+  '1932a95a3a3b6bfee5c55dd8ae4b7df5644a569848cb456babbe187b2104b3de',   // payments/sdk/cards.js
     ],
   });
   const NON_LOG = [
@@ -85,6 +86,7 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === ${BASE.s
   ["signup-endpoints.js","was","  return { ratings, deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now), tombstones: await backfillDeletedUids(db), pushDrain };"],
   ["payments/sdk/cards.js","now","  if (await isDeletedUid(deps.db, uid)) return null;   // Codex #154 r1: a deleted account's cards are refused before (and after) the fence"],
   ["payments/sdk/cards.js","now","    if (isObj(cur) && cur._deleted !== undefined) { outcome = 'dropped'; return undefined; }   // the account-deletion fence (signup-endpoints deleteAccountCore): never a card after deletion"],
+  ["payments/sdk/cards.js","now","    if (typeof card.token === 'string' && card.token) c.removed_tokens = { ...(isObj(c.removed_tokens) ? c.removed_tokens : {}), [hashOfCard(card)]: card.token };"],
   ["payments/sdk/cards.js","now","  if (await isDeletedUid(deps.db, uid)) return { status: 200, body: { cards: [] } };   // Codex #154 r1: nothing listed for a deleted account"],
   ["payments/sdk/cards.js","now","  if (await isDeletedUid(deps.db, uid)) return { status: 404, body: { error: 'not_found' } };   // Codex #154 r1"],
   ["payments/sdk/cards.js","now","  const r = !ok ? { outcome: 'skipped' } : (await isDeletedUid(deps.db, order.customer_uid)) ? { outcome: 'dropped' } : await completeVault(deps, { uid: order.customer_uid, token, token_hash: att.token_hash, display: att.display, vault_gen: att.vault_gen });"],
@@ -92,17 +94,18 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === ${BASE.s
   ["payments/sdk/cards.js","now","const isDeletedUid = async (db, uid) => (await db.ref(`deleted_uids/${uid}`).once('value')).exists();"],
   ["payments/sdk/cards.js","now","const hashOfCard = (c) => (typeof c.token_hash === 'string' && /^[0-9a-f]{64}$/.test(c.token_hash) ? c.token_hash : crypto.createHash('sha256').update(c.token).digest('hex'));"],
   ["payments/sdk/cards.js","now","async function fenceCards(db, uid, at) {"],
-  ["payments/sdk/cards.js","now","  let fencedAt = at; let n = 0;"],
-  ["payments/sdk/cards.js","now","  await node(db, uid).transaction((cur) => {"],
-  ["payments/sdk/cards.js","now","    const prev = isObj(cur) && cur._deleted !== undefined;"],
-  ["payments/sdk/cards.js","now","    const toks = prev && isObj(cur.tokens) ? { ...cur.tokens } : {};"],
+  ["payments/sdk/cards.js","now","  const res = await node(db, uid).transaction((cur) => {"],
+  ["payments/sdk/cards.js","now","    if (isObj(cur) && cur._deleted !== undefined) return cur;   // already fenced (no vault ever writes on a fence): unchanged"],
+  ["payments/sdk/cards.js","now","    const toks = {};"],
   ["payments/sdk/cards.js","now","    for (const c of isObj(cur) && isObj(cur.cards) ? Object.values(cur.cards) : []) if (isObj(c) && typeof c.token === 'string' && c.token) toks[hashOfCard(c)] = c.token;"],
-  ["payments/sdk/cards.js","now","    fencedAt = prev ? cur._deleted : at; n = Object.keys(toks).length;"],
-  ["payments/sdk/cards.js","now","    if (prev) return undefined;   // already fenced (no vault ever writes on a fence): nothing to change"],
-  ["payments/sdk/cards.js","now","    return n ? { _deleted: fencedAt, tokens: toks } : { _deleted: fencedAt };"],
+  ["payments/sdk/cards.js","now","    if (isObj(cur) && isObj(cur.removed_tokens)) for (const [h, t] of Object.entries(cur.removed_tokens)) if (typeof t === 'string' && t) toks[h] = t;   // Codex #155 r1 F1"],
+  ["payments/sdk/cards.js","now","    return Object.keys(toks).length ? { _deleted: at, tokens: toks } : { _deleted: at };"],
   ["payments/sdk/cards.js","now","  });"],
-  ["payments/sdk/cards.js","now","  await db.ref().update({ ...(n ? { [`card_delete_pending/${uid}/at`]: fencedAt } : {}), [`card_fence_owed/${uid}`]: null });"],
-  ["payments/sdk/cards.js","now","  return { at: fencedAt, tokens: n };"],
+  ["payments/sdk/cards.js","now","  const v = res && res.committed && res.snapshot ? res.snapshot.val() : null;"],
+  ["payments/sdk/cards.js","now","  if (!isObj(v) || v._deleted === undefined) throw Object.assign(new Error('card fence not committed'), { code: 'fence_not_committed' });"],
+  ["payments/sdk/cards.js","now","  const n = isObj(v.tokens) ? Object.keys(v.tokens).length : 0;"],
+  ["payments/sdk/cards.js","now","  await db.ref().update({ ...(n ? { [`card_delete_pending/${uid}/at`]: v._deleted } : {}), [`card_fence_owed/${uid}`]: null });"],
+  ["payments/sdk/cards.js","now","  return { at: v._deleted, tokens: n };"],
   ["payments/sdk/cards.js","now","}"],
   ["payments/sdk/cards.js","now","const FENCE_BATCH = 50;"],
   ["payments/sdk/cards.js","now","async function drainCardFences(db, { batch = FENCE_BATCH } = {}) {"],

@@ -67,6 +67,9 @@ async function removeCard(deps, uid, cardId) {
     const card = isObj(c.cards) ? c.cards[cardId] : null;
     if (!isObj(card)) return undefined;   // already removed (or never this member's): idempotent, the generation untouched
     const h = card.token_hash;
+    // Codex #155 r1 F1: the removed token is RETAINED here, atomically, for the account-deletion fence (fenceCards captures it) — a
+    // removal racing a deletion can never erase a token the provider-delete obligation needs. Server-only node; never listed or charged.
+    if (typeof card.token === 'string' && card.token) c.removed_tokens = { ...(isObj(c.removed_tokens) ? c.removed_tokens : {}), [hashOfCard(card)]: card.token };
     delete c.cards[cardId];
     if (isObj(c.by_hash) && c.by_hash[h] === cardId) delete c.by_hash[h];
     const prev = isObj(c.tomb) && isObj(c.tomb[h]) && Number.isInteger(c.tomb[h].gen) ? c.tomb[h].gen : 0;
@@ -147,17 +150,20 @@ const hashOfCard = (c) => (typeof c.token_hash === 'string' && /^[0-9a-f]{64}$/.
 // provider-delete WORK LIST (the tokens stay in the fence) — only when tokens exist, and the fence work list card_fence_owed/{uid}
 // cleared. Server-only nodes (rules: customer_cards .read/.write false; the others unruled ⇒ denied). Never logged.
 async function fenceCards(db, uid, at) {
-  let fencedAt = at; let n = 0;
-  await node(db, uid).transaction((cur) => {
-    const prev = isObj(cur) && cur._deleted !== undefined;
-    const toks = prev && isObj(cur.tokens) ? { ...cur.tokens } : {};
+  // Codex #155 r1 F2: an existing fence is RETURNED through the transaction (never a local abort — a value built on another call's
+  // uncommitted local write is then re-checked by the server), and the work lists move ONLY on a server-committed snapshot
+  const res = await node(db, uid).transaction((cur) => {
+    if (isObj(cur) && cur._deleted !== undefined) return cur;   // already fenced (no vault ever writes on a fence): unchanged
+    const toks = {};
     for (const c of isObj(cur) && isObj(cur.cards) ? Object.values(cur.cards) : []) if (isObj(c) && typeof c.token === 'string' && c.token) toks[hashOfCard(c)] = c.token;
-    fencedAt = prev ? cur._deleted : at; n = Object.keys(toks).length;
-    if (prev) return undefined;   // already fenced (no vault ever writes on a fence): nothing to change
-    return n ? { _deleted: fencedAt, tokens: toks } : { _deleted: fencedAt };
+    if (isObj(cur) && isObj(cur.removed_tokens)) for (const [h, t] of Object.entries(cur.removed_tokens)) if (typeof t === 'string' && t) toks[h] = t;   // Codex #155 r1 F1
+    return Object.keys(toks).length ? { _deleted: at, tokens: toks } : { _deleted: at };
   });
-  await db.ref().update({ ...(n ? { [`card_delete_pending/${uid}/at`]: fencedAt } : {}), [`card_fence_owed/${uid}`]: null });
-  return { at: fencedAt, tokens: n };
+  const v = res && res.committed && res.snapshot ? res.snapshot.val() : null;
+  if (!isObj(v) || v._deleted === undefined) throw Object.assign(new Error('card fence not committed'), { code: 'fence_not_committed' });
+  const n = isObj(v.tokens) ? Object.keys(v.tokens).length : 0;
+  await db.ref().update({ ...(n ? { [`card_delete_pending/${uid}/at`]: v._deleted } : {}), [`card_fence_owed/${uid}`]: null });
+  return { at: v._deleted, tokens: n };
 }
 // pruneResidual: finish every fence a deletion opened (card_fence_owed/{uid} = at, in its atomic update) but did not complete — a crash,
 // a timeout or a failed transaction. Bounded (key order, a batch per run) and FAIR: a rotating cursor card_fence_cursor (the last key

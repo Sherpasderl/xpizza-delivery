@@ -35,13 +35,17 @@ async function fence({ rtdb, apply = false }) {
     if ((await rtdb.ref(`user_profiles/${uid}`).once('value')).exists()) { r.live += 1; continue; }
     const cur = (await rtdb.ref(`customer_cards/${uid}`).once('value')).val();
     if (cur == null) { r.noCards += 1; continue; }
-    if (isObj(cur) && cur._deleted !== undefined) { r.alreadyFenced += 1; continue; }
-    if (!apply) { r.fenced += 1; continue; }
-    if ((await rtdb.ref(`user_profiles/${uid}`).once('value')).exists()) { r.live += 1; continue; }   // re-checked at apply time
+    const fenced = isObj(cur) && cur._deleted !== undefined;
+    if (fenced) r.alreadyFenced += 1;
+    if (!apply) { if (!fenced) r.fenced += 1; continue; }
+    if (!fenced && (await rtdb.ref(`user_profiles/${uid}`).once('value')).exists()) { r.live += 1; continue; }   // re-checked at apply time
     // Codex #154 r1 (advisor 11-18): ONE fence writer — the deletion core's own transaction (payments/sdk/cards fenceCards): the tokens are
-    // read inside it, so no vault can slip between the capture and the fence; it opens card_delete_pending/{uid} = { at } when tokens exist
+    // read inside it, so no vault can slip between the capture and the fence; it opens card_delete_pending/{uid} = { at } when tokens exist.
+    // Codex #155 r1 F3: the fence work list is opened FIRST (a half-done fence is finished by pruneResidual's drain), and an ALREADY
+    // fenced account goes through the helper too — it keeps the fence as is and repairs a missing work-list entry (a rerun repairs it)
+    await rtdb.ref(`card_fence_owed/${uid}`).set(at);
     await require('../payments/sdk/cards').fenceCards(rtdb, uid, at);
-    r.fenced += 1;
+    if (!fenced) r.fenced += 1;
   }
   return r;
 }
