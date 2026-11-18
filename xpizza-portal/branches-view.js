@@ -5,6 +5,7 @@ import { updateBranch, updateBranchProfile, setBranchActive, deleteBranchDraft, 
 import * as L from './branch-logic.js';
 import * as B from './branch-1b-logic.js';
 import { $, el, icon, svg, button, pill, topBlock, errBox, skeleton, emptyState, OFFLINE } from './ops-dom.js';
+import { pauseControl } from './pause-control.js';   // «Pausar pedidos» lives on the branch page (PLAN-portal-pausar-in-sucursales §2.2)
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 
@@ -45,7 +46,7 @@ export function mountBranches(root, ctx) {
       const meta = el('div', 'cmeta');
       const m = (label, value) => { const s = el('span', null, `${label} `); s.append(el('b', null, value)); return s; };
       meta.append(
-        m('Radio', `${L.kmText(b.readonly && b.readonly.radius_km)} km`),
+        m('Radio', `${L.kmText(B.appKm(b))} km`),   // ENVÍO v3 §3b: the app's maximum distance
         m('Preparación', L.validPrep(b.editable && b.editable.prep_default_min) ? `${b.editable.prep_default_min} min` : 'Falta'),
         m('Equipos', String(Number.isInteger(b.devices) ? b.devices : 0)),
         m('Último pedido de hoy', L.lastOrderText(b.last_order_today)),
@@ -75,6 +76,26 @@ export function mountBranches(root, ctx) {
     return f;
   };
 
+  // ── «Pausar pedidos» on the branch page (PLAN-portal-pausar-in-sucursales §2.2; MOCKUP-…-pausar-in-sucursales F1–F4) ──
+  // ONE pause control for the page: its action sits in the header's actions row; a failed call's box lands in the page's error slot
+  // (between the header and the grid) for THAT branch; patchBranch repaints the page from the answer.
+  // Codex backfill P2s (advisor 11-15): the confirm resolves the branch on screen against the AUTHORIZED branches (an owner may open B
+  // while the global scope is A); a result belongs to the rid it was SUBMITTED for (a manager's default detail has V.det null)
+  const pc = pauseControl(ctx, { candidates: () => branches().filter((b) => L.can(b, 'location.pause')), repaint: () => render(),
+    showError: (box, rid) => { V.pauseErr = { rid, box }; render(); }, clearError: (rid) => { if (!rid || (V.pauseErr && V.pauseErr.rid === rid)) V.pauseErr = null; } });
+  // the status block (today's card lines, D1: every state) under the lede; the inactive note only where `noteOk` (D3); closed: no note (D2)
+  function pauseHeader(b, st, top, noteOk) {
+    if (!L.can(b, 'location.pause')) return;
+    const left = top.children[0];
+    const status = el('div', `status hstatus ${st.state === 'paused' ? 'stpaused' : st.state === 'open' ? 'stopen' : ''}`);
+    const t = el('div');
+    t.append(el('b', null, st.line1));
+    if (st.line2) t.append(el('span', 'sub', st.line2));
+    status.append(t);
+    left.append(status);
+    if (st.state === 'inactive' && noteOk) left.append(el('span', 'fnote cnote', 'Para activarla, escribinos.'));
+  }
+
   // ── S2 detail ──
   function renderDetail(b) {
     const now = Date.now();
@@ -85,12 +106,15 @@ export function mountBranches(root, ctx) {
       frag.push(crumb);
     }
     const acts = [];
-    if (L.can(b, 'location.pause')) acts.push(button('btn', 'Pausar pedidos', () => ctx.goto('pausas')));
+    const pa = L.can(b, 'location.pause') ? pc.actionFor(b, st) : null;
+    if (pa) acts.push(pa);
     if (L.can(b, 'device.list')) acts.push(button('btn', `Equipos · ${Number.isInteger(b.devices) ? b.devices : 0}`, () => ctx.goto('equipos', { rid: b.rid })));   // slice 2
     const { top, h } = topBlock(b.name, null, acts);
     const p = pill(st.pillCls, st.label); p.classList.add('hpill');
     h.append(p);
+    pauseHeader(b, st, top, true);
     frag.push(top);
+    if (V.pauseErr && V.pauseErr.rid === b.rid) frag.push(V.pauseErr.box);
     if (V.stale) frag.push(errBox('Alguien más cambió esta sucursal.', 'Recargá para ver lo último.', () => { window.location.reload(); }));
     if (V.err) frag.push(errBox(V.err[0], V.err[1]));
     if (L.prepMissing(b)) { const c = callout('Falta el tiempo de preparación normal.', ' Sin él no se puede vincular un equipo.'); c.classList.add('dcallout'); frag.push(c); }
@@ -101,7 +125,7 @@ export function mountBranches(root, ctx) {
     datos.append(roField('Nombre de la sucursal', b.name));
     // Zona de entrega (schematic; radius exact, read-only)
     const zona = section('Zona de entrega', 'Solo lectura');
-    zona.append(mapFor(b.readonly && b.readonly.radius_km));
+    zona.append(mapFor(B.appKm(b)));
     // Horario
     const horario = section('Horario por día', 'Solo lectura');
     const hours = el('div', 'hoursro');
@@ -258,12 +282,16 @@ export function mountBranches(root, ctx) {
     const frag = [];
     if (isOwner()) frag.push(button('crumb', 'Sucursales', () => { V.det = null; V.draft = null; V.p = null; V.fieldErr = null; setDirty(false); render(); }, { iconName: 'back' }));
     const acts = [];
-    if (!draft && L.can(b, 'location.pause')) acts.push(button('btn', 'Pausar pedidos', () => ctx.goto('pausas')));   // §2f T1: 1a's button
+    const st1b = L.stateModel(b, Date.now());
+    const pa = !draft && L.can(b, 'location.pause') ? pc.actionFor(b, st1b) : null;   // §2f T1 → PLAN-portal-pausar §2.2: the action itself
+    if (pa) acts.push(pa);
     if (!draft && L.can(b, 'device.list')) acts.push(button('btn', `Equipos · ${Number.isInteger(b.devices) ? b.devices : 0}`, () => ctx.goto('equipos', { rid: b.rid })));
     const { top, h } = topBlock(nameOf(b), B.ledeOf(b), acts);
     const p = pillFor(b); p.classList.add('hpill');
     h.append(p);
+    if (!draft) pauseHeader(b, st1b, top, !activationOnPage(b) && !wantsChecklist(b));   // D3: the note only when no Activar section is on the page
     frag.push(top);
+    if (V.pauseErr && V.pauseErr.rid === b.rid) frag.push(V.pauseErr.box);
     if (V.stale) frag.push(errBox('Alguien más cambió esta sucursal.', 'Recargá para ver lo último.', () => { window.location.reload(); }));
     if (V.err) frag.push(errBox(V.err[0], V.err[1], V.errRetry ? () => { window.location.reload(); } : undefined));
     if (!draft && !L.validPrep(cur.prep)) { const c = callout('Falta el tiempo de preparación normal.', ' Sin él no se puede vincular un equipo.'); c.classList.add('dcallout'); frag.push(c); }   // 1a D2
@@ -310,7 +338,7 @@ export function mountBranches(root, ctx) {
   }
   function zona1b(b) {
     const s = sec1b('Zona de entrega', hintLock('Definida por Sherpa'));
-    const radius = isObj(b.location) && Number.isFinite(b.location.zone_radius_km) ? b.location.zone_radius_km : (b.readonly && b.readonly.radius_km);
+    const radius = B.appKm(b);   // ENVÍO v3 §3b: the app's maximum distance (zone_radius_km stays in the read model for the legacy forms)
     const m = mapFor(radius);
     const svgEl = m.querySelector('svg'); if (svgEl) svgEl.setAttribute('aria-label', 'Mapa con el pin de la sucursal y su zona de entrega, solo lectura');
     const badge = el('span', 'sherpa1b'); badge.append(lockSvg(), document.createTextNode('Solo lectura'));
@@ -635,6 +663,8 @@ export function mountBranches(root, ctx) {
     }
     return out;
   }
+  // the 1b «Activar sucursal» section is on the page (sections1b's s3-inactive branch) — D3: then no inactive note
+  const activationOnPage = (b) => owned(b.brand_id) && b.legacy !== true && b.lifecycle === 'inactive' && B.canActivate(b);
   const wantsChecklist = (b) => (b.lifecycle === 'staged' || b.lifecycle === 'inactive') && b.legacy !== true && owned(b.brand_id) && b.role === 'owner'
     && !(b.lifecycle === 'inactive' && B.canActivate(b));
 
@@ -942,6 +972,6 @@ export function mountBranches(root, ctx) {
 
   return {
     render,
-    show(opts = {}) { if (opts.rid) V.det = opts.rid; render(); },
+    show(opts = {}) { if (opts.rid) V.det = opts.rid; else if (opts.list) V.det = null; render(); },
   };
 }

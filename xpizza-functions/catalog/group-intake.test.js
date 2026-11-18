@@ -73,7 +73,9 @@ const node86 = (key) => ({ [availKey(key)]: { available: false } });
   {
     for (const rid of ['x_pizza', 'la_musa']) {
       const ghost = rid === 'la_musa' ? 'noodle_09' : 'NY Garlic Slice';   // a product added AFTER this snapshot (e.g. a new launcher)
-      assert.deepStrictEqual(await GIs({ caps: ON, gates: SNAP[rid], items: [LINE[rid](PLAIN[rid])], restaurantId: rid, rewardKeys: [ghost] }), { unclassifiable: true },
+      // S3 D3 (advisor 11-13): "added after this snapshot" = the live pointer has moved past it (catalog/reward-removed.test.js
+      // pins the other branch: live == snapshot ⇒ removed ⇒ menu_changed)
+      assert.deepStrictEqual(await GIs({ caps: ON, gates: { ...SNAP[rid], livePointer: async () => `v-${rid}-newer` }, items: [LINE[rid](PLAIN[rid])], restaurantId: rid, rewardKeys: [ghost] }), { unclassifiable: true },
         `🔴 ${rid}: a reward key the snapshot does not know → unclassifiable (menu_updating), never "not a launcher"`);
       assert.deepStrictEqual(await GIs({ caps: ON, gates: { ...SNAP[rid], knownExtras: undefined }, items: [LINE[rid](PLAIN[rid])], restaurantId: rid, rewardKeys: [PLAIN[rid]] }), { unclassifiable: true },
         `🔴 ${rid}: a snapshot without extra membership cannot classify a reward → unclassifiable`);

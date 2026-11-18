@@ -486,6 +486,14 @@
       if (r.status === 400 && (j.error === 'guest_cash_not_allowed' || j.error === 'guest_email_required' || j.error === 'guest_ticket_invalid')) return { kind: j.error };
       return null;
     }
+    // PLAN-capp-marketing-offers r0 Q4 (advisor 11-14): 5f's 409 offer_changed, three forms (fixtures/offer-changed, 5f's REAL refusals).
+    // The GATE's (token-gate.js applyConfirmedNetGate, cash + card) carries net_total_cents: the server's NEW charge, higher than the one
+    // the customer confirmed — kept as the server's number, never charged without their consent. The CAP holds (cash index.js, card
+    // offer-usage afterGate) carry none ⇒ re-quote, never a guessed total. Every form is refused before any write or money (§1.2)
+    function offerChangedOf(status, j) {
+      if (status !== 409 || !j || typeof j !== 'object' || j.error !== 'offer_changed') return null;
+      return Number.isSafeInteger(j.net_total_cents) && j.net_total_cents > 0 ? { form: 'gate', requote: true, net_total_cents: j.net_total_cents } : { form: 'cap', requote: true };
+    }
     const isExisting = (r) => r.status === 409 && (r.json.error === 'order_exists' || r.json.error === 'order_context_changed');
     // rule ii: a FULLY parsed, definitive answer; everything else is unresolved (the outcome is unknown)
     function definitive(method, r) {
@@ -718,6 +726,8 @@
         // invalid / a higher price) of the replayed bytes is never rebuilt from the live flow nor re-priced over it: the definitive
         // answer above already ended the replay window (the lock is released), so the customer re-confirms a validated checkout
         if (replay && cq.classify(j)) return { kind: 'replay_requote', order_id: id };
+        // PLAN-capp-marketing-offers Q4: 5f's 409 offer_changed, typed — on the EXISTING generic path until the sheet is approved
+        { const oc = offerChangedOf(r.status, j); if (oc) return { kind: 'error', order_id: id, status: r.status, error: 'offer_changed', offer_changed: oc }; }
         const rj = await cq.handleRejection({ err: j, shownCents: expected, hasReward: false, retried: silentRetried, sheet: p.sheet });
         if (rj && rj.handled) {
           if (!rj.resend) return { kind: rj.declined ? 'price_declined' : 'error', order_id: id };
@@ -1145,20 +1155,20 @@
       return { kind: 'offline' };
     }
 
-    // PLAN-capp-tip-step r6: the member's LAST TIP — ONE authenticated read of their OWN leaf user_private/{uid}/last_tip (owner-read
-    // rules; the server writes it after an accepted order). A UX hint: any failure / other identity ⇒ cents null (the step's L 20).
-    // Answers { uid, cents } so the caller binds it to the identity it was read for; nothing is stored on the device.
+    // PLAN-capp-tip-step r6 → RULE 20 (advisor 11-13; 3a's getMyLastTip, PLAN-3a-capp-member-reads r4): the member's LAST TIP — ONE
+    // GET of the endpoint with the ID token in the x-firebase-id-token HEADER (never a URL or a body: the old RTDB REST read put it in
+    // the URL's auth query parameter). A UX hint: any failure / another identity ⇒ cents null (the step's L 20). Answers { uid, cents } so the caller binds it
+    // to the identity it was read for; nothing is stored on the device.
     async function lastTip() {
       const m = memberOf();
-      const base = typeof cfg.rtdbBase === 'string' && /^https:\/\/[a-z0-9.-]+(:\d+)?\/?$/i.test(cfg.rtdbBase) ? cfg.rtdbBase.replace(/\/+$/, '') : null;
-      if (!m || typeof m.uid !== 'string' || !m.uid || !base) return { uid: m && m.uid != null ? String(m.uid) : null, cents: null };
+      if (!m || typeof m.uid !== 'string' || !m.uid || typeof E.getMyLastTip !== 'string' || !E.getMyLastTip) return { uid: m && m.uid != null ? String(m.uid) : null, cents: null };
       const tok = await memberToken(m);
       if (!tok || memberOf() !== m) return { uid: m.uid, cents: null };
       try {
-        const r = await sfetch(`${base}/user_private/${encodeURIComponent(m.uid)}/last_tip.json?auth=${encodeURIComponent(tok)}`, { method: 'GET' });
+        const r = await sfetch(`${E.getMyLastTip}?context=platform`, { method: 'GET', headers: { 'x-firebase-id-token': tok } });
         if (!r || r.status !== 200 || memberOf() !== m) return { uid: m.uid, cents: null };
         let j = null; try { j = await r.json(); } catch (_) { j = null; }
-        const c = j && typeof j === 'object' ? j.cents : undefined;
+        const c = j && typeof j === 'object' && j.ok === true ? j.cents : undefined;
         return { uid: m.uid, cents: Number.isSafeInteger(c) && c >= 0 && c <= 200000 ? c : null };
       } catch (_) { return { uid: m.uid, cents: null }; }
     }

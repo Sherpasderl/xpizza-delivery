@@ -158,7 +158,9 @@ async function placeOriginal(deps, { orderId, attempt_id, token, amount_cents, a
   if (amount_cents !== order.total_cents) return { outcome: 'refused', reason: 'amount_mismatch' };   // CORE-Δ row 20: ONLY the stored total, before any record / journal / PSP call
   const deadline = deadlineOf(order, null);   // enforced IN the claim CAS below (the one authoritative check)
   await enrol(deps, orderId);
-  await R.createRecord(deps.db, orderId, { flow: 'sdk_auth_v1', phase: 'open', committed_revision: 0, fulfillment_total_cents: amount_cents, created_at: now, ttl_at: deadline != null ? deadline : now + R.TTL_MS });
+  // LEDGER S1: the frozen allocation snapshot (mode sdk — the app marker is forced server-side) rides the record create; `order` is the
+  // order this request created (finish.js), the same read the amount check above trusts
+  await R.createRecord(deps.db, orderId, { flow: 'sdk_auth_v1', phase: 'open', committed_revision: 0, fulfillment_total_cents: amount_cents, created_at: now, ttl_at: deadline != null ? deadline : now + R.TTL_MS, ledger: require('../../ledger/alloc-snapshot').snapshotOf(order, require('../../ledger/alloc-snapshot').modeOf({ sdk: true, clientHdr: { app: null, deployment: 'orders-app' } })) });
   const ref = ppRef(deps.ppNamespace || 'unconfigured', orderId, attempt_id);
   const tokenHash = require('crypto').createHash('sha256').update(token).digest('hex');
   let legId = null; let replay = null; let late = false;

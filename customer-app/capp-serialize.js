@@ -44,7 +44,7 @@
         });
         const extrasTotal = extras.reduce((s, e) => s + e.price, 0);
         const line = { id: d.id, name: d.name, dish_id: d.dish_id, qty: 1, price: d.price, subtotal: d.price + extrasTotal,
-          extras: extras.map((e) => ({ id: e.id, name: e.name, extra_id: e.extra_id, qty: 1, instance: 0 })), extrasTotal };
+          extras: extras.map((e) => ({ id: e.id, name: e.name, extra_id: e.extra_id, qty: 1, instance: 0, ...(e.extra_key ? { extra_key: e.extra_key } : {}) })), extrasTotal };   // S2b §5: the served key, appended last (absent without the map)
         if (d.item_key) { if (String(d.id) !== d.item_key) delete line.id; line.item_key = d.item_key; }   // S3 D1
         items.push(line);
         subtotalCents += (d.price + extrasTotal) * 100;

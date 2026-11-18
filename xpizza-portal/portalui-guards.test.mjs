@@ -18,19 +18,78 @@ import { PB_FOLD } from './photos-b-fold.mjs';
 import { PP_FOLD } from './pp-fold.mjs';
 import { S4_BASE, S4_FOLD } from './s4-fold.mjs';
 import { UNSAVED_BASE, UNSAVED_FOLD } from './unsaved-fold.mjs';
+import { S1_BASE, S1_FOLD } from './s1-fold.mjs';
+import { S2_BASE, S2_FOLD } from './s2-fold.mjs';
 import { HF_BASE, HF_FOLD } from './hotfix-1112-fold.mjs';
 import { MINT_BASE, MINT_FOLD } from './mint-fold.mjs';
+import { RP_BASE, RP_FOLD } from './rp-fold.mjs';
+import { REND_BASE, REND_FOLD } from './rend-fold.mjs';
+import { RGB_BASE, RGB_FOLD } from './rgb-fold.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const BASE = '613f7e08';
 // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html, owner-approved 2026-11-11) is the NEWEST layer of all: its named hunks are
 // folded out at the lowest read, so every layer and pin below judges exactly what it judged before; the UNSAVED test pins the
 // layer itself on the file on disk (an edit outside or inside one of its hunks fails).
-// LIVE HOTFIX 2026-11-12 (hotfix-1112-fold.mjs) and the S1c MINT panel (mint-fold.mjs, advisor 11-11) are the NEWEST layers, above
+// STRUCTURE S1 (PLAN-portal-structure-S1-ui r3) is the NEWEST layer above UNSAVED: its named hunks are folded out at the very
+// lowest read, so UNSAVED and every older pin judge exactly what they judged before; the S1 test pins the layer itself on disk.
+// STRUCTURE S2 (PLAN-portal-structure-S2-ui r3) is the NEWEST layer of all, above S1: folded out at the very lowest read, so S1,
+// UNSAVED and every older pin judge exactly what they judged before; the S2 test pins the layer itself on disk.
+// «Quitar del menú» (PLAN-portal-remove-product r3) is the NEWEST layer of all, above S2: folded out at the very lowest read, so S2
+// and every older pin judge exactly what they judged before; the RP test pins the layer itself on disk.
+// «Rendimiento» (P-1 nav, owner 11-13 map Q4) was the NEWEST layer, above RP — RETIRED 11-14 (Nav B): its fold is empty, the
+// REND test pins ventas.js back at REND_BASE.
+const diskFile = (f) => readFileSync(join(DIR, f), 'utf8');
+function withoutREND(f, src) {
+  let out = src;
+  for (const [now, was] of REND_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `REND hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+// the «reward group» refusal (rgb-fold.mjs, 5f bd0157bdd) is the NEWEST layer of all, above REND: folded out at the very lowest read,
+// so REND and every older pin judge exactly what they judged before; the RGB test pins the layer itself on disk.
+function withoutRGB(f, src) {
+  let out = src;
+  for (const [now, was] of RGB_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `RGB hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+const fileOnDisk = (f) => withoutREND(f, withoutRGB(f, diskFile(f)));
+function withoutRP(f, src) {
+  let out = src;
+  for (const [now, was] of RP_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `RP hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+const portalOnDisk = (f) => withoutRP(f, fileOnDisk(f));
+function withoutS2(f, src) {
+  let out = src;
+  for (const [now, was] of S2_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `S2 hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+const fileRead = (f) => withoutS2(f, portalOnDisk(f));
+function withoutS1(f, src) {
+  let out = src;
+  for (const [now, was] of S1_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `S1 hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+// train/portal-structure: main's LIVE HOTFIX 2026-11-12 (hotfix-1112-fold.mjs) and the S1c MINT panel (mint-fold.mjs, advisor 11-11) are the NEWEST layers, above
 // UNSAVED: each is folded out at the very lowest read (they fold DISJOINT files — HOTFIX app.js, MINT review.js — so their order is
 // immaterial), so every older pin judges exactly what it judged before; the HOTFIX and MINT cells pin each layer on disk.
-const hotfixBytes = (f) => readFileSync(join(DIR, f), 'utf8');
-const fileRead = hotfixBytes;
+// they sit BELOW S1/S2 here: their cells read main's bytes = the disk minus S2 and S1 (mainBytes); S1/S2's cells peel them too (legacy).
+const mainBytes = (f) => withoutS1(f, withoutS2(f, portalOnDisk(f)));
 function withoutHotfix(f, src) {
   let out = src;
   for (const [now, was] of HF_FOLD[f] || []) {
@@ -47,7 +106,8 @@ function withoutMint(f, src) {
   }
   return out;
 }
-const diskRead = (f) => withoutMint(f, withoutHotfix(f, hotfixBytes(f)));
+const legacy = (f, src) => withoutMint(f, withoutHotfix(f, src));
+const diskRead = (f) => legacy(f, mainBytes(f));
 function withoutUnsaved(f, src) {
   let out = src;
   for (const [now, was] of UNSAVED_FOLD[f] || []) {
@@ -341,7 +401,7 @@ test('the editor, review, render, auth and logic modules are byte-identical to t
 // ── brand-agnostic ──
 const LITERALS = [/x_pizza/i, /la_musa/i, /\bX\.? ?Pizza\b/i, /\bLa Musa\b/i, /15\.5074/, /-88\.0398/, /15\.50414/, /-88\.03848/, /97952893/, /93736607/];
 const hits = (src) => LITERALS.reduce((n, re) => n + (src.match(new RegExp(re.source, `${re.flags.replace('g', '')}g`)) || []).length, 0);
-const NEW_PORTAL = ['shell.js', 'branches-view.js', 'pausas.js', 'availability.js', 'branch-logic.js', 'ops-dom.js',
+const NEW_PORTAL = ['shell.js', 'branches-view.js', 'pause-control.js', 'availability.js', 'branch-logic.js', 'ops-dom.js',
   'team.js', 'team-logic.js', 'invite-mail.js', 'pubreq.js', 'aceptar.js', 'equipos.js', 'branch-1b-logic.js'];   // + 1b   // + 3a's T-b / T-c / T-d modules (aceptar-boot.js holds the
   // Functions BASE URL — the GCP project id, exactly as api.js does — so it is not a zero-literal module)
 const NEW_SERVER = ['portal/ops-core.js', 'portal/ops-functions.js', 'portal/location-name.js', 'portal/pause-reasons.js', 'portal/reset-list.js', 'lib/hn-date.js'];
@@ -373,25 +433,82 @@ test('slice 2: app.js and ventas.js are byte-identical to the approved stack tip
   }
 });
 
+test('STRUCTURE S1: app.js / editor.js / item-edit-logic.js gain exactly the named hunks — folding them out gives S1_BASE byte-for-byte', () => {
+  for (const f of Object.keys(S1_FOLD)) {
+    const was = execFileSync('git', ['show', `${S1_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.notEqual(withoutS1(f, fileRead(f)), fileRead(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(legacy(f, withoutS1(f, fileRead(f))), was, `${f} minus the S1 hunks ≠ ${S1_BASE}`);
+    assert.notEqual(legacy(f, withoutS1(f, fileRead(f) + '\n// stray\n')), was, 'non-vacuity: a stray edit survives the fold');
+  }
+  const inside = S1_FOLD['editor.js'].map(([now]) => now).find((t) => t.includes('export function extrasBaseline('));
+  assert.ok(inside, 'premise: the baseline is one of the hunks');
+  assert.throws(() => withoutS1('editor.js', fileRead('editor.js').replace(inside, inside.replace('legacy rules still applied', 'legacy rules still appliedX'))), 'an edit inside a hunk breaks it');
+});
+
+test('the «Ventas» layer (Nav B 11-14 + the V3b handover): app.js keeps ONE hunk (the name); ventas.js is the gate that mounts the tab — both fold back to REND_BASE byte-for-byte', () => {
+  assert.deepEqual(Object.keys(REND_FOLD).sort(), ['app.js', 'ventas.js'], 'the layer holds app.js\'s name hunk and ventas.js\'s handover');
+  assert.notEqual(withoutREND('app.js', diskFile('app.js')), diskFile('app.js'), 'non-vacuity: the app.js fold changes something (older layers on app.js judge the rest)');
+  const was = execFileSync('git', ['show', `${REND_BASE}:xpizza-portal/ventas.js`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+  assert.equal(withoutREND('ventas.js', diskFile('ventas.js')), was, `ventas.js minus the layer ≠ ${REND_BASE}`);
+  assert.ok(/mountVentasTab\(\$\('viewventas'\)/.test(diskFile('ventas.js')), 'the gate hands #viewventas to the tab');
+  assert.ok(!/registerRendTab|portal:rend-tab|Rendimiento|getSalesStats\(|fetchSalesCsv\(/.test(diskFile('ventas.js')), 'no Rendimiento registry, and no request left in the gate (the tab carries them)');
+  assert.notEqual(withoutREND('ventas.js', diskFile('ventas.js') + '\n// stray\n'), was, 'non-vacuity: a stray edit to the gate survives the fold (and fails the pin)');
+  assert.throws(() => withoutREND('ventas.js', diskFile('ventas.js').replace('mountVentasTab($', 'mountVentasTabX($')), 'an edit INSIDE the gate breaks the fold');
+});
+
+
+test('the «reward group» refusal: review.js gains exactly ONE hunk (the reward_group_add_blocked row) — folding it out gives RGB_BASE byte-for-byte', () => {
+  assert.deepEqual(Object.keys(RGB_FOLD), ['review.js'], 'the layer touches review.js only');
+  const was = execFileSync('git', ['show', `${RGB_BASE}:xpizza-portal/review.js`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+  assert.notEqual(withoutRGB('review.js', diskFile('review.js')), diskFile('review.js'), 'non-vacuity: the fold changes something');
+  assert.equal(withoutRGB('review.js', diskFile('review.js')), was, `review.js minus the layer ≠ ${RGB_BASE}`);
+  assert.notEqual(withoutRGB('review.js', diskFile('review.js') + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold (and fails the pin)');
+  assert.throws(() => withoutRGB('review.js', diskFile('review.js').replace('agregarle extras nuevos', 'agregarle extras')), 'an edit INSIDE the row breaks the fold');
+});
+
+test('«Quitar del menú»: its files gain exactly the named hunks — folding them out gives RP_BASE byte-for-byte', () => {
+  for (const f of Object.keys(RP_FOLD)) {
+    const was = execFileSync('git', ['show', `${RP_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.notEqual(withoutRP(f, fileOnDisk(f)), fileOnDisk(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(withoutRP(f, fileOnDisk(f)), was, `${f} minus the RP hunks ≠ ${RP_BASE}`);
+    assert.notEqual(withoutRP(f, fileOnDisk(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
+  }
+  const inside = RP_FOLD['editor.js'].map(([now]) => now).find((t) => t.includes('export function removeProduct('));
+  assert.ok(inside, 'premise: the removal writer is one of the hunks');
+  assert.throws(() => withoutRP('editor.js', fileOnDisk('editor.js').replace(inside, inside.replace('all or nothing', 'all or nothingX'))), 'an edit inside a hunk breaks it');
+});
+
+test('STRUCTURE S2: app.js / editor.js / item-edit-logic.js gain exactly the named hunks — folding them out gives S2_BASE byte-for-byte', () => {
+  for (const f of Object.keys(S2_FOLD)) {
+    const was = execFileSync('git', ['show', `${S2_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.notEqual(withoutS2(f, portalOnDisk(f)), portalOnDisk(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(legacy(f, withoutS2(f, portalOnDisk(f))), was, `${f} minus the S2 hunks ≠ ${S2_BASE}`);
+    assert.notEqual(legacy(f, withoutS2(f, portalOnDisk(f) + '\n// stray\n')), was, 'non-vacuity: a stray edit survives the fold');
+  }
+  const inside = S2_FOLD['editor.js'].map(([now]) => now).find((t) => t.includes('export function composeDish('));
+  assert.ok(inside, 'premise: the composition is one of the hunks');
+  assert.throws(() => withoutS2('editor.js', portalOnDisk('editor.js').replace(inside, inside.replace('before any exposure op', 'before any exposure opX'))), 'an edit inside a hunk breaks it');
+});
+
 test('LIVE HOTFIX 11-12: app.js gains exactly the named hunk (the uploader\u2019s op_ id) — folding it out gives HF_BASE byte-for-byte', () => {
   for (const f of Object.keys(HF_FOLD)) {
     const was = execFileSync('git', ['show', `${HF_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
-    assert.notEqual(withoutHotfix(f, hotfixBytes(f)), hotfixBytes(f), `non-vacuity: the ${f} fold changes something`);
-    assert.equal(withoutHotfix(f, hotfixBytes(f)), was, `${f} minus the HOTFIX hunk ≠ ${HF_BASE}`);
-    assert.notEqual(withoutHotfix(f, hotfixBytes(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
+    assert.notEqual(withoutHotfix(f, mainBytes(f)), mainBytes(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(withoutHotfix(f, mainBytes(f)), was, `${f} minus the HOTFIX hunk ≠ ${HF_BASE}`);
+    assert.notEqual(withoutHotfix(f, mainBytes(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
   }
 });
 
 test('S1c MINT panel: review.js gains exactly the named hunks — folding them out gives MINT_BASE byte-for-byte', () => {
   for (const f of Object.keys(MINT_FOLD)) {
     const was = execFileSync('git', ['show', `${MINT_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
-    assert.notEqual(withoutMint(f, fileRead(f)), fileRead(f), `non-vacuity: the ${f} fold changes something`);
-    assert.equal(withoutMint(f, fileRead(f)), was, `${f} minus the MINT hunks ≠ ${MINT_BASE}`);
-    assert.notEqual(withoutMint(f, fileRead(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
+    assert.notEqual(withoutMint(f, mainBytes(f)), mainBytes(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(withoutMint(f, mainBytes(f)), was, `${f} minus the MINT hunks ≠ ${MINT_BASE}`);
+    assert.notEqual(withoutMint(f, mainBytes(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
   }
   const inside = MINT_FOLD['review.js'].map(([now]) => now).find((t) => t.includes('mint_unavailable:'));
   assert.ok(inside, 'premise: the panel is one of the hunks');
-  assert.throws(() => withoutMint('review.js', fileRead('review.js').replace(inside, inside.replace('momentáneo', 'momentaneo'))), 'an edit inside a hunk breaks it');
+  assert.throws(() => withoutMint('review.js', mainBytes('review.js').replace(inside, inside.replace('momentáneo', 'momentaneo'))), 'an edit inside a hunk breaks it');
 });
 
 test('UNSAVED EDITS: app.js / item-edit-logic.js gain exactly the named hunks — folding them out gives UNSAVED_BASE byte-for-byte', () => {

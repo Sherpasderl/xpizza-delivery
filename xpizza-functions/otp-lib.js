@@ -1,6 +1,6 @@
 'use strict';
 const crypto = require('crypto');
-const { normalizePhone } = require('./whatsapp');            // reuse: full international digits
+const { normalizePhoneQuiet: normalizePhone } = require('./phone/normalize-phone');   // the ONE normalisation (whatsapp.js wraps it), SILENT: phoneHash never prints a phone (offer-audience r2 §6)
 const SALT = process.env.OTP_SALT || '';
 if (SALT.length < 32) { throw new Error('OTP_SALT missing or too short (need >=32 chars) — refusing to start (fail-closed)'); }
 function sha(s){ return crypto.createHash('sha256').update(String(s)+SALT).digest('hex'); }
@@ -44,4 +44,4 @@ function verifyConsume(v, now, code, scope){
   return { next: { ...v, attempts: (v.attempts||0) + 1 }, outcome: 'fail' };
 }
 
-module.exports = { phoneHash, genCode, hashCode, constEq, normalizePhone, LIMITS, ipReserve, sendReserve, verifyConsume };
+module.exports = { phoneHash, genCode, hashCode, constEq, normalizePhone, normalizePhoneQuiet: normalizePhone, LIMITS, ipReserve, sendReserve, verifyConsume };

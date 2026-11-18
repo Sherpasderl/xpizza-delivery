@@ -159,7 +159,7 @@ const defaultKeyMode = (rid) => (rid === 'la_musa' ? 'id' : 'name'); const effec
 // is judged by exactly the key it is charged by, so a forged id beside a real name can never be judged as one extra and
 // charged as another.
 function extraPricingKey(ex, restaurantId, keyMode) {
-  return effectiveKeyMode(restaurantId, keyMode) === 'id' ? (ex && ex.id) : (ex && ex.name);
+  return ex && typeof ex === 'object' && typeof ex[PRICING_KEY_STAMP] === 'string' && ex[PRICING_KEY_STAMP] ? ex[PRICING_KEY_STAMP] : (effectiveKeyMode(restaurantId, keyMode) === 'id' ? (ex && ex.id) : (ex && ex.name));   // S2b P2-5: the key resolveLines STAMPED decides first (never the wire extra_key)
 }
 
 // Phase 1b-1 — resolve WHICH price tables price this order. Omitting `tables` keeps today's exact

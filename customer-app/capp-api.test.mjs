@@ -10,6 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -1004,4 +1005,44 @@ test('S3 refusals: menu_changed / extra_not_allowed / pickup_only_item map to th
   const po = await place(PO);
   assert.deepEqual([po.kind, po.item_key], ['pickup_only', 'Margherita NY'], '🔴 order: pickup_only_item (S3-CAPP-API-PPO)');
   assert.equal((await place({ status: 400, json: RL.resolutionRefusal({ code: 'invalid_line', at: 'items', index: 0 }).body })).kind, 'error', 'order: invalid_line stays the generic error (a client bug, never retried)');
+});
+
+// ── PLAN-capp-marketing-offers r0 Q4 (advisor 11-14): 5f's 409 offer_changed, all three forms, from 5f's REAL refusals
+// (fixtures/offer-changed/gen-offer-changed.mjs at feat/marketing-price-5f) — typed on the outcome, routed on the EXISTING generic
+// error path (no visible change until the sheet is approved): no sheet, no resend, the gate's net kept as the server's number, the
+// cap holds (no net) ⇒ re-quote with NO number ──
+const OCX = JSON.parse(readFileSync(new URL('./fixtures/offer-changed/offer-changed.json', import.meta.url), 'utf8'));
+test('offer_changed fixture: 5f\'s three real bodies, pinned (commit + content)', () => {
+  const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
+  assert.equal(OCX.source.commit, 'ca5f561629f30fcfbfb30edd62d274de079aa09a', 'the 5f tip it was produced at');
+  assert.equal(createHash('sha256').update(canon(OCX.scenarios)).digest('hex'), OCX.scenarios_sha256, 'the content pin');
+  assert.deepEqual(Object.keys(OCX.scenarios.gate.body).sort(), ['error', 'net_total_cents', 'order_id'], 'premise: the gate form carries the new net');
+  assert.ok(OCX.scenarios.gate.body.net_total_cents > OCX.scenarios.gate.quoted_net_cents, 'premise: higher than what was confirmed');
+  for (const k of ['card_cap', 'cash_cap']) assert.deepEqual(Object.keys(OCX.scenarios[k].body).sort(), ['error', 'order_id'], `premise: ${k} carries no net`);
+});
+test('offer_changed (Q4): each form on its endpoint ⇒ a TYPED generic error — no sheet, no resend, nothing guessed; the same path (and record) as any unknown 409', async () => {
+  const forms = [['gate', 'cash', 'createOrder'], ['gate', 'online', 'chargeOnlineOrder'], ['cash_cap', 'cash', 'createOrder'], ['card_cap', 'online', 'chargeOnlineOrder']];
+  for (const [form, pay, ep] of forms) {
+    const sc = OCX.scenarios[form], L = `${form} via ${ep}`;
+    let asked = 0;
+    const R = rig({ script: { [ep]: [{ status: sc.status, json: sc.body }, pay === 'cash' ? OK_CASH : CHECKOUT] } });
+    const out = await R.api.place(placeArgs(pay, async () => { asked++; return true; }));
+    const want = form === 'gate' ? { form: 'gate', requote: true, net_total_cents: sc.body.net_total_cents } : { form: 'cap', requote: true };
+    assert.deepEqual(out.offer_changed, want, `🔴 OC-TYPED: ${L}`);
+    const { offer_changed, ...rest } = out;
+    assert.deepEqual(rest, { kind: 'error', order_id: rest.order_id, status: 409, error: 'offer_changed' }, `🔴 OC-GENERIC: ${L} rides the existing generic error`);
+    assert.equal(asked, 0, `🔴 OC-NOSHEET: ${L} — the price sheet is not shown (not approved yet)`);
+    assert.equal(R.srv.of(ep).length, 1, `🔴 OC-NORESEND: ${L} — never re-sent at a number the customer did not confirm`);
+    // the same record as an unknown 409 on the same endpoint (the generic path, byte for byte)
+    const U = rig({ script: { [ep]: [{ status: 409, json: { error: 'zz_unknown', order_id: sc.body.order_id } }] } });
+    const uo = await U.api.place(placeArgs(pay, async () => true));
+    assert.deepEqual([uo.kind, uo.status], ['error', 409], `premise: the generic path (${L})`);
+    const recOf = (st) => { const r = placeRec(st); return r ? JSON.stringify(r).split(r.order_id).join('<ID>') : null; };   // ids differ per rig
+    assert.equal(recOf(R.storage), recOf(U.storage), `🔴 OC-GENERIC: ${L} leaves the record as the generic path does`);
+  }
+  // a gate body whose net is not a whole positive number is NOT trusted as one ⇒ the re-quote form, no number
+  for (const bad of ['44000', -1, 0, 1.5, null]) {
+    const R = rig({ script: { createOrder: [{ status: 409, json: { ...OCX.scenarios.gate.body, net_total_cents: bad } }] } });
+    assert.deepEqual((await R.api.place(placeArgs('cash', async () => true))).offer_changed, { form: 'cap', requote: true }, `🔴 OC-NOGUESS: net ${JSON.stringify(bad)}`);
+  }
 });

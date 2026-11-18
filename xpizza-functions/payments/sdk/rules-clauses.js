@@ -15,6 +15,6 @@ const PRESERVE = `(${[...leaves.map((p) => `newData.child('${p}').val() === data
 const objectValidate = (f) => `newData.hasChildren([${OBJECT_FIELDS[f].map((l) => `'${l}'`).join(', ')}])`;
 const NO_REVERSAL_STATUS = "!data.parent().child('payment_flow').exists() || (data.val() !== 'delivered' && data.val() !== 'completed') || newData.val() === data.val()";
 const NO_REVERSAL_ORDER = "(!data.child('payment_flow').exists() || (data.child('status').val() !== 'delivered' && data.child('status').val() !== 'completed') || newData.child('status').val() === data.child('status').val())";
-// D4: the in-app card payment server's own nodes — server-only (Admin SDK); clients reach them only through the endpoints
-const D4_SERVER_ONLY = Object.freeze(['sdk_recovery_queue', 'recovery_phone_budget', 'order_recovery_otp', 'order_access_tickets', 'customer_cards', 'sdk_checkout_subject', 'recovery_verify_pad']);
+// D4: the in-app card payment server's own nodes (+ sdk_fence: the permanent cancel fence, PLAN-sdk-fence-r1) — server-only (Admin SDK); clients reach them only through the endpoints
+const D4_SERVER_ONLY = Object.freeze(['sdk_recovery_queue', 'recovery_phone_budget', 'order_recovery_otp', 'order_access_tickets', 'customer_cards', 'sdk_checkout_subject', 'recovery_verify_pad', 'sdk_fence']);
 module.exports = { D4_SERVER_ONLY, SCALAR_FIELDS, OBJECT_FIELDS, LEAF_IMMUTABLE, PRESERVE, objectValidate, NO_REVERSAL_STATUS, NO_REVERSAL_ORDER };

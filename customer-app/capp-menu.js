@@ -34,7 +34,8 @@
   function adaptMenu(envelope) {
     if (!envelope || typeof envelope !== 'object' || !envelope.menu || typeof envelope.menu !== 'object') throw new Error('capp-menu: no menu in the envelope');
     const m = envelope.menu;
-    const extras = list(m.extras).map((e) => Object.freeze({ key: extraKeyOf(e), id: e.id, name: String(e.name || ''), extra_id: e.extra_id, price: Number(e.price),
+    const extraKeys = obj(m.extra_keys);   // S2b §5: served only while an affected extra exists
+    const extras = list(m.extras).map((e) => Object.freeze({ key: extraKeyOf(e), id: e.id, name: String(e.name || ''), extra_id: e.extra_id, extra_key: typeof extraKeys[String(e.id)] === 'string' && extraKeys[String(e.id)] ? extraKeys[String(e.id)] : null, price: Number(e.price),
       cat: e.cat, supported: extraSupported(e) && !LABEL_UNSAFE.test(String(e.name || '')) }));
     const extraByKey = new Map(extras.map((e) => [e.key, e]));
     const variants = obj(m.variant_items);
@@ -68,7 +69,7 @@
       const fromCat = list(byCat[String(d.cat)]); const seen = new Set(fromCat);
       const cats = [...fromCat, ...list(byItem[String(d.id)]).filter((c) => !seen.has(c))];
       const denied = new Set([...list(deny[String(d.id)]), ...list(deny[d.name]), ...(d.item_key ? list(deny[d.item_key]) : [])].map(String));
-      return extras.filter((e) => cats.includes(e.cat) && !denied.has(String(e.id)) && !denied.has(e.name));
+      return extras.filter((e) => cats.includes(e.cat) && !denied.has(String(e.id)) && !denied.has(e.name) && !(e.extra_key && denied.has(e.extra_key)));   // S2b §5: the deny list names keys
     }
     const groups = {};
     for (const [launcherId, g] of Object.entries(variants)) {
@@ -86,6 +87,11 @@
       dish: (k) => dishByKey.get(String(k)) || null, extra: (k) => extraByKey.get(String(k)) || null, extrasFor,
       groups: Object.freeze(groups), pickupOnlyCats: new Set(list(m.pickup_only_cats).map(String)), weekendOnlyCats: new Set(list(m.weekend_only_cats).map(String)),
       badges: obj(m.badges), hasPhoto: new Set(list(m.has_photo).map(String)),
+      // PLAN-capp-marketing-offers Slice A (3a Q1 offers-serve): the served `offers` decoration [{ type, params, schedule }] — live
+      // all-audience offers only, ABSENT when offers are off (⇒ []). The capp gates its store-page quote on «non-empty»; prices come from
+      // the quote only, never from these rows
+      offers: Object.freeze(list(m.offers).filter((o) => o && typeof o === 'object' && typeof o.type === 'string')
+        .map((o) => Object.freeze({ type: o.type, params: Object.freeze({ ...obj(o.params) }), schedule: o.schedule && typeof o.schedule === 'object' ? Object.freeze({ ...o.schedule }) : null }))),
     });
   }
 

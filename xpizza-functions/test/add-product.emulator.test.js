@@ -46,6 +46,7 @@ const readActiveBuilt = (rid) => async () => {
   return { built: { items: p.items, structure: p.structure, extras }, versionId, extraRecords: p.extras };
 };
 const readDraft = (rid) => async () => { const s = await sourceRefOf(db, rid).get(); return { source: s.data(), updateTime: encodeUpdateTime(s.updateTime) }; };
+const { mintCapabilities, OPAQUE_SYNTAX } = require('../catalog/mint-opaque'); const MINT_ON = mintCapabilities().enabled === true;   // MINT (main 7407138c)
 const rev = async (rid) => encodeUpdateTime((await sourceRefOf(db, rid).get()).updateTime);
 const draft = async (rid) => (await sourceRefOf(db, rid).get()).data();
 const save = async (rid, source, role = 'owner') => editCatalogCore({ db, authorize: as(role), readActiveBuilt: readActiveBuilt(rid), toPrecondition, addProduct: io },
@@ -96,7 +97,8 @@ const wipe = async () => {
         const hwmDoc = await hwmRefOf(db, rid).get();
         assert.ok(hwmDoc.exists, `${tag}: the save WROTE the high-water mark`);
         assert.strictEqual(hwmDoc.data().value, added.display.id, `${tag}: the high-water mark advanced in the same commit`);
-      } else assert.strictEqual(added.key, 'producto_nuevo');
+      } else if (MINT_ON) assert.deepStrictEqual([OPAQUE_SYNTAX.test(added.key), added.display.id], [true, 'producto_nuevo'], `${tag}: MINT on — a fresh i_ pricing key; the display id is still today's slug (${added.key})`);
+      else assert.strictEqual(added.key, 'producto_nuevo');
       assert.deepStrictEqual(await draft(rid), s1.body.source, `${tag}: the response IS the stored canonical source`);
       const s2 = await save(rid, s1.body.source);   // back to editing → review again
       assert.strictEqual(s2.status, 200);
@@ -130,9 +132,12 @@ const wipe = async () => {
       assert.deepStrictEqual([staff.status, staff.body.error], [403, 'not_owner']);
       const twin = await save(rid, withAdds(rid, cur, [added.display.name.toUpperCase()]));
       assert.deepStrictEqual([twin.status, twin.body.error], [400, 'name_taken'], `${tag}: ${JSON.stringify(twin.body)}`);
-      await keysColOf(db, rid, 'dish').doc(encodeKey(rid === 'x_pizza' ? 'Ya Existio' : 'ya_existio')).set({ canonical_id: 'old', legacy_key: 'x' });
-      const reused = await save(rid, withAdds(rid, cur, ['Ya Existio']));
-      assert.deepStrictEqual([reused.status, reused.body.error, reused.body.detail], [400, 'name_previously_used', 'Ese nombre ya existió en tu menú — usá otro nombre.']);
+      const usedKey = rid === 'x_pizza' ? 'Ya Existio' : 'ya_existio';
+      await keysColOf(db, rid, 'dish').doc(encodeKey(usedKey)).set({ canonical_id: 'old', legacy_key: 'x' });
+      if (!MINT_ON) {   // MINT OFF: a name with a registry row is refused (today's rule without MINT)
+        const reused = await save(rid, withAdds(rid, cur, ['Ya Existio']));
+        assert.deepStrictEqual([reused.status, reused.body.error, reused.body.detail], [400, 'name_previously_used', 'Ese nombre ya existió en tu menú — usá otro nombre.']);
+      }
       const many = await save(rid, withAdds(rid, cur, Array.from({ length: 21 }, (_, i) => `Muchos ${i}`)));
       assert.deepStrictEqual([many.status, many.body.error], [400, 'too_many_additions']);
       // with item_text_edit ON a description is an allowed text edit; an existing product's identity stamp is still never editable here
@@ -143,7 +148,16 @@ const wipe = async () => {
       const fk = await save(rid, forged);
       assert.deepStrictEqual([fk.status, fk.body.error], [400, 'client_supplied_key']);
       assert.strictEqual(await rev(rid), before, `${tag}: no refused save wrote anything`);
-      ok(`${tag}: refused at save with nothing written — staff adds (403), a folded duplicate name, a name with a registry row ("Ese nombre ya existió…"), > 20 additions, an existing item changed, a client key`);
+      if (MINT_ON) {   // MINT ON (owner 2026-11-09: a re-added name is a NEW product with a fresh id): it saves under a FRESH opaque key; the old registry row is untouched
+        const reused = await save(rid, withAdds(rid, cur, ['Ya Existio']));
+        assert.strictEqual(reused.status, 200, `${tag}: a re-added name saves with MINT on (${JSON.stringify(reused.body).slice(0, 200)})`);
+        const row = reused.body.source.items.find((i) => i.display && i.display.name === 'Ya Existio');
+        assert.ok(row && OPAQUE_SYNTAX.test(row.key) && row.key !== usedKey, `${tag}: under a fresh i_ key, never the used one (${row && row.key})`);
+        assert.deepStrictEqual((await keysColOf(db, rid, 'dish').doc(encodeKey(usedKey)).get()).data(), { canonical_id: 'old', legacy_key: 'x' }, `${tag}: the old key's registry row stays`);
+        const back = await save(rid, { ...cur, frozen_keys: (await draft(rid)).frozen_keys });   // the draft back to what the later steps expect; it echoes the STORED frozen_keys (server-owned: the mint recorded the fresh key, and a draft may never drop an entry — the portal echoes what it read)
+        assert.strictEqual(back.status, 200, `${tag}: the draft restored (${JSON.stringify(back.body).slice(0, 200)})`);
+      }
+      ok(`${tag}: refused at save with nothing written — staff adds (403), a folded duplicate name, a name with a registry row ("Ese nombre ya existió…", MINT off; MINT on: a fresh i_ key, the old row kept), > 20 additions, an existing item changed, a client key`);
 
       // ── ROLLBACK after the add (certified target → retired; uncertified → stays live) ──
       const versions = (await db.collection('restaurants').doc(rid).collection('versions').get()).docs.map((d) => d.id);
@@ -177,10 +191,16 @@ const wipe = async () => {
            again and a fresh identity is minted on publish; for a slug brand the retired id keeps the slug reserved,
            so it is refused (re-adding would otherwise save and then fail every publish with identity_slug_retired);
          • an uncertified target left the identity LIVE with its key row — refused for both. */
+      const oldRow = (await keysColOf(db, rid, 'dish').doc(encodeKey(added.key)).get()).data();
       const again = await save(rid, withAdds(rid, await draft(rid), [added.display.name]));
       if (targetCertified && rid === 'x_pizza') assert.strictEqual(again.status, 200, `${tag}: the name is free again: ${JSON.stringify(again.body).slice(0, 200)}`);
-      else assert.deepStrictEqual([again.status, again.body.error], [400, 'name_previously_used'], `${tag}: the name stays taken after a rollback`);
-      ok(`${tag}: rollback → identity ${targetCertified ? 'RETIRED' : 'stays LIVE'} (§0b.2) → the KDS list drops the product (re-stamped) → the source keeps it as an unpublished addition → "Quitar" → a price publish succeeds → re-adding the name: ${targetCertified && rid === 'x_pizza' ? 'free again (key row deleted)' : 'refused'}`);
+      else if (MINT_ON) {   // MINT ON (owner 2026-11-09: a re-added name is a NEW product with a fresh id): it saves under a FRESH opaque key; the old key's registry row is untouched
+        assert.strictEqual(again.status, 200, `${tag}: a re-added name saves with MINT on (${JSON.stringify(again.body).slice(0, 200)})`);
+        const row = again.body.source.items.find((i) => i.display && i.display.name === added.display.name);
+        assert.ok(row && OPAQUE_SYNTAX.test(row.key) && row.key !== added.key, `${tag}: under a fresh i_ key, never the old one (${row && row.key})`);
+        assert.deepStrictEqual((await keysColOf(db, rid, 'dish').doc(encodeKey(added.key)).get()).data(), oldRow, `${tag}: the old key's registry row stays`);
+      } else assert.deepStrictEqual([again.status, again.body.error], [400, 'name_previously_used'], `${tag}: the name stays taken after a rollback`);
+      ok(`${tag}: rollback → identity ${targetCertified ? 'RETIRED' : 'stays LIVE'} (§0b.2) → the KDS list drops the product (re-stamped) → the source keeps it as an unpublished addition → "Quitar" → a price publish succeeds → re-adding the name: ${targetCertified && rid === 'x_pizza' ? 'free again (key row deleted)' : MINT_ON ? 'a fresh i_ key (MINT on), the old row kept' : 'refused'}`);
     }
   }
 

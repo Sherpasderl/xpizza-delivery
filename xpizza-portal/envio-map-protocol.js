@@ -4,7 +4,7 @@
 //
 //   • Each side accepts a message only from the other's exact origin AND window (event.source) AND the per-mount id.
 //   • Both sides send with the exact targetOrigin, never '*'.
-//   • Portal → map: one `render` — geometry and theme only. Map → portal: `listening`, `ready`, `failed` (an enum cause). Nothing
+//   • Portal → map: one `render` — geometry, theme, and (v2) the map type and the limit facts. Map → portal: `listening`, `ready`, `failed` (an enum cause). Nothing
 //     the map sends can save, fetch, read credentials or run anything: the portal only shows or hides one line with it.
 //   • Startup (C2): the portal listens before it creates the frame; the map installs its listener, then sends `listening`; the
 //     portal answers with the latest `render`; the map builds and sends `ready` after its first tiles. `listening` never clears
@@ -21,8 +21,13 @@ const plain = (o) => !!o && typeof o === 'object' && !Array.isArray(o) && [Objec
 const keysAre = (o, ks) => plain(o) && Object.keys(o).length === ks.length && ks.every((k) => Object.prototype.hasOwnProperty.call(o, k));
 const num = (x) => typeof x === 'number' && Number.isFinite(x);
 const isPoint = (p) => keysAre(p, ['lat', 'lng']) && num(p.lat) && num(p.lng) && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180;
-const isBand = (b) => keysAre(b, ['km', 'fee', 'ok']) && num(b.km) && b.km > 0 && b.km <= LIMITS.km
-  && Number.isInteger(b.fee) && b.fee >= 0 && b.fee <= LIMITS.fee && typeof b.ok === 'boolean';
+const bandCore = (b) => num(b.km) && b.km > 0 && b.km <= LIMITS.km && Number.isInteger(b.fee) && b.fee >= 0 && b.fee <= LIMITS.fee && typeof b.ok === 'boolean';
+const isBand = (b) => keysAre(b, ['km', 'fee', 'ok']) && bandCore(b);
+// ENVÍO v3 (protocol v2, PLAN-portal-envio-v3-ui r5 §2): each band also says whether it lies beyond the restaurant's limit
+const isBand2 = (b) => keysAre(b, ['km', 'fee', 'ok', 'out']) && bandCore(b) && typeof b.out === 'boolean';
+export const MAP_TYPES = Object.freeze(['simple', 'roadmap', 'hybrid']);
+const isLimit = (l) => l === null || (keysAre(l, ['km', 'capped', 'name']) && num(l.km) && l.km > 0 && l.km <= LIMITS.km && typeof l.capped === 'boolean'
+  && typeof l.name === 'string' && l.name.length <= LIMITS.name);
 
 export function newMountId(cryptoObj) {
   if (!cryptoObj || typeof cryptoObj.getRandomValues !== 'function') throw new Error('envio map: no crypto');
@@ -34,15 +39,22 @@ export function mountFromHash(hash) {
   return m ? m[1] : null;
 }
 
+const RENDER_V1 = ['v', 'mount', 'kind', 'view', 'theme', 'hub', 'name', 'others', 'bands'];
+const RENDER_V2 = [...RENDER_V1, 'mapType', 'limit'];
+// v1 (step 1's shape, exactly) or v2 (+ mapType, limit, each band's `out`) — never a mix
 export function isRender(m, mount) {
-  return keysAre(m, ['v', 'mount', 'kind', 'view', 'theme', 'hub', 'name', 'others', 'bands']) && m.v === 1 && m.kind === 'render'
+  const v2 = plain(m) && m.v === 2;
+  if (!(v2 ? keysAre(m, RENDER_V2) : keysAre(m, RENDER_V1) && m.v === 1)) return false;
+  return m.kind === 'render'
     && MOUNT.test(mount || '') && m.mount === mount && (m.view === 'keep' || m.view === 'reset') && (m.theme === 'light' || m.theme === 'dark')
     && (m.hub === null || isPoint(m.hub)) && typeof m.name === 'string' && m.name.length <= LIMITS.name
     && Array.isArray(m.others) && m.others.length <= LIMITS.others && m.others.every(isPoint)
-    && Array.isArray(m.bands) && m.bands.length <= LIMITS.bands && m.bands.every(isBand);
+    && Array.isArray(m.bands) && m.bands.length <= LIMITS.bands && m.bands.every(v2 ? isBand2 : isBand)
+    && (!v2 || (MAP_TYPES.includes(m.mapType) && isLimit(m.limit)));
 }
-export function renderMessage({ mount, view, theme, hub, name, others, bands }) {
-  const m = { v: 1, mount, kind: 'render', view, theme, hub, name, others, bands };
+// the portal sends v2 only
+export function renderMessage({ mount, view, theme, hub, name, others, bands, mapType, limit }) {
+  const m = { v: 2, mount, kind: 'render', view, theme, hub, name, others, bands, mapType, limit };
   if (!isRender(m, mount)) throw new Error('envio map: bad render');
   return m;
 }

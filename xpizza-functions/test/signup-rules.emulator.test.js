@@ -16,6 +16,7 @@ const path = require('path');
 const assert = require('assert');
 const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
 const S = require('../signup-core');
+const E = require('../signup-endpoints');   // backfillDeletedUids: the REAL deleted_uids writer
 
 const RULES = fs.readFileSync(path.join(__dirname, '..', '..', 'xpizza-reference', 'database.rules.json'), 'utf8');
 const U = 'u_' + 'a'.repeat(24), U2 = 'u_' + 'b'.repeat(24);
@@ -91,8 +92,41 @@ const ADDR = { label: 'Casa', detected: 'Col. Palmira', details: '', lat: 14.1, 
     await assertFails(owner.ref(`user_profiles/${U}/addresses/a_abcdef99`).set(ADDR));
     await assertFails(owner.ref(`user_profiles/${U}`).set(PROFILE('ph_a')));
     await assertSucceeds(other.ref(`user_profiles/${U2}/name`).set('Beto'));   // only THAT account is barred
+    // PLAN-3a-capp-member-reads R2.5: the deleted account's still-valid session can no longer READ its private node (a resurrected leaf
+    // such as last_tip would otherwise be readable client-direct); another account's own read is unaffected
+    await assertFails(owner.ref(`user_private/${U}`).once('value'));
+    await assertFails(owner.ref(`user_private/${U}/last_tip`).once('value'));
   }
   ok('BC1: in the window after the deletion core\'s tombstone and before its removals — deleteAccount (no cutoff) AND the inactivity sweep (cutoff) — the old session cannot write the profile (name, address, whole node); other accounts unaffected');
+
+  // ── 3b. Codex asm9b r1 P1-2: EACH of the other two tombstones ALONE refuses the owner's direct private read (last_tip included) —
+  //        the same three the endpoint applies (member-auth isMemberTombstoned) ──
+  for (const [why, apply] of [
+    ['deleted_uids (the REAL backfillDeletedUids)', async (db) => {
+      // its precondition (signup-endpoints.js): a deleted account — the in-node tombstone — with no profile; the REAL writer runs, then its
+      // marker is ISOLATED: the live private node and the profile are put back, so deleted_uids alone remains
+      const live = (await db.ref(`user_private/${U}`).once('value')).val();
+      const prof = (await db.ref(`user_profiles/${U}`).once('value')).val();
+      await db.ref(`user_private/${U}`).set({ deleted_at: 99 });
+      await db.ref(`user_profiles/${U}`).remove();
+      assert.strictEqual(await E.backfillDeletedUids(db), 1, 'premise: the REAL backfill wrote exactly one marker');
+      assert.strictEqual((await db.ref(`deleted_uids/${U}`).once('value')).val(), 99, 'premise: its marker is the account\'s deleted_at');
+      await db.ref(`user_private/${U}`).set(live);
+      await db.ref(`user_profiles/${U}`).set(prof);
+    }],
+    ['the sweep claim (deleting_at)', async (db) => assert.strictEqual(await S.sweepClaim(db, U, 10, 99), 'claimed', 'premise: the REAL sweep claim')],
+  ]) {
+    await seed();
+    await assertSucceeds(owner.ref(`user_private/${U}/last_tip`).once('value'));   // premise: a live owner reads it
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.database();
+      await apply(db);
+      assert.ok(!(await db.ref(`user_private/${U}/deleted_at`).once('value')).exists(), `premise: ${why} ALONE (no user_private tombstone)`);
+    });
+    try { await assertFails(owner.ref(`user_private/${U}`).once('value')); await assertFails(owner.ref(`user_private/${U}/last_tip`).once('value')); } catch (e) { throw new Error(`${why} alone must refuse the owner's private read — ${e && e.message}`); }
+    await assertSucceeds(other.ref(`user_private/${U2}`).once('value'));   // only THAT account is barred
+  }
+  ok('user_private (last_tip included): deleted_uids ALONE and the sweep claim ALONE each refuse the owner\'s still-valid session — all three tombstones, as the endpoint');
 
   // ── 4. the server-only nodes ──
   await seed();

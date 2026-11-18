@@ -179,7 +179,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
   const extras = [];
   const byKey = new Set();
   for (const display of (extrasDisplay || [])) {
-    const key = extrasKeyOf(restaurantId, display, opts.keyMode);
+    const key = fd && fd.frozen_extra_keys && display && display.id != null && Object.prototype.hasOwnProperty.call(fd.frozen_extra_keys, String(display.id)) ? fd.frozen_extra_keys[String(display.id)] : extrasKeyOf(restaurantId, display, opts.keyMode);   // S2b §3: a recorded extra keeps its key
     if (typeof key !== 'string' || !key) throw new Error(`bootstrap_bad_extra_key: ${restaurantId}`);
     if (byKey.has(key)) throw new Error(`bootstrap_duplicate_extra_key: ${restaurantId}/${key}`);
     if (!Object.prototype.hasOwnProperty.call(extrasTable, key)) throw new Error(`bootstrap_unpriced_extra: ${restaurantId}/${key}`);
@@ -280,7 +280,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
       if (typeof c === 'string' && c && !cats.includes(c)) cats.push(c);
     }
     if (cats.length) structure.extra_categories = cats;
-  }
+  } structure.extra_order = require('./extras-projection').groupMajorOrder(structure.extra_order, extras, structure.extra_categories);   // S2-core §2.3: the ONE group order (group-major)
 
   // 🔴 EXPOSURE — which options each dish is offered — and the LEGACY maps DERIVED from it.
   //
@@ -305,7 +305,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
   } else {
     attachRedeemFields(restaurantId, structure, items, opts.extrasTable || EXTRAS_BY_RESTAURANT[restaurantId]);
   }
-  return { items, extras, structure, ...(opts.keyMode == null ? {} : { key_mode: opts.keyMode }), ...(opts.frozenKeys == null ? {} : { frozen_keys: opts.frozenKeys }) };
+  return { items, extras, structure, ...(opts.keyMode == null ? {} : { key_mode: opts.keyMode }), ...(opts.frozenKeys == null ? {} : { frozen_keys: opts.frozenKeys }), ...(opts.frozenExtraKeys == null ? {} : { frozen_extra_keys: opts.frozenExtraKeys }) };
 }
 
 // 🔴 "DESDE" IS DERIVED, EVERY TIME. The launcher keeps its own authoritative price — a bare launcher

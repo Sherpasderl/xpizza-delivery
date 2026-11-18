@@ -3,6 +3,11 @@
 // save-error copy (G4), the detail lede (T7) and the «Copiar horario de» sources (T6). No DOM, no fetch, no clock.
 // Node-tested in branch-1b-logic.test.mjs. Brand-agnostic: every name and value comes from getMyBranches data.
 import { DAYS, validPrep, brandsOf, resolveSelection, stateModel, kmText, lastOrderText } from './branch-logic.js';
+// ENVÍO v3 §3b (5f r5 §5): what Sucursales shows as a branch's delivery reach — its EFFECTIVE app limit, `app_max_km`, served top-level
+// on each getMyBranches row; null (no table, or a malformed stored limit: limit_invalid) or absent (an unreadable policy) → null, which
+// kmText renders as today's «—». The identity radius is no longer what Sucursales shows. (Here, not in branch-logic.js: the 1a oracle
+// composes that module byte-unchanged.)
+export function appKm(b) { return b && Number.isFinite(b.app_max_km) ? b.app_max_km : null; }
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -218,7 +223,7 @@ export function cardModel(row, nowMs) {
   const a = addrOf(row);
   const sub = draft ? 'Sherpa está configurando la ubicación' : (a ? (row.lifecycle === 'inactive' ? `${a} · desactivada` : a) : '');
   const prep = draft ? prof.prep_default_min : (row.editable ? row.editable.prep_default_min : null);
-  const km = isObj(row.location) && Number.isFinite(row.location.zone_radius_km) ? row.location.zone_radius_km : (row.readonly ? row.readonly.radius_km : null);
+  const km = appKm(row);   // ENVÍO v3 §3b: the app's maximum distance
   const meta = [
     ['Zona', draft || !Number.isFinite(km) ? '—' : `${kmText(km)} km`],
     ['Preparación', validPrep(prep) ? `${prep} min` : 'Falta'],

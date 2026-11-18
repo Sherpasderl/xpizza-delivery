@@ -31,21 +31,43 @@ const { FieldValue, Timestamp } = require('firebase-admin/firestore');
    A fixture that cannot express a production constraint makes that constraint untestable; this one is
    written down rather than assumed away, because the alternative is a green run standing in for a
    guarantee nobody checked. */
+/* UPDATE VALIDATION IS THE INSTALLED SDK'S OWN (advisor ruling 11-13, after Codex rdclaim r1/r2 — one source, parity by
+   construction): every update (batch.update and ref.update) is first handed to the real @google-cloud/firestore
+   WriteBatch.update on a throwaway batch of a LOCAL Firestore instance that is never committed (update() validates
+   synchronously; nothing is sent, no credentials are read). Its exact error propagates; only what it accepts is applied here.
+   The varargs form (field, value, …) is validated the same way but not modelled — no production code uses it — so it is then
+   refused by name, never misread. */
+let sdkDb = null;
+function sdkValidatedUpdate(path, args) {
+  if (!sdkDb) { const { Firestore } = require('firebase-admin/firestore'); sdkDb = new Firestore({ projectId: 'firestore-fake-validate' }); }
+  sdkDb.batch().update(sdkDb.doc(path), ...args);   // throws the SDK's own error; the batch is dropped, never committed
+  if (typeof args[0] !== 'object' || args[0] === null) throw new TypeError('firestore-fake: update(ref, field, value, …) — the field/value form is not modelled');
+  return { data: args[0], pre: args[1] };
+}
+// A STRUCTURAL copy: plain maps and arrays copied, a Timestamp re-made (so no stored value is ever shared with a caller or a
+// backup), every other value — NaN, ±Infinity, a FieldValue sentinel, any non-plain object — kept exactly.
+const clonePlain = (v) => (Array.isArray(v) ? v.map(clonePlain)
+  : v instanceof Timestamp ? new Timestamp(v.seconds, v.nanoseconds)
+    : v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clonePlain(x)]))
+      : v);
+
 function makeDb() {
   const docs = new Map();            // path -> { data, updateTime }
   let clock = 1757000000000;
   let autoId = 0;
   const tick = () => Timestamp.fromMillis((clock += 1000));
+  let pinned = null;                 // a WriteBatch commit's ONE commit time (every write and serverTimestamp in it), else null
+  const stamp = () => pinned || tick();
   // serverTimestamp() sentinels resolve on write, exactly as the server does — publishVersion's lease
   // depends on reading one back as a real Timestamp.
   const resolve = (v) => {
-    if (v instanceof FieldValue) return tick();
+    if (v instanceof FieldValue) return stamp();
     if (v instanceof Timestamp) return v;
     if (Array.isArray(v)) return v.map(resolve);
     if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = resolve(v[k]); return o; }
     return v;
   };
-  const put = (path, data) => { docs.set(path, { data: resolve(data), updateTime: tick() }); };
+  const put = (path, data) => { docs.set(path, { data: resolve(data), updateTime: stamp() }); };
   const snapOf = (path) => {
     const held = docs.get(path);
     return {
@@ -92,7 +114,12 @@ function makeDb() {
          · the precondition must be a real Timestamp (the SDK's type; a caller passing a string is a bug production would hit);
          · a top-level key REPLACES that field; a DOTTED key is a field path — it sets the nested field and keeps its siblings
            (creating intermediate maps), exactly as Firestore's update(); every other field is kept. */
-      update: async (data, opts) => {
+      update: async (...args) => { const { data, pre } = sdkValidatedUpdate(path, args); return updateNow(path, data, pre); },
+      delete: async () => { docs.delete(path); },
+    };
+  }
+  // update()'s body, SYNCHRONOUS so a WriteBatch can apply all its writes with no await between them (see batch.commit)
+  function updateNow(path, data, opts) {
         const held = docs.get(path);
         if (held === undefined) { const e = new Error(`not_found: ${path}`); e.code = 5; throw e; }
         const want = opts && opts.lastUpdateTime;
@@ -109,14 +136,11 @@ function makeDb() {
         for (const [k, v] of Object.entries(data)) {
           const segs = k.split('.');
           let o = next;
-          for (const sgm of segs.slice(0, -1)) { if (!o[sgm] || typeof o[sgm] !== 'object' || Array.isArray(o[sgm])) o[sgm] = {}; o = o[sgm]; }
-          o[segs[segs.length - 1]] = v;
+          for (const sgm of segs.slice(0, -1)) { if (!o[sgm] || typeof o[sgm] !== 'object' || Object.getPrototypeOf(o[sgm]) !== Object.prototype) o[sgm] = {}; o = o[sgm]; }   // a NON-MAP parent (a string, an array, a Timestamp) is replaced by a map, never written into (Codex rdclaim r1 P2-2) — «pending dotted-nonmap-probe (server behaviour unproven)»: the SDK accepts such a path; what the server does with it is to be measured (D4c-grill/rdclaim/dotted-nonmap-probe.js)
+          o[segs[segs.length - 1]] = v;   // put() below serializes (resolve copies every plain map) — NOW, at commit, as the SDK does
         }
         put(path, next);
         return { writeTime: docs.get(path).updateTime };
-      },
-      delete: async () => { docs.delete(path); },
-    };
   }
   function colRef(path) {
     /* 🔴 EQUALITY QUERIES, because D4's registry writer guard asks "is a live id already claiming this
@@ -175,14 +199,44 @@ function makeDb() {
   }
   return {
     collection: (c) => colRef(c),
+    /* 🔴 A WriteBatch IS ATOMIC IN FIRESTORE, so it is atomic here (advisor 11-13; editCatalogCore commits the draft and the
+       high-water mark in ONE batch, edit-catalog-handler.js:405). commit() applies every write SYNCHRONOUSLY — no await between
+       them, so nothing else interleaves — and on the first refusal restores the documents exactly as they were before the
+       commit, then rethrows it: every write lands, or none does. The writes share ONE commit time (serverTimestamp included),
+       returned per write as WriteResult.writeTime. Refusals are Firestore's: update() on a missing doc → 5, a stale
+       lastUpdateTime → 9 (updateNow); create() over an existing doc → 6 ALREADY_EXISTS. At the call, like the SDK: an
+       update needs at least one field and a Timestamp precondition; the field/value varargs form is not modelled and is
+       refused rather than misread. */
     batch: () => {
       const ops = [];
-      return {
-        set: (ref, d) => ops.push(() => ref.set(d)),
-        create: (ref, d) => ops.push(() => ref.create(d)),
-        delete: (ref) => ops.push(() => ref.delete()),
-        commit: async () => { for (const op of ops) await op(); },
+      const self = {
+        set: (ref, d) => { ops.push(() => put(ref.path, d)); return self; },
+        create: (ref, d) => {
+          ops.push(() => {
+            if (docs.has(ref.path)) { const e = new Error(`6 ALREADY_EXISTS: entity already exists: path=/${ref.path}`); e.code = 6; throw e; }
+            put(ref.path, d);
+          });
+          return self;
+        },
+        update: (ref, ...args) => {
+          const { data, pre } = sdkValidatedUpdate(ref.path, args);
+          ops.push(() => updateNow(ref.path, data, pre));   // the SDK keeps the caller's references and serializes at COMMIT; so does this
+          return self;
+        },
+        delete: (ref) => { ops.push(() => { docs.delete(ref.path); }); return self; },
+        commit: async () => {
+          const before = new Map([...docs].map(([k, v]) => [k, { data: clonePlain(v.data), updateTime: v.updateTime }]));   // a DEEP backup: nothing it holds is shared with a write
+          pinned = tick();
+          try {
+            for (const op of ops) op();
+            return ops.map(() => ({ writeTime: pinned }));
+          } catch (e) {
+            docs.clear(); for (const [k, v] of before) docs.set(k, v);
+            throw e;
+          } finally { pinned = null; }
+        },
       };
+      return self;
     },
     runTransaction: async (fn) => fn({
       get: (ref) => ref.get(),      // a query ref answers .get() too — see colRef's query()

@@ -101,11 +101,11 @@ export async function apiFetch(fnName, { rid, body, token, params, assertLive } 
 // a transport error after sending, or a 200 whose body doesn't parse are all UNKNOWN until a fresh GET decides — envio-logic.js
 // classifyPost / classifyRecovery). → { status, body } | { status: 200, body: null, malformed: true } | { transport: true }.
 // A missing token or a withheld call (assertLive) throws BEFORE anything is sent — nothing landed, nothing to recover.
-async function rawCall(fnName, { body, token, assertLive }) {
+async function rawCall(fnName, { rid, body, token, assertLive, params }) {
   const tokenStr = await token();
   if (!tokenStr) throw new ApiError('NotSignedIn', 401, null);
   if (assertLive) assertLive();
-  const { url, options } = buildRequest(fnName, { body, tokenStr });
+  const { url, options } = buildRequest(fnName, { rid, body, tokenStr, params });
   let res;
   try { res = await sherpaFetch(url, options); } catch (_) { return { transport: true }; }
   let parsed = null, parsedOk = true;
@@ -116,6 +116,27 @@ async function rawCall(fnName, { body, token, assertLive }) {
 export const getDeliveryPricingRaw = ({ token, assertLive }) => rawCall('getDeliveryPricing', { token, assertLive });
 export const setDeliveryPricingRaw = ({ token, assertLive, body }) => rawCall('setDeliveryPricing', { body, token, assertLive });
 
+// ── MARKETING «Ofertas» (3a feat/marketing-offers-3a @ b62765981, offers-core.js:5-8) — RAW outcomes, as above: a 503 after a write
+// may hide a moved record (a failed unmirror / undo), so marketing-logic.js classifyWrite decides saved / refused / UNKNOWN and a
+// fresh getMarketing settles an unknown. The read takes the rid as `?rid=` (offers-core.js:220); every write carries it in the BODY.
+export const getMarketingRaw = ({ rid, token, assertLive }) => rawCall('getMarketing', { params: { rid }, token, assertLive });
+// opId: a create's client operation id (Codex r2: the server is idempotent per (restaurant, op_id) once 3a lands; ignored before)
+// program: save AND program in ONE call (3a e3c5f7366: all or nothing; another identical programmed offer ⇒ 409 duplicate { offer_id })
+export const offerSaveRaw = ({ rid, offerId, expectedRev, offer, opId, program, token, assertLive }) =>
+  rawCall('marketingOfferSave', { body: { rid, ...(offerId !== undefined ? { offer_id: offerId } : {}), expected_rev: expectedRev, offer, ...(opId ? { op_id: opId } : {}), ...(program ? { program: true } : {}) }, token, assertLive });
+export const offerSetStateRaw = ({ rid, offerId, to, expectedRev, opId, token, assertLive }) =>
+  rawCall('marketingOfferSetState', { body: { rid, offer_id: offerId, to, expected_rev: expectedRev, ...(opId ? { op_id: opId } : {}) }, token, assertLive });
+// the 2×1 product picker's menu (Ofertas O2b): the editable catalog of one branch, as a RAW outcome (a failed read ⇒ the picker says so)
+export const getEditableCatalogRaw = ({ rid, token, assertLive }) => rawCall('getEditableCatalog', { rid, token, assertLive });
+// «Repetir» in ONE call (3a e3c5f7366): copy + the new dates + program, under the op_id
+export const offerRepeatRaw = ({ rid, sourceId, opId, schedule, token, assertLive }) =>
+  rawCall('marketingOfferRepeat', { body: { rid, source_id: sourceId, ...(opId ? { op_id: opId } : {}), ...(schedule ? { program: true, schedule } : {}) }, token, assertLive });
+// the «Anuncio» (anuncio-core.js:5-7), DARK: anuncio-logic.js decides every outcome; nothing imports these until its screens are drawn.
+// The book body is rid + week ONLY — the server refuses anything else (a price never comes from the client); there is no charge call.
+export const getAnuncioWeeksRaw = ({ rid, token, assertLive }) => rawCall('getAnuncioWeeks', { params: { rid }, token, assertLive });
+export const anuncioBookRaw = ({ rid, week, token, assertLive }) => rawCall('anuncioBook', { body: { rid, week }, token, assertLive });
+export const anuncioCancelRaw = ({ rid, bookingId, token, assertLive }) => rawCall('anuncioCancel', { body: { rid, booking_id: bookingId }, token, assertLive });
+
 // ── Portal 2b-2b — THE WRITE CALLS ───────────────────────────────────────────────────────────────
 // 🔴 MONEY PATH. These two carry a merchant's price into the catalog that serves the customer order
 // forms and prints on the SAR factura.
@@ -125,11 +146,15 @@ export const setDeliveryPricingRaw = ({ token, assertLive, body }) => rawCall('s
 // what buildRequest does for every call and the server ignores it — but the body is what is read.
 
 // Save the draft and get back the server's diff + the edit token bound to it. Does NOT publish.
-export async function editCatalog({ rid, source, baseSourceUpdateTime, token }) {
+// STRUCTURE S2 (§3.4; LEDGER R-A): `loadedBase` — the deletion baseline getEditableCatalog served — rides as
+// deleted_ids_loaded_base whenever the caller passes one (it does whenever the draft carries a removal claim)
+export async function editCatalog({ rid, source, baseSourceUpdateTime, token, loadedBase = null, reviewed = false }) {
   return apiFetch('editCatalog', {
     rid,
     token,
-    body: { restaurantId: rid, source, baseSourceUpdateTime },
+    // S2 §5.2 REVIEW-DELETIONS: `reviewed` — the merchant re-read the full deletion list and confirmed it («Confirmar y seguir»): the ack that
+    // re-binds the claim to the live base (it defeats the server's echo test — edit-catalog-handler.js)
+    body: { restaurantId: rid, source, baseSourceUpdateTime, ...(loadedBase ? { deleted_ids_loaded_base: loadedBase } : {}), ...(reviewed ? { deleted_ids_reviewed: true } : {}) },
   });
 }
 
@@ -177,6 +202,28 @@ export async function resetDraftToLive({ rid, expectedRevision, token }) {
 // phone, name or customer key).
 export async function getSalesStats({ rid, from, to, granularity, compare, token, assertLive }) {
   return apiFetch('getSalesStats', { rid, token, assertLive, params: { from, to, granularity, compare } });
+}
+// S2 (5f, PLAN-portal-inicio-server-r0): several branches merged ON THE SERVER — «Todas las sucursales». The ids travel as ONE
+// `restaurantIds` param (2..20, each authorized there); `restaurantId` never rides with it. JSON only; no `customers` in this form.
+export async function getSalesStatsMulti({ rids, from, to, granularity, compare, token, assertLive }) {
+  return apiFetch('getSalesStats', { token, assertLive, params: { restaurantIds: rids.join(','), from, to, granularity, compare } });
+}
+
+// ── P-1 «Calificaciones» — the anonymous rating comments (S-A(d) getMerchantRatingComments) ──────────────
+// → { ok, comments: [{ comment, store }], cursor }. The rid travels as `rid` in params, NEVER through the
+// `rid` argument: buildRequest spells that one restaurantId=, which this endpoint refuses (400). An absent
+// cursor is page 1 (params skips it).
+export async function fetchRatingComments({ rid, cursor, token, assertLive }) {
+  return apiFetch('getMerchantRatingComments', { token, assertLive, params: { rid, cursor } });
+}
+// ── «Calificaciones» step 2 — the NAMED reviews (3a reviews v2, getMerchantReviews @ 4adde46e4) ──────────────
+// → { ok, reviews, cursor, overview } (overview on the FIRST page only). rids ≤ 10, comma-joined; weeks 1|4|13; stars a set of 1..5
+// (sorted, comma-joined; absent = all); comment 'with' | 'without' (absent = any); an absent cursor is page 1.
+export async function fetchMerchantReviews({ rids, weeks, stars, comment, cursor, token, assertLive }) {
+  return apiFetch('getMerchantReviews', { token, assertLive, params: {
+    rids: rids.join(','), weeks: String(weeks),
+    stars: stars && stars.length ? [...stars].sort((a, b) => a - b).join(',') : undefined,
+    comment: comment === 'with' || comment === 'without' ? comment : undefined, cursor } });
 }
 
 // THE TEXT/BLOB PATH. readResponse parses JSON only; a CSV export is text, so it gets its own reader

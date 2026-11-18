@@ -19,6 +19,7 @@ require('./_emulator-required')('database', 'firestore');
 
 const DR = require('./_delivery-read');   // S3a: the declared envío config read
 const assert = require('assert');
+const LD = require('./_ledger-declared');   // LEDGER S1: the declared snapshot writes (exact leaves, value-checked)
 const http = require('http');
 const path = require('path');
 const fsys = require('fs');
@@ -160,10 +161,14 @@ async function traced(rid, oid, uid, phone, opts = {}) {
   await rtdb.ref('rate_limits').remove();   // every test request is 127.0.0.1 — the per-IP limit is reset between charges (test env only)
   await require('./_catalog-clock').warmPhoneFlag(rtdb);   // the phone flag (30 s, never-awaited refresh) freshly read with the recorder OFF — no refresh lands inside the recording (advisor ruling B, 2026-11-01)
   REC = [];
-  const r = await post(app.createOrder, bodyFor(rid, oid, phone, opts), { 'x-firebase-id-token': uid });
+  const body0 = bodyFor(rid, oid, phone, opts); const hdrs = { 'x-firebase-id-token': uid };
+  const r = await post(app.createOrder, body0, hdrs);
   await Q.quiescent();   // R1b: every fire-and-forget write the handler issued has SETTLED inside the recording (was a fixed wait(300))
   const calls = REC; REC = null;
   const o = (await rtdb.ref(`orders/${oid}`).get()).val() || {};
+  // LEDGER S1 (cb008ac98): the declared snapshot ledger_alloc/<oid>, VERIFIED equal to the real writer's (test/_ledger-declared)
+  const la = (await rtdb.ref(`ledger_alloc/${oid}`).get()).val();
+  const ledger = !!la && LD.declaredLeaves({ root: `ledger_alloc/${oid}`, written: la, expected: LD.expectedSnapshot(o, { body: body0, headers: hdrs }), label: `${rid} ${oid} ledger_alloc` }).length > 0;
   const subs = [];
   for (const [k, v] of Object.entries(o)) if (/attempt_id$|poll_token$|tracking_token$/.test(k) && typeof v === 'string' && v.length >= 8) subs.push([v, `<${k}>`]);
   subs.push([oid, '<oid>'], [rateLimitKey(phone), '<phoneKey>'], [uid, '<uid>']);
@@ -192,7 +197,16 @@ async function traced(rid, oid, uid, phone, opts = {}) {
   // other order flips the flag; an added, dropped or repeated document changes the multiset.
   const batch = (raw) => ({ paths: raw.map(norm).sort(), raw_order: raw.every((x, i) => i === 0 || raw[i - 1] <= x) ? 'ascending' : 'other', count: raw.length });
   const trace = calls.map((c) => ({ ...c, ...(c.path !== undefined ? { path: norm(c.path) } : {}), ...(c.paths ? batch(c.paths) : {}), ...(c.keys ? { keys: c.keys.map(norm) } : {}) }));
-  return { status: r.status, trace };
+  return { status: r.status, trace, ledger };
+}
+// LEDGER S1: the order's create update carries exactly ONE declared key more, ledger_alloc/<oid> — removed from THAT update's key list
+// only when the snapshot was verified; every other call and key stays compared
+function stripLedger(trace, verified, label) {
+  let n = 0;
+  const t = trace.map((e) => (e.op === 'update' && Array.isArray(e.keys) && e.keys.includes('ledger_alloc/<oid>') && e.keys.includes('orders/<oid>')
+    ? (n += 1, { ...e, keys: e.keys.filter((k) => k !== 'ledger_alloc/<oid>') }) : e));
+  assert.ok(n <= 1 && (n === 0 || verified), `🔴 ${label}: ledger_alloc/<oid> rides at most ONE create update, verified against the real writer (n=${n})`);
+  return { t, n };
 }
 
 (async () => {
@@ -201,7 +215,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
   for (const rid of ['x_pizza', 'la_musa']) await rtdb.ref(`restaurants/${rid}/identity`).set(identityFor(rid));
   await rtdb.ref('config/redemption_enabled').set(true);
 
-  const out = {};
+  const out = {}; const LEDG = {};   // LEDGER S1: per case, was the declared snapshot verified
   for (const rid of ['x_pizza', 'la_musa']) {
     const uid = `u_trace_${rid}`;
     await rtdb.ref(`user_rewards/${uid}/${rid}`).set({ balance: 100000, reserved: 0 });
@@ -223,6 +237,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
       assert.ok(v.trace.length > 0, `${rid} ${k}: premise — the recorder saw the handler's calls`);
     }
     out[rid] = { a_cash_fresh: a.trace, b_cash_idempotent_retry: b.trace, c_cash_redeem_fresh: c.trace, d_cash_conflict: d.trace };
+    LEDG[rid] = { a_cash_fresh: a.ledger, b_cash_idempotent_retry: b.ledger, c_cash_redeem_fresh: c.ledger, d_cash_conflict: d.ledger };
   }
 
   if (CAPTURE) {
@@ -240,7 +255,9 @@ async function traced(rid, oid, uid, phone, opts = {}) {
       assert.ok(floorCalls.every((e) => e.op === 'get'), `🔴 ${rid} ${k}: the floor path is only ever READ (got ${JSON.stringify(floorCalls)})`);
       assert.ok(floorCalls.length <= 1, `🔴 ${rid} ${k}: at most one floor read per request (cached) — got ${floorCalls.length}`);
       const rest = CTL.withoutControlRead(out[rid][k], rid, { expected: 0, label: `${rid} ${k} (switch cache ${CACHE[k]})` });
-      { const got = DR.without(rest, `${rid} ${k}`).filter((e) => !isFloorRead(e)); assert.deepStrictEqual(got, golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen ba29282 trace — ${require('./_render-delta').opsDiff(golden[rid][k], got)}`); }
+      { const sl = stripLedger(DR.without(rest, `${rid} ${k}`).filter((e) => !isFloorRead(e)), LEDG[rid][k], `${rid} ${k}`); const got = sl.t;
+        if (/_fresh$/.test(k)) assert.strictEqual(sl.n, 1, `🔴 ${rid} ${k}: the fresh cash create carries S1's declared snapshot key (non-vacuity)`);
+        assert.deepStrictEqual(got, golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen ba29282 trace — ${require('./_render-delta').opsDiff(golden[rid][k], got)}`); }
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to ba29282 (+${floorCalls.length} allowlisted floor get)`);
     }
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(golden).sort());

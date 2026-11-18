@@ -37,7 +37,7 @@
 
   // the order endpoints the app calls (capp-api.js's E.*) — capp-boot.test.mjs pins this list EQUAL to capp-api's
   const MODES = Object.freeze(['web', 'native']);
-  const ORDER_ENDPOINTS = Object.freeze(['quoteOrder', 'createOrder', 'chargeOnlineOrder', 'paymentStatus', 'requestCheckoutCode', 'verifyCheckoutCode']);
+  const ORDER_ENDPOINTS = Object.freeze(['quoteOrder', 'createOrder', 'chargeOnlineOrder', 'paymentStatus', 'requestCheckoutCode', 'verifyCheckoutCode', 'getMyLastTip']);   // getMyLastTip: rule 20 (3a, the header token)
   // S2 (sdkPay): the checkout endpoints (CONTRACT-sdk-checkout r3) D4 serves. D4 F4 (PLAN r12 §1.1 / §1.2): the adjustment consent
   // (getPayAdjust / respondPayAdjust) and the 3DS continuation (continueSdkPayment) were dropped — never served, so never in the runtime
   // (capp-shell-ui's consent block stays, inert: payEp() is null without them)
@@ -71,7 +71,8 @@
       ...(f.schedulingLive === true ? { schedulingLive: true } : {}),
       ...(f.intlPhone === true ? { intlPhone: true } : {}),
       ...(f.guestCardOnly === true ? { guestCardOnly: true } : {}),
-      ...(f.ratings === true ? { ratings: true } : {}),   // C-2: the rating sheet + its entries (dark until the rating server is live)
+      ...(f.ratings === true ? { ratings: true } : {}),
+      ...(f.push === true && rt.mode === 'native' ? { push: true } : {}),   // PLAN-capp-push r1: the client core (capp-push.js) — NATIVE only, dark until the mockup + 3a's callables   // C-2: the rating sheet + its entries (dark until the rating server is live)
       // S2: the in-app card screens + their endpoints (CONTRACT-sdk-customer §3 + CONTRACT-sdk-checkout r3; dark until D4 is live)
       ...(f.sdkPay === true ? { sdkPay: { endpoints: Object.fromEntries(SDK_ENDPOINTS.map((n) => [n, url(n)])) } } : {}),
       ...(f.signup === true ? { signup: { firebase: rt.firebase, endpoints: Object.fromEntries(CappSignupApi.ENDPOINTS.map((n) => [n, url(n)])) } } : {}),
@@ -101,6 +102,12 @@
     const mapper = avail(o);
     return CappShellUI.mount(doc, {
       ...pass,
+      // the shell's events: «Abrir Ajustes» (MOCKUP-capp-push r1 F2c; Codex r1 P2-9) opens THIS app's settings through the first-party
+      // AppSettings plugin (the native package's; absent on the web ⇒ nothing, never a throw); every event still reaches the host's own
+      onEvent: (n, d) => {
+        if (n === 'open-os-settings') { try { const W = o.win || g, P = W.Capacitor && W.Capacitor.Plugins ? W.Capacitor.Plugins.AppSettings : null; if (P && typeof P.open === 'function') Promise.resolve(P.open()).catch(() => {}); } catch (_) {} }
+        if (typeof pass.onEvent === 'function') pass.onEvent(n, d);
+      },
       runtime: runtimeFor(rt, CappSignupApi),
       // D-4a Phase 1: the WEBSITE reflects / hydrates URLs; the native shell keeps today's navigation exactly (mode native ⇒ off)
       ...(rt.mode === 'web' ? { routing: true } : {}),

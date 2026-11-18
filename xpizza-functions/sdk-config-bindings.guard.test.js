@@ -95,7 +95,7 @@ const SITES = {
   'payments/sdk/functions.js': { 'productionDeps(': 3 },                             // sweepSdkPayments, settleSdkOnStatus, depsFor (placeSdkStatus + cancelSdkPending ONLY)
   'merchant/merchant-wiring.js': { 'cancelCore()': 1 },                              // merchantReject (the injected cancelOrderCore)
   'cancel-order-core.js': { 'productionDeps(': 1, 'cancelSdkOrder(': 1 },            // its SDK route — reached only through cancelOrderCore (above)
-  'payments/sdk/finish.js': { 'cancelSdkOrder(': 1 },                                // inside placeSdkOrder
+  'payments/sdk/finish.js': { 'cancelSdkOrder(': 2 },                                // inside placeSdkOrder (the C6 self-cancel + the fence post-check self-cancel, PLAN-sdk-fence-r1)
   'payments/sdk/sweeper.js': { 'cancelSdkOrder(': 1 },                               // inside sweepSdkPayments
   'payments/sdk/switch-endpoint.js': { 'cancelSdkOrder(': 2 },                       // inside cancelSdkPending
   'payments/sdk/coordinator.js': { 'cancelSdkOrder(': 1 },                           // expirePending (sweeper / status paths)

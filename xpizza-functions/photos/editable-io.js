@@ -25,6 +25,8 @@ function makeEditableIo({ fs, enabled, publicBucket, legacyBase, signRead, now =
     return out;
   }
   return {
+    // «Quitar del menú» A-1: the active version's photo entries (pendingRemovals' restorable photo), the same read fieldsFor makes
+    readActive: (rid, activeVersionId) => edit.readActive(rid, activeVersionId),
     async fieldsFor({ rid, source, activeVersionId }) {
       const draftMap = source && source.photos && typeof source.photos === 'object' && Object.keys(source.photos).length ? source.photos : null;
       const activeEntries = activeVersionId == null ? null : await edit.readActive(rid, activeVersionId);

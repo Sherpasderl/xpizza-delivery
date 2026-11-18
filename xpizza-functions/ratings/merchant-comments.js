@@ -15,8 +15,15 @@
 //   is SEALED (AES-256-GCM, a fresh IV each time) over { rid, uid, k } with a key HKDF-derived from OTP_SALT under its own label (domain
 //   separated from the phone hash; no new owner secret) — it reveals no order id and is refused for another rid, another caller, or
 //   after tampering. An OTP_SALT rotation voids outstanding cursors: harmless, they are short-lived (the client restarts at page 1).
+// THE CUT-OVER (Calificaciones v2, PLAN-3a-merchant-reviews-v2 r6.1 §2, r6.2 §1 + §3, r5 §2): v1 is the ANONYMOUS, pre-cut-over band
+//   only. A node is served iff post_cutover !== true (the writers' stamp, no clock trusted) AND disclosure !== 1 AND, once
+//   platform_config/ratings/disclosure_cutover_at exists, rated_at (the FIRST submission) < cut-over − CUTOVER_MARGIN_MS.
+//   The cut-over: a memoized VALIDATED value is used as is (it is immutable); otherwise the leaf is read before the scan — an error or a
+//   malformed value ⇒ 503; ABSENT ⇒ the scan runs and the leaf is re-read ONCE after the candidate reads (an activation committed
+//   meanwhile is applied to the read candidates); absence is never cached. Reads: +2 before go-live, +1 cold, +0 memoized.
 const crypto = require('crypto');
 const V2 = require('./rating-v2');
+const RC = require('./ratings-config');
 const { resolveAccess, can } = require('../access/membership');
 
 const CAP = 'stats.read';
@@ -55,9 +62,21 @@ function open(key, token, rid, uid) {
 }
 
 const reply = (status, body) => ({ status, body });
+const UNAVAILABLE = () => reply(503, { ok: false, reason: 'unavailable', retryable: true });
+const CUT_LEAF = `${RC.PATH}/disclosure_cutover_at`;
+// the cut-over leaf → { cut: <ms> } | { absent: true } | { fail: true } (a read error or a malformed value: fail closed)
+async function readCutover(db) {
+  let v;
+  try { v = (await db.ref(CUT_LEAF).once('value')).val(); } catch (_) { return { fail: true }; }
+  if (v === null || v === undefined) return { absent: true };
+  return RC.validCutover(v) ? { cut: v } : { fail: true };
+}
+// the v1 band: never a stamped or disclosed node; with a cut-over, only a first submission strictly before cut-over − margin
+const preBand = (nd, cut) => nd.post_cutover !== true && nd.disclosure !== 1
+  && (cut === null || (Number.isFinite(nd.rated_at) && nd.rated_at < cut - RC.CUTOVER_MARGIN_MS));
 const qstr = (v) => (typeof v === 'string' ? v : null);
 
-async function merchantRatingCommentsCore({ db, verifyIdToken, checkRateLimit, salt }, req) {
+async function merchantRatingCommentsCore({ db, verifyIdToken, checkRateLimit, salt, memo = {} }, req) {
   if (req.method !== 'GET') return reply(405, { ok: false, reason: 'method_not_allowed' });
   const header = (typeof req.get === 'function' && req.get('authorization')) || '';
   const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
@@ -87,6 +106,14 @@ async function merchantRatingCommentsCore({ db, verifyIdToken, checkRateLimit, s
   let after = null;
   if (cur !== undefined) { after = open(key, cur, rid, dec.uid); if (!after) return reply(400, { ok: false, reason: 'bad_cursor' }); }
 
+  let cut = Number.isSafeInteger(memo.cut) ? memo.cut : null;
+  if (cut === null) {
+    const c = await readCutover(db);
+    if (c.fail) return UNAVAILABLE();
+    if (c.cut) { cut = c.cut; memo.cut = c.cut; }
+  }
+  const firstAbsent = cut === null;
+
   let query = V2.indexRef(db, rid).orderByKey();
   if (after) query = query.startAfter(after);
   const snap = await query.limitToFirst(CANDIDATES).once('value');
@@ -101,24 +128,33 @@ async function merchantRatingCommentsCore({ db, verifyIdToken, checkRateLimit, s
     for (let j = 0; j < chunk.length; j++) {
       lastScanned = chunk[j][0];
       const nd = nodes[j];
-      if (nd && nd.restaurant_id === rid && typeof nd.comment === 'string' && nd.comment.trim()) {
-        comments.push({ comment: nd.comment, store: Number.isInteger(nd.store) && nd.store >= 1 && nd.store <= 5 ? nd.store : null });
+      if (nd && nd.restaurant_id === rid && typeof nd.comment === 'string' && nd.comment.trim() && preBand(nd, cut)) {
+        comments.push({ comment: nd.comment, store: Number.isInteger(nd.store) && nd.store >= 1 && nd.store <= 5 ? nd.store : null, _nd: nd });
         if (comments.length >= PAGE) { stoppedEarly = j < chunk.length - 1 || i + CONCURRENCY < entries.length; break; }
       }
     }
   }
+  // absent before the scan ⇒ ONE re-read after the candidate reads: every candidate was read before it, so an activation it does not
+  // see came after them; one it does see is applied to the already-read candidates (a short page still advances the cursor)
+  let page = comments;
+  if (firstAbsent) {
+    const c = await readCutover(db);
+    if (c.fail) return UNAVAILABLE();
+    if (c.cut) { memo.cut = c.cut; page = comments.filter((x) => preBand(x._nd, c.cut)); }
+  }
   // exhausted ⇔ fewer than CANDIDATES keys came back AND every one of them was scanned
   const exhausted = entries.length < CANDIDATES && !stoppedEarly;
   const cursor = exhausted || !lastScanned ? null : seal(key, { v: 1, rid, uid: dec.uid, k: lastScanned });
-  return reply(200, { ok: true, comments, cursor });
+  return reply(200, { ok: true, comments: page.map(({ comment, store }) => ({ comment, store })), cursor });
 }
 
 function makeMerchantRatingComments({ getDatabase, getAuth, checkRateLimit, salt = () => process.env.OTP_SALT }) {
+  const memo = {};   // the validated cut-over, per instance (immutable once written; absence is never stored)
   return {
     async getMerchantRatingComments(req, res) {
       res.set('Cache-Control', 'no-store');
       let out;
-      try { out = await merchantRatingCommentsCore({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t), checkRateLimit, salt }, req); }
+      try { out = await merchantRatingCommentsCore({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t), checkRateLimit, salt, memo }, req); }
       catch (e) { console.error('getMerchantRatingComments', e && e.message); out = reply(503, { ok: false, reason: 'unavailable', retryable: true }); }
       res.status(out.status).json(out.body);
     },

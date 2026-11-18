@@ -8,6 +8,8 @@
   "aceptar.html",
   "aceptar.js",
   "aceptar.test.mjs",
+  "anuncio-logic.js",
+  "anuncio-logic.test.mjs",
   "api-assert-live.test.mjs",
   "api.js",
   "api.test.mjs",
@@ -29,11 +31,22 @@
   "branches-1b-life.test.mjs",
   "branches-1b.test.mjs",
   "branches-view.js",
+  "calificaciones-harness.mjs",
+  "calificaciones-logic.js",
+  "calificaciones-skeleton-fit.browser.test.mjs",
+  "calificaciones-view.js",
+  "calificaciones.js",
+  "calificaciones.test.mjs",
+  "calificaciones2-harness.mjs",
+  "calificaciones2-view.test.mjs",
+  "calificaciones2.test.mjs",
   "category-name.browser.test.mjs",
+  "control-state.js",
   "editor.js",
   "editor.test.mjs",
   "envio-field-focus.test.mjs",
   "envio-geometry.test.mjs",
+  "envio-limit.test.mjs",
   "envio-logic.js",
   "envio-logic.test.mjs",
   "envio-map-protocol.js",
@@ -43,25 +56,41 @@
   "envio-view.test.mjs",
   "envio.js",
   "equipos.js",
+  "exposure-transitions.js",
   "extras-eligibility.js",
+  "extras-logic.js",
+  "extras-logic.test.mjs",
+  "extras-view.js",
   "firebase.js",
   "fonts/OFL.txt",
-  "fonts/archivo-latin-ext.a999e009fd.woff2",
-  "fonts/archivo-latin.7150c0ec5a.woff2",
-  "fonts/archivo-vietnamese.2518e8eb97.woff2",
+  "fonts/figtree-latin-ext.f153aa07c1.woff2",
+  "fonts/figtree-latin.8330490a01.woff2",
   "gate-early.js",
   "hotfix-1112-fold.mjs",
   "index.html",
+  "inicio-logic.js",
+  "inicio.js",
+  "inicio.test.mjs",
   "invite-mail.js",
   "item-edit-drawer.test.mjs",
   "item-edit-logic.js",
   "item-edit.test.mjs",
+  "marketing-builder.js",
+  "marketing-detail.js",
+  "marketing-focus.js",
+  "marketing-harness.mjs",
+  "marketing-logic.js",
+  "marketing-logic.test.mjs",
+  "marketing.js",
+  "marketing.test.mjs",
   "mint-fold.mjs",
   "netlify.toml",
   "ops-dom.js",
   "package-lock.json",
   "package.json",
-  "pausas.js",
+  "pausar-backfill.test.mjs",
+  "pause-control.js",
+  "pause-control.test.mjs",
   "perf/portal.origins.json",
   "photo-contract-fake.mjs",
   "photo-flow.test.mjs",
@@ -70,23 +99,38 @@
   "photo.js",
   "photos-b-fold.mjs",
   "platform-notice.test.mjs",
+  "portal-calendar.js",
   "portal-fonts.css",
   "portal-fonts.test.mjs",
   "portal-logic.js",
   "portal-look.test.mjs",
+  "portal-no-amber.test.mjs",
   "portal-request-ids.test.mjs",
   "portal-site-freeze.golden.json",
+  "portal-time.js",
   "portal-wiring.test.mjs",
   "portalui-guards.t1-hunks.json",
   "portalui-guards.test.mjs",
   "pp-fold.mjs",
   "pubreq.js",
   "pubreq.test.mjs",
+  "ref-tree.mjs",
+  "remove-product.test.mjs",
+  "rend-data.js",
+  "rend-data.test.mjs",
+  "rend-fold.mjs",
+  "rend-logic.js",
   "render.js",
   "render.test.mjs",
+  "rendimiento.test.mjs",
   "review-products.test.mjs",
   "review.js",
   "review.test.mjs",
+  "reviews-v2-frozen-response.fixture.json",
+  "rgb-fold.mjs",
+  "rp-fold.mjs",
+  "s1-fold.mjs",
+  "s2-fold.mjs",
   "s4-fold.mjs",
   "shell-dom.test.mjs",
   "shell-wait-writes.test.mjs",
@@ -94,7 +138,11 @@
   "shell.js",
   "shell.test.mjs",
   "sherpa-client.js",
+  "stats-harness.mjs",
+  "structure-s1.test.mjs",
+  "structure-s2.test.mjs",
   "styles.css",
+  "sucursales-limit.test.mjs",
   "team-logic.js",
   "team.js",
   "team.test.mjs",
@@ -102,8 +150,11 @@
   "ventas-harness.mjs",
   "ventas-logic.js",
   "ventas-logic.test.mjs",
+  "ventas-tab.js",
+  "ventas-tab.test.mjs",
   "ventas.js",
   "ventas.test.mjs",
+  "whoami-fit.test.mjs",
   "wiring-ast.mjs"
  ],
  "bytes": {
@@ -116,32 +167,28 @@
    "bytes": 4451
   },
   "aceptar.css": {
-   "sha256": "008782289ed38d94e26a80a77e4e433fd3e7bd958b4bfad4e578e70a83070b04",
-   "bytes": 5905
+   "sha256": "5138beb231dd1857f463ce08fd3e7966b03d6d36e71e9807a354229cff04e18b",
+   "bytes": 5844
   },
   "aceptar.html": {
-   "sha256": "954c3e3374acbc9f1077db36a087587d83cb7af629b41f1977cf45b3ae04bb14",
-   "bytes": 6656
+   "sha256": "6ce327b99d6c896615b6533dd0c86349fa69e153eb67f0eee3bbe28e70b54f1c",
+   "bytes": 6697
   },
   "fonts/OFL.txt": {
-   "sha256": "8961013dbda3464baefca27c97a068539c798ee7c0be1d1f6b4254a9b20d7518",
+   "sha256": "a3371b2021b2892a5925ad4f9be5f1b86bc2968a5652716610afed1f55ea866e",
    "bytes": 4389
   },
-  "fonts/archivo-latin-ext.a999e009fd.woff2": {
-   "sha256": "a999e009fdcd0f939c138e04043b3b2ad083b26252b644e8f94c083d48b77af0",
-   "bytes": 32672
+  "fonts/figtree-latin-ext.f153aa07c1.woff2": {
+   "sha256": "f153aa07c1b16fbb12391c2512860c97819a0a9fd014f338b2b3f12496479d13",
+   "bytes": 10228
   },
-  "fonts/archivo-latin.7150c0ec5a.woff2": {
-   "sha256": "7150c0ec5ad356453013d11affec1fbab95de0dd2dcecb043b4f1cb7f87c4ba4",
-   "bytes": 34940
-  },
-  "fonts/archivo-vietnamese.2518e8eb97.woff2": {
-   "sha256": "2518e8eb97cd2b36dbf380d085e47bbc0df5c32fc6adc32fe1ca6edce192cee0",
-   "bytes": 13216
+  "fonts/figtree-latin.8330490a01.woff2": {
+   "sha256": "8330490a01c60c196eae00b823de8102275aaa5862e7b76a7af21b8745338928",
+   "bytes": 20184
   },
   "index.html": {
-   "sha256": "cd1e83413ab66d61b105ca66f999ec60d92f3301657c91424deefad258a756f1",
-   "bytes": 13446
+   "sha256": "8a7b5933c45699a10845ad8b234954c89d932ece9c665788947916efc052d838",
+   "bytes": 14972
   },
   "netlify.toml": {
    "sha256": "19d652c8a70380312a0de8a1bc681a5b3cf6401c4b1d7141e8ab57d2be4eb9da",
@@ -152,24 +199,28 @@
    "bytes": 1072
   },
   "package.json": {
-   "sha256": "ca999494e69e1dafcc4bc513a34c82bdb08d819401688ead7af94aeff865c3ef",
-   "bytes": 443
+   "sha256": "9aa8cd0a81eaa4327c954b634b641f2b67bca6210b73ce3ebd6559fe43236920",
+   "bytes": 444
   },
   "perf/portal.origins.json": {
    "sha256": "740f32b569d578e82f0749e48c180c482232ac2e109bbc19a21ae1376ce29d7d",
    "bytes": 11580
   },
   "portal-fonts.css": {
-   "sha256": "c767de20341796e28f1c4d5e5b3b27d80871956cbd991de0f697065637c36d45",
-   "bytes": 2103
+   "sha256": "f56daaf355462d62990074516e4d67eeb84ddd57fa23a2e269c10de3abf01be9",
+   "bytes": 2115
   },
   "portalui-guards.t1-hunks.json": {
    "sha256": "7eb5d5f0db0b58401358b3dabe9d4579405b3178542961afe62a5a4a0b84657d",
    "bytes": 35199
   },
+  "reviews-v2-frozen-response.fixture.json": {
+   "sha256": "8203d9b5cc961e19353cf0e90a99e6c9d8737e8812018806cf2ed864c181fb76",
+   "bytes": 841
+  },
   "styles.css": {
-   "sha256": "ac29c3f403fcbea8d46374da4d8436372aaf10c323b4001740af9b7f769b9fa2",
-   "bytes": 131521
+   "sha256": "4f1448da708ac3379be7d3a47fc833edf452235257915d3aa59a7f2e82b2e4b4",
+   "bytes": 226452
   }
  },
  "diff_aid": {
@@ -190,27 +241,60 @@
    "--accent-2": "#095C34",
    "--accent-ink": "#fff",
    "--accent-line": "#BEE6CE",
-   "--gold": "#8A6A12",
-   "--gold-line": "#E3D2A0",
-   "--gold-soft": "#FBF4E1",
    "--green": "#0E9F5B",
    "--green-soft": "#E7F5EC",
    "--green-line": "#BEE6CE",
+   "--sand-text": "#7A4A24",
+   "--sand-soft": "#F7EEE5",
+   "--sand-line": "#E6D2BE",
+   "--sky-text": "#1E4E99",
+   "--sky-soft": "#E6F0FB",
+   "--sky-line": "#B7D2F3",
+   "--star": "#FFD60A",
+   "--star-line": "#B38400",
+   "--rose-soft": "#FCEBF1",
+   "--rose-line": "#F0C3D3",
+   "--rose-text": "#9A2D55",
+   "--bar-pos": "#1F8A6B",
+   "--bar-neu": "#7E7E83",
+   "--bar-neg": "#C25578",
+   "--bar-track": "#E7E7E1",
+   "--mint-soft": "#DFF4ED",
+   "--mint-line": "#A9E0D0",
+   "--mint-text": "#0E6A55",
+   "--lav-soft": "#F0EDFB",
+   "--lav-line": "#C9C1F0",
+   "--lav-text": "#4E3DA6",
+   "--v-teal": "#0E8C86",
+   "--v-mint": "#10AD82",
+   "--v-sky": "#2F7BE6",
+   "--v-lav": "#7C5CF0",
+   "--v-rose": "#E8407A",
+   "--on-vivid": "#000000",
+   "--tog-off": "#CFCFC9",
+   "--knob": "#FFFFFF",
+   "--vt-mint": "#D3F5E8",
+   "--vt-mint-ink": "#075C45",
+   "--vt-sky": "#DBE9FF",
+   "--vt-sky-ink": "#153F9E",
+   "--vt-lav": "#E7E0FF",
+   "--vt-lav-ink": "#4A2FB3",
+   "--vt-rose": "#FFE0EA",
+   "--vt-rose-ink": "#A3214E",
+   "--vt-teal": "#D1F0F2",
+   "--vt-teal-ink": "#0A5E5B",
    "--red": "#D23425",
    "--red-soft": "#FCEBE9",
    "--red-line": "#EFC9C2",
    "--green-text": "#0B7C47",
    "--red-text": "#C73123",
-   "--amber": "#8A5200",
-   "--amber-soft": "#FBF0DC",
-   "--amber-line": "#EBD6A6",
    "--tint": "rgba(14,159,91,.07)",
    "--tint2": "rgba(14,159,91,.13)",
    "--rbar-bg": "#FFFFFF",
    "--shadow": "0 1px 2px rgba(10,10,11,.05),0 16px 40px -30px rgba(10,10,11,.26)",
    "--shadow-lg": "0 44px 96px -40px rgba(10,10,11,.34)",
-   "--body": "'Söhne','Helvetica Neue',system-ui,-apple-system,'Segoe UI',sans-serif",
-   "--disp": "'Archivo','Archivo Fallback','Archivo Fallback Roboto','Söhne','Helvetica Neue',system-ui,sans-serif",
+   "--body": "'Figtree','Figtree Fallback','Figtree Fallback Roboto',system-ui,-apple-system,'Segoe UI',sans-serif",
+   "--disp": "var(--body)",
    "--r": "14px",
    "--focus": "0 0 0 2px var(--board),0 0 0 4px var(--ink)",
    "--env-map": "#F1F2EC",
@@ -392,13 +476,13 @@
     "",
     ".ack",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".ackt b",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -434,13 +518,13 @@
     "",
     ".adm-tag",
     "background",
-    "var(--gold-soft)"
+    "var(--mint-soft)"
    ],
    [
     "",
     ".adm-tag",
     "color",
-    "var(--gold)"
+    "var(--mint-text)"
    ],
    [
     "",
@@ -500,7 +584,7 @@
     "",
     ".attest .at b",
     "color",
-    "var(--gold)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -537,6 +621,18 @@
     ".bchip.add",
     "color",
     "var(--green-text)"
+   ],
+   [
+    "",
+    ".bchip.chg",
+    "background",
+    "var(--card-2)"
+   ],
+   [
+    "",
+    ".bchip.chg",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
@@ -714,6 +810,36 @@
    ],
    [
     "",
+    ".btn.mk-ud",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".btn.mk-ud:disabled:hover,.btn.mk-ud.mk-udend:hover",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".btn.mk-ud:disabled:hover,.btn.mk-ud.mk-udend:hover",
+    "border-color",
+    "var(--line)"
+   ],
+   [
+    "",
+    ".btn.mk-ud:disabled:hover,.btn.mk-ud.mk-udend:hover",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".btn.mk-ud:hover",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
     ".btn.ptext",
     "background",
     "transparent"
@@ -756,6 +882,486 @@
    ],
    [
     "",
+    ".cal-band",
+    "background",
+    "var(--card-2)"
+   ],
+   [
+    "",
+    ".cal-d",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".cal-d",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".cal-d:disabled",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".cal-d:hover .cal-ring",
+    "background",
+    "var(--line2)"
+   ],
+   [
+    "",
+    ".cal-nav",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".cal-nav",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".cal-nav:hover",
+    "background",
+    "var(--line2)"
+   ],
+   [
+    "",
+    ".cal-on .cal-ring",
+    "border-color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".cal-pop",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".cal-pop",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".cal-select",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".cal-select",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".cal-tdot",
+    "background",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".cal-wk span",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .cav.anon",
+    "background",
+    "var(--card-2)"
+   ],
+   [
+    "",
+    ".calif .cav.anon",
+    "border-color",
+    "var(--line)"
+   ],
+   [
+    "",
+    ".calif .cav.anon",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .cav.t0",
+    "background",
+    "var(--mint-soft)"
+   ],
+   [
+    "",
+    ".calif .cav.t0",
+    "border-color",
+    "var(--mint-line)"
+   ],
+   [
+    "",
+    ".calif .cav.t0",
+    "color",
+    "var(--mint-text)"
+   ],
+   [
+    "",
+    ".calif .cav.t1",
+    "background",
+    "var(--sky-soft)"
+   ],
+   [
+    "",
+    ".calif .cav.t1",
+    "border-color",
+    "var(--sky-line)"
+   ],
+   [
+    "",
+    ".calif .cav.t1",
+    "color",
+    "var(--sky-text)"
+   ],
+   [
+    "",
+    ".calif .cav.t2",
+    "background",
+    "var(--lav-soft)"
+   ],
+   [
+    "",
+    ".calif .cav.t2",
+    "border-color",
+    "var(--lav-line)"
+   ],
+   [
+    "",
+    ".calif .cav.t2",
+    "color",
+    "var(--lav-text)"
+   ],
+   [
+    "",
+    ".calif .cav.t3",
+    "background",
+    "var(--rose-soft)"
+   ],
+   [
+    "",
+    ".calif .cav.t3",
+    "border-color",
+    "var(--rose-line)"
+   ],
+   [
+    "",
+    ".calif .cav.t3",
+    "color",
+    "var(--rose-text)"
+   ],
+   [
+    "",
+    ".calif .cav.t4",
+    "background",
+    "var(--sand-soft)"
+   ],
+   [
+    "",
+    ".calif .cav.t4",
+    "border-color",
+    "var(--sand-line)"
+   ],
+   [
+    "",
+    ".calif .cav.t4",
+    "color",
+    "var(--sand-text)"
+   ],
+   [
+    "",
+    ".calif .cempty p,.calif .cerr p",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .cf-bn",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-brow b small",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .cf-brow b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-brow",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .cf-cb.cf-chk",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-cb.cf-chk",
+    "border-color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-dl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .cf-dn",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .cf-dot",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-ed",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .cf-few",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .cf-menu button",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".calif .cf-menu button",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-menu button:hover",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".calif .cf-menu",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".calif .cf-meta",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .cf-mr",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .cf-pill",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".calif .cf-pill",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-pill.cf-on",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-pill.cf-on",
+    "border-color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-pill.cf-on",
+    "color",
+    "var(--board)"
+   ],
+   [
+    "",
+    ".calif .cf-pill:hover",
+    "border-color",
+    "var(--line)"
+   ],
+   [
+    "",
+    ".calif .cf-seg button",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".calif .cf-seg button",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .cf-seg button.cf-sel",
+    "background",
+    "var(--tint2)"
+   ],
+   [
+    "",
+    ".calif .cf-seg button.cf-sel",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".calif .cf-seg button.cf-sel",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".calif .cf-vrl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .cname.anon",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .df",
+    "background",
+    "var(--bar-neu)"
+   ],
+   [
+    "",
+    ".calif .df.neg",
+    "background",
+    "var(--bar-neg)"
+   ],
+   [
+    "",
+    ".calif .df.pos",
+    "background",
+    "var(--bar-pos)"
+   ],
+   [
+    "",
+    ".calif .dist",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .dt",
+    "background",
+    "var(--bar-track)"
+   ],
+   [
+    "",
+    ".calif .endl",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .kbase",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .kfig .kl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .kfig .kn small",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .kfig.dist .ksay",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .kfigs.surface",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".calif .qact",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".calif .qact",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".calif .sect .subl",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .skb",
+    "background",
+    "var(--line2)"
+   ],
+   [
+    "",
+    ".calif-scope",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".chipon1b",
     "background",
     "var(--tint)"
@@ -794,19 +1400,19 @@
     "",
     ".cicon.warn",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".cicon.warn",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
     ".cicon.warn",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -1028,13 +1634,13 @@
     "",
     ".drow.big",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".drow.big",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
@@ -1164,6 +1770,18 @@
    ],
    [
     "",
+    ".envio .capnote.sand",
+    "background",
+    "var(--sand-soft)"
+   ],
+   [
+    "",
+    ".envio .capnote.sand",
+    "color",
+    "var(--sand-text)"
+   ],
+   [
+    "",
     ".envio .eadd",
     "background",
     "none"
@@ -1208,13 +1826,13 @@
     "",
     ".envio .echip.echg",
     "background",
-    "var(--amber-soft)"
+    "var(--sky-soft)"
    ],
    [
     "",
     ".envio .echip.echg",
     "color",
-    "var(--amber)"
+    "var(--sky-text)"
    ],
    [
     "",
@@ -1257,6 +1875,18 @@
     ".envio .edrow .dwas",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .edrow .epi",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .edrow .epi",
+    "color",
+    "var(--ink)"
    ],
    [
     "",
@@ -1314,6 +1944,36 @@
    ],
    [
     "",
+    ".envio .emap .mstyle button",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".envio .emap .mstyle button",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .emap .mstyle button.mson",
+    "background",
+    "var(--tint2)"
+   ],
+   [
+    "",
+    ".envio .emap .mstyle button.mson",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".envio .emap .mstyle",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
     ".envio .emap",
     "background",
     "var(--env-map)"
@@ -1322,19 +1982,19 @@
     "",
     ".envio .epill",
     "background",
-    "var(--gold-soft)"
+    "var(--mint-soft)"
    ],
    [
     "",
     ".envio .epill",
     "border-color",
-    "var(--gold-line)"
+    "var(--mint-line)"
    ],
    [
     "",
     ".envio .epill",
     "color",
-    "var(--gold)"
+    "var(--mint-text)"
    ],
    [
     "",
@@ -1440,6 +2100,12 @@
    ],
    [
     "",
+    ".envio .legend .lg-rlim",
+    "background",
+    "var(--env-limit)"
+   ],
+   [
+    "",
     ".envio .legend",
     "color",
     "var(--mute)"
@@ -1447,6 +2113,12 @@
    [
     "",
     ".envio .limit",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".envio .maxfld",
     "background",
     "var(--board-2)"
    ],
@@ -1572,6 +2244,36 @@
    ],
    [
     "",
+    ".envio .sb",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .sb",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .sinp",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .stepcap b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .stepcap",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".eqat",
     "color",
     "var(--mute)"
@@ -1580,13 +2282,13 @@
     "",
     ".eqcall b",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
     ".eqcall",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
@@ -1658,7 +2360,7 @@
     "",
     ".fh",
     "color",
-    "var(--gold)"
+    "var(--ink)"
    ],
    [
     "",
@@ -1694,7 +2396,7 @@
     "",
     ".fiscal .ackt b",
     "color",
-    "var(--gold)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -1712,13 +2414,13 @@
     "",
     ".fiscal",
     "background",
-    "var(--gold-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".fiscnote",
     "color",
-    "var(--gold)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -1878,6 +2580,168 @@
    ],
    [
     "",
+    ".inicio .in-act",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".inicio .in-act",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".inicio .in-dot",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".inicio .in-fig .in-fl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".inicio .in-fig .in-fs",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".inicio .in-figs",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".inicio .in-ico",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".inicio .in-ico",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".inicio .in-lede",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".inicio .in-menu button",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".inicio .in-menu button",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".inicio .in-menu button:hover",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".inicio .in-menu",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".inicio .in-ok span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".inicio .in-ok",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".inicio .in-okico",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".inicio .in-okico",
+    "color",
+    "var(--mint-text)"
+   ],
+   [
+    "",
+    ".inicio .in-pill",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".inicio .in-pill",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".inicio .in-pill.dd:hover",
+    "border-color",
+    "var(--line)"
+   ],
+   [
+    "",
+    ".inicio .in-quick",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".inicio .in-quick",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".inicio .in-quick:hover",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".inicio .in-row .in-rt .in-when",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".inicio .in-sect .in-cnt",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".irow.mk-added",
+    "background",
+    "var(--green-soft)"
+   ],
+   [
+    "",
+    ".irow.mk-pend .price input",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".irow:hover .iinfo.clk .nm",
     "color",
     "var(--accent)"
@@ -1904,13 +2768,13 @@
     "",
     ".kid .rec",
     "background",
-    "var(--gold-soft)"
+    "var(--lav-soft)"
    ],
    [
     "",
     ".kid .rec",
     "color",
-    "var(--gold)"
+    "var(--lav-text)"
    ],
    [
     "",
@@ -2042,17 +2906,53 @@
     "",
     ".mgshared",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".mgshared",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
+   ],
+   [
+    "",
+    ".mgshared.mk-sand",
+    "background",
+    "var(--sand-soft)"
+   ],
+   [
+    "",
+    ".mgshared.mk-sand",
+    "border-color",
+    "var(--sand-line)"
+   ],
+   [
+    "",
+    ".mgshared.mk-sand",
+    "color",
+    "var(--sand-text)"
    ],
    [
     "",
     ".mgsub",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-apdot",
+    "background",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-apponly",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-catnote",
     "color",
     "var(--mute2)"
    ],
@@ -2130,6 +3030,138 @@
    ],
    [
     "",
+    ".mk-dropdot",
+    "background",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk-dropline",
+    "background",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk-gh",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk-grp",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk-grp.chg",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk-grp.invalid,.mk-grp.mk-inv",
+    "border-color",
+    "var(--red)"
+   ],
+   [
+    "",
+    ".mk-grp.mk-open .mk-chev",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk-gsub",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-gsum",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-gt",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk-gt",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk-gts",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-gts.mk-greq",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk-handle",
+    "background",
+    "var(--line)"
+   ],
+   [
+    "",
+    ".mk-ib",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk-ib",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-ib:hover",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk-ib:hover",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk-lnk",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk-lnk",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk-lnk.danger",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".mk-lnk:disabled",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".mk-lrow label .mk-opt",
     "color",
     "var(--mute2)"
@@ -2145,6 +3177,18 @@
     ".mk-modhr",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-mp",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk-nogroup",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
@@ -2166,15 +3210,1473 @@
    ],
    [
     "",
+    ".mk-ogn",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-opcgap",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-opcs",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-pendtxt",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-pick .mk-why",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-pick .modopt.mk-dis .mognm",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-pick",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk-radio label span",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".mk-rbhint",
     "color",
     "var(--mute)"
    ],
    [
     "",
+    ".mk-rec",
+    "background",
+    "var(--lav-soft)"
+   ],
+   [
+    "",
+    ".mk-rec",
+    "color",
+    "var(--lav-text)"
+   ],
+   [
+    "",
+    ".mk-sandline",
+    "background",
+    "var(--sand-soft)"
+   ],
+   [
+    "",
+    ".mk-sandline",
+    "color",
+    "var(--sand-text)"
+   ],
+   [
+    "",
+    ".mk-sheet",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
     ".mk-sub",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-subh",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk-subh",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-undo:hover",
+    "background",
+    "var(--tint)"
+   ],
+   [
+    "",
+    ".mk-xgone-p",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk-xname",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk-xname",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk-xname:focus",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk-xnewl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk-xoff .mk-xnm",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5-act",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5-act",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5-act:hover",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk5-act:hover",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5-bg-lav",
+    "background",
+    "var(--vt-lav)"
+   ],
+   [
+    "",
+    ".mk5-bg-mint",
+    "background",
+    "var(--vt-mint)"
+   ],
+   [
+    "",
+    ".mk5-bg-rose",
+    "background",
+    "var(--vt-rose)"
+   ],
+   [
+    "",
+    ".mk5-bg-sky",
+    "background",
+    "var(--vt-sky)"
+   ],
+   [
+    "",
+    ".mk5-bg-teal",
+    "background",
+    "var(--vt-teal)"
+   ],
+   [
+    "",
+    ".mk5-br",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5-c3",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5-card",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5-cline",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5-count",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk5-count",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5-dot",
+    "background",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5-dot.mk5-activa",
+    "background",
+    "var(--mint-text)"
+   ],
+   [
+    "",
+    ".mk5-dot.mk5-borr",
+    "background",
+    "var(--lav-text)"
+   ],
+   [
+    "",
+    ".mk5-dot.mk5-pausa",
+    "background",
+    "var(--sand-text)"
+   ],
+   [
+    "",
+    ".mk5-dot.mk5-prog",
+    "background",
+    "var(--sky-text)"
+   ],
+   [
+    "",
+    ".mk5-empty p",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5-faint",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5-how",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5-how",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk5-howbox",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk5-howp b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5-howp",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5-ico",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk5-ico",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5-ink-lav",
+    "color",
+    "var(--vt-lav-ink)"
+   ],
+   [
+    "",
+    ".mk5-ink-mint",
+    "color",
+    "var(--vt-mint-ink)"
+   ],
+   [
+    "",
+    ".mk5-ink-rose",
+    "color",
+    "var(--vt-rose-ink)"
+   ],
+   [
+    "",
+    ".mk5-ink-sky",
+    "color",
+    "var(--vt-sky-ink)"
+   ],
+   [
+    "",
+    ".mk5-ink-teal",
+    "color",
+    "var(--vt-teal-ink)"
+   ],
+   [
+    "",
+    ".mk5-lh",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5-lnk",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5-lnk",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5-menu",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5-notice",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk5-notice",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5-olede",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5-opt",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5-opt",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5-opt.mk5-danger",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".mk5-opt:hover",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk5-pill",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk5-pill",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5-pill.mk5-chosen",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5-pill.mk5-chosen",
+    "border-color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5-pill.mk5-chosen",
+    "color",
+    "var(--board)"
+   ],
+   [
+    "",
+    ".mk5-pill:hover",
+    "border-color",
+    "var(--line)"
+   ],
+   [
+    "",
+    ".mk5-st",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5-tab",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5-tab",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5-tab.mk5-on",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5-tab:hover",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5-vv-lav",
+    "background",
+    "var(--v-lav)"
+   ],
+   [
+    "",
+    ".mk5-vv-lav",
+    "color",
+    "var(--on-vivid)"
+   ],
+   [
+    "",
+    ".mk5-vv-mint",
+    "background",
+    "var(--v-mint)"
+   ],
+   [
+    "",
+    ".mk5-vv-mint",
+    "color",
+    "var(--on-vivid)"
+   ],
+   [
+    "",
+    ".mk5-vv-rose",
+    "background",
+    "var(--v-rose)"
+   ],
+   [
+    "",
+    ".mk5-vv-rose",
+    "color",
+    "var(--on-vivid)"
+   ],
+   [
+    "",
+    ".mk5-vv-sky",
+    "background",
+    "var(--v-sky)"
+   ],
+   [
+    "",
+    ".mk5-vv-sky",
+    "color",
+    "var(--on-vivid)"
+   ],
+   [
+    "",
+    ".mk5-vv-teal",
+    "background",
+    "var(--v-teal)"
+   ],
+   [
+    "",
+    ".mk5-vv-teal",
+    "color",
+    "var(--on-vivid)"
+   ],
+   [
+    "",
+    ".mk5-why",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-add",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5b-add",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk5b-add:hover",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk5b-albl span",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-av",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-av",
+    "color",
+    "var(--board)"
+   ],
+   [
+    "",
+    ".mk5b-avail",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-band",
+    "background",
+    "var(--card-2)"
+   ],
+   [
+    "",
+    ".mk5b-block",
+    "color",
+    "var(--rose-text)"
+   ],
+   [
+    "",
+    ".mk5b-card",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-cfg",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-chev",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-chg",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5b-chg",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk5b-chip",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-chip",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-chip.mk5b-chon",
+    "background",
+    "var(--tint2)"
+   ],
+   [
+    "",
+    ".mk5b-chip.mk5b-chon",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk5b-chip.mk5b-chon",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk5b-chip:hover",
+    "border-color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-chip:hover",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-cinp",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk5b-cnt",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-dash",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-dlg",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-dpbtn",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-dpbtn",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-dpbtn:hover",
+    "border-color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-dpbtn[aria-expanded=\"true\"]",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk5b-dpd",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5b-dpd",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-dpd:disabled",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-dpd:hover .mk5b-ring",
+    "background",
+    "var(--line2)"
+   ],
+   [
+    "",
+    ".mk5b-dpnav",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5b-dpnav",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-dpnav:disabled",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5b-dpnav:disabled",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-dpnav:hover",
+    "background",
+    "var(--line2)"
+   ],
+   [
+    "",
+    ".mk5b-dpop",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-dpop",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-dpsel",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5b-dpsel",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-dpsel:hover",
+    "background",
+    "var(--line2)"
+   ],
+   [
+    "",
+    ".mk5b-dpwk span",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-draft",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5b-draft",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-draft:hover",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-ds",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-dsel .mk5b-ring",
+    "border-color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-err",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-err",
+    "color",
+    "var(--rose-text)"
+   ],
+   [
+    "",
+    ".mk5b-fine",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-flab",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-go",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-go",
+    "color",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-help",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-ico",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-ico",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-icolock",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-icolock",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-inp",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-item",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-ix",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk5b-ix",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-ix:hover",
+    "background",
+    "var(--red-soft)"
+   ],
+   [
+    "",
+    ".mk5b-ix:hover",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".mk5b-knob",
+    "background",
+    "var(--knob)"
+   ],
+   [
+    "",
+    ".mk5b-lbl",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-lbllock",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-lede",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-notch",
+    "background",
+    "var(--line)"
+   ],
+   [
+    "",
+    ".mk5b-num",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".mk5b-num",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-opt",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-opt.mk5b-sel",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk5b-osub",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-phone",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk5b-pr",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-pvchip",
+    "background",
+    "var(--mint-soft)"
+   ],
+   [
+    "",
+    ".mk5b-pvchip",
+    "color",
+    "var(--mint-text)"
+   ],
+   [
+    "",
+    ".mk5b-pvcta",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk5b-pvlab",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-pvmeta",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-pvnote",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-pvth",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk5b-pvwhen",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-ro b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-ro",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-ro",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-row",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk5b-rowh",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5b-rowh",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-rowh:hover .mk5b-rlbl",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk5b-scrim",
+    "background",
+    "rgba(8,7,6,.5)"
+   ],
+   [
+    "",
+    ".mk5b-sec span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-seg",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-segb small",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5b-segb",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5b-segb",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-segb.mk5b-segon",
+    "background",
+    "var(--tint2)"
+   ],
+   [
+    "",
+    ".mk5b-segb.mk5b-segon",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk5b-sum",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-sum",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-tdot",
+    "background",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-text",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-text",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-text:focus,.mk5b-time:focus",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk5b-th",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk5b-tico",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk5b-tico",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-time",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-time",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-tog",
+    "background",
+    "var(--green)"
+   ],
+   [
+    "",
+    ".mk5b-tog.mk5b-togoff",
+    "background",
+    "var(--tog-off)"
+   ],
+   [
+    "",
+    ".mk5b-unit",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-val",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-x",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk5b-x",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-x:hover",
+    "background",
+    "var(--line2)"
+   ],
+   [
+    "",
+    ".mk5d-back",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5d-back",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5d-btn",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5d-btn",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5d-btn:hover",
+    "background",
+    "var(--card-2)"
+   ],
+   [
+    "",
+    ".mk5d-btn:hover",
+    "border-color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5d-errx",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5d-errx",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5d-meta",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5d-more",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5d-more1",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5d-more1",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5d-more1:hover",
+    "background",
+    "var(--card-2)"
+   ],
+   [
+    "",
+    ".mk5d-more1:hover",
+    "border-color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5d-morebtn",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5d-morebtn",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5d-morelbl",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk5d-r span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5d-sbtn",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5d-sbtn",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5d-sbtn:hover",
+    "border-color",
+    "var(--sand-line)"
+   ],
+   [
+    "",
+    ".mk5d-sec h3",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5d-sep",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5d-strip",
+    "background",
+    "var(--sand-soft)"
+   ],
+   [
+    "",
+    ".mk5d-strip",
+    "color",
+    "var(--sand-text)"
+   ],
+   [
+    "",
+    ".mk5r-back",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".mk5r-back",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5r-cfm",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5r-fine",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5r-modal",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5r-ms",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5r-ok",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5r-ok",
+    "color",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5r-scrim",
+    "background",
+    "rgba(8,7,6,.6)"
+   ],
+   [
+    "",
+    ".mk5r-sl",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
@@ -2492,13 +4994,13 @@
     "",
     ".opill.issue",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".opill.issue",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -2552,7 +5054,7 @@
     "",
     ".ops .browmiss1b",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
@@ -2564,13 +5066,13 @@
     "",
     ".ops .callout b",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
     ".ops .callout",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
@@ -2756,19 +5258,19 @@
     "",
     ".ops .hmiss1b",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".ops .hmiss1b",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
     ".ops .hmiss1b",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -2948,7 +5450,7 @@
     "",
     ".ops .step .val.miss",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -3032,19 +5534,19 @@
     "",
     ".pbanner .pbis",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".pbanner .pbis",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
     ".pbanner .pbis",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -3074,19 +5576,19 @@
     "",
     ".pchip.pchipon",
     "background",
-    "var(--amber-soft)"
+    "var(--tint2)"
    ],
    [
     "",
     ".pchip.pchipon",
     "border-color",
-    "var(--amber)"
+    "var(--accent)"
    ],
    [
     "",
     ".pchip.pchipon",
     "color",
-    "var(--amber)"
+    "var(--accent)"
    ],
    [
     "",
@@ -3110,13 +5612,13 @@
     "",
     ".pdelta.up",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".pdelta.up",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -3260,19 +5762,19 @@
     "",
     ".pill.eqwarn i",
     "background",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
     ".pill.eqwarn",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".pill.eqwarn",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
@@ -3356,25 +5858,25 @@
     "",
     ".pill.twarn i",
     "background",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
     ".pill.twarn",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".pill.twarn",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
     ".pill.twarn",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -3428,25 +5930,25 @@
     "",
     ".pillstaged1b i",
     "background",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
     ".pillstaged1b",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".pillstaged1b",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
     ".pillstaged1b",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -3470,19 +5972,19 @@
     "",
     ".pillwarn1b",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".pillwarn1b",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
     ".pillwarn1b",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -3590,7 +6092,7 @@
     "",
     ".prow .pflag",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -3620,13 +6122,13 @@
     "",
     ".prow.big",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".prow.big",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
@@ -3663,6 +6165,18 @@
     ".railitem",
     "color",
     "inherit"
+   ],
+   [
+    "",
+    ".railitem.mk-drag",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".railitem.mk-xopen",
+    "background",
+    "var(--card)"
    ],
    [
     "",
@@ -3770,19 +6284,19 @@
     "",
     ".recpill.recpill-on",
     "background",
-    "var(--gold-soft)"
+    "var(--lav-soft)"
    ],
    [
     "",
     ".recpill.recpill-on",
     "border-color",
-    "var(--gold-line)"
+    "var(--lav-line)"
    ],
    [
     "",
     ".recpill.recpill-on",
     "color",
-    "var(--gold)"
+    "var(--lav-text)"
    ],
    [
     "",
@@ -3902,7 +6416,7 @@
     "",
     ".scopenote",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -3914,7 +6428,7 @@
     "",
     ".seal",
     "background",
-    "var(--gold-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
@@ -3926,13 +6440,13 @@
     "",
     ".sealbadge",
     "background",
-    "var(--gold)"
+    "var(--ink)"
    ],
    [
     "",
     ".sealbadge",
     "color",
-    "#1c1608"
+    "var(--card)"
    ],
    [
     "",
@@ -3950,7 +6464,7 @@
     "",
     ".sealbody .seachg .sv b",
     "color",
-    "var(--gold)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -3962,7 +6476,7 @@
     "",
     ".sealh b",
     "color",
-    "var(--gold)"
+    "var(--ink)"
    ],
    [
     "",
@@ -4244,13 +6758,49 @@
     "",
     ".tag",
     "background",
-    "var(--amber-soft)"
+    "var(--sky-soft)"
    ],
    [
     "",
     ".tag",
     "color",
-    "var(--amber)"
+    "var(--sky-text)"
+   ],
+   [
+    "",
+    ".tag.mk-sand",
+    "background",
+    "var(--sand-soft)"
+   ],
+   [
+    "",
+    ".tag.mk-sand",
+    "border-color",
+    "var(--sand-line)"
+   ],
+   [
+    "",
+    ".tag.mk-sand",
+    "color",
+    "var(--sand-text)"
+   ],
+   [
+    "",
+    ".tag.mk-sky",
+    "background",
+    "var(--sky-soft)"
+   ],
+   [
+    "",
+    ".tag.mk-sky",
+    "border-color",
+    "var(--sky-line)"
+   ],
+   [
+    "",
+    ".tag.mk-sky",
+    "color",
+    "var(--sky-text)"
    ],
    [
     "",
@@ -4614,151 +7164,427 @@
    ],
    [
     "",
-    ".vcerr",
-    "color",
-    "var(--red-text)"
+    ".vd-back",
+    "background",
+    "none"
    ],
    [
     "",
-    ".vcov",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vcsub",
+    ".vd-back",
     "color",
     "var(--mute)"
    ],
    [
     "",
-    ".vcsvnote",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vdate",
+    ".vd-back:hover",
     "background",
     "var(--board-2)"
    ],
    [
     "",
-    ".vdate",
+    ".vd-back:hover",
     "color",
     "var(--ink)"
    ],
    [
     "",
-    ".vdl.vdn",
+    ".vd-card",
     "background",
-    "var(--red-soft)"
+    "var(--card)"
    ],
    [
     "",
-    ".vdl.vdn",
-    "border-color",
-    "var(--red-line)"
-   ],
-   [
-    "",
-    ".vdl.vdn",
+    ".vd-cerr",
     "color",
     "var(--red-text)"
    ],
    [
     "",
-    ".vdl.vflat",
-    "background",
-    "var(--board-2)"
+    ".vd-cov",
+    "color",
+    "var(--mute2)"
    ],
    [
     "",
-    ".vdl.vflat",
+    ".vd-csvnote",
     "color",
     "var(--mute)"
    ],
    [
     "",
-    ".vdl.vup",
+    ".vd-dpbtn",
     "background",
-    "var(--green-soft)"
+    "var(--board-2)"
    ],
    [
     "",
-    ".vdl.vup",
+    ".vd-dpbtn",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-dpbtn:focus-visible,.vd-dpbtn[aria-expanded=\"true\"]",
     "border-color",
-    "var(--green-line)"
+    "var(--accent)"
    ],
    [
     "",
-    ".vdl.vup",
+    ".vd-dpbtn:hover",
+    "border-color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-fico",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-fico",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-figs",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-filed",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-fill",
+    "background",
+    "var(--green)"
+   ],
+   [
+    "",
+    ".vd-flab",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-foot",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-fresh",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-hc i",
+    "background",
+    "var(--green)"
+   ],
+   [
+    "",
+    ".vd-hc",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-hcap",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-hd",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-hh",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-kl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-ks",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-ks.vd-down",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-ks.vd-up",
+    "color",
+    "var(--mint-text)"
+   ],
+   [
+    "",
+    ".vd-kvl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-kvv small",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-lnk",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".vd-lnk",
     "color",
     "var(--accent)"
    ],
    [
     "",
-    ".verr",
-    "color",
-    "var(--red-text)"
-   ],
-   [
-    "",
-    ".vfill",
+    ".vd-menu",
     "background",
-    "var(--green)"
+    "var(--card)"
    ],
    [
     "",
-    ".vfoot",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vhc",
+    ".vd-more",
     "background",
-    "var(--green)"
+    "none"
    ],
    [
     "",
-    ".vimeta strong",
+    ".vd-more",
     "color",
     "var(--ink)"
    ],
    [
     "",
-    ".vimeta",
+    ".vd-more:hover",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".vd-none",
     "color",
     "var(--mute)"
    ],
    [
     "",
-    ".vklabel",
+    ".vd-note",
     "color",
     "var(--mute)"
    ],
    [
     "",
-    ".vlegend",
+    ".vd-num",
     "color",
     "var(--mute)"
    ],
    [
     "",
-    ".vlgcur",
+    ".vd-numv",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-ok span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-ok",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-opt",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".vd-opt",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-opt:hover",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-payl span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-peak",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-ph",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-pill",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-pill",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-pill.vd-on",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-pill.vd-on",
+    "border-color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-pill.vd-on",
+    "color",
+    "var(--board)"
+   ],
+   [
+    "",
+    ".vd-pill:hover",
+    "border-color",
+    "var(--line)"
+   ],
+   [
+    "",
+    ".vd-rico",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".vd-rico",
+    "color",
+    "var(--mint-text)"
+   ],
+   [
+    "",
+    ".vd-rl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-rowh",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-seg1",
     "background",
     "var(--green)"
    ],
    [
     "",
-    ".vmuted",
+    ".vd-seg2",
+    "background",
+    "var(--mint-line)"
+   ],
+   [
+    "",
+    ".vd-seg3",
+    "background",
+    "var(--line)"
+   ],
+   [
+    "",
+    ".vd-seldot",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-sk",
+    "background",
+    "var(--line2)"
+   ],
+   [
+    "",
+    ".vd-softp",
     "color",
     "var(--mute)"
    ],
    [
     "",
-    ".vnote",
+    ".vd-split",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-tip",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-tip",
+    "color",
+    "var(--board)"
+   ],
+   [
+    "",
+    ".vd-track",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-xl .vd-xmiss,.vd-xl .vd-xfut",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-xl",
     "color",
     "var(--mute)"
    ],
@@ -4782,54 +7608,6 @@
    ],
    [
     "",
-    ".vplabel",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vpre",
-    "background",
-    "var(--card)"
-   ],
-   [
-    "",
-    ".vpre",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vpre.vpon",
-    "background",
-    "var(--tint2)"
-   ],
-   [
-    "",
-    ".vpre.vpon",
-    "border-color",
-    "var(--accent)"
-   ],
-   [
-    "",
-    ".vpre.vpon",
-    "color",
-    "var(--accent)"
-   ],
-   [
-    "",
-    ".vrk",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vrl",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
     ".vs1",
     "background",
     "var(--green)"
@@ -4845,66 +7623,6 @@
     ".vs3",
     "background",
     "var(--mute2)"
-   ],
-   [
-    "",
-    ".vsel",
-    "background",
-    "var(--board-2)"
-   ],
-   [
-    "",
-    ".vsel",
-    "color",
-    "var(--ink)"
-   ],
-   [
-    "",
-    ".vsplit",
-    "background",
-    "var(--board-2)"
-   ],
-   [
-    "",
-    ".vsub",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vth",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vthr",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vtrack",
-    "background",
-    "var(--board-2)"
-   ],
-   [
-    "",
-    ".vvs",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vwarn",
-    "color",
-    "var(--amber)"
-   ],
-   [
-    "",
-    ".vxl",
-    "color",
-    "var(--mute)"
    ],
    [
     "",
@@ -4962,6 +7680,30 @@
    ],
    [
     "",
+    "button.del",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    "button.rgrip",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    "button.rgrip",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    "button.rgrip.mk-xopen",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
     "button.uploader",
     "background",
     "none"
@@ -4971,6 +7713,18 @@
     ".eqsc td:nth-child(2),.eqsc td:nth-child(3)",
     "color",
     "var(--mute)"
+   ],
+   [
+    "@media(max-width:920px)",
+    ".mk5b-pvtog",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "@media(max-width:920px)",
+    ".mk5b-pvtog",
+    "color",
+    "var(--ink)"
    ],
    [
     "@media(max-width:920px)",

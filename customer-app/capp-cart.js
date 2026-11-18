@@ -157,7 +157,9 @@
       snapshot() {
         if (!provenance) return { v: 2, lines: api.lines() };
         const byKey = new Map([...lines.values()].map((l) => [l.key, l.sn]));
-        return { v: 2, lines: api.lines().map((l) => ({ ...l, seen: byKey.get(l.key).map(copySeen) })) };
+        // G2 (advisor 11-16): each extra's NAME beside its key, so a later restore can name an extra the restaurant deleted
+        const xnOf = (l) => Object.fromEntries([...new Set(l.ex.flatMap((x) => Object.keys(x)))].sort().map((k) => [k, menu.extra(k).name]));
+        return { v: 2, lines: api.lines().map((l) => ({ ...l, seen: byKey.get(l.key).map(copySeen), xn: xnOf(l) })) };
       },
       // r3.4-1: the configurations whose CURRENT unit price differs from the one the customer last saw — one entry per changed
       // group (same dish, same configuration, same last-seen unit), in cart order. Instances with no provenance are not compared.
@@ -178,10 +180,13 @@
         }
         return out;
       },
-      // restore: a line that no longer fits the menu (unknown dish, a launcher, an extra not offered / unsupported / not a 1)
-      // is DROPPED and counted (the prototype's «N platos ya no están disponibles»); never silently re-priced
+      // restore: a line that no longer fits the menu (unknown dish, a launcher, an extra unsupported / not a 1) is DROPPED and
+      // counted (the prototype's «N platos ya no están disponibles»); never silently re-priced.
+      // G2 (advisor 11-16; OWNER-APPROVED MOCKUP-capp-extra-removed): an extra the menu NO LONGER OFFERS the dish is TRIMMED off
+      // its instance — the dish stays, re-priced from the menu (its provenance no longer matches ⇒ no frame-13 double report), and
+      // reported in `trimmed` [{ key, dish, extras: [stored name | null] }] for the cart note. Nothing else is ever trimmed.
       hydrate(snap) {
-        lines.clear(); seq = 0; let dropped = 0;
+        lines.clear(); seq = 0; let dropped = 0; const trimmed = new Map();
         const src = snap && snap.v === 2 && Array.isArray(snap.lines) ? snap.lines : [];
         for (const raw of src.slice().sort((a, b) => (a.added | 0) - (b.added | 0))) {
           try {
@@ -189,13 +194,25 @@
             const ex = Array.isArray(raw.ex) ? raw.ex : [];
             wantQty(raw.qty, 1);   // validated before the instances are read
             if (raw.qty !== ex.length) throw err('bad_line');
-            const inst = ex.map((x) => { const ks = Object.keys(x || {}); if (ks.some((k) => x[k] !== 1)) throw err('unsupported_extra_quantity'); return instOf(validConfig(d.key, ks)); });
+            const offered = new Set(menu.extrasFor(d.key).map((e) => e.key)), gone = new Set();
+            const inst = ex.map((x) => {
+              const ks = Object.keys(x || {}); if (ks.some((k) => x[k] !== 1)) throw err('unsupported_extra_quantity');
+              for (const k of ks) if (!offered.has(k)) gone.add(k);
+              return instOf(validConfig(d.key, ks.filter((k) => offered.has(k))));
+            });
             // r3.4-1: provenance is read only by a provenance cart; absent / malformed / not this instance's extras ⇒ null (never a guess)
             const sn = inst.map((x, i) => (provenance && Array.isArray(raw.seen) && raw.seen.length === inst.length ? validSeen(raw.seen[i], x) : null));
             const l = lineFor(d.key); put(l, [...l.ex, ...inst], [...l.sn, ...sn]); claim(l);   // the ONE write point (a repeated key merges, bounded by MAX_QTY)
+            if (gone.size) {   // recorded only once the line is written
+              const xn = raw.xn && typeof raw.xn === 'object' && !Array.isArray(raw.xn) ? raw.xn : {};
+              const t = trimmed.get(d.key) || { key: d.key, dish: d.name, extras: [], seen: new Set() };
+              for (const k of [...gone].sort()) { if (t.seen.has(k)) continue; t.seen.add(k); const n = xn[k]; t.extras.push(typeof n === 'string' && n.trim() && n.length <= 80 ? n : null); }
+              trimmed.set(d.key, t);
+            }
           } catch (_) { dropped += (raw && Number.isInteger(raw.qty) && raw.qty > 0 && raw.qty <= MAX_QTY) ? raw.qty : 1; }   // an out-of-range quantity counts as ONE unavailable line
         }
-        return { dropped };
+        const out = [...trimmed.values()].map(({ key, dish, extras }) => ({ key, dish, extras }));
+        return out.length ? { dropped, trimmed: out } : { dropped };
       },
     };
     return api;

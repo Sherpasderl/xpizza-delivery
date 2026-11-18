@@ -175,7 +175,8 @@ ok(`the scanner sees ${FILES.length} production files (tests and the seed/publis
      because they live in ../xpizza-portal — and test:portal, in no chain and no aggregate, LOOKED
      like their coverage. It also skipped tools/, exempting the guards themselves. It now walks the
      whole repo, and every package.json in it, both discovered from disk rather than declared, so a
-     new app or directory cannot appear outside the check. */
+     new app or directory cannot appear outside the check. (test:portal now reaches only the portal's
+     *.browser.test.mjs files; tools/app-suites.js plans every other portal file — portal light chain r0.) */
   const REPO = join(ROOT, '..');
 
   const manifests = [];

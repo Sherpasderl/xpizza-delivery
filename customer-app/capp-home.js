@@ -263,16 +263,23 @@
   const shellWrap = (vm, inner) => `${desknavHtml(vm)}${inner}${tabbarHtml(vm)}`;
 
   // ── INICIO ──
-  function rcardHtml(r, vm) {
+  // C-1b (D-3 r3 9.4): a «Para vos» card adds the heart at the photo's top-right (filled = saved; a tap toggles IN PLACE — its own
+  // data-act, so the delegated click finds it before the card) and, for a recent order, «Pediste el 28 oct» after the meta. Its meta is
+  // 9.4's ONE line «[★ rating ·] ● Abierto [· Pediste el …]» — no closing time, no fee (C1b-P2, 16b; advisor 11-14: both layouts). The heart
+  // is a span: the card itself is the store's button (a nested button is invalid); the store page's heart is the keyboard path
+  const HEART = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10A4.2 4.2 0 0 1 12 8a4.2 4.2 0 0 1 7.5 2.5c0 5.4-7.5 10-7.5 10z"/></svg>';
+  function rcardHtml(r, vm, pv) {
     const now = vm.now, auth = vm.promoAuth, open = !r.gone && isOpen(r.cfg, now);   // the promo's ADMITTED identity (the shell's)
     // the guest-only pill is reserved (hidden) while auth is unresolved, so its line never appears under a finger
     const deal = promoOn(r) && auth !== 'member' ? `<span class="pill deal"${auth === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true"'}>Envío gratis con tu cuenta</span>` : '';
     const pills = open ? [isValue(r, vm.platform) ? '<span class="pill value">Buen precio</span>' : '', deal].filter(Boolean).join('') : '';
     const fee = feeHtml(r, auth), rh = ratingHtml(r.ratings, now);
-    return `<button class="rcard${open ? '' : ' closed'}${rowCls(r)}" data-act="open-store" data-rid="${esc(r.id)}" aria-label="${esc(r.name)}${open ? '' : ', cerrado'}"${rowAttrs(r)}>
+    const heart = pv ? `<span class="heart${pv.fav ? ' on' : ''}" data-act="fav-card" data-rid="${esc(r.id)}" role="button" aria-pressed="${pv.fav}" aria-label="${pv.fav ? 'Quitar de favoritos' : 'Guardar en favoritos'}">${HEART}</span>` : '';
+    const again = pv && pv.again ? ` · <span class="again">Pediste el ${esc(pv.again)}</span>` : '';
+    return `<button class="rcard${open ? '' : ' closed'}${rowCls(r)}" data-act="open-store" data-rid="${esc(r.id)}" aria-label="${esc(r.name)}${open ? '' : ', cerrado'}"${rowAttrs(r)}>${heart}
     <span class="ph">${heroImg(r, true)}${logoChip(r, 'logo')}</span>
     <span class="rt"><span class="nm">${esc(r.name)}</span>${open && r.etaDel ? `<span class="eta">${r.etaDel[0]}–${r.etaDel[1]} min</span>` : ''}</span>
-    ${open ? `<span class="meta">${rh ? `${rh}<span>·</span>` : ''}<span class="dot"></span><b>Abierto</b>${vm.desk ? '' : ` · cierra ${esc(closesText(r.cfg, now))}`}${fee ? ` · ${fee}` : ''}</span>`   /* SBS asm9 D1: the desk = f1a's one line (no closing time) */
+    ${open ? `<span class="meta">${rh ? `${rh}<span>·</span>` : ''}<span class="dot"></span><b>Abierto</b>${pv ? '' : `${vm.desk ? '' : ` · cierra ${esc(closesText(r.cfg, now))}`}${fee ? ` · ${fee}` : ''}`}${again}</span>`   /* SBS asm9 D1: the desk = f1a's one line (no closing time); C-1b: a «Para vos» card = 9.4's one line */
       : `<span class="closedline"><span class="dot off"></span>Cerrado · ${esc(opensText(r.cfg, now))}${vm.schedulingLive && !r.gone && hasSlot(r.cfg, now) ? '<span class="lnk">Programar pedido</span>' : ''}</span>`}
     ${pills ? `<span class="pills">${pills}</span>` : ''}
   </button>`;
@@ -280,7 +287,7 @@
   const dcard = ({ r, it }) => `<button class="dcard" data-act="open-dish" data-rid="${esc(r.id)}" data-id="${esc(it.id)}" aria-label="${esc(it.n)} · ${esc(r.name)}"${rowAttrs(r)}><span class="ph"><img src="${esc(it.img)}" alt="" loading="lazy">${logoChip(r, 'lg')}</span><span class="nm">${esc(it.n)}</span><span class="prrow"><span class="pr">${esc(dishPrice(it))}</span></span><span class="st">${esc(r.name)}</span></button>`;
   function scard(r, vm) {
     const open = !r.gone && isOpen(r.cfg, vm.now), pickup = vm.filters.has('pickup');
-    const eta = open ? (pickup ? (r.etaPick ? `Listo en ≈ ${r.etaPick[1]} min` : '') : (r.etaDel ? `${r.etaDel[0]}–${r.etaDel[1]} min` : '')) : '';
+    const eta = open ? (pickup ? (r.etaPick && r.etaPick[1] > r.etaPick[0] ? `Listo en ${r.etaPick[0]}–${r.etaPick[1]} min` : '')   /* rule 11 (owed SBS 11-14): the window, never «≈ N» */ : (r.etaDel ? `${r.etaDel[0]}–${r.etaDel[1]} min` : '')) : '';
     // a store with no drawable fee keeps its line box (a zero-width space), so a fee that arrives later never grows the card
     const fee = feeHtml(r, vm.promoAuth);
     const line = open ? `<span>${fee || '​'}</span>` : `<span>Cerrado · ${esc(opensText(r.cfg, vm.now))}</span>`;
@@ -364,7 +371,16 @@
         + dishD('La casa recomienda', [...new Set(houseList.map((x) => x.r.name))].join(' · '), houseList.map(dcard))
         + meals.map(([title, d]) => dishD(title, [...new Set(d.map((x) => x.r.name))].join(' · '), d.map(dcard))).join('')
         + `<section class="hsec" aria-label="Todos los restaurantes">${hdD('Todos los restaurantes', allSub)}<div class="rgrid">${vis.map((r) => rcardHtml(r, vm)).join('')}</div></section>`;
-    const rows = vm.desk ? rowsDesk : rowsPhone;
+    // C-1b (9.4): «Para vos · Tus favoritos y los que ya pediste» — ONE row, only when the member has ≥ 1 favorite or recent order
+    // (vm.paraVos, the shell's per-visit list); before «Destacados»: the desk's 4-card grid, the phone's row of 300 px cards
+    const pv = Array.isArray(vm.paraVos) ? vm.paraVos.filter((x) => x && x.r) : [];
+    const pvCards = pv.map((x) => rcardHtml(x.r, vm, x)).join('');
+    const pvPhone = pv.length ? `<section class="hsec paravos" aria-label="Para vos"><div class="hd"><div><h2>Para vos</h2><p>Tus favoritos y los que ya pediste</p></div><button class="nxt" data-act="rownext" aria-label="Ver más de Para vos">${IC.chev}</button></div><div class="hrow pvrow">${pvCards}</div></section>` : '';
+    // C1b-P3 (advisor 11-14): the desk pages 4 at a time with ‹ › exactly like «Destacados» (only past 4; the shell resets the page per
+    // Inicio visit); no «Ver todo» until a destination is designed. The phone row scrolls instead (its «›»)
+    const pvPages = Math.max(1, Math.ceil(pv.length / PAGE)), pvPg = Math.min(Math.max(vm.pvPage | 0, 0), pvPages - 1);
+    const pvDesk = pv.length ? `<section class="hsec paravos" aria-label="Para vos">${hdD('Para vos', 'Tus favoritos y los que ya pediste', pvPages > 1 ? arrowsD('pv-prev', 'pv-next', pvPg === 0, pvPg >= pvPages - 1, 'Para vos') : '')}<div class="rgrid rgrid4">${pv.slice(pvPg * PAGE, pvPg * PAGE + PAGE).map((x) => rcardHtml(x.r, vm, x)).join('')}</div></section>` : '';
+    const rows = vis.length ? (vm.desk ? pvDesk + rowsDesk : pvPhone + rowsPhone) : (vm.desk ? rowsDesk : rowsPhone);
     return page(notes.join('') + cuisRow + fchips + rows, `<div class="credit">${nLive} restaurantes${c ? ` en ${esc(c)}` : ''}</div>`);
   }
 
@@ -431,15 +447,16 @@
     const known = vm.auth === 'guest';
     return shellWrap(vm, `<div class="flow"><div class="flowbar plain"><h1>Cuenta</h1></div>
     <div class="guestcard"${known ? '' : ' style="visibility:hidden" aria-hidden="true"'}><h2>Tu cuenta</h2>
-      <ul><li>${IC.check}<span>Efectivo al entregar o al recoger</span></li><li>${IC.check}<span>Recompensas, promos y envío gratis</span></li><li>${IC.check}<span>Programá pedidos y guardá tu dirección</span></li></ul>
+      <ul><li>${IC.check}<span>Opción de pago en efectivo y tarjeta</span></li><li>${IC.check}<span>Recompensas, promos y envío gratis</span></li><li>${IC.check}<span>Programá pedidos y guardá tu dirección</span></li></ul>
       ${known ? '<button class="primary" data-act="signin" data-ctx="account">Entrá o creá tu cuenta</button>' : '<span class="primary" aria-hidden="true">Entrá o creá tu cuenta</span>'}</div>
     <div class="rows">${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>Los de este teléfono</span></span>${IC.chev}</button>` : ''}${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}</div></div>`);
   }
 
-  // G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27, frames 1 / 1b / 4a / 4b): the MEMBER's Cuenta — .acct-hero (name, phone and
-  // email on three lines; the initial in the avatar), Pedidos / Promociones (.switch) / Ayuda, the session group, the muted version.
-  // vm.acct = { placeholder, name, phone, email, promos: true | false | null (no served value ⇒ inert, frame 4b), settled, version } — inert and
-  // still loading ⇒ frame 4b's ON-dimmed placeholder; inert and SETTLED (no stored consent) ⇒ OFF + dimmed (ruling (ii), OWNER-PENDING)
+  // G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27, frames 1 / 4a / 4b): the MEMBER's Cuenta — .acct-hero (name, phone and
+  // email on three lines; the initial in the avatar), Pedidos / Direcciones / Notificaciones / Ayuda, the session group, the muted version.
+  // MOCKUP-capp-notificaciones 2b (owner 11-16): ONE «Notificaciones» row (vm.notifRow { title, sub }) where «Promociones» was — the
+  // email + WhatsApp consent switch (and its frame 4b inert states) now lives on that screen (CappPush.screenHtml).
+  // vm.acct = { placeholder, name, phone, email, promos, settled, version }
   // C-6a (D-3 r3, DECIDED «Footer at launch: Ayuda · Términos · Privacidad only»): the desktop site footer, last in every Inicio state.
   // Desktop only (CSS). Ayuda = the platform's support chat (vm.helpOk — none configured ⇒ no Ayuda); Términos / Privacidad = the
   // platform's legal URLs once known (https only; never a dead link). While they may still arrive (vm.legalPending) their slots are
@@ -469,10 +486,11 @@
     if (t.screen === 'orders') return S_('Pedidos');
     if (t.screen === 'search') return t.q ? `«${t.q}» — Buscar · Sherpa` : S_('Buscar');
     if (t.screen === 'account') return S_('Cuenta');
+    if (t.screen === 'notifs') return S_('Notificaciones');
     return c ? `Sherpa — Pedí a domicilio en ${c}` : 'Sherpa — Pedí a domicilio';
   }
   function accountMemberHtml(vm) {
-    const a = vm.acct || {}, inert = typeof a.promos !== 'boolean';
+    const a = vm.acct || {};
     const hero = a.placeholder
       ? '<div class="acct-hero"><span class="av ph" aria-hidden="true"></span><div class="t"><span class="bar n"></span><span class="bar s"></span><span class="bar e"></span></div></div>'
       : `<div class="acct-hero"><span class="av" aria-hidden="true">${esc(String(a.name || '').trim().charAt(0).toUpperCase())}</span><div class="t"><b>${esc(a.name)}</b><span>${esc(a.phone)}</span><span>${esc(a.email)}</span></div></div>`;
@@ -480,7 +498,7 @@
     <div style="height:12px"></div>${hero}<div class="rows">
       ${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos</span>${IC.chev}</button>` : ''}
       <button class="rowbtn" data-act="addr">${IC.pin}<span class="t">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>
-      <button class="rowbtn" data-act="promos"${inert ? ' aria-disabled="true"' : ''}>${IC.bell}<span class="t">Promociones<span>Ofertas por correo y WhatsApp</span></span><span class="switch" role="switch" aria-checked="${inert ? !a.settled : a.promos}"${inert ? ' aria-disabled="true"' : ''}></span></button>
+      ${vm.notifRow && vm.notifRow.title ? `<button class="rowbtn" data-act="sub-notifs">${IC.bell}<span class="t">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}
       ${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}
       ${vm.updateRow ? `<button class="rowbtn" data-act="app-update-row">${IC.update}<span class="t">Actualizar la app<span>Hay una versión nueva en ${esc(vm.updateRow)}</span></span>${IC.chev}</button>` : ''}</div>
     <div class="rows sess">

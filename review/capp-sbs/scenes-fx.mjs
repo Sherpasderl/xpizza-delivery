@@ -12,7 +12,7 @@ import { toCheckout, click, GEO, NATIVE, place, homeReady, pinSet } from './scen
 const lightOnly = (m) => (theme) => (theme === 'light' ? m : null);
 const both = (m) => () => m;
 const member = (o = {}) => ({ seed: MEMBER_SEED(), fixtures: { ...(o.directory ? { directory: o.directory } : {}), extra: memberExtra(o) } });
-const RAW = 'complete_writer_raw';   // what the pinned directory writer emits TODAY (no pricing marker) — rule 10: zero claims
+const RAW = 'complete_writer_raw';   // the pinned directory writer's output for a promo without the pricing marker — rule 10: zero claims
 const ALL = '.hsec[aria-label="Todos los restaurantes"]';
 const openStore = (rid) => [homeReady, { run: `(document.querySelector('${ALL} .rcard[data-rid="${rid}"]') || document.querySelector('.rlist .rcard[data-rid="${rid}"]')).click()` },
   { until: 'document.querySelector(".sinfo, #top .info")', ms: 20000 }, { wait: 500 }];

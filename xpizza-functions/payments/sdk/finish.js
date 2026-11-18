@@ -15,6 +15,7 @@ const { REVISIT_MS } = require('./sweeper');
 const { answerOrder } = require('./status-endpoint');
 const { UNRESOLVED } = require('./replaces');
 const SA = require('./stored-admission');
+const FN = require('./fence');
 
 const RP = require('./replaces');
 const ownedBy = (c, o) => RP.ownedBy(c, o);
@@ -39,6 +40,10 @@ async function finishSdk(deps, c) {
   // asm7 gate P1: an EXISTING order's stored delivery facts, by Envío's resume guard (c.deliveryResume), BEFORE enrol / claim / dispatch
   const seen = await SA.storedAdmission(deps.db, c.orderId, c.deliveryResume);
   if (seen.refusal) return seen.refusal;
+  // THE FENCE (PLAN-sdk-fence-r1): a cancel of this caller's absent order fenced the id ⇒ refused closed, BEFORE finishSdk's first write
+  const fenceOwner = FN.ownerOf({ uid: c.uid, phoneHash: c.guestPhoneHash });
+  const FENCED = { outcome: 'closed', reason: 'fenced' };
+  if (await FN.isFenced(deps.db, c.orderId, fenceOwner)) return c.answerRefusal(FENCED);
   let token; let card; let authenticationIdentifier = null;
   if (c.card.kind === 'saved') {
     const s = await CARDS.resolveSavedCard(deps, c.uid, c.card.card_id);
@@ -62,6 +67,12 @@ async function finishSdk(deps, c) {
   const stored = tx.snapshot.val();
   const post = refusal || (stored ? bindingRefusal(c, stored) : { outcome: 'conflict', reason: 'conflict' });   // hosted's post-commit re-check
   if (post) return c.answerRefusal(post);
+  // the fence AGAIN, after the create-once order and before the claim / any attempt (store-then-check: a cancel that missed this order
+  // fenced it first ⇒ seen here) ⇒ this request's own pending order is cancelled (no money was asked) and refused closed
+  if (await FN.isFenced(deps.db, c.orderId, fenceOwner)) {
+    await C.cancelSdkOrder(deps, { orderId: c.orderId, kind: 'cancel', pendingOnly: true });
+    return c.answerRefusal(FENCED);
+  }
   // the race backstop: the txn REUSED an order the first read did not see (a concurrent same-owner create) ⇒ admitted here, still before
   // the claim and any dispatch (its only write so far is enrol's sweeper due entry)
   if (reused && seen.order == null) { const late = await SA.admitOrder(stored, c.orderId, c.deliveryResume); if (late) return late; }

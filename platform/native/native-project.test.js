@@ -78,6 +78,21 @@ assert.ok(/getBridge\(\)\.getWebView\(\)\.setBackgroundColor\(ContextCompat\.get
 assert.throws(() => A.mainActivity('Bad Id'), /appId/);
 ok('MainActivity (the bundle id\'s package): the WebView painted with R.color.page_bg in onCreate, onConfigurationChanged and onResume — after super');
 
+// «Abrir Ajustes» (MOCKUP-capp-push r1 F2c; Codex r1 P2-9, advisor ruling (a)): the first-party AppSettings plugin on both platforms.
+// Each platform is its own cell (a failure is recorded, the other still runs; both reported at the end) — so each RED is its own
+const settingsReds = [];
+const settingsCell = (name, fn) => { try { fn(); ok(name); } catch (e) { const m = `${name}: ${e.message.split('\n')[0]}`; settingsReds.push(m); console.log(`  ✗ ${m}`); } };
+settingsCell('AppSettings (Android): ACTION_APPLICATION_DETAILS_SETTINGS for the runtime package; registered in MainActivity.onCreate before super', () => {
+assert.equal(typeof A.appSettingsPlugin, 'function', '🔴 SETTINGS-ANDROID: the apply step carries the plugin');
+const asp = A.appSettingsPlugin(cfg.appId);
+assert.ok(asp.startsWith(`package ${cfg.appId};`) && /@CapacitorPlugin\(name = "AppSettings"\)/.test(asp) && /public class AppSettingsPlugin extends Plugin/.test(asp), '🔴 SETTINGS-ANDROID: the plugin, named AppSettings, in the activity\'s package');
+assert.ok(/new Intent\(Settings\.ACTION_APPLICATION_DETAILS_SETTINGS, Uri\.fromParts\("package", getContext\(\)\.getPackageName\(\), null\)\)/.test(asp), '🔴 SETTINGS-ANDROID: THIS app\'s settings page, its package read at runtime');
+assert.equal(asp.split(cfg.appId).length - 1, 1, 'the id appears ONCE — the package line; never hard-coded in the intent');
+assert.ok(/@PluginMethod\s+public void open\(PluginCall call\)/.test(asp) && /call\.reject\("settings_unavailable"\)/.test(asp), 'open() resolves, or rejects — never hangs');
+const oc = bodyOf('onCreate');
+assert.ok(oc.indexOf('registerPlugin(AppSettingsPlugin.class);') >= 0 && oc.indexOf('registerPlugin(AppSettingsPlugin.class);') < oc.indexOf('super.onCreate('), '🔴 SETTINGS-ANDROID: MainActivity registers it BEFORE super.onCreate (the bridge starts there)');
+});
+
 const csOf = (c) => JSON.parse(fs.readFileSync(path.join(NA, 'ios', 'App', 'Assets.xcassets', `${c}.colorset`, 'Contents.json'), 'utf8')).colors;
 const hex = (e) => '#' + ['red', 'green', 'blue'].map((k) => e.color.components[k].slice(2)).join('').toUpperCase();
 for (const [c, want] of [['PageBackground', pageBg], ['SplashBackground', { light: BA.COLORS.splash_background, dark: BA.COLORS.splash_background_night }]]) {
@@ -86,6 +101,11 @@ for (const [c, want] of [['PageBackground', pageBg], ['SplashBackground', { ligh
 }
 const sw = fs.readFileSync(path.join(NA, 'ios', 'App', 'ThemedBridgeViewController.swift'), 'utf8');
 assert.ok(/class ThemedBridgeViewController: CAPBridgeViewController/.test(sw) && /UIColor\(named: "PageBackground"\)/.test(sw) && /webView\?\.backgroundColor = bg/.test(sw) && /view\.backgroundColor = bg/.test(sw), '🔴 the iOS bridge controller paints PageBackground on the view + web view');
+settingsCell('AppSettings (iOS): in the already-compiled bridge controller file, registered in capacitorDidLoad, opens openSettingsURLString', () => {
+assert.ok(/override open func capacitorDidLoad\(\) \{\s*bridge\?\.registerPluginInstance\(AppSettingsPlugin\(\)\)/.test(sw), '🔴 SETTINGS-IOS: the bridge controller registers the plugin as the bridge loads');
+assert.ok(/@objc\(AppSettingsPlugin\)\s*public class AppSettingsPlugin: CAPPlugin, CAPBridgedPlugin/.test(sw) && /jsName = "AppSettings"/.test(sw) && /CAPPluginMethod\(name: "open", returnType: CAPPluginReturnPromise\)/.test(sw), '🔴 SETTINGS-IOS: the plugin AppSettings.open()');
+assert.ok(/URL\(string: UIApplication\.openSettingsURLString\)/.test(sw) && /UIApplication\.shared\.open\(url/.test(sw), '🔴 SETTINGS-IOS: THIS app\'s Settings page (openSettingsURLString)');
+});
 const sb = A.patchStoryboard(T('ios/Main.storyboard'));
 assert.ok(sb.includes('customClass="ThemedBridgeViewController" customModule="App" customModuleProvider="target"') && !sb.includes('customClass="CAPBridgeViewController"'), '🔴 Main.storyboard uses the themed controller');
 const sc = A.splashContents();
@@ -129,6 +149,7 @@ for (const [label, spoil, re] of [
   const dir = scratch();
   try {
     const done = A.apply(dir, RUN);
+    assert.ok(done.includes(MAIN_REL.replace('MainActivity.java', 'AppSettingsPlugin.java')), '🔴 SETTINGS-ANDROID: apply() writes the plugin next to MainActivity');
     assert.ok(done.includes(MAIN_REL) && done.includes('ios/App/App/ThemedBridgeViewController.swift') && done.includes('- ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732.png'), 'the applied set (incl. the template splash PNGs removed)');
     const t1 = tree(dir);
     assert.strictEqual(t1['android/app/src/main/res/values/styles.xml'], st, 'the applied styles = the patch of the real template');
@@ -160,4 +181,5 @@ for (const [label, spoil, re] of [
 assert.throws(() => A.apply(fs.mkdtempSync(path.join(os.tmpdir(), 'capp-empty-')), RUN), /absent — run `npx cap add` first/, 'nothing is applied onto a project that does not exist');
 assert.strictEqual(deps['@capacitor/status-bar'] && deps['@capacitor/status-bar'].split('.')[0], deps['@capacitor/core'].split('.')[0], '🔴 @capacitor/status-bar on the core\'s major (style only — §4)');
 ok('apply() onto the REAL template layout: all-or-nothing preflight (a re-parented theme, a missing / customized file ⇒ refused, NO file changed), containment (a symlink escape ⇒ refused, the outside untouched), idempotent; status-bar pinned');
+assert.deepStrictEqual(settingsReds, [], `🔴 SETTINGS: ${settingsReds.join(' | ')}`);
 console.log(`native-project: OK (${n})`);
