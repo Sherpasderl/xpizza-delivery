@@ -106,8 +106,11 @@ try {
         calls.push(src.slice(nd.arguments[0].start, nd.arguments[0].end));
       }
     });
-    assert.deepStrictEqual(calls, ['oe.reason', "'client_update_race'", "'binding_format_invalid'", "'conflict'", "'binding_format_invalid'", "acq.reason || 'conflict'", "'closed'"],
-      'exactly seven typed sites, in source order: 818 classifier, 832 race, 1504 classify-binding, 1698 restaurant, 1706 degraded-binding, 1813 acquire-conflict, 1817 acquire-closed');
+    // PLAN-3a-order-owner (advisor APPROVED 2026-11-18): + the two non_owner refusals — createOrder's (first, before the classifier)
+    // and chargeOnlineOrder's (beside the restaurant guard) — both the constant neutral reason (order-owner.js NON_OWNER_REASON)
+    const OWN = "require('./order-owner').NON_OWNER_REASON";
+    assert.deepStrictEqual(calls, [OWN, 'oe.reason', "'client_update_race'", "'binding_format_invalid'", "'conflict'", OWN, "'binding_format_invalid'", "acq.reason || 'conflict'", "'closed'"],
+      'exactly nine typed sites, in source order: createOrder non_owner, classifier, race, classify-binding, restaurant, hosted non_owner, degraded-binding, acquire-conflict, acquire-closed');
     // no 409 anywhere in the runtime builds a literal whose error looks like an existing-order refusal
     for (const f of runtimeFiles()) {
       walk(ast(fs.readFileSync(f, 'utf8')), (nd) => {
@@ -122,7 +125,7 @@ try {
       });
     }
   }
-  ok('the seven logical refusal branches each answer through OE.orderExistsBody with the ruled reason; no other 409 in the runtime builds a conflict/closed error');
+  ok('the nine logical refusal branches (the seven + the two order-owner non_owner refusals) each answer through OE.orderExistsBody with the ruled reason; no other 409 in the runtime builds a conflict/closed error');
 
   // ── 4. sensitivity: the scanner sees a planted emitter and ignores comments / log strings ─────────────────────────
   {

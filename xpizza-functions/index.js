@@ -896,6 +896,7 @@ createOrderApp.all('*', async (req, res) => {
     const existing = await db.ref(`orders/${orderId}`).once('value');
     if (existing.exists()) {
       const ev = existing.val();
+      const own = require('./order-owner').ownerOf(ev, customer_uid); if (own === 'non_owner') return res.status(409).json(OE.orderExistsBody(require('./order-owner').NON_OWNER_REASON, orderId));   // PLAN-3a-order-owner: a DIFFERENT verified identity learns nothing (owner §5 = A)
       // 1D D4-b: ONLY a record tagged canonical costs a canonical recompute (from the same snapshot `ev`);
       // an untagged record takes today's path with no extra work (call-sequence golden).
       const canonicalIncoming = (ev && ev.fp_format !== undefined && ev.fp_format === 'canonical')
@@ -927,7 +928,7 @@ createOrderApp.all('*', async (req, res) => {
         return res.status(409).json(OE.orderExistsBody(oe.reason, orderId));
       }
       console.log(`createOrder: order ${orderId} already exists, returning idempotent`);
-      return res.status(200).json({ ok: true, idempotent: true, order_id: orderId, tracking_token: ev.tracking_token || null });
+      return res.status(200).json({ ok: true, idempotent: true, order_id: orderId, tracking_token: own === 'owner' ? (ev.tracking_token || null) : null });
     }
   } catch (e) {
     console.error('createOrder: existence check failed', e);
@@ -2069,6 +2070,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     console.warn(`chargeOnlineOrder: ${orderId} exists for a different restaurant — conflict`);
     return res.status(409).json(OE.orderExistsBody('conflict', orderId));   // D4-c5 P1: no disclosure of the other restaurant
   }
+  if (probeOrder && require('./order-owner').ownerOf(probeOrder, customer_uid) === 'non_owner') return res.status(409).json(OE.orderExistsBody(require('./order-owner').NON_OWNER_REASON, orderId));   // PLAN-3a-order-owner: before every reserve / acquire
   /* 1D D4-b B1-c(1)/(3) — the DEGRADED path: classify threw, so THIS snapshot decides the order's binding format. A legacy
      (or absent) order continues exactly as today's fail-open. A malformed tag refuses. A canonical order is checked here,
      before any reserve: an uncomputable canonical fingerprint refuses (the earlier bookkeeping writes already happened —
