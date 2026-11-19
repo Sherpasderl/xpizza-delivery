@@ -25134,8 +25134,8 @@
   "slice": "s7a1",
   "label": "writeStrict trusts the write (no read-back byte compare)",
   "file": "../customer-app/capp-api.js",
-  "from": "function writeStrict(k, v) { try { if (!storage) return false; const s = JSON.stringify(v); storage.setItem(k, s); return storage.getItem(k) === s; } catch (_) { return false; } }",
-  "to": "function writeStrict(k, v) { try { if (!storage) return false; const s = JSON.stringify(v); storage.setItem(k, s); return true; } catch (_) { return false; } }",
+  "from": "function writeStrict(k, v) { try { if (!storage || voids(v)) return false; const s = JSON.stringify(v); storage.setItem(k, s); return storage.getItem(k) === s; } catch (_) { return false; } }",
+  "to": "function writeStrict(k, v) { try { if (!storage || voids(v)) return false; const s = JSON.stringify(v); storage.setItem(k, s); return true; } catch (_) { return false; } }",
   "command": [
    "node",
    "--test",
@@ -41526,8 +41526,8 @@
   "slice": "c-dir-1-seed",
   "label": "forgetMember does nothing (a signed-out checkout keeps her address)",
   "file": "../customer-app/capp-ui.js",
-  "from": "forgetMember() {\n        if (dead) return;",
-  "to": "forgetMember() {\n        return;",
+  "from": "(before the host clears her records)\n        if (dead) return;",
+  "to": "(before the host clears her records)\n        return;",
   "command": [
    "node",
    "--test",
@@ -42149,6 +42149,108 @@
   ],
   "kills_with": [
    "R3-CONFIRM: the 200 moves «en uso»"
+  ]
+ },
+ {
+  "id": "r3-pk-01",
+  "slice": "r3-pk",
+  "label": "r3 (i): a member leaving clears none of her order records",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      clearOrderRecords();\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=PAYKEYS-CLEAR",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-PAYKEYS: no order record of hers"
+  ]
+ },
+ {
+  "id": "r3-pk-02",
+  "slice": "r3-pk",
+  "label": "r3 (i): her return in progress (capp:return) stays on the device",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const ks = new Set([CappShell.RETURN_KEY]);",
+  "to": "const ks = new Set();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=RETURN-RESUME",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-RETURN-RESUME: her return in progress left the device"
+  ]
+ },
+ {
+  "id": "r3-pk-03",
+  "slice": "r3-pk",
+  "label": "r3 (i): a late reply re-writes her payment record (writeJSON ignores the void)",
+  "file": "../customer-app/capp-api.js",
+  "from": "const writeJSON = (k, v) => { try { if (!storage || voids(v)) return false;",
+  "to": "const writeJSON = (k, v) => { try { if (!storage) return false;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=PAYKEYS-LATE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-PAYKEYS-LATE: the late reply wrote nothing of hers"
+  ]
+ },
+ {
+  "id": "r3-pk-04",
+  "slice": "r3-pk",
+  "label": "r3 (i): a late reply re-writes her completion marker (writeStrict ignores the void)",
+  "file": "../customer-app/capp-api.js",
+  "from": "function writeStrict(k, v) { try { if (!storage || voids(v)) return false;",
+  "to": "function writeStrict(k, v) { try { if (!storage) return false;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SEND-RESET",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-SEND-RESET: the late reply re-created no order record of hers"
+  ]
+ },
+ {
+  "id": "r3-pk-05",
+  "slice": "r3-pk",
+  "label": "r3 (i): the store never voids her order ids on a member leaving",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        try { if (api && typeof api.identityReset === 'function') api.identityReset(); } catch (_) {}   // r3 (i): her order ids are void (before the host clears her records)\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=PAYKEYS-LATE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-PAYKEYS-LATE: the late reply wrote nothing of hers"
+  ]
+ },
+ {
+  "id": "r3-pk-06",
+  "slice": "r3-pk",
+  "label": "r3 (i): her sent-order record (the copy kept for the hosted return / SDK reload) stays on the device",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "pending_place|pending_pay|placed|cart|sent_order)$/;",
+  "to": "pending_place|pending_pay|placed|cart)$/;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=PAYKEYS-CLEAR",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-PAYKEYS: no order record of hers"
   ]
  }
 ]

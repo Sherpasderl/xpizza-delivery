@@ -1259,6 +1259,7 @@
       S.loc = null; S.locPick = null; try { storage && storage.removeItem(LOC_KEY); } catch (_) {}
       const sending = !!(S.store && S.store.ui && S.store.ui.state && S.store.ui.state.screen === 'sending');
       try { if (S.store && S.store.ui && typeof S.store.ui.forgetMember === 'function') S.store.ui.forgetMember(); } catch (_) {}
+      clearOrderRecords();
       // advisor ruling 11-18: «Enviando» never outlives the identity — the mount goes (its late reply renders nothing) and Inicio shows
       if (sending) { unmountStore(); nav.tab({ name: 'home' }); }
     }
@@ -1277,6 +1278,17 @@
       S.book = b;
       if (S.locPick !== 'device') S.locPick = S.book.sel ? 'saved' : null;
       bookSave(); schedule(); return b;
+    }
+    // r3 (advisor 11-18 (i), money + identity): every per-store ORDER record of the member who left — pending_place (an SDK one too: no
+    // exception), pending_pay, placed, cart, sent_order, for EVERY store — and capp:return leave the device. The server owns completion
+    // (the hosted webhook, sweepStalePending, the SDK sweeper), so nothing of a payment depends on them; the open store's API voided her
+    // order ids first (forgetMember), so a late reply never writes them back
+    const ORDER_REC = /^capp:[^:]+:(?:pending_place|pending_pay|placed|cart|sent_order)$/;
+    function clearOrderRecords() {
+      if (!storage) return;
+      const ks = new Set([CappShell.RETURN_KEY]);
+      try { for (let i = 0; i < storage.length; i++) { const k = storage.key(i); if (k && ORDER_REC.test(k)) ks.add(k); } } catch (_) {}
+      for (const k of ks) { try { storage.removeItem(k); } catch (_) {} }
     }
     function bookIdentity() {
       const uid = S.member && S.member.uid ? S.member.uid : null;

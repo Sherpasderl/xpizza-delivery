@@ -2360,7 +2360,7 @@ async function pedidosBoot(db, opts = {}) {
     if (opts.push && /CustomerPush/.test(pth)) return opts.push.handler(u, i);   // push stage 2: 3a's REAL customer-push handlers
     return pth.endsWith('/getMyOrders') ? mo.handler(u, i) : g.fetch(u, i); };
   const fb = fakeFirebase({ persisted: 'u_ana', tokExp: T0 + 3600e3, ...(opts.fbOpts || {}) });
-  const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, readPublic: opts.readPublic, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation, ...(opts.envelope ? { envelope: opts.envelope } : {}), ...(opts.preMount ? { preMount: opts.preMount } : {}), ...(opts.dirScript ? { dirScript: opts.dirScript } : {}), ...(opts.media ? { media: opts.media } : {}) });
+  const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, readPublic: opts.readPublic, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation, ...(opts.search ? { search: opts.search } : {}), ...(opts.envelope ? { envelope: opts.envelope } : {}), ...(opts.preMount ? { preMount: opts.preMount } : {}), ...(opts.dirScript ? { dirScript: opts.dirScript } : {}), ...(opts.media ? { media: opts.media } : {}) });
   if (!opts.noFlush) { await flush(); await flush(); }
   return { S, mo, fb, g };
 }
@@ -6308,6 +6308,7 @@ for (const [how, go] of [['a SIGN-OUT', (fb) => signOutNow(fb)], ['an ACCOUNT SW
       for (const t of ['Enviando tu pedido', 'Pedido recibido', 'Casa · Col. Trejo', item]) assert.ok(!body().includes(t), `🔴 R3-SEND-RESET: the late reply renders nothing («${t}»)`);
       assert.equal(S.ui.state.tab, 'home', 'still Inicio');
       assert.deepEqual(api.filter((u) => /^\/x\/(c|p|s)/.test(u)), ['/x/c'], '🔴 R3-SEND-RESET: ONE createOrder, then no retry, charge or payment poll after the reset (rule 17)');
+      assert.deepEqual([...st._m.keys()].filter((k) => /^capp:(?:[a-z0-9_-]+:(?:pending_place|pending_pay|placed|cart|sent_order)|return)$/.test(k)), [], '🔴 R3-SEND-RESET: the late reply re-created no order record of hers (no marker, no record)');
     } finally { S.w.close(); }
   });
 }
@@ -6559,4 +6560,128 @@ test('r3 STALE-READ: a profile read that STARTED before a pick landed never over
     assert.deepEqual([addrStored(st).default_address, addrStored(st).default_address_rev], [AID.trabajo, 1], '🔴 R3-STALE-READ: nor the device copy');
     noProblems(addr);
   } finally { S.w.close(); }
+});
+
+// ── direcciones r3 · THE PAYMENT-KEY RESET (advisor rulings 11-18 (i): its own commit; money + identity). A member sign-out / switch
+// removes every per-store order record of hers (pending_place, pending_pay, placed, cart, sent_order — every rid) and capp:return, with
+// NO SDK exception; a reply landing AFTER the reset never re-creates them (the order API's identity reset voids her order ids). The
+// server owns completion: the hosted webhook / sweepStalePending / the SDK sweeper resolve a mid-flight payment without this device ──
+const ORDER_KEYS = /^capp:(?:[a-z0-9_-]+:(?:pending_place|pending_pay|placed|cart|sent_order)|return)$/;
+const orderKeys = (st) => [...st._m.keys()].filter((k) => ORDER_KEYS.test(k)).sort();
+// Ana's member CARD send on the real writers: her seeded checkout → card → tip 0 → «Hacer pedido»; createOrder answers, then the charge
+// (/x/p) answers with the hosted checkout — or is HELD until the test releases it
+async function memberCardSend({ holdCharge = false } = {}) {
+  const sent = []; let releaseCharge = null;
+  const pay = { checkout_url: 'https://pay.test/1', poll_token: 'pt_1', attempt_id: 'a1' };
+  const apiFetch = (u, i) => { const body = i && i.body ? JSON.parse(i.body) : null; sent.push([u.split('?')[0], body]);
+    if (u.startsWith('/x/q')) return quoteOk(u, i);
+    if (u.startsWith('/x/c')) return Promise.resolve({ status: 200, ok: true, json: async () => ({ ok: true, order_id: body.order_id }) });
+    if (u.startsWith('/x/p')) { const r = { status: 200, ok: true, json: async () => pay }; return holdCharge ? new Promise((res) => { releaseCharge = () => res(r); }) : Promise.resolve(r); }
+    return new Promise(() => {}); };
+  const b = await seedCheckout({ apiFetch });
+  const { S } = b; await flush(); await flush();
+  if (S.q('[data-act="pay"][data-val="online"]')) { S.click('[data-act="pay"][data-val="online"]'); await flush(); }
+  S.click('#cta'); await flush();
+  await until(() => S.q('[data-act="tipc"][data-val="0"]'), 4000).catch(() => {}); if (S.q('[data-act="tipc"][data-val="0"]')) { S.click('[data-act="tipc"][data-val="0"]'); await flush(); }
+  if (S.q('[data-act="tip-place"]')) { S.click('[data-act="tip-place"]'); await flush(); }   // the tip step's own «Hacer pedido»
+  if (S.q('#layer [data-act="placing-go"]')) { S.click('#layer [data-act="placing-go"]'); await flush(); await flush(); }
+  await flush(700);
+  return { ...b, sent, release: () => releaseCharge && releaseCharge() };
+}
+for (const [how, go] of [['a SIGN-OUT', (fb) => signOutNow(fb)], ['an ACCOUNT SWITCH', (fb, S, st) => switchTo(S, fb, st, 'u_bob')]]) {
+  test(`r3 PAYKEYS-CLEAR: ${how} after her card send removes every order record of hers from the device (every store, capp:return)`, async () => {
+    const { S, fb, st, sent } = await memberCardSend();
+    try {
+      assert.ok(sent.some((x) => x[0] === '/x/p'), `premise: the charge was sent (${sent.map((x) => x[0]).join(',')})`);
+      assert.ok(orderKeys(st).includes('capp:x_pizza:pending_pay'), `premise: the real writer stashed her payment (${orderKeys(st).join(',')})`);
+      assert.ok(orderKeys(st).includes('capp:x_pizza:sent_order'), `premise: the real writer kept her sent order (${orderKeys(st).join(',')})`);
+      await go(fb, S, st);
+      assert.deepEqual(orderKeys(st), [], '🔴 R3-PAYKEYS: no order record of hers is left on the device');
+    } finally { S.w.close(); }
+  });
+  test(`r3 PAYKEYS-LATE: ${how} while her charge is in flight — the reply landing after the reset never re-creates her payment record`, async () => {
+    const { S, fb, st, sent, release } = await memberCardSend({ holdCharge: true });
+    try {
+      assert.ok(sent.some((x) => x[0] === '/x/p'), 'premise: the charge is in flight (held)');
+      await go(fb, S, st);
+      release(); await flush(); await flush(); await flush(700);
+      assert.equal(st.getItem('capp:x_pizza:pending_pay'), null, '🔴 R3-PAYKEYS-LATE: the late reply wrote nothing of hers');
+      assert.deepEqual(orderKeys(st), [], '🔴 R3-PAYKEYS-LATE: no order record of hers at all');
+    } finally { S.w.close(); }
+  });
+}
+test('r3 RETURN-FOREIGN: after a switch, a payment return for HER order on this device polls nothing and shows nothing of hers (no owner record left)', async () => {
+  const { S, fb, st, sent } = await memberCardSend();
+  let oid = null;
+  try {
+    const ch = sent.find((x) => x[0] === '/x/p' && x[1] && x[1].order_id); assert.ok(ch, 'premise: her charge'); oid = ch[1].order_id;
+    await switchTo(S, fb, st, 'u_bob');
+  } finally { S.w.close(); }
+  const calls = [];
+  const apiFetch = (u, i) => { calls.push(u.split('?')[0]); return u.startsWith('/x/q') ? quoteOk(u, i) : new Promise(() => {}); };
+  const { S: B } = await pedidosBoot({}, { storage: st, apiFetch, search: `?pay=complete&order=${oid}&t=pt_1`, fbOpts: { persisted: 'u_bob' } });
+  try {
+    await flush(); await flush(700);
+    assert.deepEqual(calls.filter((u) => u === '/x/s'), [], '🔴 R3-RETURN-FOREIGN: no payment poll for her order from Bob\'s session');
+    const shown = B.w.document.body.textContent + JSON.stringify((B.ui.store() && B.ui.store().ui.state.flow) || {});
+    for (const t of ['Casa azul', 'Col. Trejo', '9999']) assert.ok(!shown.includes(t), `🔴 R3-RETURN-FOREIGN: «${t}» (hers) is nowhere`);
+  } finally { B.w.close(); }
+});
+for (const [how, go] of [['a SIGN-OUT', (fb) => signOutNow(fb)], ['an ACCOUNT SWITCH', (fb, S, st) => switchTo(S, fb, st, 'u_bob')]]) {
+  test(`r3 FROZEN-CART: ${how} after her card send — the next person's cart in that store is not frozen on her order`, async () => {
+    const { S, fb, st } = await memberCardSend();
+    try {
+      assert.ok(st.getItem('capp:x_pizza:cart') && /frozen_for/.test(st.getItem('capp:x_pizza:cart')), `premise: her cart is frozen on her order (${st.getItem('capp:x_pizza:cart')})`);
+      await go(fb, S, st);
+      assert.equal(st.getItem('capp:x_pizza:cart'), null, '🔴 R3-FROZEN-CART: her frozen cart left the device');
+      S.ui.nav.tab({ name: 'home' }); await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+      const u = S.ui.store().ui, key = u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key;
+      u.cart.inc(key); u.render();
+      assert.equal(u.cart.count(), 1, '🔴 R3-FROZEN-CART: the next person\'s cart takes items (not frozen on her order)');
+    } finally { S.w.close(); }
+  });
+}
+test('r3 SDK-RECORD: her UNRESOLVED in-app card record (the real writer\'s) leaves the device on a switch — no exception; a fresh mount finds nothing to restore or poll', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true }));
+  const A = require('./capp-api.js'), CC = require('./capp-checkout.js');
+  const OPEN = Array.from({ length: 7 }, () => [0, 0, 23, 59]);
+  const EP = Object.fromEntries(['quoteOrder', 'createOrder', 'chargeOnlineOrder', 'paymentStatus', 'verifyCheckoutCode', 'placeSdkOrder', 'placeSdkStatus', 'cancelSdkPending', 'listCards'].map((k) => [k, `https://fn.test/${k}`]));
+  const ana = { uid: 'u_ana', idToken: null, getIdToken: async () => TOK('u_ana') };
+  const mk = () => A.createApi({ config: { restaurantId: 'x_pizza', orderIdPrefix: 'XP', pendingPayKey: 'capp:x_pizza:pending_pay', endpoints: EP, hours: OPEN, sdkCheckout: true },
+    fetch: async () => { throw new TypeError('Failed to fetch'); }, storage: st, now: () => T0, sleep: async () => {}, setInterval: () => 0, clearInterval: () => {},
+    member: () => ana });   // ONE member object: the API binds a token to the member it read (memberOf() === m)
+  const f = CC.freshFlow(null); CC.setPin(f, casaOf().lat, casaOf().lng, true); Object.assign(f, { details: 'Casa azul, portón negro', name: 'Ana Pérez', phone: '99990000', pay: 'online' }); CC.chooseTip(f, 20);
+  const ctx = { restaurantId: 'x_pizza', items: [{ id: 'm', name: 'Margherita', dish_id: 'd_1', qty: 1, price: 250, subtotal: 250, extras: [], extrasTotal: 0 }], itemsText: '1x Margherita (L250)', member: null };
+  let out = null; try { out = await mk().placeSdk({ flow: f, ctx, sig: 's1', expectedNetCents: 31500, card: { kind: 'saved', card_id: 'CV4242000000000000AB' } }); } catch (e) { out = { threw: String(e && (e.code || e.message)) }; }
+  const rec0 = JSON.parse(st.getItem('capp:x_pizza:pending_place') || 'null');
+  assert.ok(rec0 && rec0.sdk === true && rec0.unresolved === true, `premise: the real writer left her unresolved SDK record (${JSON.stringify(rec0).slice(0, 160)}; placeSdk → ${JSON.stringify(out).slice(0, 200)})`);
+  const { S, fb } = await dirBoot({ storage: st });
+  try {
+    await switchTo(S, fb, st, 'u_bob');
+    assert.equal(st.getItem('capp:x_pizza:pending_place'), null, '🔴 R3-SDK-RECORD: her SDK record (and its inputs) left the device — no exception');
+    const fresh = mk();
+    assert.ok(!fresh.sdkLive(), '🔴 R3-SDK-RECORD: a fresh mount finds nothing live (nothing to restore, no status to poll)');
+    assert.ok(!fresh.sdkInputs(), 'and no inputs of hers');
+  } finally { S.w.close(); }
+});
+test('r3 RETURN-RESUME: her payment return in progress (capp:return, persisted by the real boot) leaves the device on a sign-out — a reload never resumes her poll', async () => {
+  const { S, st, sent } = await memberCardSend();
+  let oid = null;
+  try { const ch = sent.find((x) => x[0] === '/x/p' && x[1] && x[1].order_id); assert.ok(ch, 'premise: her charge'); oid = ch[1].order_id; } finally { S.w.close(); }
+  const polls = [];
+  const apiFetch = (u, i) => { if (u.startsWith('/x/s')) polls.push(u); return u.startsWith('/x/q') ? quoteOk(u, i) : new Promise(() => {}); };
+  const { S: R1, fb } = await pedidosBoot({}, { storage: st, apiFetch, search: `?pay=complete&order=${oid}&t=pt_1` });
+  try {
+    await flush(); await flush(700);
+    assert.ok(st.getItem('capp:return'), 'premise: the real boot persisted her return in progress');
+    assert.ok(polls.length >= 1, 'premise: her own return polls (it is hers)');
+    await signOutNow(fb);
+    assert.equal(st.getItem('capp:return'), null, '🔴 R3-RETURN-RESUME: her return in progress left the device');
+  } finally { R1.w.close(); }
+  polls.length = 0;
+  const { S: R2 } = await pedidosBoot({}, { storage: st, apiFetch, fbOpts: { persisted: null } });
+  try {
+    await flush(); await flush(700);
+    assert.deepEqual(polls, [], '🔴 R3-RETURN-RESUME: a reload by the next person never resumes her payment poll');
+  } finally { R2.w.close(); }
 });

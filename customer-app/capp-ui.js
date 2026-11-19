@@ -2543,6 +2543,7 @@
         if (S.screen === 'checkout') render();
       },
       forgetMember() {
+        try { if (api && typeof api.identityReset === 'function') api.identityReset(); } catch (_) {}   // r3 (i): her order ids are void (before the host clears her records)
         if (dead) return;
         const sending = S.screen === 'sending';
         if (S.layerKind === 'addrpick' || S.layerKind === 'pin') closeLayer();

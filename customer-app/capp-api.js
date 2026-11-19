@@ -146,14 +146,22 @@
 
     // ── storage (every access guarded: unavailable storage reads as empty and refuses writes) ──
     const readJSON = (k) => { try { const v = storage && storage.getItem(k); return v ? JSON.parse(v) : null; } catch (_) { return null; } };
-    const writeJSON = (k, v) => { try { if (!storage) return false; const s = JSON.stringify(v); storage.setItem(k, s); return storage.getItem(k) === s; } catch (_) { return false; } };
+    // r3 (advisor 11-18 (i)): THE identity reset — a member left (sign-out / switch). Every order id on this store's records becomes VOID: no
+    // record of it is ever written on this device again (a late reply — the charge's pay stash, a settle, a completion marker — lands on
+    // nothing; the server resolves the order without this device). Fixed ONCE: the two writers every order record goes through refuse it
+    const voided = new Set();
+    const voids = (v) => !!v && typeof v === 'object' && typeof v.order_id === 'string' && voided.has(v.order_id);
+    function identityReset() {
+      for (const k of [PLACE_KEY, PAY_KEY, PLACED_KEY]) { if (!k) continue; let r = null; try { r = storage ? JSON.parse(storage.getItem(k) || 'null') : null; } catch (_) { r = null; } if (r && typeof r.order_id === 'string') voided.add(r.order_id); }
+    }
+    const writeJSON = (k, v) => { try { if (!storage || voids(v)) return false; const s = JSON.stringify(v); storage.setItem(k, s); return storage.getItem(k) === s; } catch (_) { return false; } };
     const removeKey = (k) => { try { if (storage) storage.removeItem(k); } catch (_) {} };
     // S7a-1 r3 §1.5: FAILURE-AWARE variants, used ONLY by the hosted reconciliation / freeze / handoff paths (the helpers above are
     // unchanged): a read error or unparseable value is NOT absence; a write is verified byte for byte; a removal is verified absent
     function readStrict(k) {
       try { if (!storage) return { ok: false }; const v = storage.getItem(k); if (v === null || v === undefined) return { ok: true, value: null }; return { ok: true, value: JSON.parse(v) }; } catch (_) { return { ok: false }; }
     }
-    function writeStrict(k, v) { try { if (!storage) return false; const s = JSON.stringify(v); storage.setItem(k, s); return storage.getItem(k) === s; } catch (_) { return false; } }
+    function writeStrict(k, v) { try { if (!storage || voids(v)) return false; const s = JSON.stringify(v); storage.setItem(k, s); return storage.getItem(k) === s; } catch (_) { return false; } }
     function removeStrict(k) { try { if (!storage) return false; storage.removeItem(k); return storage.getItem(k) === null; } catch (_) { return false; } }
     const newGen = () => { const b = randomBytes(8); let r = ''; for (const x of b) r += ID_CHARS[x % 32]; return r; };
 
@@ -1178,7 +1186,7 @@
 
     return { quote, latestQuote, place, placeSdk, sdkResend, sdkStatus, sdkResolve, sdkSwitchToCash, sdkLive, sdkInputs, listCards, sdkPayStatus, sdkPayCached, lastTip, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, phoneKeyOf, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
-      confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther, heldBySdk };
+      confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther, heldBySdk, identityReset };
   }
 
   return { createApi, tokenUsable, acceptToken, tokenExpMs, TOKEN_SKEW_MS, TOKEN_MAX_AHEAD_MS, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
