@@ -1062,7 +1062,7 @@ function transition(paint, target) {
   const a = typeof document !== 'undefined' ? document.activeElement : null;
   paint();
   if (!a || a === document.body) return;
-  queueMicrotask(() => {
+  Promise.resolve().then(() => {   // a microtask: after the whole synchronous repaint
     const now = document.activeElement;
     if (now !== a && now !== document.body) return;   // the person moved the focus meanwhile
     if (a.isConnected && !hiddenHere(a) && a.disabled !== true) return;   // still a usable control: nothing lost
