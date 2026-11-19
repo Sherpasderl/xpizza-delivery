@@ -965,9 +965,12 @@ test('S1 — a checklist edit counts as unsaved: closing asks first, «Cancelar�
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
 { const pe = req.resolve('./catalog/platform-extras'); if (!req.cache[pe]) req.cache[pe] = { id: pe, filename: pe, loaded: true, exports: { extrasCapabilities: () => ({ authoring: true }) } }; }
 // the server's S2 switch (5f catalog/platform-structure), OFF unless a cell turns it on — the P-6 cells run 5f's REAL handler with it on
-const S2_SERVER = { on: false };
+// legacy: the REAL legacy-form reward-picker switch (choice-compare rewardGroupGuardOn reads it), unless a cell retires it
+const S2_SERVER = { on: false, legacy: null };
 { const ps = req.resolve('./catalog/platform-structure'); const real = req('./catalog/platform-structure');
-  req.cache[ps] = { id: ps, filename: ps, loaded: true, exports: { structureCapabilities: () => ({ ...real.structureCapabilities(), extrasCatalog: S2_SERVER.on }) } }; }
+  S2_SERVER.legacy = real.legacyFormRewardPickers;
+  req.cache[ps] = { id: ps, filename: ps, loaded: true, exports: { structureCapabilities: () => ({ ...real.structureCapabilities(), extrasCatalog: S2_SERVER.on }),
+    legacyFormRewardPickers: () => S2_SERVER.legacy() } }; }
 // the published menu realSave saves against: the seed, unless a cell serves another one (built by the portal's own writer)
 const REAL_LIVE = { src: null, pointer: null };   // pointer: the live active_version {version, generation} (an activation moves it)
 // OWNER-ONLY (Codex S2 UI r2 P2-11): every page that uses it signs in as the owner (E1). A manager path uses realBackend (5f's real
@@ -1931,6 +1934,87 @@ test('S2 P-6 — the manager\u2019s send: focus stays in the SAME row\u2019s pri
     assert.ok(q.src().extras.some((e) => typeof e.key === 'string' && e.display.name === 'Probe extra'), 'premise: the adopted source keyed the new extra');
     const ae2 = q.d.activeElement;
     assert.ok(!(ae2 && ae2.matches && ae2.matches('#xdetail .price input')), 'an unmapped ref is dropped, nothing mis-keyed (no focus guessed onto a row)');
+  } finally { S2_SERVER.on = false; }
+});
+
+// ── «Agregar extra» in a reward group (MOCKUP-portal-extras-reward-group R1, owner-approved 11-18): 5f's REAL getEditableCatalog serves
+// rewardGroups (choice-compare rewardGroupsOf over the live menu, while the Extras switch and the legacy-form reward pickers hold). In such a
+// group «Agregar extra» is not offered and ONE neutral line under the shared-group line says why; the save's refusal stays the safety net.
+const RG_LINE = 'Este grupo se usa para recompensas, así que por ahora no podés agregarle extras nuevos. Podés cambiar sus precios o quitar un extra.';
+const rgLine = (p) => xpage(p).querySelector('.detail .mk-xwarn[data-note="reward"]');
+async function rgPage() {
+  const B = realBackend({ rid: RID, live: SRC, pointer: { version: 'v1', generation: 1 } }); B.who = 'owner';
+  const p = await page({ on: B.on });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  return p;
+}
+const REWARD_G = 'Acompañamientos';   // the seed's redeem_eligible_extras sit in it (premise asserted from the real derivation below)
+test('RG R1 — a reward group (5f\u2019s REAL read): no «Agregar extra»; the ONE line under the shared line; prices and «Quitar» still work', async () => {
+  S2_SERVER.on = true;
+  try {
+    const CC = req('./catalog/choice-compare');
+    const { buildSourceCandidate } = req('./catalog/candidate-validate');
+    assert.deepEqual(CC.rewardGroupsOf({ extras: buildSourceCandidate(RID, SRC).built.extras, structure: SRC.structure }), [REWARD_G], 'premise: the seed\u2019s one reward group');
+    const p = await rgPage();
+    assert.equal(xpage(p).querySelector('.dhead .dtitle').textContent, REWARD_G, 'premise: the reward group is the selected one');
+    assert.equal(addBtn(p), null, 'RG-HIDE: «Agregar extra» is not offered in a reward group');
+    const warns = [...xpage(p).querySelectorAll('.detail .mk-xwarn')];
+    assert.equal(warns.length, 2, 'the shared line, then the reward line');
+    assert.ok(/^Este grupo se usa en \d+ productos — los cambios aplican a todos\.$/.test(warns[0].textContent.trim()), 'the shared line first');
+    assert.equal(warns[1], rgLine(p), 'RG-LINE: the reward line is the second note');
+    assert.equal(rgLine(p).textContent, RG_LINE, 'RG-LINE: the approved words');
+    const box = rgLine(p).querySelector('.mgshared.mk-sand');
+    assert.ok(box && box.querySelector('svg circle'), 'the neutral note, the mockup\u2019s info mark');
+    assert.equal(box.querySelector('.nb').textContent, 'un extra.', 'the last words kept together (mockup)');
+    const r0 = xrows(p)[0];
+    assert.equal(r0.querySelector('.price input').disabled, false, 'a price can still change');
+    assert.equal(r0.querySelector('button.del').disabled, false, 'an extra can still be removed');
+  } finally { S2_SERVER.on = false; }
+});
+test('RG R1 — another group on the same read keeps «Agregar extra» and has no reward line', async () => {
+  S2_SERVER.on = true;
+  try {
+    const p = await rgPage();
+    const other = railRows(p).find((r) => r.querySelector('.rtext b').textContent !== REWARD_G);
+    other.click(); await settle(10);
+    assert.notEqual(xpage(p).querySelector('.dhead .dtitle').textContent, REWARD_G, 'premise: another group');
+    assert.ok(addBtn(p), 'RG-OTHER: «Agregar extra» is offered');
+    assert.equal(rgLine(p), null, 'RG-OTHER: no reward line');
+  } finally { S2_SERVER.on = false; }
+});
+test('RG R1 — the legacy-form reward pickers retired: rewardGroups is absent and «Agregar extra» returns by itself (no line)', async () => {
+  S2_SERVER.on = true; const legacy = S2_SERVER.legacy; S2_SERVER.legacy = () => false;
+  try {
+    const p = await rgPage();
+    assert.equal(xpage(p).querySelector('.dhead .dtitle').textContent, REWARD_G, 'premise: the same group');
+    assert.ok(addBtn(p), 'RG-RETIRED: «Agregar extra» is offered again');
+    assert.equal(rgLine(p), null, 'RG-RETIRED: no reward line');
+  } finally { S2_SERVER.on = false; S2_SERVER.legacy = legacy; }
+});
+
+test('RG R1 — a tenant switch: A\u2019s reward groups end with A\u2019s world (empty while B loads); B\u2019s Extras page follows B\u2019s OWN read', async () => {
+  S2_SERVER.on = true;
+  try {
+    const A = realBackend({ rid: RID, live: SRC, pointer: { version: 'v1', generation: 1 } }); A.who = 'owner';
+    const Bk = realBackend({ rid: 'x_pizza', live: buildSourceFromCode('x_pizza'), pointer: { version: 'v1', generation: 1 } }); Bk.who = 'owner';
+    let cur = A, release = null;
+    const held = (call) => new Promise((res) => { release = () => res(Bk.on.getEditableCatalog(call)); });
+    const p = await page({ on: { ...A.on, getEditableCatalog: (call) => (cur === 'held' ? held(call) : cur.on.getEditableCatalog(call)) } });
+    await p.signIn();
+    tabBtn(p, 'Extras').click(); await settle(10);
+    assert.deepEqual([...p.mods.app.state.rewardGroups], [REWARD_G], 'premise: A\u2019s served reward group');
+    assert.equal(addBtn(p), null, 'premise: A\u2019s reward group hides «Agregar extra»');
+    cur = 'held';
+    p.d.dispatchEvent(new p.w.CustomEvent('portal:restaurant', { detail: { rid: 'x_pizza' } })); await settle(20);
+    assert.ok(release, 'premise: B\u2019s read is on the wire');
+    assert.equal(p.mods.app.state.rewardGroups.size, 0, 'RG-RESET: A\u2019s reward groups end with A\u2019s world');
+    cur = Bk; release(); await settle(80);
+    tabBtn(p, 'Extras').click(); await settle(10);
+    assert.equal(xpage(p).querySelector('.dhead .dtitle').textContent, buildSourceFromCode('x_pizza').structure.extra_categories[0], 'premise: B\u2019s Extras page');
+    assert.equal(p.mods.app.state.rewardGroups.size, 0, 'B serves no reward group');
+    assert.ok(addBtn(p), 'B\u2019s group offers «Agregar extra»');
+    assert.equal(rgLine(p), null, 'and no reward line');
   } finally { S2_SERVER.on = false; }
 });
 
