@@ -12,7 +12,8 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 assert.ok(FILES.length >= 1 && HUNKS.length >= 1, 'LEDGER-S1: non-vacuity — the layer owns files');
 for (const F of FILES) {
-  const disk = fs.readFileSync(path.join(__dirname, F), 'utf8');
+  const raw = fs.readFileSync(path.join(__dirname, F), 'utf8');   // the layer's own guard: its BASE already holds D4 (as audience-wiring's raw read)
+  const disk = require('./tools/cpark-module-inverse').unapplyCparkModule(F, raw);   // minus cancel-park (5f, newer; disjoint)
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
   assert.notStrictEqual(disk, base, `LEDGER-S1: non-vacuity — ${F} carries the ledger S1 hunks`);
   assert.strictEqual(unapplyLedgerS1Module(F, disk), base, `LEDGER-S1: 🔴 ${F} minus the ledger S1 hunks is not ${BASE}:${F}`);

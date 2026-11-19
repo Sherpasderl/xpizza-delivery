@@ -3139,7 +3139,7 @@ exports.reconcilePayments = onSchedule(
       }
       // Aged operator-queue states.
       const age = now - (Number(o.charged_at || o.created_at) || now);
-      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' });
+      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' }); if (o.payment_status === 'manual_review' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_review' });   // + cancel-park option A: a parked (manual_review) order is re-raised daily
       if (o.payment_status === 'refund_pending' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_refund_pending' });
       if (MR.isResolving(o.payment_status) && (now - (Number(o.resolving_claimed_at) || 0)) > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_resolving' }); // [D] sweep-recovery backstop
 

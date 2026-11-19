@@ -339,6 +339,7 @@
   "assign-hub.js#hubOf": "dispatch",
   "availability-reset.js#resetRestaurant": "infra",
   "availability-reset.js#resetRestaurant>anon": "infra",
+  "cancel-order-core.js#parkCancelForPerson>anon": "payment",
   "cancel-order-core.js#cancelOrderCore": "payment",
   "cancel-order-core.js#cleanupTasksAndDriver": "payment",
   "cancel-order-core.js#finalize": "payment",
@@ -1615,6 +1616,10 @@
   "pay_deadline_at": {
    "class": "lifecycle",
    "reason": "SDK card payments (D4 §3 / CORE-Δ): the order's immutable payment deadline (created + 15 min), written ONCE by the create-once orders transaction; the claim CAS, the status resolver and the sweeper's expiry read it — payment bookkeeping, not a contract fact"
+  },
+  "cancel_parked_at": {
+   "class": "stamp",
+   "reason": "cancel-park option A (owner 11-19): when a refused money cancel parked the order for a person (payment_status manual_review + blocked_reason) — audit timestamp; reconcilePayments re-raises the park daily"
   },
   "paid_strand_seen_at": {
    "class": "stamp",
