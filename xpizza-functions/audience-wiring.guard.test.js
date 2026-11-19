@@ -35,7 +35,7 @@ for (const F of FILES) {
   // asm11: directory wiring (5f, merged after this layer: one disjoint index.js export line) is peeled first on the raw read
   const raw = fs.readFileSync(path.join(__dirname, F), 'utf8');   // the layer's own guard: its BASE already holds D4 (as mktprice-wiring's raw read)
   // asm11 15: the 3a capp push wiring (memberreads hunks marked after aaeb8f277, merged last) is peeled first
-  const disk = require('./tools/dirwire-module-inverse').unapplyDirwireModule(F, require('./tools/memberreads-module-inverse').unapplyAfter(F, require('./tools/ledgers1-module-inverse').unapplyLedgerS1Module(F, require('./tools/cpark-module-inverse').unapplyCparkModule(F, raw)), 'aaeb8f277'));   // asm11 17: ledger S1 (newest) peeled first
+  const disk = require('./tools/dirwire-module-inverse').unapplyDirwireModule(F, require('./tools/memberreads-module-inverse').unapplyAfter(F, require('./tools/ledgers1-module-inverse').unapplyLedgerS1Module(F, require('./tools/cpark-module-inverse').unapplyCparkModule(F, require('./tools/ratt-module-inverse').unapplyRattModule(F, raw))), 'aaeb8f277'));   // asm11 17: ledger S1 (newest) peeled first
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
   assert.notStrictEqual(disk, base, `AUDIENCE: non-vacuity — ${F} carries the audience hunks`);
   assert.strictEqual(unapplyAudienceModule(F, disk), base, `AUDIENCE: 🔴 ${F} minus the audience hunks is not ${BASE}:${F}`);

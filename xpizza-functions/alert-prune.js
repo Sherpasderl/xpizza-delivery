@@ -29,7 +29,8 @@ function alertOrderIds(alert) {
 // Codex #211 P1-2 (cancel-park): an UNRESOLVED MONEY state (manual_review / manual_reconciliation / refund_pending / resolving_*) still
 // needs a person WHATEVER the order's fulfilment status — kept, never pruned. (It subsumes H1a A-R1's handheld-reject refund_pending keep.)
 const UNRESOLVED_MONEY = new Set(['manual_review', 'manual_reconciliation', 'refund_pending']);
-const unresolvedMoney = (order) => !!order && (UNRESOLVED_MONEY.has(order.payment_status) || (typeof order.payment_status === 'string' && order.payment_status.startsWith('resolving_')));
+const unresolvedMoney = (order) => !!order && !(order.payment_status === 'manual_review' && order.manual_review_closed)   // «Marcar como revisado»: a person closed it (owner 11-19, option B)
+  && (UNRESOLVED_MONEY.has(order.payment_status) || (typeof order.payment_status === 'string' && order.payment_status.startsWith('resolving_')));
 function orderStillFlagged(order, alert) {   // `alert` is kept in the signature: callers pass it
   if (!order) return false;
   if (unresolvedMoney(order)) return true;

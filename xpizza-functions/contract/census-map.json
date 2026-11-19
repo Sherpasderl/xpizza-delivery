@@ -697,6 +697,9 @@
   "resolve-manual.js#recoverStaleResolve>anon": "payment",
   "resolve-manual.js#releaseClaim>anon": "payment",
   "resolve-manual.js#resolveManualReconciliationCore": "payment",
+  "payments/review-attest.js#refusal": "payment",
+  "payments/review-attest.js#attestManualReview": "payment",
+  "payments/review-attest.js#endpoint>anon": "payment",
   "resolve-manual.js#resolveManualReconciliationCore>anon": "payment",
   "restaurant-config.js#hubSnapshot": "infra",
   "restaurant-config.js#isRoutingValid": "infra",
@@ -1617,6 +1620,10 @@
    "class": "lifecycle",
    "reason": "SDK card payments (D4 §3 / CORE-Δ): the order's immutable payment deadline (created + 15 min), written ONCE by the create-once orders transaction; the claim CAS, the status resolver and the sweeper's expiry read it — payment bookkeeping, not a contract fact"
   },
+  "manual_review_closed": {
+   "class": "stamp",
+   "reason": "«Marcar como revisado» (owner 11-19, option B): a person's recorded attestation {outcome, amount_cents, note, by, at} on a manual_review order — audit only; payment_status stays manual_review and no money / attempt / reward / status changes (review-attest.test RA-CLOSE whole-db diff)"
+  },
   "cancel_parked_at": {
    "class": "stamp",
    "reason": "cancel-park option A (owner 11-19): when a refused money cancel parked the order for a person (payment_status manual_review + blocked_reason) — audit timestamp; reconcilePayments re-raises the park daily"
@@ -2162,6 +2169,13 @@
   }
  ],
  "moneyPathNonFactReads": {
+  "cancel_claim_id@xpizza-functions/payments/review-attest.js#refusal": "payment / claim state-machine internal: it gates WHETHER a materialize / refund / abandon / recovery step runs; that money effect is asserted through the OUTCOME facts (status, payment_status, refund records) in S5–S10 (P2), never through this field",
+  "resolving_action@xpizza-functions/payments/review-attest.js#refusal": "payment / claim state-machine internal: it gates WHETHER a materialize / refund / abandon / recovery step runs; that money effect is asserted through the OUTCOME facts (status, payment_status, refund records) in S5–S10 (P2), never through this field",
+  "resolving_claim_id@xpizza-functions/payments/review-attest.js#refusal": "payment / claim state-machine internal: it gates WHETHER a materialize / refund / abandon / recovery step runs; that money effect is asserted through the OUTCOME facts (status, payment_status, refund records) in S5–S10 (P2), never through this field",
+  "resolving_phase@xpizza-functions/payments/review-attest.js#refusal": "payment / claim state-machine internal: it gates WHETHER a materialize / refund / abandon / recovery step runs; that money effect is asserted through the OUTCOME facts (status, payment_status, refund records) in S5–S10 (P2), never through this field",
+  "manual_review_closed@xpizza-functions/alert-prune.js#unresolvedMoney": "«Marcar como revisado» (owner 11-19, option B): a recorded human attestation — it only stops the daily aged_manual_review re-raise / alert pruning and refuses a second close; no money or reward effect (review-attest.test RA-CLOSE / RA-PRUNE, review-attest-wiring RAW-DAILY)",
+  "manual_review_closed@xpizza-functions/index.js#reconcilePayments": "«Marcar como revisado» (owner 11-19, option B): a recorded human attestation — it only stops the daily aged_manual_review re-raise / alert pruning and refuses a second close; no money or reward effect (review-attest.test RA-CLOSE / RA-PRUNE, review-attest-wiring RAW-DAILY)",
+  "manual_review_closed@xpizza-functions/payments/review-attest.js#refusal": "«Marcar como revisado» (owner 11-19, option B): a recorded human attestation — it only stops the daily aged_manual_review re-raise / alert pruning and refuses a second close; no money or reward effect (review-attest.test RA-CLOSE / RA-PRUNE, review-attest-wiring RAW-DAILY)",
   "resolution@xpizza-functions/ledger/projector.js#projectOrder": "ledger S3 (Codex #114 #4): the PRESENCE of resolve-manual close_fulfilled's marker (resolution offline_fulfilled) puts the order on the MANUAL HOLD — nothing is posted; never an amount or a selector of money",
   "created_at@xpizza-functions/ledger/projector.js#projectOrder": "ledger S3 (Codex #110 r2 condition): the AUTHORITATIVE order date — every journal is DATED by it (the snapshot's created_at is informational); never an amount or a selector of money",
   "active_attempt_id@xpizza-functions/ledger/projector.js#projectOrder": "ledger S3: selects WHICH paid attempt is the order's sale (the primary collection); any other paid attempt goes to customer_refund_suspense — the amounts are the PROVIDER-reported ones, never this pointer's",

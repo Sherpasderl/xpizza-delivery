@@ -12,7 +12,8 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 assert.deepStrictEqual([...FILES].sort(), ['alert-prune.js', 'cancel-order-core.js', 'cancel-order.js', 'index.js'], 'CPARK: the owned files');
 for (const F of FILES) {
-  const disk = fs.readFileSync(path.join(__dirname, F), 'utf8');
+  const raw = fs.readFileSync(path.join(__dirname, F), 'utf8');   // the layer's own pin: its BASE already holds D4 (as before)
+  const disk = require('./tools/ratt-module-inverse').unapplyRattModule(F, raw);   // minus the attestation (5f, newer; its lines sit inside cpark's hunks)
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
   assert.notStrictEqual(disk, base, `CPARK: non-vacuity — ${F} carries the cpark hunks`);
   assert.strictEqual(unapplyCparkModule(F, disk), base, `CPARK: 🔴 ${F} minus the cpark hunks is not ${BASE}:${F}`);
@@ -33,7 +34,7 @@ ok(`${FILES.length} files minus the ${HUNKS.length} cpark hunks === ${BASE} byte
     const re = /require\('[./]*tools\/d4-intake-inverse'\)\.unapplyD4Module\(/g; let m;
     // the contiguous chain of layer peels enclosing the D4 call must include cpark (the statscmp rule; on 31f05c8a4 cpark sits OUTERMOST,
     // since salesmulti-wiring pins salesmulti adjacent to D4)
-    while ((m = re.exec(s))) { let pre = s.slice(Math.max(0, m.index - 2000), m.index); const chain = []; let w;
+    while ((m = re.exec(s))) { let pre = s.slice(Math.max(0, m.index - 4000), m.index); const chain = []; let w;   // a 4000-char window: the attestation's ratt peel lengthened the chains
       while ((w = /require\('[./]*tools\/[a-z0-9-]+'\)\.(unapply\w+Module)\([^,()]+, $/.exec(pre))) { chain.push(w[1]); pre = pre.slice(0, w.index); }
       if (!chain.includes('unapplyCparkModule')) bare.push(`${f}@${m.index}`); }
   }
