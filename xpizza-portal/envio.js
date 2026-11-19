@@ -22,7 +22,7 @@ import * as EL from './envio-logic.js';
 import * as MP from './envio-map-protocol.js';
 
 const CACHE = (uid) => `sherpa.portal.envio.${uid}`;
-const TIMING = { deadlineMs: 8000 };   // the map's absolute load deadline (Codex r1 F7); tests shorten it through _envioTiming
+const TIMING = { deadlineMs: 8000, finishMs: 2000 };   // Z2: «Terminar» waits ≤ 2 s for the map's finish (r2 P2-6)   // the map's absolute load deadline (Codex r1 F7); tests shorten it through _envioTiming
 const NAV_ICON = 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0M8 12a4 4 0 1 0 8 0a4 4 0 1 0-8 0M12 3v2M12 19v2M3 12h2M19 12h2';
 const I = Object.freeze({
   lock: [{ tag: 'rect', x: 5, y: 11, width: 14, height: 10, rx: 2 }, 'M8 11V7a4 4 0 0 1 8 0v4'],
@@ -42,6 +42,9 @@ const ic = (k) => svg(...I[k]);
 const COPY = Object.freeze({
   // ENVÍO step 2 — the «Zonas sin entrega» card, the approved v2 mockup's own words (owner 11-10)
   zonesH: 'Zonas sin entrega', zonesHint: 'Para todos los restaurantes', zonesDraw: 'Dibujar zona',
+  // Z2 — drawing mode, the approved v2 page verbatim (frame 1b, note 12)
+  drawingHint: 'Dibujando una zona', drawTool: 'Tocá el mapa para marcar cada punto. Para cerrar la zona, tocá el primer punto o «Terminar».',
+  drawCancel: 'Cancelar', drawFinish: 'Terminar',
   zonesHelp: 'Áreas donde no entregamos aunque estén dentro del límite, por seguridad de los repartidores. Dibujalas sobre el mapa.',
   h1: 'Envío', pill: 'Área de Sherpa',
   lede: 'Una sola tarifa por distancia para todos los restaurantes; cada uno con su distancia máxima. La paga el cliente en la app de Sherpa y se mide en línea recta desde el pin de cada sucursal.',
@@ -99,6 +102,7 @@ const S = {
   zonesLastGood: null,     // #180: the last READABLE stored list — a kept draft's comparison while a read is unreadable
   zoneEdit: null,          // Z1b: { id, value, line } — the row being renamed in place
   zoneRemove: null,        // Z1b: the zone id whose «Quitar zona» confirm is open
+  drawing: null,           // Z2: the live drawing session — { session, zone, points, seq, ack, request } (never draft; ends with any world end)
   zonesFail: null,         // Z1b: a save outcome about the zones — { kind: 'locked' | 'hours' | 'refused', branches, key, zoneId }
   refs: null,
 };
@@ -445,7 +449,8 @@ function renderMessage(view) {
   if (!S.map.v3) return MP.renderMessage(base);
   // Z2 (protocol v3, only after THIS document's hello): the draft's zones the map draws, and the drawing session (null: none)
   const zones = (S.zonesDraft || []).map((z) => ({ id: z.id, name: z.name, points: z.points.map((q) => ({ lat: q.lat, lng: q.lng })) }));
-  return MP.renderMessage({ ...base, zones, drawing: null });
+  const d = S.drawing;
+  return MP.renderMessage({ ...base, zones, drawing: d ? { session: d.session, zone: d.zone, points: d.points.map((q) => ({ lat: q.lat, lng: q.lng })), seq: d.seq, ack: d.ack, request: d.request } : null });
 }
 // ENVÍO v3 A2: the viewer's map style — read once per mount from localStorage (a throwing / unknown value → «Mapa»), written on a pick
 const STYLE_KEY = 'sherpa.envio.mapView';
@@ -478,7 +483,7 @@ function mapFailed(cause) {
   m.failed = true;
   clearTimeout(m.deadline);
   console.warn(`envio map: ${cause}`);
-  paintMapBox();
+  paintMapBox(); paintDraw();
 }
 function startMap(box) {
   if (S.map || typeof window === 'undefined') return;
@@ -486,7 +491,8 @@ function startMap(box) {
   try { mount = MP.newMountId(window.crypto); } catch (_) { return; }
   // Codex r1 F6: the frame's listener lives as long as THIS frame (S.map === m), not as long as one request generation: a
   // discard / reload bumps the generation, the map stays; every session end (sign-out, revocation, unmount) stops the frame
-  const m = { frame: null, mount, deadline: null, listening: false, ready: false, failed: false, v3: false, onMsg: null, postedPick: undefined };
+  const m = { frame: null, mount, deadline: null, listening: false, ready: false, failed: false, v3: false, onMsg: null, postedPick: undefined,
+    pending: null, frameReq: null, rateT: 0, rateN: 0 };   // Z2: the coalesced draft_points (the latest seq), its frame callback, the 30/s window
   m.onMsg = (event) => {
     if (S.map !== m || !S.root) return;
     const msg = MP.acceptFromChild(event, { frameWindow: m.frame && m.frame.contentWindow, mount });
@@ -498,11 +504,14 @@ function startMap(box) {
       const again = m.listening || m.failed || m.ready;
       m.failed = false; m.v3 = false; m.ready = false; m.listening = true;
       if (again) { clearTimeout(m.deadline); m.deadline = setTimeout(() => mapFailed('timeout'), TIMING.deadlineMs); paintMapBox(); }
-      postRender('reset');
+      postRender('reset'); paintDraw();
       return;
     }
-    if (msg.kind === 'hello') { m.v3 = true; postRender('keep'); return; }   // v3 only after THIS document's hello: its `listening` reset v3 first
-    if (msg.kind === 'ready') { if (m.failed) return; m.ready = true; clearTimeout(m.deadline); paintMapBox(); return; }
+    if (msg.kind === 'hello') { m.v3 = true; postRender('keep'); paintDraw(); return; }
+    if (msg.kind === 'draft_points') { if (m.v3) queuePoints(m, msg); return; }
+    if (msg.kind === 'finish') { if (m.v3) onFinish(m, msg); return; }
+    if (msg.kind === 'edit_request') { if (m.v3) startEditing(msg.zone); return; }   // v3 only after THIS document's hello: its `listening` reset v3 first
+    if (msg.kind === 'ready') { if (m.failed) return; m.ready = true; clearTimeout(m.deadline); paintMapBox(); paintDraw(); return; }
     if (msg.kind === 'failed') mapFailed(msg.cause);
   };
   window.addEventListener('message', m.onMsg);   // listening BEFORE the frame exists
@@ -521,6 +530,8 @@ function stopMap() {
   const m = S.map;
   if (!m) return;
   S.map = null;
+  if (S.drawing) { clearTimeout(S.drawing.reqT); S.drawing = null; }   // Z2: a session belongs to its frame — it goes with it (no render: no frame)
+  dropFrame(m.frameReq);
   clearTimeout(m.deadline);
   if (typeof window !== 'undefined') window.removeEventListener('message', m.onMsg);
   if (m.frame) m.frame.remove();
@@ -621,13 +632,15 @@ function buildPage() {
   const zh = el('h3', null, COPY.zonesH); refs.zonesHint = el('span', 'ehint', COPY.zonesHint); zh.append(refs.zonesHint);
   refs.zonesLock = el('div');
   refs.zonesList = el('div', 'zlist');
-  refs.zonesDraw = button('railadd', COPY.zonesDraw, () => {}); refs.zonesDraw.prepend(ic('plus'));
+  refs.zonesDraw = button('railadd', COPY.zonesDraw, () => startDrawing()); refs.zonesDraw.prepend(ic('plus'));
   refs.zonesNotes = el('div');
+  refs.zonesNameNote = el('p', 'efnote', EL.zonesCopy('nameNote'));   // note 13: under the list, only while a drawn zone is named
   sz.append(zh, el('p', 'ehelp', COPY.zonesHelp), refs.zonesLock, refs.zonesList, refs.zonesDraw, refs.zonesNotes);
   left.append(sb, callout, sz);
   // map
   const sm = el('section', 'esec envmap');
   const mh = el('h3', null, COPY.mapH); const mhint = el('span', 'ehint'); mhint.append(ic('ring'), document.createTextNode(COPY.mapHint)); mh.append(mhint);
+  refs.mapHint = mhint; refs.pickFld = null;
   const fld = el('div', 'fld pickfld');
   fld.append(el('span', 'elab', COPY.pickLab));
   refs.pick = el('button', 'pick'); refs.pick.type = 'button';
@@ -675,7 +688,15 @@ function buildPage() {
   refs.map.append(refs.mstyle, refs.mapLine, refs.mapCap);
   refs.legend = el('div', 'legend');
   refs.mapNote = el('p', 'efnote');
-  sm.append(mh, fld, refs.max, refs.map, refs.legend, refs.mapNote);
+  // Z2 frame 1b: the drawing tool line under the map — the hint, «Cancelar», «Terminar»
+  refs.mtool = el('div', 'mtool hidden');
+  refs.drawCancel = button('btn ghost', COPY.drawCancel, () => endDrawing());
+  refs.drawFinish = button('btn accent', COPY.drawFinish, () => requestFinish());
+  refs.drawNote = el('span', 'efnote', COPY.drawTool);
+  refs.drawLine = el('p', 'ferr'); refs.drawLine.setAttribute('role', 'alert');   // a refused shape: the approved red one-liner (note 12)
+  refs.mtool.append(refs.drawNote, refs.drawCancel, refs.drawFinish);
+  refs.pickFld = fld; refs.dimmed = [sb, callout];   // note 12: the picker and the left cards dim (the shape is global)
+  sm.append(mh, fld, refs.max, refs.map, refs.mtool, refs.legend, refs.mapNote);
   right.append(sm);
   grid.append(left, right);
   // save bar + confirm layer (fixed / overlay: placement in the DOM doesn't move them)
@@ -847,7 +868,7 @@ function paintZones() {
   if (!r || !r.zonesList) return;
   const z = S.zones || { zones: null, editable: false, lock: { reason: 'unavailable', branches: [] } };
   const hub = (S.entries.find((e) => e.rid === S.pick) || {}).hub || null;
-  const canEdit = z.editable && !frozen();
+  const canEdit = z.editable && !frozen() && !S.drawing;   // Z2: no rename / remove while a shape is drawn
   r.zonesLock.replaceChildren();
   if (z.zones !== null && !z.editable && z.lock) {
     const open = z.lock.reason === 'open';
@@ -888,29 +909,57 @@ function paintZones() {
     row.append(sw, k, ren, rem);
     r.zonesList.append(row);
   }
+  if (S.drawing && S.drawing.closed) r.zonesList.append(...namingRow());
+  if (S.drawing && S.drawing.closed) r.zonesList.after(r.zonesNameNote); else r.zonesNameNote.remove();
   // addendum G: at the cap the hint is the count («8 de 8») and «Dibujar zona» says why it is off
   const atCap = !!(z.caps && S.zonesDraft && S.zonesDraft.length >= z.caps.zones_max);
   r.zonesHint.textContent = atCap ? EL.zonesCopy('capCount') : COPY.zonesHint;
-  r.zonesDraw.disabled = true;   // Z1: the map cannot draw yet (protocol v3)
+  paintDraw();
   r.zonesNotes.replaceChildren();
   const note = (t) => r.zonesNotes.append(el('p', 'efnote', t));
   if (z.zones === null) note(EL.zonesCopy('unreadable'));
   else { if (z.editable) note(EL.zonesCopy('editableNote')); if (atCap) note(EL.zonesCopy('capDraw')); }   // no note below the cap: the approved frames draw none (advisor 11-19)
 }
+// note 13 — the drawn zone's naming row, in the list (no modal): typing updates it in place (no repaint under the caret); «Listo» is on
+// for a valid name, a long or taken one says why (the rename's rules, zoneNameLine)
+function namingRow() {
+  const d = S.drawing;
+  const row = el('div', 'zrow editing');
+  const sw = el('span', 'zsw'); sw.append(ic('hatch'));
+  const inp = el('input'); inp.type = 'text'; inp.value = d.name; inp.placeholder = EL.zonesCopy('namePh'); inp.setAttribute('aria-label', EL.zonesCopy('namePh'));
+  const cancel = button('btn ghost', EL.zonesCopy('nameCancel'), () => endDrawing());
+  const done = button('btn accent', EL.zonesCopy('nameDone'), () => commitDrawn());
+  const err = el('p', 'ferr hidden'); err.setAttribute('role', 'alert');
+  const sync = () => {
+    const { line } = zoneNameLine(inp.value, null);
+    done.disabled = !!line;
+    const say = line && inp.value.trim() ? line : '';   // an empty name just keeps «Listo» off (frame 1b draws no line for it)
+    err.textContent = say; err.classList.toggle('hidden', !say);
+  };
+  inp.addEventListener('input', () => { d.name = inp.value; sync(); });
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !done.disabled) { e.preventDefault(); commitDrawn(); } else if (e.key === 'Escape') { e.preventDefault(); endDrawing(); } });
+  row.append(sw, inp, cancel, done);
+  sync();
+  return [row, err];
+}
 const focusZone = (id, title) => { const row = S.refs && [...S.refs.zonesList.querySelectorAll('.zrow')].find((x) => x.dataset.zone === id); const b = row && row.querySelector(`button.ib[title="${title}"]`); if (b) b.focus(); };
 // the server's name rules, before the save (zones.js normalizeInput): trimmed, 1..name_max, unique case-folded
+function zoneNameLine(raw, id) {
+  const name = String(raw).replace(/\s+/g, ' ').trim();
+  const max = S.zones && S.zones.caps ? S.zones.caps.name_max : 30;
+  let line = null;
+  if (!name) line = EL.zonesCopy('nameEmpty');
+  else if (name.length > max) line = EL.zonesCopy('nameLong');
+  else if ((S.zonesDraft || []).some((z) => z.id !== id && String(z.name).trim().toLowerCase() === name.toLowerCase())) line = EL.zonesCopy('nameTaken');
+  return { name, line };
+}
 function zoneRenameSave(id) {
   const e = S.zoneEdit;
   if (!e || e.id !== id) return;
   // Codex #179 P3: judged as the server judges the name this sends (delivery/zones.js normalizeInput + compactProblem): 1..name_max
   // UTF-16 units, unique by toLowerCase() alone (no accent folding). The client only collapses whitespace runs before sending, so a
   // pasted tab / newline (a control character the server refuses) never reaches it; the server judges exactly the string sent.
-  const name = String(e.value).replace(/\s+/g, ' ').trim();
-  const max = S.zones && S.zones.caps ? S.zones.caps.name_max : 30;
-  let line = null;
-  if (!name) line = EL.zonesCopy('nameEmpty');
-  else if (name.length > max) line = EL.zonesCopy('nameLong');
-  else if ((S.zonesDraft || []).some((z) => z.id !== id && String(z.name).trim().toLowerCase() === name.toLowerCase())) line = EL.zonesCopy('nameTaken');
+  const { name, line } = zoneNameLine(e.value, id);
   if (line) { S.zoneEdit = { ...e, line }; paintZones(); const i0 = S.refs.zonesList.querySelector('.zrow.editing input'); if (i0) i0.focus(); return; }
   S.zonesDraft = S.zonesDraft.map((z) => (z.id === id ? { ...z, name } : z));
   S.zoneEdit = null;
@@ -996,6 +1045,158 @@ function paintLegend() {
   else r.mapNote.append(phText(COPY.mapNote, COPY.mapNotePh));
 }
 
+// ── Z2 — the drawing session (PLAN-portal-zones-protocol-v3 r2 P2-3 / P2-4, frame 1b) ─────────────────────────────────────────────
+// canDraw(): protocol v3 for THIS child document, the map ready and not failed, a drawable pin picked, the zones editable (the lock open),
+// below the zones cap (a NEW zone only — editing adds none), and nothing frozen (no outstanding attempt, no conflict, a readable policy).
+// It gates «Dibujar zona», an edit_request, and every commit.
+function canDraw(isNew = true) {
+  const m = S.map, z = S.zones, p = pickedEntry();
+  return !!(m && m.v3 && m.ready && !m.failed && globalThis.ZoneShape && p && p.hub && z && z.zones !== null && z.editable && z.caps
+    && (!isNew || (S.zonesDraft || []).length < z.caps.zones_max) && !frozen());
+}
+function startDrawing() {
+  if (S.drawing || !canDraw()) return;
+  let session;
+  try { session = MP.newMountId(window.crypto); } catch (_) { return; }   // 16 random bytes, the mount id's own minting
+  S.drawing = { session, zone: null, points: [], seq: 0, ack: null, request: null, closed: false, line: null, name: '' };
+  paintDraw(); postRender('keep');
+}
+// draft_points (r1 §4–§5, r2 P2-6): only for the live session and a higher seq; a WHOLE list replaces the session's points (never the
+// draft). Coalesced: the latest pending message is applied at most once per animation frame and 30 times a second per mount (beyond
+// that, dropped until the next second — safe: whole lists, and the commit never depends on them). Re-validated when applied.
+const nextFrame = (f) => (typeof window.requestAnimationFrame === 'function' ? window.requestAnimationFrame(f) : setTimeout(f, 16));
+const dropFrame = (h) => { if (h === null) return; if (typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(h); clearTimeout(h); };
+const livePoints = (msg) => { const d = S.drawing; return !!(d && !d.closed && msg.session === d.session && msg.seq > d.seq); };
+function queuePoints(m, msg) {
+  if (!livePoints(msg) || (m.pending && m.pending.seq >= msg.seq)) return;
+  m.pending = msg;
+  if (m.frameReq === null) m.frameReq = nextFrame(() => flushPoints(m));
+}
+function flushPoints(m) {
+  m.frameReq = null;
+  const msg = m.pending; m.pending = null;
+  if (!msg || S.map !== m || !livePoints(msg)) return;
+  const now = Date.now();
+  if (now - m.rateT >= 1000) { m.rateT = now; m.rateN = 0; }
+  if (m.rateN >= 30) return;
+  m.rateN += 1;
+  S.drawing.points = msg.points.map((q) => ({ lat: q.lat, lng: q.lng })); S.drawing.seq = msg.seq;
+  paintDraw(); postRender('keep');
+}
+// the shape a finish proposes, judged by THE server's check (the synced zone-shape.js, input normalization then stored validation) →
+// null (the server would take it) | the problem's approved line key (envio-map-protocol ACK_LINES)
+function shapeLine(points) {
+  const ZS = globalThis.ZoneShape;
+  if (points.length < ZS.CAPS.points_min) return 'min_points';
+  if (points.length > ZS.CAPS.points_max) return 'max_points';
+  const pr = ZS.pointsProblem(points.map((q) => ZS.normalizePoint(q)));
+  if (!pr) return null;
+  return pr.problem === 'zone_out_of_range' ? 'out_of_range' : pr.problem === 'zone_caps' ? 'too_big' : 'self_cross';
+}
+const LINE_COPY = { min_points: 'drawMin', self_cross: 'drawCross', max_points: 'pointsCapTool', too_big: 'drawBig', out_of_range: 'refusedBody' };
+// finish (r3 #181-6, r4): NEVER coalesced — applied on receipt, superseding the session's pending draft_points. The first finish for
+// (session, seq) runs ONE transition: refused ⇒ the session stays open with its line (ack rejected); taken ⇒ a new zone waits for its
+// name (ack accepted; nothing in the draft before «Listo»). A duplicate re-sends the SAME ack (never a second change); a finish for an
+// ended session gets a render saying there is no session — both at most once per 250 ms per mount.
+function reAck(m) {
+  const now = Date.now();
+  if (now - (m.ackT || 0) < 250) return;
+  m.ackT = now; postRender('keep');
+}
+function onFinish(m, msg) {
+  const d = S.drawing;
+  if (!d || msg.session !== d.session) { reAck(m); return; }
+  if (d.ack && d.ack.seq === msg.seq) { reAck(m); return; }
+  if (d.closed || msg.seq <= d.seq) return;
+  clearTimeout(d.reqT);   // a pending draft_points needs no cancelling: re-validated at its flush (the shape closed, or a lower seq), it is dropped
+  d.points = msg.points.map((q) => ({ lat: q.lat, lng: q.lng })); d.seq = msg.seq; d.request = null;
+  const line = shapeLine(d.points);
+  d.ack = line ? { session: d.session, seq: msg.seq, outcome: 'rejected', line } : { session: d.session, seq: msg.seq, outcome: 'accepted' };
+  d.line = line;
+  if (!line && d.zone !== null) {
+    // EDITING commits on its finish (the drag end): that zone's points in the draft, ONCE — the session ends (a late duplicate meets no
+    // session and only gets the render saying so); re-checked at the commit
+    if (!canDraw(false)) { endDrawing(); return; }
+    const ZS = globalThis.ZoneShape;
+    const points = d.points.map((q) => { const g = ZS.normalizePoint(q); return { lat: g[0], lng: g[1] }; });
+    S.zonesDraft = S.zonesDraft.map((z) => (z.id === d.zone ? { ...z, points } : z));
+    clearTimeout(d.reqT); S.drawing = null;
+    afterEdit(); paintDraw();
+    return;
+  }
+  if (!line) d.closed = true;
+  paintDraw(); paintZones(); postRender('keep');
+}
+// «Listo» (note 13): the named zone joins the draft ONCE — a client-minted id (the server's pattern, unique in the draft), the points on
+// the 6-decimal grid; the session ends. Re-checked at the commit: a predicate gone false ends the session as «Cancelar»
+function mintZoneId() {
+  const A = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  for (;;) {
+    const id = `z_${Array.from(window.crypto.getRandomValues(new Uint8Array(8)), (b) => A[b % 36]).join('')}`;
+    if (!(S.zonesDraft || []).some((z) => z.id === id)) return id;
+  }
+}
+function commitDrawn() {
+  const d = S.drawing;
+  if (!d || !d.closed) return;
+  if (!canDraw()) { endDrawing(); return; }
+  const { name, line } = zoneNameLine(d.name, null);
+  if (line) return;
+  const ZS = globalThis.ZoneShape;
+  const points = d.points.map((q) => { const g = ZS.normalizePoint(q); return { lat: g[0], lng: g[1] }; });
+  S.zonesDraft = [...(S.zonesDraft || []), { id: mintZoneId(), name, points }];
+  clearTimeout(d.reqT); S.drawing = null;
+  afterEdit(); paintDraw();
+}
+// the portal's «Terminar» (r2 P2-6): it never closes anything itself — it asks the map for its finish (the final whole list) and waits
+// ≤ TIMING.finishMs; unanswered, the request is withdrawn and the session stays open with no change
+function requestFinish() {
+  const d = S.drawing;
+  if (!d || d.closed) return;
+  d.request = 'finish';
+  clearTimeout(d.reqT);
+  d.reqT = setTimeout(() => { if (S.drawing === d && d.request) { d.request = null; postRender('keep'); } }, TIMING.finishMs);
+  postRender('keep');
+}
+// EDITING (r2 P2-3): the map ASKS (a tap on a drawn zone's outline); the portal opens a session only under the predicate, only for a zone
+// the draft holds, and only when none is open — the map never edits a zone the portal has not opened
+function startEditing(id) {
+  const zone = (S.zonesDraft || []).find((z) => z.id === id);
+  if (S.drawing || !zone || !canDraw(false)) return;
+  let session;
+  try { session = MP.newMountId(window.crypto); } catch (_) { return; }
+  S.drawing = { session, zone: id, points: zone.points.map((q) => ({ lat: q.lat, lng: q.lng })), seq: 0, ack: null, request: null, closed: false, line: null, name: '' };
+  paintDraw(); paintZones(); postRender('keep');
+}
+// «Cancelar» (and every end that commits nothing): the session goes — with any coalesced message — and the draft is untouched
+function endDrawing() {
+  if (!S.drawing) return;
+  clearTimeout(S.drawing.reqT);
+  S.drawing = null;
+  if (S.map) { S.map.pending = null; dropFrame(S.map.frameReq); S.map.frameReq = null; }
+  paintDraw(); postRender('keep');
+}
+function paintDraw() {
+  // r2 P2-4: the predicate is re-checked on every repaint (every map, read, save or lock change reaches here) — false mid-session ⇒ the
+  // session ends as «Cancelar» (a new zone keeps its cap rule; an edit has none). ONE place: no path ends a session on its own.
+  if (S.drawing && !canDraw(S.drawing.zone === null)) { endDrawing(); return; }
+  const r = S.refs;
+  if (!r || !r.mtool) return;
+  const on = !!S.drawing;
+  const full = on && S.drawing.points.length >= MP.ZONE_LIMITS.points;   // addendum G: the 24th point — the hint counts, the tool line says the cap
+  r.mapHint.replaceChildren(...(on ? [document.createTextNode(full ? EL.zonesCopy('pointsCap') : COPY.drawingHint)] : [ic('ring'), document.createTextNode(COPY.mapHint)]));
+  r.drawNote.textContent = full ? EL.zonesCopy('pointsCapTool') : COPY.drawTool;
+  r.mapHint.classList.toggle('drawhint', on);
+  r.map.classList.toggle('drawing', on);
+  r.mtool.classList.toggle('hidden', !on || S.drawing.closed);
+  const line = on && S.drawing.line ? EL.zonesCopy(LINE_COPY[S.drawing.line]) : null;
+  if (line) { r.drawLine.textContent = line; if (!r.drawLine.isConnected) r.mtool.after(r.drawLine); } else r.drawLine.remove();
+  r.zonesDraw.classList.toggle('hidden', on);
+  r.zonesDraw.disabled = !canDraw();
+  r.pickFld.classList.toggle('dim', on);
+  for (const n of r.dimmed) n.classList.toggle('dim', on);
+  r.pick.disabled = on || !S.entries.length;
+}
 function paintMapBox() {
   const r = S.refs;
   if (!r) return;
@@ -1019,7 +1220,7 @@ function paintPicker() {
   const p = pickedEntry();
   r.pickName.textContent = p ? p.label : COPY.pickLab;
   r.pickSub.textContent = p ? p.sub : '';
-  r.pick.disabled = !S.entries.length;
+  r.pick.disabled = !!S.drawing || !S.entries.length;   // Z2: the picker is off while drawing (paintDraw)
   r.pick.setAttribute('aria-expanded', S.picker ? 'true' : 'false');
   r.pickChev.textContent = S.picker ? '▴' : '▾';
   r.menu.classList.toggle('hidden', !S.picker);

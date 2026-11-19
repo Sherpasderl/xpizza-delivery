@@ -2038,8 +2038,20 @@
   .envio .zrow .ib{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:center;color:var(--mute);cursor:pointer;flex:none;padding:0}
   .envio .zrow .ib:disabled{opacity:.45;cursor:default}
   .envio .zrow .ib svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  /* the naming / rename row in place (the approved v2 page .zrow.editing: frame 1b, note 13) */
+  .envio .zrow.editing{background:var(--card);border-color:var(--ink)}
+  .envio .zrow.editing input{flex:1;min-width:0;border:none;background:transparent;font-size:13px;font-weight:650;color:var(--ink);outline:none;font-family:inherit;border-bottom:1.5px solid var(--accent);padding:2px 0}
+  .envio .zrow.editing .btn{padding:6px 11px}
   .envio .ecallout.sand{border-color:var(--sand-line);background:var(--sand-soft);color:var(--sand-text)}
   .envio .envzones .railadd:disabled{opacity:.5;cursor:default}
+  /* ENVÍO zones Z2 — drawing mode (the approved v2 page, frame 1b + note 12): the map's ink border and tint ring, the accent hint, the
+     tool line under the map, the dimmed picker (.5) and left cards (.55) */
+  .envio .emap.drawing{border-color:var(--ink);box-shadow:0 0 0 3px var(--tint2)}
+  .envio .esec h3 .ehint.drawhint{color:var(--accent)}
+  .envio .mtool{display:flex;align-items:center;gap:9px}
+  .envio .mtool .efnote{flex:1;min-width:0}
+  .envio .pickfld.dim{opacity:.5}
+  .envio .esec.dim,.envio .ecallout.dim{opacity:.55}
   /* ENVÍO step 2, Z1b — the zones save outcomes (addendum D–F: the blocking-branch list, dot + word) and the «Quitar zona» confirm */
   .envio .envzfail .ebtns{display:flex;gap:9px;flex-wrap:wrap;justify-content:flex-end;flex:0 0 auto;align-self:center}
   .envio .envzfail>div{flex:1;min-width:0}   /* the text column takes the room; .ebtns (above, more specific) keeps its natural width */

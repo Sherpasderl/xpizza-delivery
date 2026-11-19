@@ -437,6 +437,10 @@ export const ZONES_COPY = Object.freeze({
   refusedBody: 'El servidor no aceptó su forma. Revisá que no se cruce y que tenga entre 3 y 24 puntos, y volvé a guardar.',
   capsTitle: 'Hay más zonas de las permitidas', capsBody: 'Máximo 8 zonas y 24 puntos por zona. Quitá lo que sobre y volvé a guardar.',
   reviewZone: 'Revisar zona', capCount: '8 de 8', capDraw: 'Máximo 8 zonas. Para dibujar otra, quitá una.',
+  pointsCap: '24 de 24 puntos', pointsCapTool: 'Máximo 24 puntos por zona. Cerrá la zona o quitá un punto.',   // addendum G: the 24th point while drawing
+  // Z2 — a drawn shape refused before any draft change (the approved v2 page note 12 + addendum G), and the naming row (note 13)
+  drawMin: 'Marcá al menos 3 puntos.', drawCross: 'La zona se cruza a sí misma. Mové un punto.', drawBig: 'La zona es demasiado grande: hasta 20 km de lado.',
+  namePh: 'Nombre de la zona', nameNote: 'Nombrá la zona para ubicarla después. Hasta 30 caracteres.', nameCancel: 'Cancelar', nameDone: 'Listo',
 });
 export const zonesCopy = (k, vars = null) => {
   if (typeof ZONES_COPY[k] !== 'string') return `⟦zones.${k}⟧`;

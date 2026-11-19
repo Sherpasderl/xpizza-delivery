@@ -224,8 +224,8 @@
    "bytes": 841
   },
   "styles.css": {
-   "sha256": "4e7fca6fe973db591d8b83c97d2ee4a24241ccef833b2f6ee73f4e84780509ca",
-   "bytes": 230014
+   "sha256": "58cd945ddf950f4a0f629adc4d90a56332827562f17b5e3e43d242a11443b9b0",
+   "bytes": 230988
   }
  },
  "diff_aid": {
@@ -2009,6 +2009,12 @@
    ],
    [
     "",
+    ".envio .emap.drawing",
+    "border-color",
+    "var(--ink)"
+   ],
+   [
+    "",
     ".envio .epill",
     "background",
     "var(--mint-soft)"
@@ -2030,6 +2036,12 @@
     ".envio .esec h3 .ehint",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .esec h3 .ehint.drawhint",
+    "color",
+    "var(--accent)"
    ],
    [
     "",
@@ -2366,6 +2378,30 @@
     ".envio .zrow",
     "background",
     "var(--board-2)"
+   ],
+   [
+    "",
+    ".envio .zrow.editing input",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".envio .zrow.editing input",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .zrow.editing",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .zrow.editing",
+    "border-color",
+    "var(--ink)"
    ],
    [
     "",
