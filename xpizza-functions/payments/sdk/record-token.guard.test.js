@@ -17,9 +17,8 @@ const FN = path.join(__dirname, '..', '..');
 let pass = 0; const fails = [];
 const cell = (L, fn) => { try { fn(L); pass += 1; console.log(`  ✓ ${L}`); } catch (e) { fails.push(L); console.log(`  ✗ ${L}: ${String((e && e.message) || e).split('\n')[0]}`); } };
 const OWNER = 'payments/sdk/record-token.js';
-const MIGRATION = 'tools/migrate-sdk-tokens.js';
-const PATH_ALLOWED = [OWNER, 'payments/sdk/rules-clauses.js'];   // payment_sdk_tokens, its cursor and payment_sdk_token_refs   // Codex #158: the migration writes through record-token.stashToken
-const POINTER_ALLOWED = [OWNER, MIGRATION];
+const PATH_ALLOWED = [OWNER, 'payments/sdk/rules-clauses.js'];   // payment_sdk_tokens and its cursor
+const POINTER_ALLOWED = [OWNER];
 const FILES = execFileSync('git', ['ls-files', '*.js', ':!*.test.js', ':!test/**', ':!**/node_modules/**'], { cwd: FN, encoding: 'utf8' }).split('\n').filter(Boolean);
 const real = (f) => fs.readFileSync(path.join(FN, f), 'utf8');
 function parse(src) {
@@ -77,10 +76,10 @@ cell('RT-FIXTURE', (L) => {
   const planted = (() => { const t = 'z-runtime.js'; const src = "module.exports = require('../test/fixtures/pixelpay-sdk-2.5.2/lib/models/Settings.js');"; let ast = parse(src); let hit = false; const w = (n) => { if (hit || !n || typeof n !== 'object') return; if (Array.isArray(n)) { n.forEach(w); return; } if (n.type === 'Literal' && typeof n.value === 'string' && n.value.includes('pixelpay-sdk-2.5.2')) { hit = true; return; } for (const v of Object.values(n)) w(v); }; w(ast); return hit && t; })();
   assert.ok(planted, `${L}: control — a runtime require of the fixture would be caught`);
 });
-cell('RT-POINTER', (L) => assert.deepStrictEqual(S.pointer, [...POINTER_ALLOWED].sort(), `${L}: the record's token pointer is touched ONLY by record-token.js and the migration tool`));
+cell('RT-POINTER', (L) => assert.deepStrictEqual(S.pointer, [...POINTER_ALLOWED].sort(), `${L}: the record's token pointer is touched ONLY by record-token.js`));
 cell('RT-OWNER', (L) => {
   const ex = Object.keys(require(path.join(FN, OWNER))).sort();
-  assert.deepStrictEqual(ex, ['claimFor', 'dropPointer', 'enqueueAndDrop', 'hasLiveRefs', 'hasToken', 'hasTokens', 'pageTokenOrders', 'readAttemptToken', 'readToken', 'stashToken'], `${L}: the owner's exports are exactly the reviewed surface`);
+  assert.deepStrictEqual(ex, ['claimFor', 'dropPointer', 'enqueueAndDrop', 'hasToken', 'hasTokens', 'pageTokenOrders', 'readAttemptToken', 'readToken', 'stashToken'], `${L}: the owner's exports are exactly the reviewed surface`);
   assert.ok(FILES.length > 500 && FILES.includes('index.js') && FILES.includes(OWNER), `${L}: premise — the scan spans the whole tree (${FILES.length} files)`);
 });
 cell('RT-RULES', (L) => {

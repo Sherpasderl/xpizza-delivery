@@ -1884,15 +1884,6 @@
    "file": "xpizza-functions/payments/sdk/record-token.js",
    "fn": "enqueueAndDrop",
    "how": "computed-key-at-root",
-   "detail": "refPath(token, orderId)",
-   "fields": [],
-   "reason": "card-cleanup (owner unparked 11-18): `payment_sdk_token_refs/${hash}/${oid}` — the live-node reference removed with the node — a server-only node (rules .read/.write false), never an /orders path",
-   "count": 1
-  },
-  {
-   "file": "xpizza-functions/payments/sdk/record-token.js",
-   "fn": "enqueueAndDrop",
-   "how": "computed-key-at-root",
    "detail": "*/*/token",
    "fields": [],
    "reason": "card-cleanup (owner unparked 11-18): `provider_token_deletes/${hash}/token` — the provider-delete queue item (token-queue.enqueueEntries) — a server-only node (rules .read/.write false), never an /orders path",

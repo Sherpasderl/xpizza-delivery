@@ -49,7 +49,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const w = world(); await place(w, 'T-node', false);
     assert.ok(!JSON.stringify(w.rec()).includes('T-node'), `${L}: the payment_sdk record holds NO token value`);
     assert.strictEqual(w.rec().token_attempt, ATT, `${L}: the claim points at its attempt (the last claim wins, as before)`);
-    assert.deepStrictEqual(w.node(), { [ATT]: 'T-node' }, `${L}: the token sits at payment_sdk_tokens/{oid}/{attempt_id}`);
+    assert.deepStrictEqual(w.node(), { [ATT]: { t: 'T-node', src: 'new' } }, `${L}: the token sits at payment_sdk_tokens/{oid}/{attempt_id}`);
   });
   // ── the re-authorize readers use the POINTED attempt's token (the last claim wins), read BEFORE any money op is journaled ──
   await cell('TN-REAUTH-POINTER', async (L) => {
@@ -82,7 +82,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const [ra, rb] = await Promise.all([go('T-A'), go('T-B')]);
     const placedTok = w.fake.calls.filter((c) => c.action === 'authorize').map((c) => c.token);
     assert.ok(placedTok.length === 1, `premise: ONE authorize for the attempt (${JSON.stringify([ra.outcome, rb.outcome])})`);
-    assert.deepStrictEqual(w.node(), { [ATT]: placedTok[0] }, `${L}: the stored token is the one the placement authorized (never overwritten by a same-id request)`);
+    assert.deepStrictEqual(w.node(), { [ATT]: { t: placedTok[0], src: 'new' } }, `${L}: the stored token is the one the placement authorized (never overwritten by a same-id request)`);
     assert.ok([ra, rb].some((r) => r.outcome === 'refused' && r.reason === 'attempt_token_conflict') || [ra, rb].every((r) => r.outcome !== 'refused'), `${L}: a same-id request with a DIFFERENT token is refused (attempt_token_conflict) (${JSON.stringify([ra, rb])})`);
     await w.db.ref(`orders/${OID}/status`).set('preparing');
     await C.requestDecrease(w.deps, { orderId: OID, new_total_cents: 80, revision: REV(80) });
@@ -110,7 +110,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await C.settleTerminal(w.deps, { orderId: OID });
     assert.ok(w.ord().payment_terminal && !(w.rec().vault && w.rec().vault.state), `${L}: premise — terminal, the vault not yet run`);
     assert.strictEqual(await K.nullSpentToken(w.deps, OID), 'kept', `${L}: a save still owed ⇒ kept`);
-    assert.deepStrictEqual(w.node(), { [ATT]: 'T-owed' }, `${L}: the vault can still read it`);
+    assert.deepStrictEqual(w.node(), { [ATT]: { t: 'T-owed', src: 'new' } }, `${L}: the vault can still read it`);
     await K.completeVaultForOrder(w.deps, OID);
     assert.strictEqual(await K.nullSpentToken(w.deps, OID), 'nulled', `${L}: once the vault is settled ⇒ nulled`);
     assert.ok(gone(w), `${L}: gone`);
@@ -130,7 +130,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     w = world({}, { hooks: { beforeTx: async (p) => { if (String(p) === `payment_sdk/${OID}` && ++n === 2) await C.cancelSdkOrder(w.deps, { orderId: OID }); } } });
     const p = await C.placeOriginal(w.deps, { orderId: OID, attempt_id: ATT, token: 'T-orphan', amount_cents: 100, card: card(false) });
     assert.ok(p.outcome !== 'placed' && !(w.rec() || {}).token_attempt && w.fake.callCount('authorize') === 0, `premise: the claim LOST after the write-ahead (${p.outcome}), nothing dispatched`);
-    assert.deepStrictEqual(w.node(), { [ATT]: 'T-orphan' }, 'premise: the write-ahead token landed');
+    assert.deepStrictEqual(w.node(), { [ATT]: { t: 'T-orphan', src: 'new' } }, 'premise: the write-ahead token landed');
     await SW.visitDueOrder(w.deps, OID);
     await K.nullSpentToken(w.deps, OID);
     assert.strictEqual(w.node(), null, `${L}: a write-ahead token whose order is finished is swept (never outlives the order)`);
@@ -145,24 +145,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await SW.sweepSdkPayments(w.deps);
     assert.strictEqual(w.node(), null, `${L}: the sweeper's own walk of payment_sdk_tokens removes an orphan no due entry points at`);
   });
-  // ── a LEGACY record (token on the record, before the migration): the readers fall back inside record-token, the null drops it ──
-  await cell('TN-LEGACY-FALLBACK', async (L) => {
-    const w = world({ authorize: [{ outcome: 'approved' }, { outcome: 'approved' }] }, { eligible: () => true });
-    await place(w, 'T-legacy', false);
-    await w.db.ref(`payment_sdk/${OID}`).update({ token: 'T-legacy', token_attempt: null }); await w.db.ref(`payment_sdk_tokens/${OID}`).set(null);
-    await w.db.ref(`orders/${OID}/status`).set('preparing');
-    await C.requestDecrease(w.deps, { orderId: OID, new_total_cents: 80, revision: REV(80) });
-    const auths = w.fake.calls.filter((c) => c.action === 'authorize');
-    assert.strictEqual(auths[auths.length - 1].token, 'T-legacy', `${L}: a legacy record re-authorizes with its own token (fallback)`);
-    await w.db.ref(`orders/${OID}`).update({ status: 'delivered' }); await C.settleTerminal(w.deps, { orderId: OID });
-    assert.strictEqual(await K.nullSpentToken(w.deps, OID), 'nulled', `${L}: the null recognises a legacy token`);
-    assert.ok(gone(w), `${L}: the legacy token is dropped from the record`);
-  });
   await cell('TN-KEPT-WHILE-OPEN', async (L) => {
     const w = world(); await place(w, 'T-open', false);
     await SW.visitDueOrder(w.deps, OID);
     assert.ok(!w.ord().payment_terminal && w.rec().phase === 'open', `${L}: premise — a live (placed, not terminal) order`);
-    assert.deepStrictEqual(w.node(), { [ATT]: 'T-open' }, `${L}: an open order keeps its token (a decrease re-authorizes with it)`);
+    assert.deepStrictEqual(w.node(), { [ATT]: { t: 'T-open', src: 'new' } }, `${L}: an open order keeps its token (a decrease re-authorizes with it)`);
     assert.strictEqual(await K.nullSpentToken(w.deps, OID), 'kept', `${L}: not terminal ⇒ kept`);
   });
   await cell('TN-KEPT-RECORD-NOT-CLOSED', async (L) => {
@@ -170,7 +157,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await C.settleTerminal(w.deps, { orderId: OID });
     await w.db.ref(`payment_sdk/${OID}/lock`).set({ op_id: 'op_x', at: T0 });   // a money operation in flight
     assert.strictEqual(await K.nullSpentToken(w.deps, OID), 'kept', `${L}: a locked record ⇒ kept`);
-    assert.deepStrictEqual(w.node(), { [ATT]: 'T-lock' }, `${L}: kept`);
+    assert.deepStrictEqual(w.node(), { [ATT]: { t: 'T-lock', src: 'new' } }, `${L}: kept`);
   });
   await cell('TN-IDEMPOTENT', async (L) => {
     const w = world(); await place(w, 'T-idem', false); await deliver(w);

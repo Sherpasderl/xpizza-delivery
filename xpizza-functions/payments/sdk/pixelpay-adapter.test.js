@@ -240,11 +240,14 @@ const cell = async (L, fn) => { try { await fn(L); pass += 1; console.log(`  ✓
         if (v === undefined) delete process.env.SDK_PP_CONFIG; else process.env.SDK_PP_CONFIG = v;
         const d = deps().productionDeps({});
         assert.strictEqual(d.ppNamespace, 'unconfigured', `${L}: ${JSON.stringify(v)} ⇒ unconfigured`);
+        assert.strictEqual(d.ppMode, 'off', `${L}: ${JSON.stringify(v)} ⇒ mode off (the provider-delete drain stays inert)`);
         const out = await d.psp.pspAuthorize(AUTH_IN);
         assert.strictEqual(out.outcome, 'unknown', `${L}: an unconfigured adapter only ever answers unknown`);
       }
       process.env.SDK_PP_CONFIG = JSON.stringify(cfgOf('https://pixelpay.dev', { namespace: 'staging' }));
       assert.strictEqual(deps().productionDeps({}).ppNamespace, 'staging', `${L}: a parsed config exposes its namespace`);
+      const parsed = cfgOf('https://pixelpay.dev', { namespace: 'staging' });
+      assert.strictEqual(deps().productionDeps({}).ppMode, parsed.mode, `${L}: a parsed config exposes its PARSED mode (the drain's gate)`);
     } finally { if (before === undefined) delete process.env.SDK_PP_CONFIG; else process.env.SDK_PP_CONFIG = before; }
   });
 

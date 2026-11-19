@@ -34,11 +34,11 @@ function sdkPsp() {
   let raw = '';
   try { raw = require('./secrets').SDK_PP_CONFIG.value() || ''; } catch (_) { raw = ''; }
   const cfg = require('./pixelpay-adapter').parseConfig(raw);
-  if (!cfg) return { psp: makeAdapter(UNCONFIGURED), ppNamespace: 'unconfigured' };
-  return { psp: makeAdapter(require('./pixelpay-adapter').makePixelPayImpl(cfg)), ppNamespace: cfg.namespace };
+  if (!cfg) return { psp: makeAdapter(UNCONFIGURED), ppNamespace: 'unconfigured', ppMode: 'off' };
+  return { psp: makeAdapter(require('./pixelpay-adapter').makePixelPayImpl(cfg)), ppNamespace: cfg.namespace, ppMode: cfg.mode };   // ppMode: the PARSED mode (the drain's gate)
 }
 function productionDeps(db) {
-  const { psp, ppNamespace } = sdkPsp();
-  return { db, psp, ppNamespace, clock: () => Date.now(), voidEligible, cancelVoidEligible, releaseResources: (dp, id, o) => require('./release').releaseSdkOrder(dp, id, o), goLive };
+  const { psp, ppNamespace, ppMode } = sdkPsp();
+  return { db, psp, ppNamespace, ppMode, clock: () => Date.now(), voidEligible, cancelVoidEligible, releaseResources: (dp, id, o) => require('./release').releaseSdkOrder(dp, id, o), goLive };
 }
 module.exports = { productionDeps, UNCONFIGURED, setSdkGoLive };

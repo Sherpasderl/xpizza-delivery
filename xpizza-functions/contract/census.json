@@ -55,7 +55,7 @@
   },
   "sendSites": 24,
   "fieldsWritten": 123,
-  "opaqueWrites": 36,
+  "opaqueWrites": 35,
   "opaque": 180,
   "projections": 158,
   "sentinel": 41,
@@ -22288,7 +22288,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/token-queue.js#drainProviderDeletes#status#0",
-   "line": 64,
+   "line": 55,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -22301,7 +22301,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/token-queue.js#drainProviderDeletes#status#1",
-   "line": 67,
+   "line": 58,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -22314,7 +22314,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/token-queue.js#drainProviderDeletes#status#2",
-   "line": 69,
+   "line": 60,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -22327,7 +22327,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/token-queue.js#drainProviderDeletes#status#3",
-   "line": 69,
+   "line": 60,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -22340,7 +22340,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/token-queue.js#drainProviderDeletes#status#4",
-   "line": 73,
+   "line": 64,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -22353,7 +22353,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/token-queue.js#drainProviderDeletes#status#5",
-   "line": 73,
+   "line": 64,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -22366,7 +22366,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/token-queue.js#drainProviderDeletes#status#6",
-   "line": 74,
+   "line": 65,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -59941,7 +59941,7 @@
    "file": "xpizza-functions/payments/sdk/token-queue.js",
    "alias": "last_status",
    "field": "status",
-   "line": 73,
+   "line": 64,
    "round": 1
   },
   {
@@ -64799,15 +64799,7 @@
    "file": "xpizza-functions/payments/sdk/record-token.js",
    "fn": "enqueueAndDrop",
    "how": "computed-key-at-root",
-   "line": 51,
-   "detail": "refPath(token, orderId)",
-   "resolved": []
-  },
-  {
-   "file": "xpizza-functions/payments/sdk/record-token.js",
-   "fn": "enqueueAndDrop",
-   "how": "computed-key-at-root",
-   "line": 51,
+   "line": 46,
    "detail": "*/*/token",
    "resolved": []
   },
@@ -64815,7 +64807,7 @@
    "file": "xpizza-functions/payments/sdk/record-token.js",
    "fn": "enqueueAndDrop",
    "how": "computed-key-at-root",
-   "line": 51,
+   "line": 46,
    "detail": "*/*/sources/*",
    "resolved": []
   },
@@ -64823,7 +64815,7 @@
    "file": "xpizza-functions/payments/sdk/token-queue.js",
    "fn": "drainProviderDeletes",
    "how": "dynamic-root-path",
-   "line": 65,
+   "line": 56,
    "detail": "*/*/ok_at",
    "resolved": []
   },
@@ -64831,7 +64823,7 @@
    "file": "xpizza-functions/payments/sdk/token-queue.js",
    "fn": "drainProviderDeletes",
    "how": "dynamic-root-path",
-   "line": 73,
+   "line": 64,
    "detail": "*/*",
    "resolved": []
   },

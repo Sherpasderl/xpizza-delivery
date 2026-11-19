@@ -197,4 +197,4 @@ function makePixelPayImpl(cfg, { fetchImpl = fetch, deadlineMs = DEADLINE_MS, lo
   };
 }
 
-module.exports = { deleteTokenRequest, SDK_VERSION, parseConfig, makePixelPayImpl, toLempiras, parseLempiras, EVIDENCE, DEADLINE_MS, CONFIG_KEYS, VOID_REASON };
+module.exports = { deleteTokenRequest, SDK_VERSION, TOKEN_RE, parseConfig, makePixelPayImpl, toLempiras, parseLempiras, EVIDENCE, DEADLINE_MS, CONFIG_KEYS, VOID_REASON };

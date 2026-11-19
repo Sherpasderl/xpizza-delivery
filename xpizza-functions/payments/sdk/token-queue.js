@@ -6,10 +6,9 @@
 // without its handle). THIS module is the only code that names the queue path (record-token.guard RT-QUEUE).
 //
 // drainProviderDeletes — bounded (key-order pages behind a rotating cursor), run by the SDK sweeper:
-//   • INERT while the SDK config is unconfigured / off (deps.ppNamespace 'unconfigured'): no provider call; items stay; ONE create-once
-//     alert if any item exists (SDK go-live gate GL-1/GL-2 in the plan).
-//   • per item: the OWNERSHIP re-check first — a live saved card (customer_cards/{uid}/by_hash/{hash}) or another order's live node
-//     (record-token.hasLiveRefs) keeps the token: the item is closed «owned» with NO provider call (the owner keeps the handle).
+//   • ACTIVE ONLY under the parsed production config (deps.ppMode 'production' AND deps.ppNamespace 'prod'); otherwise INERT: no provider
+//     call, items stay, ONE create-once count-only alert if any item exists (SDK go-live gates GL-1/GL-2 in the plan).
+//   • no ownership step (PLAN DELTA r2, rule 6c): only one-off tokens are ever queued (record-token.enqueueAndDrop), so nothing shares them.
 //   • the probe rule (Q1/Q2): 200 ⇒ record OUR 200 (ok_at), then remove; 400 on a first try ⇒ UNKNOWN: kept, retried with backoff,
 //     alerted; 400 after OUR recorded 200 ⇒ absent ⇒ remove; 401 / 403 ⇒ STOP the whole drain + one alert (keys); anything else (timeout,
 //     5xx, no status) ⇒ UNKNOWN, retried with backoff, alerted after MAX_TRIES. Logs and alerts: fixed codes and counts only.
@@ -28,14 +27,6 @@ function enqueueEntries(token, srcKey, src) {
   return { [`${ROOT}/${h}/token`]: token, [`${ROOT}/${h}/sources/${srcKey}`]: src };
 }
 
-async function owned(deps, h, it) {
-  if (await require('./record-token').hasLiveRefs(deps.db, h)) return true;   // another order's live node still holds it
-  for (const s of Object.values(isObj(it.sources) ? it.sources : {})) {
-    if (isObj(s) && typeof s.uid === 'string' && s.uid && (await deps.db.ref(`customer_cards/${s.uid}/by_hash/${h}`).once('value')).exists()) return true;   // a live saved card
-  }
-  return false;
-}
-
 async function page(db, batch) {
   const cur = (await db.ref(CURSOR).once('value')).val();
   const get = async (after) => { const q = db.ref(ROOT).orderByKey(); const v = (await (after ? q.startAt(after).limitToFirst(batch + 1) : q.limitToFirst(batch)).once('value')).val() || {}; return Object.entries(v).filter(([k]) => k !== after).slice(0, batch); };
@@ -47,8 +38,9 @@ async function page(db, batch) {
 
 async function drainProviderDeletes(deps, { batch = BATCH } = {}) {
   const C = require('./coordinator');
-  const out = { done: 0, owned: 0, absent: 0, unknown: 0, failed: 0, stopped: false, inert: false };
-  if (deps.ppNamespace === 'unconfigured') {
+  const out = { done: 0, absent: 0, unknown: 0, failed: 0, stopped: false, inert: false };
+  // (C) the provider delete runs ONLY under the PARSED production config; unconfigured / off, sandbox or a non-prod namespace ⇒ INERT
+  if (!(deps.ppMode === 'production' && deps.ppNamespace === 'prod')) {
     out.inert = true;
     const any = (await deps.db.ref(ROOT).orderByKey().limitToFirst(1).once('value')).exists();
     if (any) await C.alertOnce(deps, 'provider_delete_unconfigured', 'queue', {});
@@ -59,7 +51,6 @@ async function drainProviderDeletes(deps, { batch = BATCH } = {}) {
     if (!isObj(it) || typeof it.token !== 'string' || !it.token) continue;
     if (Number.isFinite(it.next_at) && it.next_at > now) continue;
     try {
-      if (await owned(deps, h, it)) { await deps.db.ref(`${ROOT}/${h}`).remove(); out.owned += 1; continue; }
       const r = await deps.psp.pspDeleteToken({ token: it.token });
       if (r.status === 200 && r.success === true) {
         await deps.db.ref(`${ROOT}/${h}/ok_at`).set(now);   // OUR 200 recorded first: a later 400 then means «absent»

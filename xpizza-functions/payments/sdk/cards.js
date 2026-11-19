@@ -150,9 +150,9 @@ async function nullSpentToken(deps, orderId) {
   // finished: terminal (delivered/completed, or payment_terminal) OR a committed cancel / expiry (payment_cancel — irreversible; the
   // record is then phase 'cancelled', checked below), so an abandoned or cancelled order's token does not stay forever
   const finished = isObj(order) && (R.TERMINAL.includes(order.status) || !!order.payment_terminal || !!order.payment_cancel);
-  let out = 'none';
+  let out = 'none'; let vaultedAid = null;
   await R.casRecord(deps.db, orderId, (x) => {
-    out = 'none';
+    out = 'none'; vaultedAid = isObj(x.vault) && x.vault.state === 'done' && typeof x.vault.attempt_id === 'string' ? x.vault.attempt_id : null;
     if (!T.hasToken(x)) return undefined;
     out = 'kept';
     if (!finished || x.phase === 'open' || x.phase === 'adjusting' || x.lock || R.unansweredMoneyOps(x).length) return undefined;
@@ -163,7 +163,7 @@ async function nullSpentToken(deps, orderId) {
   // owner GO 11-18: the token NODE goes with the pointer — and a finished order with no pointer sweeps any ORPHAN (a write-ahead whose
   // claim lost, or a crash between the pointer drop and this remove): nothing at payment_sdk_tokens outlives a finished order
   // card-cleanup (PLAN DELTA (1)): never a bare drop — the node goes in ONE update that queues each token for the provider delete
-  if (out === 'nulled' || (out === 'none' && (finished || !isObj(order)) && await T.hasTokens(deps.db, orderId))) await T.enqueueAndDrop(deps.db, orderId, isObj(order) ? order.customer_uid : null, deps.clock());
+  if (out === 'nulled' || (out === 'none' && (finished || !isObj(order)) && await T.hasTokens(deps.db, orderId))) await T.enqueueAndDrop(deps.db, orderId, { uid: isObj(order) ? order.customer_uid : null, vaultedAid, now: deps.clock() });
   return out;
 }
 // Codex #158 r1 F2: an orphan token node may have NO due entry (a cancel cleanup raced a failing placement; a migration write-ahead lost its

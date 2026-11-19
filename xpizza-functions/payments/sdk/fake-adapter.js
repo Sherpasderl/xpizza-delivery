@@ -32,7 +32,8 @@ function makeFakePsp(script = {}, opts = {}) {
     // evidence — `authorized` / `captured` (production returns 412 ⇒ inconclusive after a void, and for an unknown uuid). A contract
     // cell that needs voided / expired / declined evidence INJECTS it explicitly (and is marked contract-only).
     // card-cleanup: the provider token delete — default 200 success; script.delete_token injects { status, success } / { throw: true }
-    pspDeleteToken: (a) => run('delete_token', a, () => ({ status: 200, success: true })),
+    // PRODUCTION PARITY (Codex #168 P2): the same token check as the real adapter (pixelpay-adapter TOKEN_RE) — production refuses (throws)
+    pspDeleteToken: (a) => (!require('./pixelpay-adapter').TOKEN_RE.test(String(a && a.token)) ? Promise.reject(new Error('fake-psp: a token outside the provider charset')) : run('delete_token', a, () => ({ status: 200, success: true }))),
     pspStatus: (a) => run('status', a, () => (state[a.uuid] && (opts.contractOnlyStatus === true || state[a.uuid].state === 'authorized' || state[a.uuid].state === 'captured') ? { state: state[a.uuid].state, uuid: a.uuid, ...(opts.contractOnlyStatus === true ? { amount_cents: state[a.uuid].amount_cents } : {}) } : { state: 'inconclusive', uuid: a.uuid })),   // Codex S3 r4 P2: the default is the recorded AMOUNT-LESS shape; amounts only for contract cells
   };
   const callCount = (action) => calls.filter((c) => c.action === action).length;
