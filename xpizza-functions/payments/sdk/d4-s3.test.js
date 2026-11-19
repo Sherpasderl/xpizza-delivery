@@ -186,6 +186,15 @@ const save = (d, uid, token, gen) => K().completeVault(d, { uid, token, token_ha
     assert.strictEqual(Object.keys(w.db.getAt('customer_cards/uid_A/cards') || {}).length, 1, `${L}: the sweeper completes it once — no duplicate card`);
     assert.strictEqual(w.db.getAt(`payment_sdk/${OID}/vault/state`), 'done', `${L}: the record notes the vault done`);
   });
+  // Codex #154 r1: a deleted account never vaults (cost guard; the deletion's fence transaction captures any vault before it anyway)
+  await cell('SDK-D4-VAULT-DELETED-UID', async (L) => {
+    const w = vworld();
+    await C.placeOriginal(w.deps, { orderId: OID, attempt_id: 'att_vault_deleted_001', token: 'T-d', amount_cents: 100, card: card(true) });
+    await w.db.ref('deleted_uids/uid_A').set(T0);
+    await K().completeVaultForOrder(w.deps, OID);
+    assert.strictEqual(w.db.getAt('customer_cards/uid_A'), null, `${L}: no card is saved for a deleted account`);
+    assert.strictEqual(w.db.getAt(`payment_sdk/${OID}/vault/state`), 'dropped', `${L}: the vault step is settled as dropped (the token can then be nulled)`);
+  });
   await cell('SDK-D4-REMOVE-AFTER-ADMIT', async (L) => {
     const w = vworld();
     await K().completeVault(w.deps, { uid: 'uid_A', token: 'T-saved', token_hash: H('T-saved'), display: DISP, vault_gen: 0 });

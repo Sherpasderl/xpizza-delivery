@@ -5,9 +5,9 @@
 // Customers are keyed by an HMAC of their phone. No raw phone is ever stored in, returned by, or LOGGED
 // by any stats code.
 //
-// 🔴 THIS NORMALIZER IS DELIBERATELY NOT whatsapp.js's. That helper logs the RAW phone on bad input
-// (whatsapp.js:98, `console.warn(\`whatsapp: phone "${raw}" ...\`)`), and a stats job runs it over every
-// order in history, so reusing it would write customer phone numbers into Cloud Logging by the thousand.
+// 🔴 THIS NORMALIZER IS DELIBERATELY NOT whatsapp.js's. That helper LOGGED the RAW phone on bad input until
+// fix/privacy-gaps-5f (it now logs only the digit count), and it is still a logging helper: a stats job runs over every
+// order in history, so reusing it would write one log line per bad phone into Cloud Logging by the thousand.
 // This one has the SAME valid-phone behaviour (stats-identity.test.js proves parity on valid inputs) and
 // STRICTER validation, and it is SILENT: it returns null and never logs, throws or echoes its input.
 //

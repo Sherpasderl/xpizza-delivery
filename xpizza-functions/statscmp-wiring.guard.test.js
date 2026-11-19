@@ -15,7 +15,7 @@ const F = 'stats/stats-api.js';
 assert.deepStrictEqual([...FILES], [F], 'STATSCMP: the owned file');
 {
   // read through every NEWER layer's peel first (sales-multi, merged forward on top of this line), as the older guards do
-  const disk = require('./tools/dirwire-module-inverse').unapplyDirwireModule(F, require('./tools/salesmulti-module-inverse').unapplySalesMultiModule(F, require('./tools/d4-intake-inverse').unapplyD4Module(F, require('./tools/mktprice-module-inverse').unapplyMktPriceModule(F, require('./tools/audience-module-inverse').unapplyAudienceModule(F, require('./tools/ledgers1-module-inverse').unapplyLedgerS1Module(F, fs.readFileSync(path.join(__dirname, F), 'utf8')))))));
+  const disk = require('./tools/dirwire-module-inverse').unapplyDirwireModule(F, require('./tools/salesmulti-module-inverse').unapplySalesMultiModule(F, require('./tools/d4-intake-inverse').unapplyD4Module(F, require('./tools/mktprice-module-inverse').unapplyMktPriceModule(F, require('./tools/audience-module-inverse').unapplyAudienceModule(F, require('./tools/ledgers1-module-inverse').unapplyLedgerS1Module(F, require('./tools/privacy-module-inverse').unapplyPrivacyModule(F, fs.readFileSync(path.join(__dirname, F), 'utf8'))))))));
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
   assert.notStrictEqual(disk, base, 'STATSCMP: non-vacuity — stats-api.js carries the comparison.missing_days hunk');
   assert.strictEqual(unapplyStatsCmpModule(F, disk), base, `STATSCMP: 🔴 ${F} minus the comparison.missing_days hunk is not ${BASE}:${F}`);

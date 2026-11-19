@@ -50,7 +50,23 @@ try {
   }
   assert.deepStrictEqual(Object.keys(W).filter((k) => !['tplArrived', 'instanceFor'].includes(k)).sort(), Object.keys(B).sort(), 'DRVC-WA-EXPORTS only tplArrived + instanceFor are new');
   assert.strictEqual(W.isEnabledForRestaurant.toString(), B.isEnabledForRestaurant.toString(), 'DRVC-WA-ENABLED isEnabledForRestaurant byte-unchanged');
-  assert.strictEqual(W.sendMessage.toString(), B.sendMessage.toString(), 'DRVC-WA-SEND sendMessage byte-unchanged');
+  // fix/privacy-gaps-5f (rule 20): sendMessage's log lines no longer carry the phone / the provider body. The privacy-PEELED module's
+  // sendMessage is byte-identical to the base, AND the live one is exactly the peeled one with the privacy hunks re-applied — so a real
+  // sendMessage change cannot hide behind the peel (it would survive the re-apply and differ)
+  const PV = require('./tools/privacy-module-inverse');
+  const tmpP = path.join(__dirname, `.whatsapp-peeled-${process.pid}.js`);
+  fs.writeFileSync(tmpP, PV.unapplyPrivacyModule('whatsapp.js', fs.readFileSync(path.join(__dirname, 'whatsapp.js'), 'utf8')));
+  try {
+    const peeled = require(tmpP).sendMessage.toString();
+    assert.strictEqual(peeled, B.sendMessage.toString(), 'DRVC-WA-SEND the privacy-peeled sendMessage is byte-unchanged vs the base');
+    let reapplied = peeled; let k = 0;
+    for (const h of PV.HUNKS.filter((x) => x.file === 'whatsapp.js')) {
+      const c = reapplied.split(h.was).length - 1;
+      if (c === 1) { reapplied = reapplied.replace(h.was, () => h.now); k += 1; } else assert.strictEqual(c, 0, `DRVC-WA-SEND a privacy hunk occurs ${c}× in sendMessage`);
+    }
+    assert.ok(k >= 1, 'DRVC-WA-SEND non-vacuity: the privacy layer edits sendMessage');
+    assert.strictEqual(W.sendMessage.toString(), reapplied, 'DRVC-WA-SEND the live sendMessage = the peeled one + the privacy hunks, nothing else');
+  } finally { fs.unlinkSync(tmpP); }
   ok(`every existing template / routing / sender is byte-identical to the base module (${n} cells); only tplArrived + instanceFor are new`);
 } finally { fs.unlinkSync(tmp); void os; }
 

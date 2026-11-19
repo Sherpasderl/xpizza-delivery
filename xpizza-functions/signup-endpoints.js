@@ -214,8 +214,16 @@ async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff
   // null on the same key, as user_private is) — every setFavorite is a parent transaction that aborts on it, so none outlives the account
   // offer-audience (r4.1 §5): every history order's frozen codes go with the account (their day-index entries are swept at the deadline);
   // the brand markers are KEPT (owner 5013)
+  // fix/privacy-gaps-5f + Codex #154 r1 (owner «airtight», design approved 11-18): no saved card outlives the account and no saved token
+  // escapes the provider-delete capture. This update (tombstones first) opens the fence WORK LIST card_fence_owed/{uid} = at; THEN ONE
+  // transaction on customer_cards/{uid} (cards.fenceCards) replaces the node by the fence { _deleted: at, tokens } — the tokens read
+  // inside it, so it serializes with every vault (completeVault drops on the fence; a vault before it is captured). A failure of this
+  // update writes nothing (no fence on a live account); a failure after it leaves the work list open and pruneResidual's
+  // drainCardFences finishes it. Every card admission refuses the tombstoned uid meanwhile. The PixelPay delete is a later slice.
+  const CARDS = require('./payments/sdk/cards');
   const audienceIdsGone = Object.fromEntries(historyIds.map((id) => [`orders/${id}/audience_ids`, null]));
-  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });   // r4: `at` only — a fence's version v is never clobbered
+  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, [`card_fence_owed/${uid}`]: at, ...audienceIdsGone });   // r4: `at` only — a fence's version v is never clobbered
+  try { await CARDS.fenceCards(db, uid, at); } catch (e) { console.error(`deleteAccountCore: card fence failed (${e && e.code ? e.code : 'error'}) — card_fence_owed keeps it open; pruneResidual fences it`); }   // no identifier in the log
   // PLAN-3a-capp-push-tokens (Codex push r1): the push prefs FENCE rode the update above; NOW the devices are discovered and drained
   // (compare-and-clear on uid + claim). The update above also opened the DURABLE drain obligation: a failure here leaves it open
   // (incomplete) and pruneResidual re-drains it until zero tokens remain; the sender also refuses a tombstoned uid.
@@ -334,7 +342,10 @@ async function pruneResidual(db, now = Date.now()) {
   // PLAN-3a-capp-push-tokens (Codex push r2): every open push drain obligation is re-drained until its uid holds ZERO tokens (isolated)
   let pushDrain;
   try { pushDrain = await require('./customer-push').drainPending(db, now); } catch (e) { pushDrain = { error: true }; console.error('pruneResidual: push drain failed', e && e.code ? e.code : 'error'); }
-  return { ratings, deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now), tombstones: await backfillDeletedUids(db), pushDrain };
+  // Codex #154 r1: every card fence a deletion opened but did not finish (card_fence_owed) is completed (isolated, bounded)
+  let cardFences;
+  try { cardFences = await require('./payments/sdk/cards').drainCardFences(db); } catch (e) { cardFences = { error: true }; console.error('pruneResidual: card fence drain failed', e && e.code ? e.code : 'error'); }
+  return { ratings, deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now), tombstones: await backfillDeletedUids(db), pushDrain, cardFences };
 }
 // security backlog 2026-11-01: an account tombstoned in user_private BEFORE the sweep wrote deleted_uids gets it now (its OWN
 // deleted_at), create-if-absent — so every deleted_uids-only check refuses it too. Live / revived accounts are never touched.

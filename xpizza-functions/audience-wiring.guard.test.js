@@ -33,7 +33,7 @@ const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf
 assert.ok(FILES.length >= 1 && HUNKS.length >= 1, 'AUDIENCE: non-vacuity — the layer owns files');
 for (const F of FILES) {
   // asm11: directory wiring (5f, merged after this layer: one disjoint index.js export line) is peeled first on the raw read
-  const raw = fs.readFileSync(path.join(__dirname, F), 'utf8');   // the layer's own guard: its BASE already holds D4 (as mktprice-wiring's raw read)
+  const raw = require('./tools/privacy-module-inverse').unapplyPrivacyModule(F, fs.readFileSync(path.join(__dirname, F), 'utf8'));   // the layer's own guard: its BASE already holds D4 (as mktprice-wiring's raw read)   // fix/privacy-gaps-5f: the newest layer peels first, on the raw read
   // asm11 15: the 3a capp push wiring (memberreads hunks marked after aaeb8f277, merged last) is peeled first
   const disk = require('./tools/dirwire-module-inverse').unapplyDirwireModule(F, require('./tools/memberreads-module-inverse').unapplyAfter(F, require('./tools/ledgers1-module-inverse').unapplyLedgerS1Module(F, raw), 'aaeb8f277'));   // asm11 17: ledger S1 (newest) peeled first
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);

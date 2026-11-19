@@ -30348,8 +30348,8 @@
   "slice": "sec",
   "label": "security backlog: the inactivity sweep writes no deleted_uids again (the gap: deleted_uids-only checks miss swept accounts)",
   "file": "signup-endpoints.js",
-  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });",
-  "to": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, sweepCutoff == null ? at : null, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });",
+  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, [`card_fence_owed/${uid}`]: at, ...audienceIdsGone });",
+  "to": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, sweepCutoff == null ? at : null, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, [`card_fence_owed/${uid}`]: at, ...audienceIdsGone });",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -30444,8 +30444,8 @@
   "slice": "sec",
   "label": "security backlog: the sweep residual never backfills deleted_uids for legacy user_private tombstones",
   "file": "signup-endpoints.js",
-  "from": "tombstones: await backfillDeletedUids(db), pushDrain };",
-  "to": "tombstones: 0, pushDrain };",
+  "from": "tombstones: await backfillDeletedUids(db), pushDrain, cardFences };",
+  "to": "tombstones: 0, pushDrain, cardFences };",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -30468,8 +30468,8 @@
   "slice": "sec",
   "label": "security backlog: r2 P1-c: the two tombstones written in TWO steps (a failure between them leaves user_private.deleted_at without deleted_uids)",
   "file": "signup-endpoints.js",
-  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });",
-  "to": "await db.ref(`user_private/${uid}`).set({ deleted_at: at }); await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });",
+  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, [`card_fence_owed/${uid}`]: at, ...audienceIdsGone });",
+  "to": "await db.ref(`user_private/${uid}`).set({ deleted_at: at }); await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, [`card_fence_owed/${uid}`]: at, ...audienceIdsGone });",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -32526,8 +32526,8 @@
   "slice": "sa",
   "label": "S-A1 ratings v2 (r3): the redaction journal is NOT in the deletion's atomic update",
   "file": "signup-endpoints.js",
-  "from": ", [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });",
-  "to": ", ...audienceIdsGone });",
+  "from": ", [`ratings_redact_pending/${uid}/at`]: now, [`card_fence_owed/${uid}`]: at, ...audienceIdsGone });",
+  "to": ", [`card_fence_owed/${uid}`]: at, ...audienceIdsGone });",
   "command": [
    "node",
    "ratings/rating-v2.test.js"

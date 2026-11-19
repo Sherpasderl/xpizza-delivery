@@ -136,6 +136,23 @@ const snap = (w) => JSON.stringify(w.db.root);
     assert.ok(a && a.token === 'T-A' && att.card_ref === `saved:${'d'.repeat(20)}` && att.display.last4 === '5555', `${L}: the caller's saved card is resolved SERVER-side (token, card_ref, display)`);
   });
 
+  // Codex #154 r1 (advisor 11-18, admission on EVERY path): a deleted account's saved card is never charged — (a) refused at the lookup
+  // before any write; (b) a deletion that lands AFTER the lookup and before the charge (the deletion tombstones first, then fences) is
+  // caught by the re-check right before placeOriginal: no PSP call, this request's own pending order cancelled
+  await cell('SDK-D4-SAVED-CARD-DELETED-UID', async (L) => {
+    const CARD = { customer_cards: { uid_A: { cards: { ['d'.repeat(20)]: { token: 'T-A', token_hash: 'hA', brand: 'mastercard', last4: '5555', exp_month: 11, exp_year: 2031 } } } } };
+    const w = world({ seed: { ...CARD, deleted_uids: { uid_A: T0 - 1 } } });
+    const before = snap(w);
+    const r = await FINISH(w, { card: { kind: 'saved', card_id: 'd'.repeat(20) } });
+    assert.deepStrictEqual(r, { status: 409, body: { error: 'saved_card_unavailable' } }, `${L}: a tombstoned uid's saved card ⇒ 409 at the lookup`);
+    assert.ok(snap(w) === before && w.fake.callCount('authorize') === 0, `${L}: BEFORE any write or PSP call`);
+    const w2 = world({ seed: CARD, script: { authorize: [{ outcome: 'approved' }] } });
+    const r2 = await FINISH(w2, { card: { kind: 'saved', card_id: 'd'.repeat(20) }, runGate: async () => { await w2.db.ref('deleted_uids/uid_A').set(T0); return { refuse: null, provenance: null }; } });
+    assert.deepStrictEqual(r2, { status: 409, body: { error: 'saved_card_unavailable' } }, `${L}: a deletion between the lookup and the charge ⇒ 409`);
+    assert.strictEqual(w2.fake.callCount('authorize'), 0, `${L}: the deleted account's saved token never reaches the PSP`);
+    assert.ok(w2.ord() && w2.ord().payment_cancel, `${L}: this request's own pending order is cancelled (no money was asked)`);
+  });
+
   await cell('SDK-D4-REPLACES-UNRESOLVED', async (L) => {
     const other = { order_id: 'tb_prev_1', ...pending({ customer_uid: 'uid_A' }), payment_flow: 'sdk_auth_v1', pay_deadline_at: T0 + 9e5, payment_fingerprint: 'fp_prev' };
     const w = world({ seed: { orders: { tb_prev_1: other } } }); const before = snap(w);

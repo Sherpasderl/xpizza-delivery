@@ -1442,7 +1442,7 @@ createOrderApp.all('*', async (req, res) => {
 // If the error isn't a parse failure, fall through to the default handler.
 createOrderApp.use((err, req, res, next) => {
   if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
-    console.warn(`createOrder: malformed JSON in request body — ${err.message}`);
+    console.warn('createOrder: malformed JSON in request body (parse_failed)');   // rule 20: never err.message — it quotes the body
     return res.status(400).json({ error: 'Bad Request', detail: 'Malformed JSON in request body' });
   }
   // eslint-disable-next-line no-unused-vars
@@ -2430,7 +2430,7 @@ chargeOnlineApp.all('*', async (req, res) => {
 
 chargeOnlineApp.use((err, req, res, next) => {
   if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
-    console.warn(`chargeOnlineOrder: malformed JSON — ${err.message}`);
+    console.warn('chargeOnlineOrder: malformed JSON (parse_failed)');   // rule 20: never err.message — it quotes the body
     return res.status(400).json({ error: 'Bad Request', detail: 'Malformed JSON in request body' });
   }
   // eslint-disable-next-line no-unused-vars
@@ -2543,7 +2543,7 @@ async function sendPaidAfterCloseRefund(db, { orderId, order }) {
     // CONFIRMED accepted by the provider → stamp the source-of-truth marker (dedupes every later finalize/sweep pass).
     try { await db.ref(`orders/${orderId}/paid_after_close_refund_sent_at`).set(ServerValue.TIMESTAMP); }
     catch (e) { console.warn(`sendPaidAfterCloseRefund: sent-marker write failed ${orderId} (may re-send once)`, e && e.message); }
-    console.log(`sendPaidAfterCloseRefund: ${orderId} → refund WhatsApp sent to ${order.customer_phone}`);
+    console.log(`sendPaidAfterCloseRefund: ${orderId} → refund WhatsApp sent`);
   } catch (e) { console.warn(`sendPaidAfterCloseRefund failed for ${orderId}`, e && e.message); }
 }
 
@@ -2557,7 +2557,7 @@ async function sendScheduledSlotClosed(db, { orderId, order }) {
     if (!order || !order.customer_phone) { console.warn(`sendScheduledSlotClosed: ${orderId} has no customer_phone`); return; }
     if (!(await whatsapp.isEnabledForRestaurant(db, rid))) { console.log(`sendScheduledSlotClosed: whatsapp disabled for ${rid}, skip`); return; }
     await whatsapp.sendMessage(order.customer_phone, inbound.tplScheduledSlotClosed(), rid);
-    console.log(`sendScheduledSlotClosed: ${orderId} → slot-closed WhatsApp sent to ${order.customer_phone}`);
+    console.log(`sendScheduledSlotClosed: ${orderId} → slot-closed WhatsApp sent`);
   } catch (e) { console.warn(`sendScheduledSlotClosed failed for ${orderId}`, e && e.message); }
 }
 
@@ -3734,10 +3734,11 @@ const STAFF_EMAILS = new Set([
 exports.blockPublicSignup = beforeUserCreated({ region: 'us-central1' }, (event) => {
   const email = ((event.data && event.data.email) || '').trim().toLowerCase();
   if (!email || !STAFF_EMAILS.has(email)) {
-    console.warn(`blockPublicSignup: rejected account creation for "${email || '(no email)'}"`);
+    const why = email ? 'not a staff email' : 'no email';   // rule 20: never the address itself
+    console.warn(`blockPublicSignup: rejected account creation (${why})`);
     throw new HttpsError('permission-denied', 'Account creation is restricted to X Pizza staff.');
   }
-  console.log(`blockPublicSignup: allowed staff account creation for ${email}`);
+  console.log(`blockPublicSignup: allowed staff account creation`);
   // returning nothing → creation proceeds
 });
 
@@ -5213,7 +5214,7 @@ exports.sendOrderStatusNotifications = onValueWritten(
 
       if (!body) return;
 
-      console.log(`sendOrderStatusNotifications: ${orderId} → ${after}, sending WhatsApp to ${order.customer_phone}`);
+      console.log(`sendOrderStatusNotifications: ${orderId} → ${after}, sending WhatsApp`);
       await whatsapp.sendMessage(order.customer_phone, body, restaurantId);
 
     } catch (e) {
@@ -5400,7 +5401,7 @@ exports.notifyPickupReady = onValueWritten(
     try {
       if (result != null) {
         await notifRef.child('sent_at').set(ServerValue.TIMESTAMP);
-        console.log(`notifyPickupReady: ${orderId} → pickup-ready WhatsApp sent to ${order.customer_phone}`);
+        console.log(`notifyPickupReady: ${orderId} → pickup-ready WhatsApp sent`);
       } else {
         await notifRef.child('send_unresolved_at').set(ServerValue.TIMESTAMP);
         console.warn(`notifyPickupReady: ${orderId} → send UNRESOLVED (no confirmed provider success)`);
@@ -5533,7 +5534,7 @@ exports.notifyPreparing = onValueWritten(
       try {
         if (whatsapp.isSendConfirmed(result)) {
           await notifRef.child('sent_at').set(ServerValue.TIMESTAMP);
-          console.log(`notifyPreparing: ${orderId} → preparing WhatsApp sent to ${order.customer_phone}`);
+          console.log(`notifyPreparing: ${orderId} → preparing WhatsApp sent`);
         } else {
           await notifRef.child('send_unresolved_at').set(ServerValue.TIMESTAMP);
           console.warn(`notifyPreparing: ${orderId} → send UNRESOLVED (no confirmed provider success)`);
@@ -5787,7 +5788,7 @@ exports.onIncomingWhatsApp = onRequest(
     if (data.type && data.type !== 'chat') {
       // Skip media (images, audio, etc.) — we'd need different handling.
       // Still log it so dispatcher can see something arrived.
-      console.log(`onIncomingWhatsApp: ignored non-chat type=${data.type} from=${data.from}`);
+      console.log(`onIncomingWhatsApp: ignored non-chat type=${data.type}`);
       try {
         const db = getDatabase();
         await db.ref('incoming_messages').push({
@@ -5834,7 +5835,7 @@ exports.onIncomingWhatsApp = onRequest(
           time: data.time || Math.floor(Date.now() / 1000),
           handled: false, reason: 'muted: human handling'
         });
-        console.log(`onIncomingWhatsApp: muted (human handling) rid=${restaurantId} from=${fromPhoneRaw}`);
+        console.log(`onIncomingWhatsApp: muted (human handling) rid=${restaurantId}`);
         return res.status(200).send('muted');
       }
     } catch (_) { /* FAIL-OPEN → reply as today */ }
@@ -5859,7 +5860,7 @@ exports.onIncomingWhatsApp = onRequest(
       // UltraMsg retry. (hoursFromIdentity already null-guards bad HH:MM; this is defense-in-depth.)
       const intent = inbound.classify(body);
       const hours = inbound.getHoursStatus(new Date(), hoursMap);   // hoursMap undefined → x_pizza HOURS default
-      console.log(`onIncomingWhatsApp: rid=${restaurantId} from=${fromPhoneRaw} intent=${intent} body="${body.substring(0, 80)}"`);
+      console.log(`onIncomingWhatsApp: rid=${restaurantId} intent=${intent} body_len=${body.length}`);
 
       if (intent === 'STATUS_CHECK') {
         // Look up active orders for this phone number. We match by suffix
@@ -5930,7 +5931,7 @@ exports.onIncomingWhatsApp = onRequest(
       }
 
     } catch (e) {
-      console.error(`onIncomingWhatsApp: failed for from=${fromPhoneRaw}`, e.message);
+      console.error(`onIncomingWhatsApp: failed (rid=${restaurantId})`, e.message);
       // Always 200 — UltraMsg retries on non-2xx
     }
 
@@ -6470,7 +6471,7 @@ exports.autoAssignOnOrderCreate = onValueWritten(
       return;
     }
 
-    console.log(`autoAssign: assigning ${orderId} → ${chosen.name} (${chosen.distanceKm.toFixed(2)}km, ${chosen.orderCount} active)`);
+    console.log(`autoAssign: assigning ${orderId} → ${chosen.driverId} (${chosen.distanceKm.toFixed(2)}km, ${chosen.orderCount} active)`);
 
     // Close the TOCTOU race: re-read the chosen driver right before the write.
     // If they're no longer assignable (clocked off / went en_route / stacked by
@@ -6494,7 +6495,7 @@ exports.autoAssignOnOrderCreate = onValueWritten(
     // stays 'assigned' (swipe-to-accept). orderCount stays the basis for the 2-order cap (unchanged).
     const isStacked = recheck.hasAcceptedSameHubOrder;
     if (isStacked) {
-      console.log(`autoAssign: ${orderId} is SAME-HUB STACKED on ${chosen.name} (already has ${chosen.orderCount} active)`);
+      console.log(`autoAssign: ${orderId} is SAME-HUB STACKED on ${chosen.driverId} (already has ${chosen.orderCount} active)`);
     }
 
     // stacked-seq r5 T5(ii): a same-hub pair is planned BEFORE the claim (no claim is held across Routes). Cross-hub / not one
@@ -6704,7 +6705,7 @@ exports.monitorAssignmentTimeout = onValueWritten(
       return;
     }
 
-    console.log(`timeout-monitor: reassigning ${orderId} from ${driverId} → ${nextDriver.name} (attempt ${attempts + 1})`);
+    console.log(`timeout-monitor: reassigning ${orderId} from ${driverId} → ${nextDriver.driverId} (attempt ${attempts + 1})`);
 
     // S3d: CAS-claim the delivery task, REPLACING the timed-out driver — expectCurrent = driverId, NOT
     // null. The delivery is already assigned to the timed-out driver here (pickup+delivery were assigned
@@ -6968,7 +6969,7 @@ exports.sweepPendingOrders = onSchedule(
         updates[`tasks/${orderId}_delivery/last_swept`] = now;
         await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'sweeper.finalize', target: chosen.driverId });   // S1a §3
         offered++;
-        console.log(`sweepPending: re-offered ${orderId} → ${chosen.name} (offer ${retryCount + 1})`);
+        console.log(`sweepPending: re-offered ${orderId} → ${chosen.driverId} (offer ${retryCount + 1})`);
       } catch (e) {
         console.error(`sweepPending: failed after claim for ${orderId}`, e);
         await rollbackOrAlert(db, claim, orderId, 'sweepPending');
