@@ -33,7 +33,7 @@ const legacy = () => ({ order_id: 'x', restaurant_id: 'tb_norte', status: 'deliv
       sdk_checkout_subject: { u_u_cust000000000000000000: { order_id: 'o_live', at: 1 } },
       recovery_verify_pad: 1,
       sdk_fence: { k1: { order_id: 'o_live', owner: 'u_u_cust000000000000000000', at: 1 } },
-      payment_sdk_tokens: { o_live: { att_x: { t: 'tok_live', src: 'new' } } }, payment_sdk_tokens_cursor: 'o_live', provider_token_deletes: { ['b'.repeat(64)]: { token: 'tok_q', sources: { order_o_live: { aid: 'att_x', uid: null, at: 1 } } } }, provider_token_deletes_cursor: 'b'.repeat(64),   // owner GO 11-18: the card token outside the record — server-only
+      payment_sdk_tokens: { o_live: { att_x: { t: 'tok_live', uid: null } } }, payment_sdk_tokens_cursor: 'o_live', provider_token_deletes: { ['b'.repeat(64)]: { token: 'tok_q', sources: { order_o_live: { aid: 'att_x', uid: null, at: 1 } } } }, provider_token_deletes_cursor: 'b'.repeat(64),   // owner GO 11-18: the card token outside the record — server-only
     });
   });
   await seed();

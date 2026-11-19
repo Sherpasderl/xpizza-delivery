@@ -2198,6 +2198,7 @@
   }
  ],
  "moneyPathNonFactReads": {
+  "customer_uid@xpizza-functions/payments/sdk/coordinator.js#placeOriginal": "card-cleanup r3: the customer the card token belongs to, stored WITH the token (payment_sdk_tokens {t, uid}) so the saved-card exclusion still has it after the order is purged — an identity key, never an amount; asserted by token-queue TQ-NO-UID-SAVED / TQ-NO-UID-RESUBMITTED-SAVED",
   "resolution@xpizza-functions/ledger/projector.js#projectOrder": "ledger S3 (Codex #114 #4): the PRESENCE of resolve-manual close_fulfilled's marker (resolution offline_fulfilled) puts the order on the MANUAL HOLD — nothing is posted; never an amount or a selector of money",
   "created_at@xpizza-functions/ledger/projector.js#projectOrder": "ledger S3 (Codex #110 r2 condition): the AUTHORITATIVE order date — every journal is DATED by it (the snapshot's created_at is informational); never an amount or a selector of money",
   "active_attempt_id@xpizza-functions/ledger/projector.js#projectOrder": "ledger S3: selects WHICH paid attempt is the order's sale (the primary collection); any other paid attempt goes to customer_refund_suspense — the amounts are the PROVIDER-reported ones, never this pointer's",

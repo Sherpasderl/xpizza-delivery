@@ -164,7 +164,7 @@ async function placeOriginal(deps, { orderId, attempt_id, token, amount_cents, a
   // owner GO 11-18: the token's WRITE-AHEAD (payment_sdk_tokens/{oid}/{attempt_id}, record-token) runs CONCURRENTLY with the record create
   // — no added sequential round trip on checkout (token-null TN-LATENCY) — after enrol (an orphan always has a due entry to sweep it).
   // The stash is STARTED before the create and awaited after it; a failure of either stops the claim (its error is captured, never lost)
-  const stashed = T.stashToken(deps.db, orderId, attempt_id, token, card && typeof card.card_ref === 'string' && card.card_ref.startsWith('saved:') ? 'saved' : 'new').then((r) => ({ r }), (err) => ({ err }));   // started now, awaited after the create
+  const stashed = T.stashToken(deps.db, orderId, attempt_id, token, order.customer_uid).then((r) => ({ r }), (err) => ({ err }));   // started now, awaited after the create
   await R.createRecord(deps.db, orderId, { flow: 'sdk_auth_v1', phase: 'open', committed_revision: 0, fulfillment_total_cents: amount_cents, created_at: now, ttl_at: deadline != null ? deadline : now + R.TTL_MS, ledger: require('../../ledger/alloc-snapshot').snapshotOf(order, require('../../ledger/alloc-snapshot').modeOf({ sdk: true, clientHdr: { app: null, deployment: 'orders-app' } })) });
   { const st = await stashed; if (st.err) throw st.err; if (st.r === 'conflict') return { outcome: 'refused', reason: 'attempt_token_conflict' }; }   // the write-ahead has landed before the claim CAS (or the claim never runs); a same-id request with a DIFFERENT token never claims (Codex #158 F1)
 

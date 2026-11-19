@@ -11,12 +11,12 @@
 const node = (db, orderId, attemptId) => db.ref(attemptId ? `payment_sdk_tokens/${orderId}/${attemptId}` : `payment_sdk_tokens/${orderId}`);
 // Codex #158 r1 F1: CREATE-ONCE per attempt — two requests with the same attempt id and DIFFERENT tokens can both pass the replay check;
 // the first token stays, the second gets 'conflict' (its claim is refused before any PSP call). The same token again is a no-op 'ok'.
-// card-cleanup r2 (PLAN DELTA r2 (A)): the node records the token's SOURCE with it, in the same transaction —
-// payment_sdk_tokens/{oid}/{aid} = { t, src: 'new' | 'saved' } — so even an unclaimed write-ahead (a lost claim, the orphan walk) is known
-// to be a one-off or a saved card's token.
-async function stashToken(db, orderId, attemptId, token, src) {
+// card-cleanup r3 (owner B / advisor GO 11-19, Codex #169): the node records the order's customer uid WITH the token, in the same
+// transaction — payment_sdk_tokens/{oid}/{aid} = { t, uid } (uid null for a guest) — so the saved-card check still has its uid after the
+// order record is purged.
+async function stashToken(db, orderId, attemptId, token, uid) {
   let conflict = false;
-  const res = await node(db, orderId, attemptId).transaction((cur) => { conflict = false; if (cur == null) return { t: token, src: src === 'saved' ? 'saved' : 'new' }; if (cur && cur.t === token) return cur; conflict = true; return undefined; });
+  const res = await node(db, orderId, attemptId).transaction((cur) => { conflict = false; if (cur == null) return { t: token, uid: typeof uid === 'string' && uid ? uid : null }; if (cur && cur.t === token) return cur; conflict = true; return undefined; });
   if (conflict) return 'conflict';
   if (!res || !res.committed) throw Object.assign(new Error('token stash not committed'), { code: 'stash_not_committed' });
   return 'ok';
@@ -29,19 +29,21 @@ async function readAttemptToken(db, orderId, rec, attemptId) {
 const readToken = (db, orderId, rec) => readAttemptToken(db, orderId, rec, rec && rec.token_attempt);
 const hasToken = (rec) => !!rec && typeof rec.token_attempt === 'string';
 function dropPointer(rec) { delete rec.token_attempt; }
-// card-cleanup (PLAN DELTA (1) + r2 (A)): the node is NEVER dropped bare — ONE multi-path update removes exactly the attempts read (a newer
-// write-ahead that lands after the read stays for the next visit) AND queues each ONE-OFF token for the provider delete. A one-off token is
-// src 'new' AND not the attempt the vault saved (rec.vault done) AND not a LIVE saved card of the uid (a client re-submitting a token it once
-// saved). A saved card's token is never queued here: its handle lives in customer_cards and leaves via card removal / the account fence.
-async function enqueueAndDrop(db, orderId, { uid = null, vaultedAid = null, now } = {}) {
+// card-cleanup (PLAN DELTA (1); r3): the node is NEVER dropped bare — ONE multi-path update removes exactly the attempts read (a newer
+// write-ahead that lands after the read stays for the next visit) AND queues each ONE-OFF token for the provider delete. ONE exclusion: a
+// token that is a LIVE saved card of the customer (customer_cards/{uid}/by_hash/{hash} — written and removed in the same transaction as
+// the card) stays out of the queue; its handle lives in customer_cards and leaves via card removal / the account fence. The uid is the
+// order's, else the one stored with the token (the order purged). A guest (no uid) has no saved card: every token is queued.
+async function enqueueAndDrop(db, orderId, { uid = null, now } = {}) {
   const v = (await node(db, orderId).once('value')).val();
   const TQ = require('./token-queue');
   const upd = {};
   for (const [aid, e] of Object.entries(v && typeof v === 'object' ? v : {})) {
     upd[`payment_sdk_tokens/${orderId}/${aid}`] = null;
-    if (!e || typeof e.t !== 'string' || !e.t || e.src !== 'new' || aid === vaultedAid) continue;
-    if (typeof uid === 'string' && uid && (await db.ref(`customer_cards/${uid}/by_hash/${TQ.hashOf(e.t)}`).once('value')).exists()) continue;
-    Object.assign(upd, TQ.enqueueEntries(e.t, `order_${orderId}`, { aid, uid: typeof uid === 'string' && uid ? uid : null, at: now }));
+    if (!e || typeof e.t !== 'string' || !e.t) continue;
+    const u = typeof uid === 'string' && uid ? uid : (typeof e.uid === 'string' && e.uid ? e.uid : null);
+    if (u && (await db.ref(`customer_cards/${u}/by_hash/${TQ.hashOf(e.t)}`).once('value')).exists()) continue;
+    Object.assign(upd, TQ.enqueueEntries(e.t, `order_${orderId}`, { aid, uid: u, at: now }));
   }
   if (Object.keys(upd).length) await db.ref().update(upd);
   return Object.keys(v && typeof v === 'object' ? v : {}).length;

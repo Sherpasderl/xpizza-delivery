@@ -14,6 +14,7 @@ let pass = 0; const fails = [];
 const cell = async (L, fn) => { try { await fn(L); pass += 1; console.log(`  ✓ ${L}`); } catch (e) { fails.push(L); console.log(`  ✗ ${L}: ${String((e && e.message) || e).split('\n')[0]}`); } };
 const C = require('./coordinator');
 const K = require('./cards');
+const T = require('./record-token');
 const SW = require('./sweeper');
 const Q = () => require('./token-queue');
 const T0 = 1_800_000_000_000;
@@ -72,19 +73,19 @@ const savedCardOf = async (w, tok) => {   // a saved card made by the REAL vault
     await SW.sweepSdkPayments(w.deps);
     assert.ok(w.node() == null && w.item(t), `${L}: the orphan walk enqueues-and-drops a one-off write-ahead`);
   });
-  // (A) a SAVED-CARD token never leaves through the order path — its handle lives in customer_cards (card removal / the fence enqueue it)
-  await cell('TQ-ORPHAN-SAVED-SRC', async (L) => {
+  // a SAVED-CARD token never leaves through the order path — its handle lives in customer_cards (card removal / the fence enqueue it)
+  await cell('TQ-ORPHAN-SAVED', async (L) => {
     let n = 0; let w = null; const t = TK('qs');
     w = world({}, { namespace: 'unconfigured', hooks: { beforeTx: async (p) => { if (String(p) === 'payment_sdk/o_1' && ++n === 2) await C.cancelSdkOrder(w.deps, { orderId: 'o_1' }); } } });
     const id = await savedCardOf(w, t); n = 0;
     const p = await C.placeOriginal(w.deps, { orderId: 'o_1', attempt_id: 'att_tq_orphansv_00001', token: t, amount_cents: 100, card: card(false, `saved:${id}`) });
-    assert.ok(p.outcome !== 'placed' && w.node() && w.node().att_tq_orphansv_00001.src === 'saved', `premise: an orphan saved-card write-ahead, its source recorded WITH the token (${p.outcome})`);
+    assert.ok(p.outcome !== 'placed' && w.node() && w.node().att_tq_orphansv_00001.uid === 'uid_A', `premise: an orphan saved-card write-ahead, the uid recorded WITH the token (${p.outcome})`);
     await SW.sweepSdkPayments(w.deps);
     assert.ok(w.node() == null && w.queue() == null, `${L}: the walk drops the order copy of a saved-card token WITHOUT queueing it`);
     assert.ok(await K.resolveSavedCard(w.deps, 'uid_A', id), `${L}: the saved card still charges`);
   });
-  // (A) with NO order record (purged) the uid is unknown, so only the node's recorded src and the record's vault decide
-  await cell('TQ-NO-UID-SAVED-SRC', async (L) => {
+  // with NO order record (purged), the uid stored WITH the token keeps the saved-card check (r3)
+  await cell('TQ-NO-UID-SAVED', async (L) => {
     let n = 0; let w = null; const t = TK('qn');
     w = world({}, { namespace: 'unconfigured', hooks: { beforeTx: async (p) => { if (String(p) === 'payment_sdk/o_1' && ++n === 2) await C.cancelSdkOrder(w.deps, { orderId: 'o_1' }); } } });
     const id = await savedCardOf(w, t); n = 0;
@@ -92,7 +93,7 @@ const savedCardOf = async (w, tok) => {   // a saved card made by the REAL vault
     assert.ok(p.outcome !== 'placed' && w.node(), `premise: an orphan saved-card write-ahead (${p.outcome})`);
     await w.db.ref('orders/o_1').remove();
     await K.nullSpentToken(w.deps, 'o_1');
-    assert.ok(w.node() == null && w.queue() == null, `${L}: the order gone, a «saved» write-ahead is dropped WITHOUT queueing (its src decides)`);
+    assert.ok(w.node() == null && w.queue() == null, `${L}: the order gone, a saved card's write-ahead is dropped WITHOUT queueing (the node's uid finds the saved card)`);
     assert.ok(await K.resolveSavedCard(w.deps, 'uid_A', id), `${L}: the saved card still charges`);
   });
   await cell('TQ-NO-UID-VAULTED', async (L) => {
@@ -105,9 +106,32 @@ const savedCardOf = async (w, tok) => {   // a saved card made by the REAL vault
     assert.ok(w.node() && !w.db.getAt('payment_sdk/o_1/token_attempt'), 'premise: pointer dropped, node left (a crash between the two)');
     await w.db.ref('orders/o_1').remove();
     await K.nullSpentToken(w.deps, 'o_1');
-    assert.ok(w.node() == null && w.queue() == null, `${L}: the order gone, the attempt the vault saved is dropped WITHOUT queueing (the record's vault decides)`);
+    assert.ok(w.node() == null && w.queue() == null, `${L}: the order gone, the token the vault saved is dropped WITHOUT queueing (the node's uid finds the saved card)`);
     const id = Object.keys(w.db.getAt('customer_cards/uid_A/cards'))[0];
     assert.ok(await K.resolveSavedCard(w.deps, 'uid_A', id), `${L}: the saved card still charges`);
+  });
+  // Codex #169 (1): the purged-order retry — a SAVED token re-submitted as «new»; the uid travels WITH the token, so by_hash still decides
+  await cell('TQ-NO-UID-RESUBMITTED-SAVED', async (L) => {
+    let armed = false; const t = TK('qx');
+    const w = world({}, { hooks: { beforeWrite: async (p, patch) => { if (armed && p === '' && patch && Object.keys(patch).some((k) => k.startsWith('payment_sdk_tokens/'))) throw Object.assign(new Error('update failed'), { code: 'unavailable' }); } } });
+    const id = await savedCardOf(w, t);
+    await place(w, t, false); await w.db.ref('orders/o_1/status').set('delivered'); await C.settleTerminal(w.deps, { orderId: 'o_1' });
+    armed = true; await K.nullSpentToken(w.deps, 'o_1').catch(() => null); armed = false;
+    assert.ok(w.node() && !w.db.getAt('payment_sdk/o_1/token_attempt'), 'premise: pointer dropped, node left (a crash between the two)');
+    await w.db.ref('orders/o_1').remove();
+    await K.nullSpentToken(w.deps, 'o_1');
+    assert.ok(w.node() == null && w.queue() == null, `${L}: the order gone, a «new» token that IS a live saved card of the order's uid is not queued`);
+    assert.ok(await K.resolveSavedCard(w.deps, 'uid_A', id), `${L}: the saved card still charges`);
+  });
+  // Codex #169 (2): two tokens on ONE attempt id — X won and was vaulted; a delayed Y stashes at the emptied node. Only X is excluded.
+  await cell('TQ-SAME-AID-TWO-TOKENS', async (L) => {
+    const w = world(); const x = TK('qa'); const y = TK('qb'); const A = 'att_tq_place_00000001';
+    await place(w, x, true, { att: A }); await finish(w);
+    assert.ok(w.db.getAt('payment_sdk/o_1/vault/state') === 'done' && w.node() == null && w.queue() == null, 'premise: X vaulted, its node dropped, nothing queued');
+    assert.strictEqual(await T.stashToken(w.db, 'o_1', A, y, 'uid_A'), 'ok', 'premise: the delayed Y lands at the emptied attempt node (the real writer)');
+    await K.nullSpentToken(w.deps, 'o_1');
+    assert.ok(w.node() == null && w.item(y) && w.item(y).token === y, `${L}: the one-off Y at the vaulted attempt id is QUEUED (only the vaulted token itself is excluded)`);
+    assert.strictEqual(w.item(x), null, `${L}: and the vaulted X is not`);
   });
   await cell('TQ-SAVED-VAULTED', async (L) => {
     const w = world(); const t = TK('qv'); await place(w, t, true); await finish(w);
