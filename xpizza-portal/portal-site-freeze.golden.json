@@ -46,6 +46,7 @@
   "editor.test.mjs",
   "envio-field-focus.test.mjs",
   "envio-geometry.test.mjs",
+  "envio-harness.mjs",
   "envio-limit.test.mjs",
   "envio-logic.js",
   "envio-logic.test.mjs",
@@ -54,6 +55,7 @@
   "envio-map-site.test.mjs",
   "envio-server-parity.test.mjs",
   "envio-view.test.mjs",
+  "envio-zones-view.test.mjs",
   "envio-zones.test.mjs",
   "envio.js",
   "equipos.js",
@@ -220,8 +222,8 @@
    "bytes": 841
   },
   "styles.css": {
-   "sha256": "4f1448da708ac3379be7d3a47fc833edf452235257915d3aa59a7f2e82b2e4b4",
-   "bytes": 226452
+   "sha256": "4e7fca6fe973db591d8b83c97d2ee4a24241ccef833b2f6ee73f4e84780509ca",
+   "bytes": 230014
   }
  },
  "diff_aid": {
@@ -1771,6 +1773,12 @@
    ],
    [
     "",
+    ".envio .blist .bmore",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".envio .capnote.sand",
     "background",
     "var(--sand-soft)"
@@ -1822,6 +1830,24 @@
     ".envio .ecallout",
     "color",
     "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .ecallout.sand",
+    "background",
+    "var(--sand-soft)"
+   ],
+   [
+    "",
+    ".envio .ecallout.sand",
+    "border-color",
+    "var(--sand-line)"
+   ],
+   [
+    "",
+    ".envio .ecallout.sand",
+    "color",
+    "var(--sand-text)"
    ],
    [
     "",
@@ -2272,6 +2298,72 @@
     ".envio .stepcap",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .zbrow .st .zblink",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .zbrow .st i",
+    "background",
+    "var(--sand-text)"
+   ],
+   [
+    "",
+    ".envio .zbrow .st",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .zbrow .st.open i",
+    "background",
+    "var(--green)"
+   ],
+   [
+    "",
+    ".envio .zbrow",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .zrow .ib",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .zrow .ib",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .zrow .s",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .zrow .zsw",
+    "background",
+    "var(--red-soft)"
+   ],
+   [
+    "",
+    ".envio .zrow .zsw",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".envio .zrow",
+    "background",
+    "var(--board-2)"
    ],
    [
     "",

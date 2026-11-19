@@ -42,6 +42,9 @@ function server({ policy = POLICY(3, B3), admins = { uAdmin: true }, registry, w
     db, uid: null, at: 0, commits: 0, posts: [], gets: 0, now: Date.UTC(2026, 10, 11, 18, 0), forgetIdentities: () => forgetIdentities(),
     fault: { post: null, get: null },   // post: 'before503' | 'after503' | 'afterDrop' | 'afterMalformed' | 'drop' ; get: 'fail' | 'hold'
     hold: { get: null, post: null, getAfter: null },
+    // a one-shot TRANSPORT rewrite of the next setDeliveryPricing body, BEFORE the real core (the screen validates first and never sends an
+    // invalid zone list, so a cell reaches the real validator's 400s this way — the answer is the core's own); `answers` = the core's outs
+    rewrite: null, answers: [],
   };
   // envío step 2: the zones lock's deps, exactly production's (delivery/pricing-admin-functions.js:19-27) — the REAL getIdentity (its warm
   // cache cleared per world) and the REAL strict grace read; `srv.now` is the clock the lock judges hours at (a Wednesday, noon local)
@@ -74,8 +77,10 @@ function server({ policy = POLICY(3, B3), admins = { uAdmin: true }, registry, w
       if (f === 'before503') return answer({ status: 503, body: { error: 'unavailable', retryable: true } });
       // Codex r1 F2: the real validator's 400 shape, nothing written (the screen never sends an invalid body, so a fault layer reaches it)
       if (f === 'refuse400') return answer({ status: 400, body: { error: 'bad_request', field: 'bands' } });
+      const rw = srv.rewrite; srv.rewrite = null;
       const before = await srv.version();
-      const out = await CORE.setDeliveryPricingCore(deps(), req(body));
+      const out = await CORE.setDeliveryPricingCore(deps(), req(rw ? rw(JSON.parse(JSON.stringify(body))) : body));
+      srv.answers.push(out);
       if ((await srv.version()) !== before) srv.commits++;
       if (f === 'after503') return answer({ status: 503, body: { error: 'unavailable', retryable: true } });
       if (f === 'afterDrop') throw new TypeError('Failed to fetch');

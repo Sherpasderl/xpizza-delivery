@@ -270,3 +270,21 @@ test('classifyRecovery(): a FRESH GET decides — expected+1 with the SENT bands
     assert.strictEqual(classifyRecovery(a, r), 'unknown', JSON.stringify(r));
   }
 });
+
+// ── ENVÍO step 2, Z1 — the zones copy's two computed strings (addendum D «y N más», F «… «{nombre}»», the v2 «¿Quitar «…»?», and the
+// save bar's share: «1 zona nueva» / phone «1 zona», plural agreement for additions, «zonas» for any other zones change — advisor 11-19)
+test('zones copy: {n} / {nombre} are filled; an unknown key is its ⟦placeholder⟧', async () => {
+  const { zonesCopy } = await import('./envio-logic.js');
+  assert.equal(zonesCopy('branchesMore', { n: 2 }), 'y 2 más');
+  assert.equal(zonesCopy('refusedTitle', { nombre: 'Sector A' }), 'No se pudo guardar la zona «Sector A»');
+  assert.equal(zonesCopy('removeTitle', { nombre: 'Sector B' }), '¿Quitar «Sector B»?');
+  assert.equal(zonesCopy('nope'), '⟦zones.nope⟧');
+});
+test('zones bar share: additions agree in number (desk «N zona(s) nueva(s)», phone «N zona(s)»); a rename / removal only says «zonas»', async () => {
+  const { zonesBarSuffix } = await import('./envio-logic.js');
+  const A = { id: 'z_a' }, B = { id: 'z_b' }, C = { id: 'z_c' };
+  assert.deepEqual(zonesBarSuffix([A, B], [A, B]), { dk: 'zonas', ph: 'zonas' }, 'a rename');
+  assert.deepEqual(zonesBarSuffix([A], [A, B]), { dk: 'zonas', ph: 'zonas' }, 'a removal');
+  assert.deepEqual(zonesBarSuffix([A, B, C], [A, B]), { dk: '1 zona nueva', ph: '1 zona' }, 'one addition');
+  assert.deepEqual(zonesBarSuffix([A, B, C], [A]), { dk: '2 zonas nuevas', ph: '2 zonas' }, 'two additions');
+});

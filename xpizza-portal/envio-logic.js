@@ -409,16 +409,47 @@ export function feesOnlyBody(attempt) {
     ...(attempt.sentLimits.length ? { limits: attempt.sentLimits.map((e) => ({ rid: e.rid, km: e.km })) } : {}) };
 }
 
-// ── ENVÍO step 2, Z1 — the card's COPY: the approved v2 card's strings live in envio.js COPY; every string the zones addendum PROPOSES is
-// null here ⇒ «⟦zones.key⟧» on screen until the owner approves it (envio-zones-view's SHIP GATE stays red until then)
+// ── ENVÍO step 2, Z1 — the card's COPY: the approved v2 card's strings live in envio.js COPY; the zones addendum's strings are here,
+// VERBATIM from MOCKUP-portal-envio-zones-addendum (owner-approved 2026-11-14, rule 14: its four «Copy reference» tables + the drawn
+// frames; removeTitle/removeBody from the approved v2 page's × modal). `…Ph` = the phone frame H's own wording (≤ 560 px, envio.js
+// phText). `{n}` / `{nombre}` are filled by zonesCopy(k, vars); `unreadable` is the owner's own string (11-19). A key left null would show
+// «⟦zones.key⟧» and turn envio-zones-view's SHIP GATE red.
 export const ZONES_COPY = Object.freeze({
-  editableNote: null, mapUpdating: null, lockedTitle: null, lockedBody: null, hoursTitle: null, hoursBody: null, recheck: null, unreadable: null,
-  nameEmpty: null, nameLong: null, nameTaken: null, removeTitle: null, removeBody: null, barSuffix: null, savedBoth: null,
-  lockedSaveTitle: null, lockedSaveBody: null, branchOpen: null, branchHours: null, branchesMore: null, understood: null, feesOnly: null,
-  hoursSaveTitle: null, hoursSaveBody: null, refusedTitle: null, refusedBody: null, capsTitle: null, capsBody: null, reviewZone: null,
-  capCount: null, capDraw: null,
+  editableNote: 'Se editan solo con todos los restaurantes cerrados. Ahora podés editarlas.',
+  lockedTitle: 'Las zonas se editan con todos los restaurantes cerrados', lockedTitlePh: 'Se editan con todos los restaurantes cerrados',
+  lockedBody: 'Ahora hay restaurantes abiertos. Podés editarlas después de que cierre el último. Las tarifas por distancia sí se pueden guardar ahora.',
+  lockedBodyPh: 'Ahora hay restaurantes abiertos. Podés editarlas después de que cierre el último.',
+  hoursTitle: 'No pudimos comprobar los horarios',
+  hoursBody: 'Las zonas se editan solo cuando confirmamos que todos los restaurantes están cerrados. Probá de nuevo en un momento.',
+  recheck: 'Volver a comprobar', unreadable: 'No pudimos leer las zonas guardadas. Escribinos.',   // owner 11-19, verbatim
+  nameEmpty: 'Falta el nombre.', nameLong: 'Hasta 30 caracteres.', nameTaken: 'Ya hay una zona con ese nombre.',
+  removeTitle: '¿Quitar «{nombre}»?', removeBody: 'Las direcciones de esa área vuelven a recibir pedidos.',
+  barNew1: '1 zona nueva', barNewN: '{n} zonas nuevas', barNew1Ph: '1 zona', barNewNPh: '{n} zonas', barOther: 'zonas',
+  savedBoth: 'Tarifas y zonas guardadas',
+  lockedSaveTitle: 'No se guardaron las zonas: hay restaurantes abiertos',
+  lockedSaveBody: 'Las zonas se editan solo con todos los restaurantes cerrados. Tus cambios siguen acá; guardalos cuando cierre el último.',
+  lockedSaveBodyPh: 'Se editan solo con todos cerrados. Tus cambios siguen acá; guardalos cuando cierre el último.',
+  branchOpen: 'Abierto', branchHours: 'Sin horario válido', branchHoursLink: 'Revisar en Sucursales', branchHoursLinkPh: 'Revisar',
+  branchesMore: 'y {n} más', understood: 'Entendido', feesOnly: 'Guardar solo las tarifas',
+  hoursSaveTitle: 'No pudimos comprobar los horarios',
+  hoursSaveBody: 'Las zonas se guardan solo cuando confirmamos que todos los restaurantes están cerrados, y ahora no pudimos leer los horarios. Tus cambios siguen acá; volvé a intentar en un momento.',
+  refusedTitle: 'No se pudo guardar la zona «{nombre}»', refusedTitleBare: 'No se pudieron guardar las zonas',   // a 400 naming no zone: the title's plural (advisor 11-19)
+  refusedBody: 'El servidor no aceptó su forma. Revisá que no se cruce y que tenga entre 3 y 24 puntos, y volvé a guardar.',
+  capsTitle: 'Hay más zonas de las permitidas', capsBody: 'Máximo 8 zonas y 24 puntos por zona. Quitá lo que sobre y volvé a guardar.',
+  reviewZone: 'Revisar zona', capCount: '8 de 8', capDraw: 'Máximo 8 zonas. Para dibujar otra, quitá una.',
 });
-export const zonesCopy = (k) => (typeof ZONES_COPY[k] === 'string' ? ZONES_COPY[k] : `⟦zones.${k}⟧`);
+export const zonesCopy = (k, vars = null) => {
+  if (typeof ZONES_COPY[k] !== 'string') return `⟦zones.${k}⟧`;
+  return vars ? ZONES_COPY[k].replace(/\{(n|nombre)\}/g, (m, v) => (Object.prototype.hasOwnProperty.call(vars, v) ? String(vars[v]) : m)) : ZONES_COPY[k];
+};
+// the save bar's zones share (addendum frame F «1 zona nueva», phone H «1 zona»; advisor 11-19: plural agreement for ADDITIONS, «zonas» for
+// any other zones change). Additions = draft zones whose id the stored list does not hold. → { dk, ph }
+export function zonesBarSuffix(draft, stored) {
+  const have = new Set((stored || []).map((z) => z && z.id));
+  const n = (draft || []).filter((z) => z && !have.has(z.id)).length;
+  if (n === 0) return { dk: zonesCopy('barOther'), ph: zonesCopy('barOther') };
+  return n === 1 ? { dk: zonesCopy('barNew1'), ph: zonesCopy('barNew1Ph') } : { dk: zonesCopy('barNewN', { n }), ph: zonesCopy('barNewNPh', { n }) };
+}
 // a zone's row line «N puntos · dentro de X km» (approved v2; advisor 11-13 ruling c): X = the farthest vertex from the PICKED restaurant's
 // pin, rounded UP to a km. Zones are PLATFORM-WIDE: this is context relative to the pin on screen, never a claim about one restaurant.
 // No pin ⇒ null (the line says only the points)

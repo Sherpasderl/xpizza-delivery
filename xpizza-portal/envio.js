@@ -14,7 +14,7 @@
 //   • The map: an iframe on https://sherpa-portal-map.netlify.app (its own CSP; this shell only frames it). envio-map-protocol.js:
 //     exact origin + source + mount id; the parent listens BEFORE it creates the frame; `listening` → the latest render; only
 //     `ready` clears the absolute 8 s deadline (C2). On failure: ONE line in the box + one console.warn (no fallback renderer).
-import { registerView, toast } from './shell.js';
+import { registerView, toast, goto } from './shell.js';
 import { token } from './auth.js';
 import { getDeliveryPricingRaw, setDeliveryPricingRaw } from './api.js';
 import { el, svg, button, OFFLINE } from './ops-dom.js';
@@ -679,12 +679,15 @@ function zonesFailBox() {
   const t = el('div');
   const acts = el('div', 'ebtns');
   if (f.kind === 'locked') {
-    t.append(el('b', null, EL.zonesCopy('lockedSaveTitle')), el('p', null, EL.zonesCopy('lockedSaveBody')));
+    const lb = el('p'); lb.append(phText(EL.zonesCopy('lockedSaveBody'), EL.zonesCopy('lockedSaveBodyPh')));   // frame H: the phone's shorter body
+    t.append(el('b', null, EL.zonesCopy('lockedSaveTitle')), lb);
     // the blocking branches (addendum D .blist): one line each — the name, then the status as a dot + word; > 3 ⇒ «y N más»
     const list = el('div', 'blist');
     for (const b of f.branches.slice(0, 3)) {
       const row = el('div', 'zbrow');   // the mockup's .brow look, its own class (.brow is S2's review row: no colour crossing)
       const st = el('span', `st ${b.reason === 'open' ? 'open' : 'unk'}`); st.append(el('i'), document.createTextNode(EL.zonesCopy(b.reason === 'open' ? 'branchOpen' : 'branchHours')));
+      // frame D: «Sin horario válido · Revisar en Sucursales» (phone H: «Revisar») — the link opens THAT branch's page (rule 14, advisor 11-19)
+      if (b.reason !== 'open') { const go = el('a', 'zblink'); go.href = '#'; go.append(phText(EL.zonesCopy('branchHoursLink'), EL.zonesCopy('branchHoursLinkPh'))); go.addEventListener('click', (e) => { e.preventDefault(); goto('suc', { rid: b.rid }); }); st.append(document.createTextNode(' \u00b7 '), go); }
       // «Restaurante · Sucursal» as the mockup draws it (slot 11-15, advisor: rule 16b — two restaurants' «Sucursal 1» never read the same);
       // the 409 names the branch only (rid + location_name), so the restaurant comes from the loaded branch list
       const br = S.branchesRaw.find((x) => x && x.rid === b.rid);
@@ -693,7 +696,7 @@ function zonesFailBox() {
       row.append(el('span', 'k', rest ? `${rest} · ${loc}` : `${loc}`), st);
       list.append(row);
     }
-    if (f.branches.length > 3) list.append(el('div', 'bmore', EL.zonesCopy('branchesMore')));
+    if (f.branches.length > 3) list.append(el('div', 'bmore', EL.zonesCopy('branchesMore', { n: f.branches.length - 3 })));
     t.append(list);
     acts.append(button('btn ghost', EL.zonesCopy('understood'), () => { S.zonesFail = null; render(); }));
     const feesChanged = !!(S.loaded && S.loaded.kind === 'policy' && (EL.isDirty(S.rows, S.loaded.bands) || limitDirty()));
@@ -702,7 +705,10 @@ function zonesFailBox() {
     t.append(el('b', null, EL.zonesCopy('hoursSaveTitle')), el('p', null, EL.zonesCopy('hoursSaveBody')));
     acts.append(button('btn', COPY.retry, retry));
   } else {
-    t.append(el('b', null, EL.zonesCopy(f.key === 'zones.caps' ? 'capsTitle' : 'refusedTitle')), el('p', null, EL.zonesCopy(f.key === 'zones.caps' ? 'capsBody' : 'refusedBody')));
+    // frame F names the refused zone; a 400 that names none (a list-level problem) has no drawn title yet (refusedTitleBare)
+    const zn = f.zoneId && (S.zonesDraft || []).find((z) => z.id === f.zoneId);
+    const title = f.key === 'zones.caps' ? EL.zonesCopy('capsTitle') : zn ? EL.zonesCopy('refusedTitle', { nombre: zn.name }) : EL.zonesCopy('refusedTitleBare');
+    t.append(el('b', null, title), el('p', null, EL.zonesCopy(f.key === 'zones.caps' ? 'capsBody' : 'refusedBody')));
     acts.append(button('btn', EL.zonesCopy('reviewZone'), () => {
       S.zonesFail = null; render();
       const row = f.zoneId && S.refs ? [...S.refs.zonesList.querySelectorAll('.zrow')].find((r) => r.dataset.zone === f.zoneId) : null;
@@ -797,7 +803,9 @@ function paintZones() {
   if (z.zones !== null && !z.editable && z.lock) {
     const open = z.lock.reason === 'open';
     const co = el('div', `ecallout${open ? ' sand' : ''}`);
-    const t = el('div'); t.append(el('b', null, EL.zonesCopy(open ? 'lockedTitle' : 'hoursTitle')), document.createTextNode(` ${EL.zonesCopy(open ? 'lockedBody' : 'hoursBody')}`));
+    const t = el('div');   // frame H: the open lock's title and body shorten on the phone
+    const tb = el('b'); tb.append(open ? phText(EL.zonesCopy('lockedTitle'), EL.zonesCopy('lockedTitlePh')) : document.createTextNode(EL.zonesCopy('hoursTitle')));
+    t.append(tb, document.createTextNode(' '), open ? phText(EL.zonesCopy('lockedBody'), EL.zonesCopy('lockedBodyPh')) : document.createTextNode(EL.zonesCopy('hoursBody')));
     co.append(ic('info'), t);
     if (!open) co.append(button('btn ghost sm', EL.zonesCopy('recheck'), () => load({ fresh: true })));
     r.zonesLock.append(co);
@@ -838,7 +846,7 @@ function paintZones() {
   r.zonesNotes.replaceChildren();
   const note = (t) => r.zonesNotes.append(el('p', 'efnote', t));
   if (z.zones === null) note(EL.zonesCopy('unreadable'));
-  else { if (z.editable) note(EL.zonesCopy('editableNote')); note(EL.zonesCopy(atCap ? 'capDraw' : 'mapUpdating')); }
+  else { if (z.editable) note(EL.zonesCopy('editableNote')); if (atCap) note(EL.zonesCopy('capDraw')); }   // no note below the cap: the approved frames draw none (advisor 11-19)
 }
 const focusZone = (id, title) => { const row = S.refs && [...S.refs.zonesList.querySelectorAll('.zrow')].find((x) => x.dataset.zone === id); const b = row && row.querySelector(`button.ib[title="${title}"]`); if (b) b.focus(); };
 // the server's name rules, before the save (zones.js normalizeInput): trimmed, 1..name_max, unique case-folded
@@ -866,7 +874,8 @@ function paintZoneRemove() {
   const close = (refocus) => { S.zoneRemove = null; host.replaceChildren(); releaseInert(); if (refocus) focusZone(id, 'Quitar'); };
   const scrim = el('div', 'scrim show');
   const m = el('div', 'modal sm envzrm'); m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-labelledby', 'envzrmt');
-  const h = el('h2', null, EL.zonesCopy('removeTitle')); h.id = 'envzrmt';
+  const zr = (S.zonesDraft || []).find((z) => z.id === id);
+  const h = el('h2', null, EL.zonesCopy('removeTitle', { nombre: zr ? zr.name : '' })); h.id = 'envzrmt';
   const head = el('div', 'mhead'); head.append(h, el('p', null, EL.zonesCopy('removeBody')));
   const foot = el('div', 'mfoot');
   const zoneRmCancel = button('btn ghost', 'Cancelar', () => close(true));
@@ -1031,7 +1040,7 @@ function paintBar() {
   r.bar.classList.toggle('show', show);
   r.barDot.classList.toggle('ered', bar.state === 'invalid');
   r.barText.textContent = bar.state === 'invalid' ? bar.text : EL.COPY.dirty;
-  if (bar.state !== 'invalid' && zonesDirty()) r.barText.append(el('span', null, ` \u00b7 ${EL.zonesCopy('barSuffix')}`));   // ENVÍO step 2: the zones' share
+  if (bar.state !== 'invalid' && zonesDirty()) { const sx = EL.zonesBarSuffix(S.zonesDraft, S.zones.zones); const sp = el('span'); sp.append(' \u00b7 ', phText(sx.dk, sx.ph)); r.barText.append(sp); }   // ENVÍO step 2: the zones' share
   r.save.disabled = !!S.attempt || !(bar.canSave || malformedValid);
   r.discard.disabled = attemptUnresolved();
 }

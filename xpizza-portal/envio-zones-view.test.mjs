@@ -1,6 +1,6 @@
 // «Envío» step 2, Z1 — the «Zonas sin entrega» card (the approved MOCKUP-portal-envio-v2 card; the server states of
-// MOCKUP-portal-envio-zones-addendum A–C; copy the addendum PROPOSES is a ⟦zones.key⟧ placeholder and the SHIP GATE stays red until the
-// owner approves it). The page is the REAL app over the shipped index.html; the server is 5f's REAL getDeliveryPricingCore with the
+// MOCKUP-portal-envio-zones-addendum A–C; its copy is the owner-approved text in envio-logic ZONES_COPY (11-14, advisor 11-19), a key still
+// null is a ⟦zones.key⟧ placeholder and the SHIP GATE stays red). The page is the REAL app over the shipped index.html; the server is 5f's REAL getDeliveryPricingCore with the
 // REAL zones lock (getIdentity + the strict grace read, production's deps) over hours stored on each restaurant's identity.
 // Drawing on the map is Z2 (protocol v3, PLAN-portal-zones-protocol-v3-r0): here «Dibujar zona» is off with its line.
 // Run: node --test --test-force-exit envio-zones-view.test.mjs
@@ -9,8 +9,10 @@ import assert from 'node:assert/strict';
 import { settle } from './ventas-harness.mjs';
 import { server, page, POLICY, B3 } from './envio-harness.mjs';
 
-const { ZONES_COPY } = await import('./envio-logic.js');
-const P = (k) => `⟦zones.${k}⟧`;
+const { ZONES_COPY, zonesCopy } = await import('./envio-logic.js');
+const P = (k, vars) => zonesCopy(k, vars);   // the shipped string (or its ⟦zones.key⟧ placeholder while null)
+// the DESKTOP wording of a node that carries a phone variant (envio.js phText: span.dk + span.ph; the ph span is hidden ≥ 560 px)
+const dk = (n) => [...n.childNodes].map((c) => (c.nodeType === 3 ? c.data : c.classList && c.classList.contains('ph') ? '' : dk(c))).join('');
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const hoursAll = (start, end) => Object.fromEntries(DAYS.map((d) => [d, start ? { open: true, start, end } : { open: false }]));
 const CLOSED = hoursAll(null), OPEN = hoursAll('10:00', '22:00');
@@ -52,7 +54,7 @@ test('A — every restaurant closed (zones_editable): the editable note; «Dibuj
   const draw = [...card(p).querySelectorAll('button.railadd')].find((b) => b.textContent.includes('Dibujar zona'));
   assert.ok(draw, 'the action'); assert.equal(draw.disabled, true, 'Z1: no drawing yet');
   const notes = [...card(p).querySelectorAll('.efnote')].map((n) => n.textContent);
-  assert.ok(notes.includes(P('editableNote')), '🔴 the editable note'); assert.ok(notes.includes(P('mapUpdating')), 'why it is off');
+  assert.ok(notes.includes(P('editableNote')), '🔴 the editable note'); assert.equal(notes.length, 1, 'below the cap no other note: the approved frames draw none (advisor 11-19)');
   assert.ok(rows(p).every((r) => [...r.querySelectorAll('button.ib')].every((b) => !b.disabled)), 'rename / remove on');
   assert.equal(card(p).querySelector('.ecallout'), null, 'no lock callout');
 });
@@ -61,7 +63,8 @@ test('B — a restaurant open (zones_lock open): the sand callout, rename / remo
   const p = await open(server({ policy: withZones(), world: world(OPEN, CLOSED) }));
   const co = card(p).querySelector('.ecallout.sand');
   assert.ok(co, '🔴 the lock callout');
-  assert.equal(co.querySelector('b').textContent, P('lockedTitle')); assert.ok(co.textContent.includes(P('lockedBody')));
+  assert.equal(dk(co.querySelector('b')), P('lockedTitle')); assert.ok(dk(co).includes(P('lockedBody')));
+  assert.equal(co.querySelector('b .ph').textContent, P('lockedTitlePh'), 'frame H: the phone title'); assert.ok(co.textContent.includes(P('lockedBodyPh')), 'frame H: the phone body');
   assert.ok(rows(p).every((r) => [...r.querySelectorAll('button.ib')].every((b) => b.disabled)), 'rename / remove off');
   assert.equal(p.d.querySelector('.envbands input').disabled, false, 'the fees stay editable');
 });
@@ -112,14 +115,14 @@ test('rename in place: Enter keeps it in the draft (the bar says so); empty / du
   assert.ok(taken, '🔴 a taken name, case-folded (the server\'s rule)'); assert.equal(taken.textContent, P('nameTaken'), '🔴 a taken name, case-folded (the server\'s rule)');
   const inp3 = card(p).querySelector('.zrow.editing input'); inp3.value = 'Sector Norte'; inp3.dispatchEvent(new inp3.ownerDocument.defaultView.Event('input', { bubbles: true })); key(inp3, 'Enter'); await settle(5);
   assert.ok(zrow(p, 'Sector Norte'), '🔴 renamed in the draft');
-  assert.ok(p.bar().classList.contains('show'), 'the bar'); assert.ok(p.bar().textContent.includes(P('barSuffix')), 'the zones suffix');
+  assert.ok(p.bar().classList.contains('show'), 'the bar'); assert.ok(dk(p.bar()).includes(` · ${P('barOther')}`), 'the zones suffix');
 });
 
 test('remove asks first (the small «Quitar zona» modal, «Cancelar» focused); confirming drops the row from the draft', async () => {
   const p = await open(server({ policy: withZones(), world: world(CLOSED, CLOSED) }));
   zrow(p, 'Sector B').querySelector('button.ib[title="Quitar"]').click(); await settle(5);
   const m = p.d.querySelector('.envzrm');
-  assert.ok(m, '🔴 the modal'); assert.equal(m.querySelector('h2').textContent, P('removeTitle'));
+  assert.ok(m, '🔴 the modal'); assert.equal(m.querySelector('h2').textContent, P('removeTitle', { nombre: 'Sector B' }));
   const bs = [...m.querySelectorAll('button')];
   assert.deepEqual(bs.map((b) => b.textContent), ['Cancelar', 'Quitar']); assert.equal(p.d.activeElement, bs[0]);
   bs[0].click(); await settle(5); assert.ok(zrow(p, 'Sector B'), 'kept');
@@ -164,6 +167,53 @@ test('D — a restaurant opened before the save: 409 zones_locked_while_open ⇒
   assert.equal(node.bands[0].cents, 4500, 'the fees landed');
   assert.deepEqual(node.no_delivery_zones.map((z) => z.name), ['Sector A', 'Sector B'], 'the zones did not');
   assert.ok(zrow(p, 'Sector Norte'), 'the zones draft is still there');
+});
+
+test('D2 — a branch WITHOUT valid hours in the 409: «Sin horario válido · Revisar en Sucursales» (phone «Revisar»), and the link opens THAT branch in Sucursales (addendum D/H, rule 14); the phone body', async () => {
+  const srv = server({ policy: withZones(), world: world(CLOSED, CLOSED) });
+  const p = await open(srv);
+  await rename(p, 'Sector A', 'Sector Norte');
+  await srv.db.ref('restaurants/r_uno/identity/hours').set(OPEN); await srv.db.ref('restaurants/r_dos/identity/hours').remove(); srv.forgetIdentities();
+  await saveAll(p);
+  const box = p.d.querySelector('.envzfail');
+  assert.ok(box, '🔴 the panel');
+  assert.equal(dk(box.querySelector('p')), P('lockedSaveBody')); assert.equal(box.querySelector('p .ph').textContent, P('lockedSaveBodyPh'), 'frame H: the phone body');
+  const rowsD = [...box.querySelectorAll('.blist .zbrow')];
+  const dos = rowsD.find((r) => r.querySelector('.k').textContent === 'Dos · Norte');
+  assert.ok(dos, 'the branch without hours is listed');
+  assert.equal(dk(dos.querySelector('.st')), `${P('branchHours')} · ${P('branchHoursLink')}`, '🔴 frame D: the status word, then the link');
+  const link = dos.querySelector('.st a.zblink');
+  assert.equal(link.querySelector('.ph').textContent, P('branchHoursLinkPh'), 'frame H: «Revisar»');
+  assert.equal(rowsD.find((r) => r.querySelector('.k').textContent === 'Uno · Centro').querySelector('a'), null, 'an OPEN branch has no link');
+  link.click(); await settle(30);
+  assert.equal(p.d.getElementById('viewsuc').classList.contains('hidden'), false, '🔴 the link opens Sucursales');
+});
+
+// F — a 400 zones refusal, from the REAL validator (delivery/zones.js normalizeInput / compactProblem) through the page's real save
+// handler: the screen never sends an invalid list, so the transport alone swaps the zones the core judges (srv.rewrite). A per-zone
+// problem carries zone_id ⇒ the drawn title names the zone; a list-level one has none ⇒ the title's plural (advisor 11-19); same body + action
+test('F — a 400 zones refusal from the REAL validator: per-zone (zone_id) ⇒ «No se pudo guardar la zona «{nombre}»»; list-level (no zone_id) ⇒ «No se pudieron guardar las zonas»; same body + «Revisar zona»', async () => {
+  const bowtie = [{ lat: 15.52, lng: -88.02 }, { lat: 15.53, lng: -88.01 }, { lat: 15.52, lng: -88.01 }, { lat: 15.53, lng: -88.02 }];   // self-crossing
+  for (const [kind, rewrite, title, hasId] of [
+    ['per-zone', (b) => ({ ...b, no_delivery_zones: b.no_delivery_zones.map((z) => (z.id === 'z_aaaaaaaa' ? { ...z, points: bowtie } : z)) }), P('refusedTitle', { nombre: 'Sector Norte' }), true],
+    ['list-level', (b) => ({ ...b, no_delivery_zones: [...b.no_delivery_zones, null] }), P('refusedTitleBare'), false],
+  ]) {
+    const srv = server({ policy: withZones(), world: world(CLOSED, CLOSED) });
+    const p = await open(srv);
+    await rename(p, 'Sector A', 'Sector Norte');
+    srv.rewrite = rewrite;
+    await saveAll(p);
+    const out = srv.answers[srv.answers.length - 1];
+    assert.equal(out.status, 400, `${kind}: premise — the REAL core refused`);
+    assert.equal(out.body.error, 'bad_request'); assert.equal(out.body.field, 'zones', `${kind}: a zones refusal`);
+    assert.equal('zone_id' in out.body, hasId, `${kind}: premise — zone_id ${hasId ? 'present' : 'absent'} in the real answer`);
+    const box = p.d.querySelector('.envzfail');
+    assert.ok(box, `🔴 ${kind}: the panel`);
+    assert.equal(box.querySelector('b').textContent, title, `🔴 ${kind}: the title`);
+    assert.equal(box.querySelector('p').textContent, P('refusedBody'), `${kind}: the same body`);
+    assert.ok([...box.querySelectorAll('button')].some((b) => b.textContent === P('reviewZone')), `${kind}: the same action`);
+    assert.ok(zrow(p, 'Sector Norte'), `${kind}: the draft kept`);
+  }
 });
 
 test('E — the hours cannot be read at the save (503 hours_unavailable): the panel, the draft kept, «Reintentar» resends the SAME attempt', async () => {
