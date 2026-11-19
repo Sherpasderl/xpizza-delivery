@@ -66,7 +66,8 @@ function fakeDb() {
     orderByChild: (c) => query(p, c),
     transaction: async (fn) => {
       T.txs.push(p);
-      let seen = local.has(p) ? clone(local.get(p)) : T.cold.has(p) ? null : (clone(get(p)) ?? null); T.cold.delete(p);
+      const basePending = local.has(p);   // the first base is another transaction's PENDING write (the real SDK still checks it at commit)
+      let seen = basePending ? clone(local.get(p)) : T.cold.has(p) ? null : (clone(get(p)) ?? null); T.cold.delete(p);
       for (let i = 0; i < 25; i++) {
         const next = fn(clone(seen));
         if (next === undefined) return { committed: false, snapshot: snapOf(get(p)) };   // a LOCAL abort: never checked against the server
@@ -208,8 +209,9 @@ const expectUsed = (before, id, now, rev) => ({ ...before, default_address: id, 
     assert.deepStrictEqual([db.get(`user_profiles/${A}/default_address`), db.get(`user_profiles/${A}/default_address_rev`)], [casa, 2], '🔴 REV-ORDER: the newer selection survives');
   }
   {
-    // REV-LOSTREPLY (advisor ruling): the 200 is lost and the client resends the SAME write ⇒ 409 carrying its own id at expected + 1
-    // (the client counts it as success); the resend writes nothing
+    // REV-LOSTREPLY: the 200 is lost and the client resends the SAME write ⇒ 409 (here, sequentially, the committed pair: its own id at
+    // expected + 1) and the resend writes nothing. The pair is only a HINT — the client re-reads getMyProfile on ANY 409 (owner, the
+    // simpler option after Codex #164)
     const db = fakeDb(); const { casa, trab } = await bookOf(db); const { use } = harness(db);
     CLOCK += 1000;
     assert.strictEqual((await use(`tok-${A}`, { id: trab, expected_rev: 0, expected_default: casa })).code, 200, 'premise: the first write landed');
@@ -345,25 +347,26 @@ const expectUsed = (before, id, now, rev) => ({ ...before, default_address: id, 
     assert.deepStrictEqual(db.get(`user_profiles/${A}`), afterForm, '🔴 FORM-MID-DELETE: the handler wrote nothing');
   }
   {
-    // SERIAL-LOSTREPLY (Codex #163 P1): ONE instance. W1 proposes (trab, 1) — a PENDING local write — and, before it commits, the
-    // client's resend W2 (the same body) arrives on the same instance while the form picks Gym on the server. W1's proposal is rolled
-    // back (409, Gym). W2 must never be handed W1's uncommitted pair as «own id at expected + 1» (the client would count it as a
-    // success that never happened): same-uid writes are serialized in the instance and every 409 pair is a SERVER read
+    // NO-WRONG-STATE (Codex #163 P1 → owner's simpler option): ONE instance. W1 proposes (trab, 1) — a PENDING local write — and,
+    // before it commits, W2 arrives on the same instance holding W1's speculative pair (trab, 1) and asks for Casa, while the form picks
+    // Gym on the server. W2's updater is handed W1's pending write (it may answer a SPECULATIVE 409 — a hint only), but nothing is ever
+    // COMMITTED on a speculative base: W1 rolls back, W2's proposal re-runs on the server's real node and is refused. The server ends on
+    // the form's pick; neither trab nor casa is committed; both answers are 409 stale_address
     const db = fakeDb(); const { casa, trab } = await bookOf(db); const { use } = harness(db); const save = formSaveAddress(db, A);
-    let w2 = null; let gym = null;
+    let w2 = null; let gym = null; let afterForm = null;
     db.T.pause.set(`user_profiles/${A}`, async () => {
-      w2 = use(`tok-${A}`, { id: trab, expected_rev: 0, expected_default: casa });   // the resend, NOT awaited (it queues behind W1)
+      w2 = use(`tok-${A}`, { id: casa, expected_rev: 1, expected_default: trab });   // acts on W1's uncommitted pair; NOT awaited here
       await new Promise((r) => setImmediate(r));
       const g = await save({ ...CONTENT('Gym', 'Portón 3'), makeDefault: true }); assert.ok(g.ok, 'premise: the form picked Gym'); gym = g.addrId;
+      afterForm = clone(db.get(`user_profiles/${A}`));
     });
     const w1 = await use(`tok-${A}`, { id: trab, expected_rev: 0, expected_default: casa });
     const r2 = await w2;
-    assert.deepStrictEqual([w1.code, w1.body.default_address, w1.body.default_address_rev], [409, gym, 0], 'premise: W1 was rolled back to the form\'s pick');
-    assert.ok(!(r2.code === 409 && r2.body.default_address === trab && r2.body.default_address_rev === 1), `🔴 SERIAL-LOSTREPLY: the resend is never told «own id at expected + 1» for a pair that never committed (${JSON.stringify(r2.body)})`);
-    assert.deepStrictEqual([r2.code, r2.body], [409, { ok: false, reason: 'stale_address', default_address: gym, default_address_rev: 0 }], '🔴 SERIAL-LOSTREPLY: the resend sees the COMMITTED pair');
-    assert.deepStrictEqual([db.get(`user_profiles/${A}/default_address`), db.get(`user_profiles/${A}/default_address_rev`)], [gym, undefined], '🔴 SERIAL-LOSTREPLY: trab was never committed');
+    assert.deepStrictEqual([w1.code, w1.body.reason, r2.code, r2.body.reason], [409, 'stale_address', 409, 'stale_address'], '🔴 NO-WRONG-STATE: both writes are refused');
+    assert.deepStrictEqual(db.get(`user_profiles/${A}`), afterForm, '🔴 NO-WRONG-STATE: the server ends EXACTLY on the form\'s pick — nothing was committed on a speculative base');
+    assert.deepStrictEqual([db.get(`user_profiles/${A}/default_address`), db.get(`user_profiles/${A}/default_address_rev`)], [gym, undefined], '🔴 NO-WRONG-STATE: neither trab nor casa committed, no rev minted');
   }
-  ok('FORM (Option B, the REAL form writers): a form-changed selection — before the request or BETWEEN its read and commit (save or delete) — ⇒ 409 with the form\'s pick, nothing written; a same-instance resend never sees an uncommitted pair; the re-read pair converges; a content edit of the selected entry is accepted (scope: the selection); a form delete of the selection ⇒ 409 (null) then converges; the no-rev window is covered; A → B → A back to the client\'s view is accepted');
+  ok('FORM (Option B, the REAL form writers): a form-changed selection — before the request or BETWEEN its read and commit (save or delete) — ⇒ 409 with the form\'s pick, nothing written; nothing is ever committed on a speculative (pending) base; the re-read pair converges; a content edit of the selected entry is accepted (scope: the selection); a form delete of the selection ⇒ 409 (null) then converges; the no-rev window is covered; A → B → A back to the client\'s view is accepted');
 
   // ── 3. the happy path: exactly default_address + that entry's last_used_at change; the profile is otherwise byte-equal ──
   {
