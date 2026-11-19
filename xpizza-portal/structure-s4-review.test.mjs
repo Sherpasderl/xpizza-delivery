@@ -196,6 +196,19 @@ test('S4-E (documented shape) — the published staged entry: drop / rename / an
   ]);
 });
 
+// Codex #183-2: a subsection rename folds ONLY its own members' lines — by category + transition, never by the destination NAME alone.
+// Bebidas «Sodas» → «Especiales» renamed; a Dim Sum dish moved «Otros» → its existing «Especiales» is an unrelated move and must show
+const XCTX = (sec) => ({ structure: { categoryName: (id) => ({ bebidas: 'Bebidas', dim_sum: 'Dim Sum' })[id] || id, nameOf: (k) => (k === 'dimsum_02' ? 'Har Gow' : k),
+  sectionOf: (k) => (k === 'dimsum_02' || k === 'soft_01' ? sec[k] : { cat: null, subcat: null }), dishesIn: () => 1 } });
+test('#183-2 a rename in ONE category never hides an unrelated move into a same-named subsection of ANOTHER; its own members still fold', () => {
+  const sections = { added: [], subcats: [{ cat: 'bebidas', change: 'renamed', old: 'Sodas', new: 'Especiales' }], subcat_order: [], items: [], staged: [] };
+  const changed = [{ key: 'dimsum_02', surface: 'item', field: 'subcat', old: 'Otros', new: 'Especiales' },
+    { key: 'soft_01', surface: 'item', field: 'subcat', old: 'Sodas', new: 'Especiales' }];
+  const m = reviewModel({ added: [], removed: [], renamed: [], changed, sections }, XCTX({ dimsum_02: { cat: 'dim_sum', subcat: 'Especiales' }, soft_01: { cat: 'bebidas', subcat: 'Especiales' } }));
+  assert.ok((m.products || []).some((p) => p.key === 'dimsum_02'), '🔴 the Dim Sum move is shown');
+  assert.ok(!(m.products || []).some((p) => p.key === 'soft_01'), 'the renamed subsection\'s own member folds into its rename row');
+});
+
 test('S4-E render — a renamed subsection draws F\'s was → now spans; an app-only row carries «Solo en la app Sherpa»', async () => {
   const freqJ = freq('jsdom');
   const w = new freqJ.JSDOM('<!doctype html><div id="r"></div>').window;

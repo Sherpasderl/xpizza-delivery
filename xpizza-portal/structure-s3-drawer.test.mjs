@@ -253,6 +253,32 @@ test('choiceNameProblems is a PURE reader (the wiring guards rule it so): a deep
   assert.equal(JSON.stringify([draftSource(d), d.orig, s.choiceOps]), before);
 });
 
+// Codex #183-4: an option repriced and then removed is neither judged nor sent — «Guardar» commits the rest (never a silent «invalid»)
+test('#183-4 reprice an option, remove it, mark another: «Guardar» saves; the removed option\'s price edit is dropped', () => {
+  const d = createDraft(seed('la_musa'));
+  const s = IE.open(d, PAD, null, ON);
+  const m = membersOf(draftSource(d), PAD).map((r) => r.key);
+  IE.set(s, 'optionPrice', { key: m[2], raw: '999' });
+  assert.equal(IE.choiceOp(s, { op: 'option.remove', key: m[2] }).ok, true, 'premise: the remove is queued');
+  assert.equal(IE.choiceOp(s, { op: 'choice.recommended', launcher: PAD, option: m[1] }).ok, true, 'premise: a mark');
+  assert.deepEqual(IE.save(d, s), { ok: true }, '🔴 «Guardar» saves (the removed option\'s price is not judged)');
+  const src = draftSource(d);
+  assert.equal(src.items.some((i) => i.key === m[2]), false, 'the option is gone');
+  assert.ok(!membersOf(src, PAD).some((r) => r && r.key === m[2]), 'and out of the group');
+});
+// Codex #183-5: «Mismo precio para todas» covers the whole PROSPECTIVE group — a NEW option takes the shared price too
+test('#183-5 «Mismo precio para todas» after adding Tofu at L500: every option of the group, Tofu included, takes the shared price', () => {
+  const d = createDraft(seed('la_musa'));
+  const s = IE.open(d, PAD, null, ON);
+  assert.equal(IE.choiceOp(s, { op: 'option.add', launcher: PAD, ref: ref('t'), choice: 'Tofu', price: 500 }).ok, true, 'premise: Tofu queued at L500');
+  assert.equal(IE.choiceOp(s, { op: 'choice.recommended', launcher: PAD, option: membersOf(draftSource(d), PAD)[0].key }).ok, true, 'premise: a mark');
+  IE.set(s, 'samePrice', true);
+  assert.deepEqual(IE.save(d, s), { ok: true }, 'premise: saved');
+  const src = draftSource(d);
+  const prices = membersOf(src, PAD).map((r) => r && r.price);
+  assert.equal(new Set(prices).size, 1, `🔴 one price for the whole group, Tofu included (${prices.join(', ')})`);
+});
+
 test('B6 routing: every S3 refusal lands on the choice card (field options); the reward line is the owner\'s verbatim; the rest are ⟦s3.key⟧ until approved', () => {
   const OWNER = 'Este producto se canjea con recompensas. Para mantener el premio, no se le pueden agregar opciones.';
   const at = (error) => IE.refusalLine({ error, key: PAD, field: 'choices' });

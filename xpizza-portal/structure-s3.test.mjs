@@ -247,7 +247,8 @@ function reviewCtxOf(adopted, loaded) {
   const labelOf = (k) => { const r = items.find((x) => x.key === k); const vi = adopted.structure.variant_items || {}; return r && vi[String(r.display.id)] ? vi[String(r.display.id)].label : null; };
   return { structure: { nameOf: (k) => (rowOf(k) || { display: { name: k } }).display.name, categoryName: (id) => `cat:${id}`,
     sectionOf: (k) => { const r = rowOf(k); return r ? { cat: r.display.cat, subcat: r.display.subcat || null } : { cat: null, subcat: null }; },
-    choiceOf: (k) => { const r = rowOf(k); return r && typeof r.display.choice === 'string' ? r.display.choice : String(k); }, choiceLabel: labelOf } };
+    choiceOf: (k) => { const r = rowOf(k); return r && typeof r.display.choice === 'string' ? r.display.choice : String(k); }, choiceLabel: labelOf,
+    priceOf: (k) => { const r = items.find((x) => x.key === k); return r && Number.isInteger(r.price) ? r.price : null; } } };   // as app.js productReviewCtx
 }
 test('B3 — every choice facet is ONE «Estructura» row from the real save; the option adds / removes, the tag line and the reprice are not shown again', async () => {
   CE.on = true;
@@ -290,6 +291,27 @@ test('B3 — every choice facet is ONE «Estructura» row from the real save; th
     assert.deepEqual(m2.removed, [], 'its options are that row');
     assert.equal(m2.rows.filter((r) => r.key === 'noodle_01' && r.field === 'price').length, 0, 'its reprice is that row (and the seal)');
     assert.equal(m2.products.filter((p) => p.key === 'noodle_01').length, 0);
+  } finally { CE.on = false; }
+});
+
+// Codex #183-6: the choice removed keeping the option whose price IS the dish's stored price — the server emits no price row; the
+// review reads the canonical saved price (never «L undefined»)
+test('#183-6 a choice removed with NO price delta: «queda con un solo precio: L {the saved price}», never «L undefined»', async () => {
+  CE.on = true;
+  try {
+    const B = await backend('la_musa');
+    const d = createDraft(clone(B.read.source));
+    const src = draftSource(d);
+    const l = src.items.find((i) => i.key === 'noodle_01');
+    const same = groupMembers(src, 'noodle_01').find((o) => o.price === l.price);
+    assert.ok(same, `premise: an option priced as the dish's stored L${l.price}`);
+    assert.equal(applyChoiceOps(d, [{ op: 'choice.remove', launcher: 'noodle_01', price_from: same.key }], ON).ok, true);
+    globalThis.fetch = B.fetch;
+    const res = await editCatalog({ rid: 'la_musa', source: draftSource(d), baseSourceUpdateTime: B.read.sourceUpdateTime, token: async () => 't', loadedBase: B.read.deletionBase });
+    assert.equal((res.diff.changed || []).filter((c) => c.key === 'noodle_01' && c.field === 'price').length, 0, 'premise: the server emits no price change');
+    const m = reviewModel(res.diff, reviewCtxOf(res.source, B.read.source));
+    const t = m.structure.find((r) => r.name === 'Pad Thai').parts.join(' ');
+    assert.equal(t, P3('revPlain', { nombre: 'Proteína', precio: l.price }), `🔴 the saved price, never undefined (${t})`);
   } finally { CE.on = false; }
 });
 

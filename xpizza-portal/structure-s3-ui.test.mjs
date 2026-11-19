@@ -126,6 +126,23 @@ test('«Listo» folds the editor back to the read card; the edits stay in the dr
   assert.equal(p.btn('Guardar').disabled, false, 'still unsaved');
 });
 
+// Codex #183-1: a live choice's own facts — its name, its «Recomendada» mark, an option's name — are pending work once the drawer saved
+// them into the draft: the bar counts them and the leave / reload guard holds (they exist only in memory until «Revisar y publicar»)
+test('#183-1 a choice label, a mark and an option rename are PENDING work: counted, and the leave guard holds', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  p.type(ge(p).querySelector('input.mgname-in'), 'Proteína elegida'); await settle(5);
+  p.type(rows(p)[1].querySelector('input.moname'), 'Pollo al wok'); await settle(5);
+  pill(rows(p)[2]).click(); await settle(5);
+  gf(p, 'Listo').click(); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(p.drawer().classList.contains('show'), false, 'premise: the drawer saved and closed');
+  if (p.d.activeElement && p.d.activeElement.blur) p.d.activeElement.blur();
+  const { pendingCount } = await import('./editor.js');
+  assert.equal(pendingCount(p.mods.app.state.draft, p.mods.app.state.additionKeys), 3, '🔴 the label, the mark and the option rename are three pending changes');
+  assert.equal(p.mods.app.editorCanLeave(), false, '🔴 the leave guard holds');
+});
+
 const cf = (p) => p.drawer().querySelector('.mk-cfscrim .mk-cf');
 const cfBtn = (p, t) => [...cf(p).querySelectorAll('.mk-cfa button')].find((b) => b.textContent === t);
 
@@ -193,6 +210,21 @@ test('D2 — the dish\'s second action «Agregar elección requerida»: only wit
   await p.open(PLAIN);
   const a = d2Act(p);
   assert.ok(a, 'a plain dish: the action'); assert.ok(a.classList.contains('mk-railq'), 'the quiet action');
+});
+
+// Codex #183-7: the sheets end with the world — another person signs in ⇒ A's «Agregar elección requerida» is closed, its state cleared,
+// no stale listener (the Extras sheets' rule, one reset list)
+test('#183-7 «Agregar elección requerida» closes and clears when another person signs in; no stale listener', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PLAIN);
+  d2Act(p).click(); await settle(5);
+  p.type(sheet(p).querySelector('input.mgname-in'), 'Tamaño de A'); await settle(5);
+  assert.ok(p.d.querySelector('#xchoice.show'), 'premise: A has the sheet open with a name');
+  p.d.dispatchEvent(new p.w.CustomEvent('portal:auth', { detail: { uid: 'uSomeoneElse' } })); await settle(80);
+  assert.equal(p.d.querySelector('#xchoice.show'), null, '🔴 A\'s sheet is closed');
+  assert.equal(p.d.querySelector('#xchoice .modal').childElementCount, 0, 'and emptied (no A content left in the DOM)');
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+  assert.equal(p.d.querySelector('#xchoice.show'), null, 'no stale listener');
 });
 
 test('D2 — the sheet EXACT to the frame: title, subline, the explain line, the name, the options (the first prefilled with the dish\'s price and «Recomendada»), the note; «Agregar elección» off until complete; on add the Precio field gives way to the choice', async () => {

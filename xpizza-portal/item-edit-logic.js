@@ -97,8 +97,16 @@ export function set(s, field, value) {
   else if (field === 'samePrice') {
     s.same = value === true;
     if (s.same) {
-      const ps = Object.values(w.optionPrices).map(parsePrice).filter((p) => p !== null);
-      if (ps.length) { const v = String(Math.min(...ps)); for (const k of Object.keys(w.optionPrices)) w.optionPrices[k] = v; }
+      // Codex #183-5: the WHOLE prospective group — the live options' prices AND the new options the copy queued (their price lives in
+      // the add op) — takes the cheapest usable price
+      const live = livePrices(s);
+      const fresh = (s.choiceOps || []).filter((o) => o && o.op === 'option.add' && o.launcher === s.key);
+      const ps = [...live.map(([, v]) => parsePrice(v)), ...fresh.map((o) => (Number.isInteger(o.price) ? o.price : null))].filter((p) => p !== null);
+      if (ps.length) {
+        const v = Math.min(...ps);
+        for (const [k] of live) w.optionPrices[k] = String(v);
+        for (const o of fresh) o.price = v;
+      }
     }
   }
   // STRUCTURE S1 — the checklist (only the keys the PROSPECTIVE dish shows; a kept key outside it is preserved) and «Sin extras».
@@ -142,7 +150,7 @@ function changed(s) {
   if (w.cat !== b.cat) out.push('cat');
   if (w.subcat !== b.subcat) out.push('subcat');
   if (!s.group && w.price.trim() !== b.price) out.push('price');
-  if (s.group && Object.keys(w.optionPrices).some((k) => w.optionPrices[k].trim() !== b.optionPrices[k])) out.push('optionPrices');
+  if (s.group && livePrices(s).some(([k, v]) => v.trim() !== b.optionPrices[k])) out.push('optionPrices');
   if (Object.keys(w.extraPrices).some((k) => w.extraPrices[k].trim() !== b.extraPrices[k])) out.push('extraPrices');
   const was = new Set(b.denyExtras);
   if (w.denyExtras.length !== was.size || w.denyExtras.some((k) => !was.has(k))) out.push('denyExtras');
@@ -366,7 +374,7 @@ export function view(draft, s) {
   const moved = w.cat !== s.base.cat && w.cat != null;
   const consequenceGap = moved && extrasChange(draft, s) === null;
   if (ch.includes('price') && parsePrice(w.price) === null) errors.price = true;
-  const badOption = s.group && Object.values(w.optionPrices).some((v) => parsePrice(v) === null);
+  const badOption = s.group && livePrices(s).some(([, v]) => parsePrice(v) === null);
   const badExtra = ch.includes('extraPrices') && Object.keys(w.extraPrices).some((k) => w.extraPrices[k].trim() !== s.base.extraPrices[k] && parsePrice(w.extraPrices[k]) === null);
   const se = s.serverError;
   if (se && !errors[se.field]) errors[se.field] = se.message;
@@ -417,7 +425,7 @@ export function save(draft, s) {
   if (ch.includes('desc')) e.desc = w.desc;
   if (ch.includes('cat') || ch.includes('subcat')) { e.cat = w.cat; e.subcat = w.subcat; }
   if (ch.includes('price')) e.price = w.price;
-  if (ch.includes('optionPrices')) e.optionPrices = Object.fromEntries(Object.entries(w.optionPrices).filter(([k, v]) => v.trim() !== s.base.optionPrices[k]));
+  if (ch.includes('optionPrices')) e.optionPrices = Object.fromEntries(livePrices(s).filter(([k, v]) => v.trim() !== s.base.optionPrices[k]));
   if (ch.includes('photo')) e.photo = w.photo;
   if (ch.includes('extraPrices')) e.extraPrices = Object.fromEntries(Object.entries(w.extraPrices).filter(([k, v]) => v.trim() !== s.base.extraPrices[k]));
   // STRUCTURE S1 (Codex S1 plan r1 #1): serialized explicitly — the FULL final list (kept keys outside the baseline included),
@@ -587,6 +595,17 @@ export function choiceModel(draft, s) {
   const hold = touched && marks === 0 ? { reason: was && was.members.some((r) => isTag(r) && !now.members.some((m) => idOf(m) === idOf(r))) ? 'recommended_removed' : 'recommended_required' } : null;
   return { label: now.label, labelChanged: !was || was.label !== now.label, options, touched, hold, removed: false };
 }
+// Codex #183-4: the EXISTING options still in the prospective group (the copy's choice ops applied). A price edit on an option the copy
+// removes is neither judged nor sent. null = no choice editing in this copy (every option counts, today's rule).
+export function liveOptionKeys(draft, s) {
+  const m = choiceModel(draft, s);
+  if (!m) return null;
+  return new Set(m.removed ? [] : m.options.filter((o) => !o.isNew).map((o) => o.id));
+}
+const livePrices = (s) => {
+  const live = s.draft ? liveOptionKeys(s.draft, s) : null;
+  return Object.entries(s.work.optionPrices).filter(([k]) => !live || live.has(k));
+};
 // D3 «Quitar elección»: the price that stays — the marked option by default; with no mark the card ASKS (priceFrom null) (addendum B2b)
 export function choiceRemovePlan(draft, s) {
   const m = choiceModel(draft, s);

@@ -172,6 +172,7 @@ function choiceRowsOf(d, names = {}) {
   const sectionOf = typeof names.sectionOf === 'function' ? names.sectionOf : () => ({ cat: null, subcat: null });
   const choiceOf = typeof names.choiceOf === 'function' ? names.choiceOf : (k) => String(k);
   const labelOf = typeof names.choiceLabel === 'function' ? names.choiceLabel : () => null;
+  const priceOf = typeof names.priceOf === 'function' ? names.priceOf : () => null;   // Codex #183-6: the canonical saved price
   const addedPrice = new Map((Array.isArray(d.added) ? d.added : []).filter((x) => x && x.surface === 'item').map((x) => [x.key, x.price]));
   const newPrice = new Map((Array.isArray(d.changed) ? d.changed : []).filter((c) => c && c.surface === 'item' && c.field === 'price').map((c) => [c.key, c.new]));
   const rows = [];
@@ -189,7 +190,8 @@ function choiceRowsOf(d, names = {}) {
       row(dish, place, 'Nuevo', [s3Copy('revLauncher', { nombre: lb ? lb.new : '', n: added.length, min: ps.length ? Math.min(...ps) : '' })], c, c.app_only === true);
       continue;
     }
-    if (c.became === 'plain') { row(dish, place, 'Quitado', [s3Copy('revPlain', { nombre: lb ? lb.old : '', precio: newPrice.get(c.launcher) })], c, c.app_only === true); continue; }
+    // the price that stays: the server's price change when there is one, else the dish's canonical saved price (no delta ⇒ no row)
+    if (c.became === 'plain') { row(dish, place, 'Quitado', [s3Copy('revPlain', { nombre: lb ? lb.old : '', precio: newPrice.has(c.launcher) ? newPrice.get(c.launcher) : priceOf(c.launcher) })], c, c.app_only === true); continue; }
     const head = `${dish} \u00b7 ${lb && lb.old != null ? lb.old : labelOf(c.launcher) || ''}`;
     const REQ = 'Elección requerida';
     if (lb) row(head, REQ, 'Cambio', [lb.old, '\u2192', lb.new], c);
@@ -269,12 +271,24 @@ function sectionRowsOf(d, names = {}) {
   return rows;
 }
 // the lines an S4 row already says: a subsection's members (added / renamed), a dish moved into a new section
-function sectionFacts(d) {
+// Codex #183-2: a dish's subsection line folds into an S4 row ONLY when it IS that row's own transition — same category, and either the
+// subsection was added there (the dish moved into it) or renamed there (the dish's old → new is that rename). Never by the destination
+// name alone (another category's same-named subsection is an unrelated move). An unknown category folds nothing (never hide a line).
+function sectionFacts(d, ctx = {}) {
   const S = d.sections && typeof d.sections === 'object' ? d.sections : null;
   if (!S) return () => false;
-  const subs = new Set((Array.isArray(S.subcats) ? S.subcats : []).filter((c) => c && (c.change === 'added' || c.change === 'renamed')).map((c) => c.new));
+  const K = (cat, sub) => `${cat}\u0000${sub}`;
+  const list = Array.isArray(S.subcats) ? S.subcats : [];
+  const added = new Set(list.filter((c) => c && c.change === 'added').map((c) => K(c.cat, c.new)));
+  const renamed = new Map(list.filter((c) => c && c.change === 'renamed').map((c) => [K(c.cat, c.old), c.new]));
+  const sectionOf = ctx && ctx.structure && typeof ctx.structure.sectionOf === 'function' ? ctx.structure.sectionOf : null;
   const fresh = new Set([...(Array.isArray(S.staged) ? S.staged : []).filter((x) => x && x.change === 'promote').map((x) => x.id), ...(Array.isArray(S.added) ? S.added.map((a) => a && a.id) : [])]);
-  return (c) => !!c && c.surface === 'item' && ((c.field === 'subcat' && subs.has(c.new)) || (c.field === 'cat' && fresh.has(c.new)));
+  const subFolds = (c) => {
+    const cat = sectionOf ? (sectionOf(c.key) || {}).cat : null;
+    if (cat == null) return false;
+    return added.has(K(cat, c.new)) || renamed.get(K(cat, c.old)) === c.new;
+  };
+  return (c) => !!c && c.surface === 'item' && ((c.field === 'subcat' && subFolds(c)) || (c.field === 'cat' && fresh.has(c.new)));
 }
 
 // the facts a choice row already says — never ALSO a generic line (every server fact shown once): the option rows added / removed,
@@ -332,7 +346,7 @@ export function reviewModel(diff, ctx = {}) {
   const d0 = diff || {};
   // STRUCTURE S3 (B3): a fact a choice row says is dropped from the generic lists before anything else reads them
   const cf = choiceFacts(d0);
-  const sf = sectionFacts(d0);   // S4-E: the same rule for the S4 rows
+  const sf = sectionFacts(d0, ctx);   // S4-E: the same rule for the S4 rows (category-scoped, Codex #183-2)
   const d = (Array.isArray(d0.choices) && d0.choices.length) || d0.sections ? { ...d0,
     changed: (Array.isArray(d0.changed) ? d0.changed : []).filter((c) => !cf.said(c) && !sf(c)),
     added: (Array.isArray(d0.added) ? d0.added : []).filter((x) => !(x && x.surface === 'item' && cf.added.has(x.key))),

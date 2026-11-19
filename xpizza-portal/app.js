@@ -1819,7 +1819,7 @@ function menuClose(refocus) {
   window.removeEventListener('resize', menuAway, true); window.removeEventListener('scroll', menuAway, true);
   if (refocus && m.from.isConnected) m.from.focus();
 }
-function menuAway() { if (rowMenu) menuClose(false); }   // a fixed layer does not follow its row: a scroll / resize closes it
+function menuAway(e) { const t = e && e.type === 'scroll' ? e.target : null; if (rowMenu && !(t && t.nodeType === 1 && rowMenu.pop.contains(t))) menuClose(false); }   // a fixed layer does not follow its row: a page scroll / resize closes it — never the menu's OWN scroll (#183-8)
 function menuKey(e) { if (rowMenu && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); menuClose(true); } }
 function menuOutside(e) { if (rowMenu && !rowMenu.pop.contains(e.target) && e.target !== rowMenu.from && !rowMenu.from.contains(e.target)) menuClose(false); }
 function menuOpen(key, from) {
@@ -1864,9 +1864,15 @@ function menuOpen(key, from) {
   // a layer OUTSIDE the list (.detail clips: overflow hidden for its corners) — fixed, under «Más acciones», right-aligned to it; flipped
   // upward when the window has no room below. Placed through the CSSOM (the strict CSP: no style attribute in the markup)
   document.body.append(pop);
+  // Codex #183-8: a long list (30 sections, many subsections) never runs off the viewport — it opens on the side with MORE room when it
+  // does not fit below, its height is capped to that room (the list scrolls inside it), and it is placed by that capped height
   const b = from.getBoundingClientRect(); const h = pop.offsetHeight; const vh = window.innerHeight || 0; const vw = window.innerWidth || 0;
-  const up = vh > 0 && b.bottom + 4 + h > vh - 8 && b.top - 4 - h >= 8;
-  pop.style.top = `${Math.max(8, up ? b.top - 4 - h : b.bottom + 4)}px`;
+  const below = vh - 8 - (b.bottom + 4), above = b.top - 4 - 8;
+  const up = vh > 0 && h > below && above > below;
+  const room = vh > 0 ? Math.max(0, up ? above : below) : h;
+  if (vh > 0 && h > room) pop.style.maxHeight = `${room}px`;
+  const hh = Math.min(h, room);
+  pop.style.top = `${Math.max(8, up ? b.top - 4 - hh : b.bottom + 4)}px`;
   pop.style.right = `${Math.max(8, vw - b.right)}px`;
   pop.classList.toggle('mk-popup', up);
   rowMenu = { key, from, pop };
@@ -2378,7 +2384,7 @@ const UNDO_REFUSED = 'No pudimos aplicar el cambio. Recargá la página.';
 function undoRemoval(key) {
   const snap = pendingRemovalMap().get(key);
   if (!snap) return;
-  const r = undoRemoveProduct(state.draft, key, snap, state.liveOrder);
+  const r = undoRemoveProduct(state.draft, key, snap, state.liveOrder, S4ON());   // Codex #183-3: S4 3(a) — a staged section is promoted again
   if (!r.ok) { undoRefused = key; paint(); return; }   // nothing restored; the row says so
   undoRefused = null;
   state.removalStash.delete(key);
@@ -2424,6 +2430,7 @@ function productReviewCtx() {
   structure.categoryName = (id) => stagedName(state.draft, id) || categoryName(id);
   // STRUCTURE S3 (B3): an option's choice text (a removed one from the loaded rows) and a dish's choice label now, from the draft
   structure.choiceOf = (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r && typeof r.display.choice === 'string' ? `${r.display.choice}` : String(k); };
+  structure.priceOf = (k) => { const r = items.find((x) => x.key === k); return r && Number.isInteger(r.price) ? r.price : null; };   // Codex #183-6: the saved price (the S3 «queda con un solo precio» row)
   structure.choiceLabel = (k) => { const g = choiceGroup(state.draft, k); return g && typeof g.label === 'string' ? `${g.label}` : null; };
   // Codex S2 UI r1 P1-4: each extra's group, so a checklist key its group's detach drops folds into that «Estructura» row
   const extraGroups = new Map((draftSource(state.draft).extras || []).filter((x) => x && typeof x.key === 'string' && x.display && x.display.cat != null).map((x) => [x.key, `${x.display.cat}`]));
@@ -2454,6 +2461,15 @@ function resetExtrasLocal() {
   if ($('xrail')) $('xrail').replaceChildren();
   if ($('xdetail')) $('xdetail').replaceChildren();
 }
+// Codex #183-7 — the S3 / S4 sheets and view state end with the world, beside resetExtrasLocal (ONE reset, resetEditFacts): «Agregar elección
+// requerida» (D2), «Nueva subcategoría», the «Mover a…» row menu, the inline «Nueva categoría» box and a subsection rename in place —
+// closed, their listeners removed, their local state cleared (another person never sees A's typed names)
+function resetStructureLocal() {
+  if (choicePick || ($('xchoice') && $('xchoice').classList.contains('show'))) d2Close(false);
+  if (subPick || ($('xsubcat') && $('xsubcat').classList.contains('show'))) subClose(false);
+  if (rowMenu) menuClose(false);
+  newCatBox = null; newCatRefs = null; subRename = null;
+}
 function resetEditFacts() {
   state.textEditEnabled = false;
   state.extrasAuthoring = false;
@@ -2470,6 +2486,7 @@ function resetEditFacts() {
   state.removalStash = new Map();
   undoRefused = null;   // a refused «Deshacer» line ends with the world
   resetExtrasLocal();
+  resetStructureLocal();
   endEditSession();
 }
 // The product's photo as this drawer shows it: the draft's map with the copy's entry in place of the stored one.

@@ -520,9 +520,34 @@ function foldNewGroups(draft, entries, saved) {
 // MOCKUP-portal-item-edit B («4 cambios sin publicar · 1 producto»).
 // STRUCTURE S1 — and so is a dish's extras checklist or «Sin extras» (Codex S1 plan r1 #1): a SAVED one is pending work after the
 // drawer closed, so the reload / branch-switch / self-update guard (portalReloadFacts) still holds it.
+// S3 (Codex #183-1): a LIVE choice's own facts — its name, its «Recomendada» mark, an option's name — are pending work once the drawer saved
+// them into the draft (a NEW group arrives with its dish, counted there; an added / removed option is an item change, counted there)
+export function pendingChoices(draft) {
+  const out = [];
+  if (!draft) return out;
+  const groups = (src) => (src && src.structure && src.structure.variant_items && typeof src.structure.variant_items === 'object' ? src.structure.variant_items : {});
+  const was = groups(draft.orig), now = groups(draft.state);
+  const rowsWas = rowsOf(draft.orig, 'item'), rowsNow = rowsOf(draft.state, 'item');
+  const idOf = (r) => (r && Object.prototype.hasOwnProperty.call(r, 'ref') ? r.ref : r && r.display ? r.display.id : undefined);
+  const byId = (rows, id) => rows.find((r) => r && r.display && String(idOf(r)) === String(id));
+  const ids = (spec) => (spec && Array.isArray(spec.variantIds) ? spec.variantIds.map(String) : []);
+  const marked = (rows, spec) => ids(spec).find((v) => { const r = byId(rows, v); return !!(r && Array.isArray(r.display.tags) && r.display.tags.includes('recommended')); }) || null;
+  for (const lid of Object.keys(now)) {
+    if (!Object.prototype.hasOwnProperty.call(was, lid)) continue;
+    const a = was[lid], b = now[lid];
+    if (String((b && b.label) || '') !== String((a && a.label) || '')) out.push({ launcher: lid, kind: 'label' });
+    if (marked(rowsNow, b) !== marked(rowsWas, a)) out.push({ launcher: lid, kind: 'recommended' });
+    for (const v of ids(b)) {
+      if (!ids(a).includes(v)) continue;
+      const ra = byId(rowsWas, v), rb = byId(rowsNow, v);
+      if (ra && rb && String(ra.display.choice || '') !== String(rb.display.choice || '')) out.push({ launcher: lid, kind: 'option', option: v });
+    }
+  }
+  return out;
+}
 export const pendingCount = (draft, savedAdditions) => pendingChanges(draft, savedAdditions).length + pendingPhotos(draft).length
   + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingDishExtras(draft).reduce((n, t) => n + t.sentences, 0)
-  + pendingStructure(draft).length + pendingSections(draft).length;
+  + pendingStructure(draft).length + pendingSections(draft).length + pendingChoices(draft).length;
 
 // ── DISH PHOTOS B (PLAN-dish-photos §2.1 / §2.2) — THE DRAFT PHOTO MAP ────────────────────────────────────────────────
 // `source.photos` = {[itemKey]: {state:'pid', pid} | {state:'removed'}}; an absent key is LEGACY. It is part of the document

@@ -168,6 +168,20 @@ test('E — a category with subcategories lists its products under one head each
   assert.equal(k, n('Cervezas'), 'its rows follow its head');
 });
 
+// Codex #183-7: «Nueva subcategoría» ends with the world too (one reset list with the Extras sheets)
+test('#183-7 «Nueva subcategoría» closes and clears when another person signs in; no stale listener', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await pick(p, 'Bebidas');
+  subBtn(p).click(); await settle(5);
+  p.type(sheet(p).querySelector('input.mgname-in'), 'Jugos de A'); await settle(2);
+  assert.ok(p.d.querySelector('#xsubcat.show'), 'premise: A has the sheet open with a name');
+  p.d.dispatchEvent(new p.w.CustomEvent('portal:auth', { detail: { uid: 'uSomeoneElse' } })); await settle(80);
+  assert.equal(p.d.querySelector('#xsubcat.show'), null, '🔴 A\'s sheet is closed');
+  assert.equal(p.d.querySelector('#xsubcat .modal').childElementCount, 0, 'and emptied');
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+  assert.equal(p.d.querySelector('#xsubcat.show'), null, 'no stale listener');
+});
+
 test('S4-A — the FIRST subcategory: every product checked and locked, the line; «Crear subcategoría» groups them all', async () => {
   const p = await page({ read: ON });
   await p.signIn(); await pick(p, 'Dim Sum');
@@ -332,6 +346,31 @@ test('S4-D — «Quitar del menú» on the last dish of a section promoted in th
   const ps = [...m.querySelectorAll('p')].map((x) => x.textContent);
   assert.equal(ps[ps.length - 1], P('unpromoteLine', { categoria: 'Postres' }), '🔴 the un-promote sentence after the approved body');
 });
+// Codex #183-3: «Deshacer» on the last dish removed from a section promoted in this draft brings the dish back AND promotes its section
+// again (the app passes the sections option); never a dish in a still-staged section (the save's category_not_renderable)
+test('#183-3 «Deshacer» of a promoted section\'s last dish promotes the section again (never a dish in a staged section)', async () => {
+  const p = await page({ read: RM });
+  await p.signIn();
+  await create(p, 'Postres');
+  await pick(p, 'Dim Sum');
+  const nm = dishName(p, 'dimsum_01');
+  more(rowOf(p, nm)).click(); await settle(5); mItem(p, 'Postres').click(); await settle(10);
+  await pick(p, 'Postres');
+  more(rowOf(p, nm)).click(); await settle(5);
+  mItems(p).find((b) => b.classList.contains('danger')).click(); await settle(5);
+  const m = p.d.querySelector('#xscrim.show .modal, #xscrim.show .mk-sheet');
+  [...m.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Quitar').click(); await settle(10);
+  const pid = (p.src().structure.staged_categories || []).find((c) => c.name === 'Postres');
+  assert.ok(pid, 'premise: the removal sent Postres back to staged');
+  await pick(p, 'Sin categoría');   // the pending row of a dish whose section went back to staged (Codex's repro)
+  const undo = p.d.querySelector('button.mk-undo[data-k="dimsum_01"]');
+  assert.ok(undo, 'premise: the pending row offers «Deshacer»');
+  undo.click(); await settle(10);
+  const src = p.src();
+  assert.equal(src.items.find((i) => i.key === 'dimsum_01').display.cat, pid.id, 'the dish is back in Postres');
+  assert.ok((src.structure.categories || []).some((c) => String(c.id) === String(pid.id)), '🔴 Postres is promoted again');
+  assert.ok(!(src.structure.staged_categories || []).some((c) => String(c.id) === String(pid.id)), 'and no longer staged');
+});
 test('3(b) — «Quitar del menú» on a LIVE section\'s last dish: the approved line under the row, no confirm, nothing written', async () => {
   const p = await page({ read: RM });
   await p.signIn(); await pick(p, 'Crudo');
@@ -344,6 +383,33 @@ test('3(b) — «Quitar del menú» on a LIVE section\'s last dish: the approved
   assert.equal(p.d.querySelector('#xscrim.show'), null, 'no confirm');
   assert.equal(rowOf(p, nm).nextElementSibling.textContent, 'No podés dejar la sección vacía. Agregá otro producto primero.');
   assert.equal(JSON.stringify(p.src()), before);
+});
+
+// Codex #183-8: a long «Mover a…» list never runs off the viewport — the menu opens on the side with more room, its height is capped to that
+// room (the list scrolls inside it), and scrolling INSIDE the menu does not close it (only a page scroll / resize does). Geometry stubbed
+// (jsdom has no layout): a 600 px window, the row near the bottom, a 1200 px menu (30 sections and more).
+test('#183-8 «Mover a…» fits the viewport: the roomier side, a capped height with internal scroll; an inner scroll keeps it open', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await pick(p, 'Dim Sum');
+  const btn = more(rowOf(p, dishName(p, 'dimsum_01')));
+  const W = p.w;
+  Object.defineProperty(W, 'innerHeight', { value: 600, configurable: true }); Object.defineProperty(W, 'innerWidth', { value: 390, configurable: true });
+  btn.getBoundingClientRect = () => ({ top: 470, bottom: 500, left: 340, right: 366, width: 26, height: 30 });
+  const off = Object.getOwnPropertyDescriptor(W.HTMLElement.prototype, 'offsetHeight');
+  Object.defineProperty(W.HTMLElement.prototype, 'offsetHeight', { configurable: true, get() { return this.classList && this.classList.contains('mk-pop') ? 1200 : 0; } });
+  try {
+    btn.click(); await settle(5);
+    const pop = menu(p);
+    assert.ok(pop, 'premise: the menu opened');
+    const top = parseFloat(pop.style.top), mh = parseFloat(pop.style.maxHeight);
+    assert.ok(Number.isFinite(mh), '🔴 the height is capped (maxHeight set)');
+    assert.ok(top >= 8 && top + mh <= 600 - 8, `🔴 the menu fits the viewport (top ${top}, max ${mh})`);
+    assert.equal(pop.classList.contains('mk-popup'), true, 'it opens upward: more room above the row than below');
+    pop.dispatchEvent(new W.Event('scroll')); await settle(2);
+    assert.ok(menu(p), '🔴 an inner scroll keeps the menu open');
+    W.dispatchEvent(new W.Event('scroll')); await settle(2);
+    assert.equal(menu(p), null, 'a page scroll still closes it (a fixed layer does not follow its row)');
+  } finally { if (off) Object.defineProperty(W.HTMLElement.prototype, 'offsetHeight', off); else delete W.HTMLElement.prototype.offsetHeight; }
 });
 
 test('E2 — the menu is never clipped: it opens in a layer outside the list (no overflow:hidden ancestor), even on the LAST row; a repaint closes it', async () => {
