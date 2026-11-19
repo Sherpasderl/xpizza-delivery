@@ -374,6 +374,62 @@ test('#201-2 «0» on a new option\'s price keeps «Guardar» off — never the 
   assert.equal(JSON.stringify(p.src()), before, '🔴 nothing is written');
 });
 
+// Codex #202: (1) a removal whose recommended option was added in THIS drawer — every replay carries the store's prices; (2) «new» means
+// added in THIS drawer session — a reopened draft row is an ordinary row and deletes like one
+const quitChoice = async (p) => { gf(p, 'Quitar elección').click(); await settle(5); cfBtn(p, 'Quitar elección').click(); await settle(5); };
+const plainPrice = (p, key) => { const src = p.src(); const dish = src.items.find((i) => i.key === key); return [dish.price, src.structure.variant_items[String(dish.display.id)]]; };
+test('#202-1 «Quitar elección» when the recommended option was added in this drawer (Tofu L500): the dish keeps L500', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  ge(p).querySelector('.mgadd').click(); await settle(5);
+  p.type(rows(p)[3].querySelector('input.moname'), 'Tofu'); p.type(rows(p)[3].querySelector('.mopr input'), '500'); await settle(5);
+  pill(rows(p)[3]).click(); await settle(5);
+  await quitChoice(p);
+  assert.equal(reqCard(p), null, '🔴 the choice is gone (never «No pudimos aplicar el cambio»)');
+  assert.equal(p.fld('Precio').querySelector('input[aria-label="Precio"]').value, '500');
+  p.btn('Guardar').click(); await settle(10);
+  assert.deepEqual(plainPrice(p, PAD), [500, undefined], '🔴 saved: one price, L500');
+});
+test('#202-1b the same through a choice added in this drawer (Sichuan: Chico L100 · Grande L500, Grande recommended): L500', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PLAIN);
+  d2Act(p).click(); await settle(5);
+  p.type(sheet(p).querySelector('input.mgname-in'), 'Tamaño');
+  p.type(sRows(p)[0].querySelector('input.moname'), 'Chico'); p.type(sRows(p)[0].querySelector('.mopr input'), '100');
+  p.type(sRows(p)[1].querySelector('input.moname'), 'Grande'); p.type(sRows(p)[1].querySelector('.mopr input'), '500');
+  sRows(p)[1].querySelector('.recpill').click(); await settle(5);
+  sBtn(p, 'Agregar elección').click(); await settle(5);
+  pencil(p).click(); await settle(5);
+  await quitChoice(p);
+  assert.equal(reqCard(p), null, '🔴 the choice is gone');
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(plainPrice(p, PLAIN)[0], 500, '🔴 L500, the recommended option\'s');
+});
+test('#202-2 a reopened draft option (Tofu, saved in an earlier drawer) deletes like any row', async () => {
+  const p = await page({ read: ON });
+  await padWithTofu(p);
+  trash(rows(p)[3]).click(); await settle(5);
+  assert.deepEqual(rows(p).map(nameOf), ['Sin Proteína', 'Pollo', 'Camarones'], '🔴 Tofu leaves the group');
+  p.btn('Guardar').click(); await settle(10);
+  assert.deepEqual(groupOf(p.src()).members.map((m) => m.display.choice), ['Sin Proteína', 'Pollo', 'Camarones'], '🔴 and the save drops it');
+});
+test('#202-2b a reopened choice.add group of three: one option deletes', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PLAIN);
+  d2Act(p).click(); await settle(5);
+  p.type(sheet(p).querySelector('input.mgname-in'), 'Tamaño');
+  p.type(sRows(p)[0].querySelector('input.moname'), 'Chico'); p.type(sRows(p)[0].querySelector('.mopr input'), '100');
+  p.type(sRows(p)[1].querySelector('input.moname'), 'Grande'); p.type(sRows(p)[1].querySelector('.mopr input'), '500');
+  sheet(p).querySelector('.mgadd').click(); await settle(5);
+  p.type(sRows(p)[2].querySelector('input.moname'), 'Mediano'); p.type(sRows(p)[2].querySelector('.mopr input'), '300');
+  sBtn(p, 'Agregar elección').click(); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  await p.open(PLAIN); pencil(p).click(); await settle(5);
+  assert.equal(rows(p).length, 3, 'premise: reopened with three options');
+  trash(rows(p)[2]).click(); await settle(5);
+  assert.equal(rows(p).length, 2, '🔴 the reopened option deletes');
+});
+
 test('D2 — «Cancelar» records nothing; the trash is off at two options; «Agregar opción» adds a row', async () => {
   const p = await page({ read: ON });
   await p.signIn(); await p.open(PLAIN);

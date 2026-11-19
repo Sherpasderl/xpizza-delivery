@@ -431,11 +431,7 @@ export function save(draft, s) {
   if (ch.includes('denyExtras')) e.denyExtras = w.denyExtras.slice();
   if (ch.includes('extrasNone')) e.extrasPolicy = w.extrasNone ? 'none' : null;
   // STRUCTURE S2 (§3.2): ONE composition — «Sin extras» off, the move, the copy's ops, then the rest — swapped in once
-  // #201: this drawer's new options get their prices from the store HERE, once (every one parses: «Guardar» was on)
-  const price = (ref) => parsePrice(s.work.optionPrices[ref]);
-  const priced = s.choiceOps.map((op) => (op.op === 'option.add' ? { ...op, price: price(op.ref) }
-    : op.op === 'choice.add' ? { ...op, options: op.options.map((o) => ({ ...o, price: price(o.ref) })) } : op));
-  if (!commitDish(draft, s.key, e, [...priced, ...s.ops], { reserved: s.reserved, extrasAuthoring: s.extrasAuthoring, extrasCatalog: s.extrasCatalog, choiceEdit: s.choiceEdit }).ok) return { ok: false, error: 'invalid' };
+  if (!commitDish(draft, s.key, e, [...pricedOps(s, s.choiceOps), ...s.ops], { reserved: s.reserved, extrasAuthoring: s.extrasAuthoring, extrasCatalog: s.extrasCatalog, choiceEdit: s.choiceEdit }).ok) return { ok: false, error: 'invalid' };
   s.closed = true;
   return { ok: true };
 }
@@ -444,13 +440,20 @@ export function save(draft, s) {
 // One S3 op for this copy: dry-run on a scratch draft with every op queued so far (5f's writer, all or nothing) — queued only if it applies.
 // the server's line on the choice card goes once the merchant changes the choice (set()'s rule for the other fields)
 const choiceTouched = (s) => { if (s.serverError && s.serverError.field === 'options') s.serverError = null; return { ok: true }; };
+// Codex #202: the ONE way the copy's choice ops reach the writer — every replay (a dry-run, the removal, «Guardar») carries this
+// drawer's new options' prices from the store (#201: the ops themselves hold none), so a price-less op never reaches the writer
+function pricedOps(s, ops) {
+  const price = (ref) => parsePrice(s.work.optionPrices[ref]);
+  return ops.map((op) => (op.op === 'option.add' ? { ...op, price: price(op.ref) }
+    : op.op === 'choice.add' ? { ...op, options: op.options.map((o) => ({ ...o, price: price(o.ref) })) } : op));
+}
 export function choiceOp(s, op) {
   if (!s || s.closed) return { ok: false, code: 'closed' };
   if (!s.choiceEdit) return { ok: false, code: 'choice_edit_off' };
   const priced = op && op.op === 'option.add' ? op.price : undefined;
   if (op && op.op === 'option.add') op = { ...op, price: null };   // Codex #201: the price goes to the store, never the op
   const scratch = createDraft(JSON.parse(JSON.stringify(draftSource(s.draft))));
-  const r = applyChoiceOps(scratch, [...s.choiceOps, op], { choiceEdit: true });
+  const r = applyChoiceOps(scratch, pricedOps(s, [...s.choiceOps, op]), { choiceEdit: true });
   if (!r.ok) return r;
   s.choiceOps.push(op);
   if (op.op === 'option.add') writePrice(s, op.ref, Number.isInteger(priced) ? String(priced) : '');
@@ -462,7 +465,7 @@ const slotOf = (op) => (op.op === 'choice.label' || op.op === 'choice.recommende
 function tryOps(s, ops) {
   if (!ops.length) return { ok: true };   // nothing to dry-run (the writer refuses an empty list)
   const scratch = createDraft(JSON.parse(JSON.stringify(draftSource(s.draft))));
-  return applyChoiceOps(scratch, ops, { choiceEdit: true });
+  return applyChoiceOps(scratch, pricedOps(s, ops), { choiceEdit: true });
 }
 export function choiceSet(s, op) {
   if (!s || s.closed) return { ok: false, code: 'closed' };
@@ -533,8 +536,7 @@ export function choiceRemove(s, priceFrom) {
   const r = choiceOp(s, { op: 'choice.remove', launcher: s.key, price_from: priceFrom });
   if (!r.ok) return r;
   s.group = false;
-  s.same = null;
-  s.work.optionPrices = { ...s.base.optionPrices };
+  s.same = null;   // the store keeps every price: a later replay needs them, and a removed option's edit is never sent (livePrices)
   s.work.price = Number.isInteger(pick.price) ? String(pick.price) : '';
   return { ok: true };
 }
@@ -589,14 +591,16 @@ function groupIn(src, key) {
 export function choiceModel(draft, s) {
   if (!s || !s.choiceEdit) return null;
   const scratch = createDraft(JSON.parse(JSON.stringify(draftSource(draft))));
-  if (s.choiceOps.length && !applyChoiceOps(scratch, s.choiceOps, { choiceEdit: true }).ok) return null;
+  if (s.choiceOps.length && !applyChoiceOps(scratch, pricedOps(s, s.choiceOps), { choiceEdit: true }).ok) return null;
   const now = groupIn(draftSource(scratch), s.key);
   const was = groupIn(draft.orig, s.key);
   const idOf = (r) => r.key || r.ref;
   if (!now) return { label: null, options: [], touched: !!was, hold: null, removed: !!was };
   // #201: an option's price is THE store's (by row id) — never the scratch writer's (which knows no prices before «Guardar»)
   const priceOf = (r) => (Object.prototype.hasOwnProperty.call(s.work.optionPrices, idOf(r)) ? parsePrice(s.work.optionPrices[idOf(r)]) : r.price);
-  const options = now.members.map((r) => ({ id: idOf(r), choice: r.display.choice, price: priceOf(r), marked: isTag(r), isNew: !r.key }));
+  // Codex #202: «new» = added in THIS drawer session (not in the draft when it opened) — a reopened draft row (a ref, no key) is ordinary
+  const isNew = (r) => !Object.prototype.hasOwnProperty.call(s.base.optionPrices, idOf(r));
+  const options = now.members.map((r) => ({ id: idOf(r), choice: r.display.choice, price: priceOf(r), marked: isTag(r), isNew: isNew(r) }));
   const wasMap = new Map((was ? was.members : []).map((r) => [idOf(r), r]));
   const touched = !was || was.label !== now.label || was.members.length !== now.members.length
     || now.members.some((r) => { const w = wasMap.get(idOf(r)); return !w || w.display.choice !== r.display.choice || isTag(w) !== isTag(r); });
