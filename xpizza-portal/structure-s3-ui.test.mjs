@@ -271,6 +271,43 @@ test('D2 — the sheet EXACT to the frame: title, subline, the explain line, the
   assert.deepEqual(mem.map((x) => [x.display.choice, x.price, (x.display.tags || []).includes('recommended')]), [['Seis', Number(price), true], ['Doce', 480, false]]);
 });
 
+// Codex #196-1/2: «Mismo precio para todas» writes ONE prospective-group model (live options, option.add, and the options nested in a
+// choice.add) and every price input is drawn from it — what the drawer SHOWS is what «Guardar» SAVES
+const shown = (p) => rows(p).map((r) => r.querySelector('.mopr input').value);
+const sameBox = (p) => ge(p).querySelector('.mgflag input[type="checkbox"]');
+test('#196-1 Pad Thai: Tofu added at L500, then «Mismo precio para todas» ⇒ every input shows the shared price, and that is what saves', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  ge(p).querySelector('.mgadd').click(); await settle(5);
+  p.type(rows(p)[3].querySelector('input.moname'), 'Tofu'); p.type(rows(p)[3].querySelector('.mopr input'), '500'); await settle(5);
+  pill(rows(p)[1]).click(); await settle(5);
+  sameBox(p).click(); await settle(5);
+  assert.equal(sameBox(p).checked, true, 'premise: the flag is on');
+  const s = shown(p);
+  assert.equal(new Set(s).size, 1, `🔴 every input shows ONE price, Tofu included (${s.join(', ')})`);
+  p.btn('Guardar').click(); await settle(10);
+  assert.deepEqual(groupOf(p.src()).members.map((m) => String(m.price)), s, '🔴 what saves is what was shown');
+});
+test('#196-2 Sichuan Spicy Wonton: a choice added (Chico L100 · Grande L500), then «Mismo precio para todas» on that group ⇒ one price shown and saved', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PLAIN);
+  d2Act(p).click(); await settle(5);
+  p.type(sheet(p).querySelector('input.mgname-in'), 'Tamaño');
+  p.type(sRows(p)[0].querySelector('input.moname'), 'Chico'); p.type(sRows(p)[0].querySelector('.mopr input'), '100');
+  p.type(sRows(p)[1].querySelector('input.moname'), 'Grande'); p.type(sRows(p)[1].querySelector('.mopr input'), '500');
+  sBtn(p, 'Agregar elección').click(); await settle(5);
+  pencil(p).click(); await settle(5);
+  assert.deepEqual(shown(p), ['100', '500'], 'premise: the new choice\'s two prices');
+  sameBox(p).click(); await settle(5);
+  assert.equal(sameBox(p).checked, true, 'premise: the flag is on');
+  const s = shown(p);
+  assert.equal(new Set(s).size, 1, `🔴 the choice.add options take the shared price (${s.join(', ')})`);
+  p.btn('Guardar').click(); await settle(10);
+  const src = p.src(); const dish = src.items.find((i) => i.key === PLAIN);
+  const mem = src.structure.variant_items[String(dish.display.id)].variantIds.map((v) => src.items.find((i) => i.ref === v || String(i.display.id) === String(v)));
+  assert.deepEqual(mem.map((x) => String(x.price)), s, '🔴 what saves is what was shown');
+});
+
 test('D2 — «Cancelar» records nothing; the trash is off at two options; «Agregar opción» adds a row', async () => {
   const p = await page({ read: ON });
   await p.signIn(); await p.open(PLAIN);

@@ -478,6 +478,22 @@ test('S4-F — «Crear» at the 30-section cap, and with an unnamed section (the
   assert.ok(all.d.querySelector('#namescrim.show'), 'every section unnamed: the existing «name all» flow');
 });
 
+// Codex #196-3: «Ponerles nombre» ends with the world like every catalog sheet (ONE registry of open sheets, closed at resetEditFacts)
+test('#196-3 «Ponerles nombre» closes and clears when another person signs in; no stale listener', async () => {
+  const all = await page({ read: () => { const r = editable({ sections: true }); for (const c of r.source.structure.categories) c.name = ''; return r; } });
+  await all.signIn();
+  await create(all, 'Postres');
+  box(all).querySelector('.ferr button.mk-lnk').click(); await settle(10);
+  const inp = all.d.querySelector('#namescrim.show #namemodal input');
+  assert.ok(inp, 'premise: the «name all» sheet is open');
+  all.type(inp, 'Nombre de A'); await settle(5);
+  all.d.dispatchEvent(new all.w.CustomEvent('portal:auth', { detail: { uid: 'uSomeoneElse' } })); await settle(80);
+  assert.equal(all.d.querySelector('#namescrim.show'), null, '🔴 A\'s sheet is closed');
+  assert.equal(all.d.querySelector('#namemodal').childElementCount, 0, 'and emptied (A\'s typed name is gone from the DOM)');
+  all.d.dispatchEvent(new all.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+  assert.equal(all.d.querySelector('#namescrim.show'), null, 'no stale listener');
+});
+
 // ── frame E: reorder — grips on the rail's sections (S2's X4 grip: drag, ↑ / ↓), never on a new one (advisor ruling 4) ──
 const grips = (p) => [...rail(p).querySelectorAll('.rrow > button.rgrip')];
 const declaredOrder = (p) => p.src().structure.categories.map((c) => c.id);

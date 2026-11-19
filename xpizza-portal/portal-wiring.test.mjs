@@ -2098,3 +2098,26 @@ test('🔴 Codex S2 UI r2 P2-10 — an enclosing bound() exempts nothing: a NEST
   const { bad: outer } = await unboundHandouts(src.replace(OUTER, '    remove: ((row, trash) => {'));
   assert.ok(!outer.some((b) => b.includes('`remove` hands out applyExposureOps')), `a writer inside a NESTED bound() belongs to that wrapper:\n  ${outer.join('\n  ')}`);
 });
+
+// Codex #196-3 — every catalog sheet ends with the world through ONE registry (sheets.js): a sheet that opens registers its closer, and
+// resetEditFacts closes whatever is registered. The sheets are DERIVED from the markup (every `.scrim` in index.html), so a new sheet that
+// opens without registering is red here. Not catalog sheets: the branch page's three (pause / device / sucursal), and #scrim — the edit
+// outcome panel behind the drawer, which the world's end closes by name. #xscrim (the Extras confirm) opens in extras-view.js.
+test('#196-3 every catalog sheet registers with the ONE registry as it opens (derived from the markup)', () => {
+  const html = readFileSync(join(DIR, 'index.html'), 'utf8');
+  const app = readFileSync(join(DIR, 'app.js'), 'utf8');
+  const xv = readFileSync(join(DIR, 'extras-view.js'), 'utf8');
+  const NOT_CATALOG = new Set(['pausescrim', 'devscrim', 'sucscrim', 'scrim']);
+  const ids = [...html.matchAll(/class="scrim[^"]*" id="([a-z]+)"/g)].map((m) => m[1]).filter((id) => !NOT_CATALOG.has(id));
+  assert.ok(ids.length >= 6, `premise: the catalog sheets are read from the markup (${ids})`);
+  for (const id of ids.filter((x) => x !== 'xscrim')) {
+    const opens = app.split('\n').filter((l) => l.includes(`$('${id}').classList.add('show')`));
+    assert.ok(opens.length >= 1, `premise: #${id} opens in app.js`);
+    for (const l of opens) assert.ok(/sheetOpened\('[a-z]+', /.test(l), `🔴 #${id} registers its closer as it opens: ${l.trim().slice(0, 90)}`);
+    assert.ok(!app.includes(`$('${id}').classList.toggle('show'`), `#${id} opens only through its registered opener`);
+  }
+  const xOpens = (xv.match(/scrim\.classList\.add\('show'\)/g) || []).length;
+  assert.ok(xOpens >= 1, 'premise: the Extras confirm opens in extras-view.js');
+  assert.equal((xv.match(/sheetOpened\('xconfirm', closeXConfirm\)/g) || []).length, xOpens, '🔴 every Extras confirm opener registers');
+  assert.ok(/closeAllSheets\(\);/.test(app.slice(app.indexOf('function resetEditFacts()'), app.indexOf('function resetEditFacts()') + 900)), '🔴 the world\'s end closes the registry');
+});

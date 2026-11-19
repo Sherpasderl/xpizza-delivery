@@ -83,7 +83,8 @@ import { closeIcon, icon } from './ops-dom.js';
 // STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM
 import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders, extrasOutcomeCtx, deletionRows, rekeyId } from './extras-logic.js';
 import { openXConfirm } from './extras-view.js';   // S4-D: the drop confirm is E3's small confirm
-import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, openDeletionsReview, enProductos, closeXConfirm, openRemoveProductConfirm } from './extras-view.js';
+import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, openDeletionsReview, enProductos, openRemoveProductConfirm } from './extras-view.js';
+import { sheetOpened, sheetClosed, closeAllSheets } from './sheets.js';   // Codex #196-3: the ONE registry of open sheets
 import { applyExposureOps, mergeDeletionClaim } from './editor.js';
 import { canRemoveProduct, removeProduct, undoRemoveProduct, pendingRemovalsOf, removalListSource, removedRowOf, removalDishRows } from './editor.js';   // «Quitar del menú» (PLAN-portal-remove-product r3)
 
@@ -938,10 +939,11 @@ function openNameAll() {
   }));
   modal.append(mh, mb, mf);
   sync();
-  $('namescrim').classList.add('show');
+  $('namescrim').classList.add('show'); sheetOpened('names', closeNameAll);
   if (inputs.length) inputs[0][1].focus();
 }
 function closeNameAll() {
+  sheetClosed('names');
   const scrim = $('namescrim');
   if (scrim) scrim.classList.remove('show');
   const modal = $('namemodal');
@@ -1263,11 +1265,12 @@ function x3Key(e) {
 function x3Scrim(e) { if (e.target === $('xcreate') && !$('xscrim').classList.contains('show')) x3Dismiss(); }
 function openCreateGroup() {
   createForm = createGroupForm(); createError = null;
-  $('xcreate').classList.add('show');
+  $('xcreate').classList.add('show'); sheetOpened('xcreate', () => closeCreateGroup(false));
   document.addEventListener('keydown', x3Key, true); $('xcreate').addEventListener('click', x3Scrim);
   paintCreateGroup(true);
 }
 function closeCreateGroup(refocus) {
+  sheetClosed('xcreate');
   createForm = null; createError = null;
   $('xcreate').classList.remove('show'); $('xcreate').querySelector('.modal').replaceChildren();
   document.removeEventListener('keydown', x3Key, true); $('xcreate').removeEventListener('click', x3Scrim);
@@ -1385,11 +1388,12 @@ function bKey(e) {
 function bScrim(e) { if (e.target === $('xattach')) bClose(true); }
 function bOpen(s, action, after) {
   attachPick = { s, action, after, checked: new Set() };
-  $('xattach').classList.add('show');
+  $('xattach').classList.add('show'); sheetOpened('xattach', () => bClose(false));
   document.addEventListener('keydown', bKey, true); $('xattach').addEventListener('click', bScrim);
   bPaint(true);
 }
 function bClose(refocus) {
+  sheetClosed('xattach');
   const p = attachPick; attachPick = null;
   $('xattach').classList.remove('show'); $('xattach').querySelector('.modal').replaceChildren();
   document.removeEventListener('keydown', bKey, true); $('xattach').removeEventListener('click', bScrim);
@@ -1435,11 +1439,12 @@ function d2Open(s, action) {
   const v = IE.view(state.draft, s);
   choicePick = { s, action, dish: v.fields.name, price: v.fields.price, label: '', marked: 0,
     rows: [{ ref: tmpRef(), choice: '', price: v.fields.price }, { ref: tmpRef(), choice: '', price: '' }] };
-  $('xchoice').classList.add('show');
+  $('xchoice').classList.add('show'); sheetOpened('xchoice', () => d2Close(false));
   document.addEventListener('keydown', d2Key, true); $('xchoice').addEventListener('click', d2Scrim);
   d2Paint('d2:name');
 }
 function d2Close(refocusAction) {
+  sheetClosed('xchoice');
   const p = choicePick; choicePick = null;
   $('xchoice').classList.remove('show'); $('xchoice').querySelector('.modal').replaceChildren();
   document.removeEventListener('keydown', d2Key, true); $('xchoice').removeEventListener('click', d2Scrim);
@@ -1811,6 +1816,7 @@ const moveTargets = () => {
   return out;
 };
 function menuClose(refocus) {
+  sheetClosed('rowmenu');
   const m = rowMenu; rowMenu = null;
   if (!m) return;
   m.pop.remove();
@@ -1875,7 +1881,7 @@ function menuOpen(key, from) {
   pop.style.top = `${Math.max(8, up ? b.top - 4 - hh : b.bottom + 4)}px`;
   pop.style.right = `${Math.max(8, vw - b.right)}px`;
   pop.classList.toggle('mk-popup', up);
-  rowMenu = { key, from, pop };
+  rowMenu = { key, from, pop }; sheetOpened('rowmenu', () => menuClose(false));
   from.setAttribute('aria-expanded', 'true'); from.classList.add('mk-moreopen');
   document.addEventListener('keydown', menuKey, true); document.addEventListener('click', menuOutside, true);
   window.addEventListener('resize', menuAway, true); window.addEventListener('scroll', menuAway, true);
@@ -1933,11 +1939,12 @@ function subOpen(cat, from) {
   const first = !(Array.isArray(cat.subcats) && cat.subcats.length);
   subPick = { cat, from, first, name: '', line: null, nameLine: null, marked: new Set(first ? rows.map(rowId) : []),
     rows: rows.map((it) => ({ id: rowId(it), name: it.display.name || rowId(it), sub: typeof it.display.subcat === 'string' ? it.display.subcat : null })) };
-  $('xsubcat').classList.add('show');
+  $('xsubcat').classList.add('show'); sheetOpened('xsubcat', () => subClose(false));
   document.addEventListener('keydown', subKey, true); $('xsubcat').addEventListener('click', subScrim);
   subPaint('sub:name');
 }
 function subClose(refocus) {
+  sheetClosed('xsubcat');
   const p = subPick; subPick = null;
   $('xsubcat').classList.remove('show'); $('xsubcat').querySelector('.modal').replaceChildren();
   document.removeEventListener('keydown', subKey, true); $('xsubcat').removeEventListener('click', subScrim);
@@ -2448,10 +2455,6 @@ function productReviewOpts() {
 // pair), every open sheet / confirm on #xscrim with its document listeners, the armed acknowledged resend and the view state. Nothing
 // person A typed, opened or acknowledged survives for person B; no continuation runs (the confirms close without onGo / onCancel).
 function resetExtrasLocal() {
-  closeXConfirm();
-  // a page without the S2 markup (today's trimmed shells) has no sheets to close
-  if ($('xcreate') && (createForm || $('xcreate').classList.contains('show'))) closeCreateGroup(false);
-  if ($('xattach') && (attachPick || $('xattach').classList.contains('show'))) bClose(false);
   createForm = null; createError = null; attachPick = null;
   extraAdd = null; extraAddK = null; extraAddError = null;
   railOpen = null; railError = null; extrasRowError = null;
@@ -2461,13 +2464,9 @@ function resetExtrasLocal() {
   if ($('xrail')) $('xrail').replaceChildren();
   if ($('xdetail')) $('xdetail').replaceChildren();
 }
-// Codex #183-7 — the S3 / S4 sheets and view state end with the world, beside resetExtrasLocal (ONE reset, resetEditFacts): «Agregar elección
-// requerida» (D2), «Nueva subcategoría», the «Mover a…» row menu, the inline «Nueva categoría» box and a subsection rename in place —
-// closed, their listeners removed, their local state cleared (another person never sees A's typed names)
+// the S3 / S4 view state ends with the world (its sheets close through the registry, closeAllSheets): the inline «Nueva categoría» box and
+// a subsection rename in place — another person never sees A's typed names
 function resetStructureLocal() {
-  if (choicePick || ($('xchoice') && $('xchoice').classList.contains('show'))) d2Close(false);
-  if (subPick || ($('xsubcat') && $('xsubcat').classList.contains('show'))) subClose(false);
-  if (rowMenu) menuClose(false);
   newCatBox = null; newCatRefs = null; subRename = null;
 }
 function resetEditFacts() {
@@ -2485,6 +2484,7 @@ function resetEditFacts() {
   state.rewardKeys = new Set();
   state.removalStash = new Map();
   undoRefused = null;   // a refused «Deshacer» line ends with the world
+  closeAllSheets();     // Codex #196-3: EVERY open catalog sheet / menu — each registered itself as it opened (sheets.js)
   resetExtrasLocal();
   resetStructureLocal();
   endEditSession();
@@ -2550,9 +2550,9 @@ function choiceEditorCard(s, key, cm, { mk, header, relayout, R }) {
   focusKey(ieChoiceName, 'ie-cg-name');
   ge.append(lab, ieChoiceName);
   const v = IE.view(state.draft, s);
-  const work = new Map((v.options || []).map((o) => [o.key, o.price]));
+  const prices = new Map((v.prices || []).map((o) => [o.id, o.raw]));   // Codex #196: every input from THE group's price model
   const few = cm.options.length <= 2;
-  R.opts = []; R.optCnt = mk('span', 'mk-cnt');
+  R.opts = []; R.prices = new Map(); R.optCnt = mk('span', 'mk-cnt');
   const nameRows = [];
   let last = null;
   for (const o of cm.options) {
@@ -2569,12 +2569,10 @@ function choiceEditorCard(s, key, cm, { mk, header, relayout, R }) {
     const pr = mk('span', 'mopr');
     const ieOptPrice = document.createElement('input');
     ieOptPrice.type = 'text'; ieOptPrice.inputMode = 'numeric'; ieOptPrice.setAttribute('aria-label', 'Precio'); if (o.isNew) ieOptPrice.classList.add('mk-chgpr');
-    ieOptPrice.value = o.isNew ? (Number.isInteger(o.price) ? String(o.price) : '') : (work.has(o.id) ? work.get(o.id) : String(o.price ?? ''));
-    ieOptPrice.addEventListener('input', bound(() => {
-      if (o.isNew) IE.choiceUpdateNew(s, o.id, { price: parsePrice(ieOptPrice.value) });
-      else IE.set(s, 'optionPrice', { key: o.id, raw: ieOptPrice.value });   // a price alone is not an S3 edit (S3-r4 :127): today's field
-      syncEdit();
-    }));
+    ieOptPrice.value = prices.has(o.id) ? prices.get(o.id) : '';
+    // the one writer, new options included (a price alone is not an S3 edit, S3-r4 :127)
+    ieOptPrice.addEventListener('input', bound(() => { IE.set(s, 'optionPrice', { key: o.id, raw: ieOptPrice.value }); syncEdit(); }));
+    R.prices.set(o.id, ieOptPrice);
     focusKey(ieOptPrice, `ie-cg-pr::${o.id}`);
     pr.append(mk('span', 'mc', 'L'), ieOptPrice);
     const ieRecPill = document.createElement('button'); ieRecPill.type = 'button'; ieRecPill.className = 'recpill'; ieRecPill.classList.toggle('recpill-on', o.marked);
@@ -2921,12 +2919,12 @@ function renderEditDrawer(d, it, keepScroll) {
       // R1 ends with S3: the prices are edited in the editor; the read card names each option, its mark, its price (frame A)
       if (open) {
         const block = mk('div', 'mk-gb');
-        const work = new Map((v0.options || []).map((o) => [o.key, o.price]));   // a choice added in this copy (D2) has no live rows
+        const prices = new Map((v0.prices || []).map((x) => [x.id, x.raw]));   // Codex #196: THE group's price model (D2 options included)
         for (const o of cm.options) {
           const row = mk('div', 'mk-dopt');
           const dn = mk('span', 'mk-dn', o.choice);
           if (o.marked) dn.append(mk('span', 'mk-rec', 'Recomendada'));
-          const pr = o.isNew ? o.price : parsePrice(work.has(o.id) ? work.get(o.id) : o.price);
+          const pr = parsePrice(prices.has(o.id) ? prices.get(o.id) : '');
           row.append(dn, mk('span', 'dp', Number.isInteger(pr) && pr > 0 ? `L ${pr}` : ''));
           block.append(row);
         }
@@ -2942,7 +2940,7 @@ function renderEditDrawer(d, it, keepScroll) {
       const card = mk('div', `mk-grp mk-req${open ? ' mk-open' : ''}`);
       const h = header('req', label, `${OPC_COPY.req}${open ? '' : ` · ${opcN(v0.options.length)}`}`, 'mk-gts mk-greq', open);
       card.append(h.gh);
-      R.opts = [];
+      R.opts = []; R.prices = new Map();
       R.optCnt = mk('span', 'mk-cnt');   // the F2 line's counter class (kept for syncEdit's red), not drawn
       if (open) {
         const block = mk('div', 'mk-gb');
@@ -2964,7 +2962,7 @@ function renderEditDrawer(d, it, keepScroll) {
           dp.append(pr);
           row.append(dn, cnt, dp);
           block.append(row);
-          R.opts.push({ key: o.key, row, cnt, pi: ieOptPrice });
+          R.opts.push({ key: o.key, row, cnt, pi: ieOptPrice }); R.prices.set(o.key, ieOptPrice);
         }
         const lab = mk('label', 'mgflag mgflag-same mk-gsame');
         const ieSame = document.createElement('input'); ieSame.type = 'checkbox';
@@ -3168,6 +3166,9 @@ function syncEdit() {
     for (const l of v.consequences.lines) { const li = mk('li'); li.append(mk('span', 'mk-cdot'), mk('span', null, l)); ul.append(li); }
     R.note.append(mk('b', null, v.consequences.title), ul);
   }
+  // Codex #196: EVERY drawn price input follows THE group's price model (new options included); the field being typed in keeps its text
+  if (R.prices) for (const o of v.prices || []) { const pi = R.prices.get(o.id); if (pi && pi.value !== o.raw && document.activeElement !== pi) pi.value = o.raw; }
+  if (R.same) R.same.checked = v.same === true;
   if (R.opts && v.options) {
     const bad = !!v.errors.options;
     R.optBlock.classList.toggle('mk-inv', bad);
@@ -3180,9 +3181,7 @@ function syncEdit() {
       r.cnt.hidden = !(o.nearLimit || o.tooLong);   // an inline warning only near / past the limit
       r.cnt.classList.toggle('over', o.tooLong);
       r.row.classList.toggle('over', o.tooLong);
-      if (r.pi.value !== o.price && document.activeElement !== r.pi) r.pi.value = o.price;
     });
-    if (R.same) R.same.checked = v.same === true;
     if (R.gsub) R.gsub.textContent = opcNameLine(v.options, choiceGroup(state.draft, s.key));
   }
   // STRUCTURE S1 — the extras cards follow the copy in place (counts, the summary, the link, each row's check and price)

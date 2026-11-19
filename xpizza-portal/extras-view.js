@@ -3,6 +3,7 @@
 // Names are TEXT in S2-core (no rename control: S2b). Built from the approved classes: .railitem / .rtext / .rcount, .dhead / .dtitle /
 // .dcount, .mk-xwarn > .mgshared, .irow.mk-xrow > .iinfo .nm (+ .tag), .price (.chg) > .cur + input, button.del.
 import { dropIndexAt } from './extras-logic.js';
+import { sheetOpened, sheetClosed } from './sheets.js';   // Codex #196-3: the Extras confirm registers like every sheet
 const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
 const svg = (paths) => { const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
@@ -258,7 +259,7 @@ export function openXConfirm(o) {
   const focusables = [];
   let first = null;
   const close = (refocus) => {
-    xscrimClose = null;
+    xscrimClose = null; sheetClosed('xconfirm');
     scrim.classList.remove('show'); modal.replaceChildren();
     if (sheet) { scrim.classList.remove('mk-sheetscrim'); modal.className = modalClass; }
     if (over) scrim.classList.remove('mk-over');
@@ -284,7 +285,7 @@ export function openXConfirm(o) {
   if (over) scrim.classList.add('mk-over');   // over the still-open drawer (26): the mockup's .mk-over
   modal.replaceChildren(...parts);
   document.addEventListener('keydown', onKey, true); scrim.addEventListener('click', onScrim);
-  xscrimClose = () => close(false);
+  xscrimClose = () => close(false); sheetOpened('xconfirm', closeXConfirm);
   scrim.classList.add('show');
   (first || focusables[0]).focus();
 }
@@ -470,7 +471,7 @@ export function openDeletionsReview({ rows, line = null, onGo, onCancel, returnT
   mf.append(cancelBtn, goBtn);
   modal.replaceChildren(mh, mb, mf);
   const focusables = () => [cancelBtn, goBtn].filter((b) => !b.disabled);
-  const close = () => { xscrimClose = null; scrim.classList.remove('show'); modal.replaceChildren(); document.removeEventListener('keydown', onKey, true); scrim.removeEventListener('click', onScrim); };
+  const close = () => { xscrimClose = null; sheetClosed('xconfirm'); scrim.classList.remove('show'); modal.replaceChildren(); document.removeEventListener('keydown', onKey, true); scrim.removeEventListener('click', onScrim); };
   const cancel = () => { close(); if (returnTo && returnTo.isConnected) returnTo.focus(); onCancel(); };
   const onKey = (e) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); return; }
@@ -482,7 +483,7 @@ export function openDeletionsReview({ rows, line = null, onGo, onCancel, returnT
   cancelBtn.addEventListener('click', cancel);
   goBtn.addEventListener('click', () => { close(); onGo(); });
   document.addEventListener('keydown', onKey, true); scrim.addEventListener('click', onScrim);
-  xscrimClose = close;
+  xscrimClose = close; sheetOpened('xconfirm', closeXConfirm);
   scrim.classList.add('show');
   (goBtn.disabled ? cancelBtn : goBtn).focus();
 }

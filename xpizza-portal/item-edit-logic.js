@@ -90,23 +90,18 @@ export function set(s, field, value) {
   else if (field === 'cat') { const v = value == null ? null : String(value); if (v !== w.cat) { w.cat = v; w.subcat = null; } }
   else if (field === 'subcat') w.subcat = value == null || value === '' ? null : String(value);
   else if (field === 'price') w.price = typeof value === 'string' ? value : String(value ?? '');
-  else if (field === 'optionPrice' && value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(w.optionPrices, value.key)) w.optionPrices[value.key] = String(value.raw ?? '');
+  else if (field === 'optionPrice' && value && typeof value === 'object') writePrice(s, value.key, String(value.raw ?? ''));   // any option of the group, new ones too
   else if (field === 'photo') { w.photo = value; s.photoTouched = true; s.upload = null; }
   else if (field === 'extraPrice' && value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(w.extraPrices, value.key)) w.extraPrices[value.key] = String(value.raw ?? '');
   // «Mismo precio para todas» (advisor Q1): on → every option takes the cheapest usable price; off → each keeps its own
   else if (field === 'samePrice') {
     s.same = value === true;
     if (s.same) {
-      // Codex #183-5: the WHOLE prospective group — the live options' prices AND the new options the copy queued (their price lives in
-      // the add op) — takes the cheapest usable price
-      const live = livePrices(s);
-      const fresh = (s.choiceOps || []).filter((o) => o && o.op === 'option.add' && o.launcher === s.key);
-      const ps = [...live.map(([, v]) => parsePrice(v)), ...fresh.map((o) => (Number.isInteger(o.price) ? o.price : null))].filter((p) => p !== null);
-      if (ps.length) {
-        const v = Math.min(...ps);
-        for (const [k] of live) w.optionPrices[k] = String(v);
-        for (const o of fresh) o.price = v;
-      }
+      // Codex #183-5 / #196: the WHOLE prospective group (groupPrices: live options, option.add, a choice.add's options) takes the cheapest
+      // usable price, through the one writer — the inputs are drawn from the same model, so what shows is what saves
+      const all = groupPrices(s.draft, s);
+      const ps = all.map((o) => parsePrice(o.raw)).filter((p) => p !== null);
+      if (ps.length) { const v = String(Math.min(...ps)); for (const o of all) writePrice(s, o.id, v); }
     }
   }
   // STRUCTURE S1 — the checklist (only the keys the PROSPECTIVE dish shows; a kept key outside it is preserved) and «Sin extras».
@@ -382,7 +377,8 @@ export function view(draft, s) {
   const tidy = tidyItemName(w.name);
   // advisor 11-12 (S1 SBS): the row names the choice; its full name's counter is an inline warning from OPTION_NAME_NEAR on
   const options = g ? g.options.map((o) => { const fullName = `${tidy} - ${o.display.choice}`; return { key: o.key, choice: o.display.choice, fullName, counter: `${chars(fullName)}/${ITEM_NAME_MAX}`, tooLong: chars(fullName) > ITEM_NAME_MAX, nearLimit: chars(fullName) >= OPTION_NAME_NEAR, price: w.optionPrices[o.key] }; }) : null;
-  const same = s.group ? (s.same === null ? new Set(Object.values(w.optionPrices).map((v) => v.trim())).size <= 1 : s.same) : null;
+  const prices = groupPrices(draft, s);   // Codex #196: THE group's prices — the inputs are drawn from it
+  const same = prices.length ? (s.same === null ? new Set(prices.map((o) => o.raw.trim())).size <= 1 : s.same) : null;
   const uploading = !!(s.upload && s.upload.state === 'busy');
   const seTitle = se ? ({ name: COPY.save.fixName, options: COPY.save.shortName, desc: COPY.save.fixDesc, cat: COPY.save.otherCat, subcat: COPY.save.pickSubcat }[se.field] || COPY.save.fixName) : null;
   let title = null;
@@ -404,7 +400,7 @@ export function view(draft, s) {
     fields: { name: w.name, desc: w.desc, cat: w.cat, subcat: w.subcat, price: w.price, extraPrices: { ...w.extraPrices } },
     counters: { name: `${chars(w.name)}/${ITEM_NAME_MAX}`, desc: `${chars(w.desc)}/${ITEM_DESC_MAX}` },
     // a refused move shows its line, not what it would have changed (mockup D2)
-    subcats, errors, changed: ch, options, same, consequences: errors.cat || errors.subcat ? null : consequences(draft, s),
+    subcats, errors, changed: ch, options, prices, same, consequences: errors.cat || errors.subcat ? null : consequences(draft, s),
     photo: { entry: w.photo, uploading, failed: !!(s.upload && s.upload.state === 'failed') },
     extras,
     save: { enabled: !blocked, title: blocked ? title : null },
@@ -606,6 +602,22 @@ const livePrices = (s) => {
   const live = s.draft ? liveOptionKeys(s.draft, s) : null;
   return Object.entries(s.work.optionPrices).filter(([k]) => !live || live.has(k));
 };
+// Codex #196 — THE prospective group's prices, ONE model for what the drawer shows, what «Mismo precio para todas» writes and what saves:
+// every option the copy would save, in order — a live option's typed text (the copy's optionPrices), a NEW one's (option.add, or inside a
+// choice.add) its op's price. → [{ id, isNew, raw }]; [] with no group. Without choice editing: today's options.
+export function groupPrices(draft, s) {
+  if (!s) return [];
+  const m = choiceModel(draft, s);
+  const own = (id) => Object.prototype.hasOwnProperty.call(s.work.optionPrices, id);
+  if (!m) return s.group ? Object.entries(s.work.optionPrices).map(([id, raw]) => ({ id, isNew: false, raw })) : [];
+  if (m.removed) return [];
+  return m.options.map((o) => ({ id: o.id, isNew: o.isNew, raw: !o.isNew && own(o.id) ? s.work.optionPrices[o.id] : (Number.isInteger(o.price) ? String(o.price) : '') }));
+}
+// the ONE writer of an option's price, wherever the copy holds it: a live option's text, or a new option's op
+function writePrice(s, id, raw) {
+  if (Object.prototype.hasOwnProperty.call(s.work.optionPrices, id)) { s.work.optionPrices[id] = raw; return; }
+  if (s.choiceEdit) choiceUpdateNew(s, id, { price: parsePrice(raw) });
+}
 // D3 «Quitar elección»: the price that stays — the marked option by default; with no mark the card ASKS (priceFrom null) (addendum B2b)
 export function choiceRemovePlan(draft, s) {
   const m = choiceModel(draft, s);

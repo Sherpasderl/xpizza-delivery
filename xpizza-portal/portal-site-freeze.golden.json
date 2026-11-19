@@ -136,6 +136,7 @@
   "s2-fold.mjs",
   "s4-fold.mjs",
   "section-transitions.js",
+  "sheets.js",
   "shell-dom.test.mjs",
   "shell-wait-writes.test.mjs",
   "shell-wait.test.mjs",
