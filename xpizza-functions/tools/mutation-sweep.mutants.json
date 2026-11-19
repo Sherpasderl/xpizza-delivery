@@ -37185,7 +37185,7 @@
   "slice": "c2-rider-name",
   "label": "the null fallback dropped (a nameless delivery reads «Tu repartidor, »)",
   "file": "../customer-app/capp-rate.js",
-  "from": "<span class=\"t\">${vm.driverName ? `Tu repartidor, ${esc(vm.driverName)}` : 'Tu repartidor de Sherpa'}</span>",
+  "from": "<span class=\"t\">${vm.driverName ? `Tu repartidor, <span class=\"who\">${esc(vm.driverName)}</span>` : 'Tu repartidor de Sherpa'}</span>",
   "to": "<span class=\"t\">Tu repartidor, ${esc(vm.driverName || '')}</span>",
   "command": [
    "node",
@@ -37195,6 +37195,74 @@
   ],
   "kills_with": [
    "RN-FALLBACK"
+  ]
+ },
+ {
+  "id": "rn-02",
+  "slice": "c2-rider-name",
+  "label": "the rider's name a nowrap unit again — overflows the column into the thumbs at 320 px (Codex #143 P2)",
+  "file": "../customer-app/capp.css",
+  "from": ".rate .rrow2 .t .who{display:inline-block;max-width:100%}",
+  "to": ".rate .rrow2 .t .who{display:inline-block;max-width:100%;white-space:nowrap}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=rider name",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "RN-FIT: a name wider than the column"
+  ]
+ },
+ {
+  "id": "rn-05",
+  "slice": "c2-rider-name",
+  "label": "the rider's name not a box (inline): a long name splits mid-name while it would fit on its own line",
+  "file": "../customer-app/capp.css",
+  "from": ".rate .rrow2 .t .who{display:inline-block;max-width:100%}",
+  "to": ".rate .rrow2 .t .who{max-width:100%}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=rider name",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "RN-UNIT"
+  ]
+ },
+ {
+  "id": "rn-06",
+  "slice": "c2-rider-name",
+  "label": "the rider's name box uncapped (no max-width): a name wider than the column overflows into the thumbs",
+  "file": "../customer-app/capp.css",
+  "from": ".rate .rrow2 .t .who{display:inline-block;max-width:100%}",
+  "to": ".rate .rrow2 .t .who{display:inline-block}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=rider name",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "RN-FIT: the name box is capped"
+  ]
+ },
+ {
+  "id": "rn-03",
+  "slice": "c2-rider-name",
+  "label": "the rider's name not its own unit",
+  "file": "../customer-app/capp-rate.js",
+  "from": "`Tu repartidor, <span class=\"who\">${esc(vm.driverName)}</span>`",
+  "to": "`Tu repartidor, ${esc(vm.driverName)}`",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=rider name",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the name is its own unit"
   ]
  },
  {
@@ -41298,6 +41366,23 @@
   ],
   "kills_with": [
    "✗ RB-READ-CAP:"
+  ]
+ },
+ {
+  "id": "rn-04",
+  "slice": "c2-rider-name",
+  "label": "capp-guards (11-18 re-base, merge-forward): a capp commit after CAPP_TIP no longer fails the range",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "  assert.equal(later, '', `🔴 capp commit(s) after CAPP_TIP",
+  "to": "  assert.equal('', '', `🔴 capp commit(s) after CAPP_TIP",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=still bites",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "GUARD-BITES"
   ]
  },
  {

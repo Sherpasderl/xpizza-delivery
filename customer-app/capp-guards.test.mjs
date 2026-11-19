@@ -34,11 +34,11 @@ import { createRequire } from 'node:module';
 import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-// BASE → 31f05c8a4 (advisor 11-18, ruling (A)): a capp lane cut from post-asm11 main pins its OWN range — BASE = its merge base with
+// BASE → 31f05c8a4 (advisor 11-18, ruling (A); feat/capp-rider-name merged forward onto it at 6fe745ff): a capp lane on post-asm11 main pins its OWN range — BASE = its merge base with
 // origin/main as a LITERAL sha (never computed at run time, so the guard cannot drift lax), CAPP_TIP = the lane tip. The offers-r20 /
 // push pins (827373d6..2b4aae89) and their merges landed on main with asm11 and sit below BASE now (MERGE_ALLOW pruned to above BASE).
 const BASE = '31f05c8a';
-const CAPP_TIP = '9b318d62';
+const CAPP_TIP = 'e48f39c7';
 // ASSEMBLY STEPS (asm11 step 4, advisor 11-17): a capp commit made ON THE TRAIN line, before the lane's merge — it can't be the pin (a pin on
 // the train line pulls the train into the lane range). Each is listed by full sha with its EXACT file set: excused from the «after the pin» walk
 // only while that set is unchanged, and only while it is in HEAD's history (a step that left the tree is a stale entry). None touches a live
@@ -268,7 +268,9 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // RC 75c1bccea) followed the TRAIN once the lane came in as a merge's second parent — it flagged train/asm8 + asm9 merges (195147ff,
 // 11273d0c: not capp resolutions) and silently dropped the lane's own merges below.
 const MERGE_ALLOW = {
-  // none above BASE 31f05c8a (advisor 11-18): the offers-r20 / push / asm11 entries (b63d58a0, fc0f3213, 1adc6541, 8839193d) landed with asm11
+  // above BASE 31f05c8a only (advisor 11-18): the offers-r20 / push / asm11 entries (b63d58a0, fc0f3213, 1adc6541, 8839193d) landed with asm11
+  '6fe745ff customer-app/capp-s7a2.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '6fe745ff customer-app/capp.css': 'merge-forward (advisor 11-18): main\'s Figtree `.rate h2` (var(--fig)) + the lane\'s `.rate .rrow2 .t .who{white-space:nowrap}` line — both parents\' lines, 0 new',
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..${CAPP_TIP} + the merges after the pin`, () => {
   const [, tip] = capRange(), synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);

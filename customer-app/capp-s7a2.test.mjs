@@ -4210,6 +4210,25 @@ test('C-2 rider name: a delivered DELIVERY whose rider has a first name ⇒ «Tu
     assert.equal(line, 'Tu repartidor, María José', '🔴 RN-1: the rider\'s first name, as served');
   } finally { S.w.close(); }
 });
+// owed SBS 11-14 (16b; advisor ruling): at the 24-char maximum the name wrapped mid-name («…María Fernanda / Guadalupe»). The name is
+// ONE unit after the comma: when the line cannot hold it, it breaks AFTER the comma — the full name alone on line 2. Codex #143 P2: a
+// nowrap unit OVERFLOWS the text column into the thumbs at 320 px (182 px column, ~224 px name) — so the unit is an inline-block capped
+// at the column (max-width 100 %) with normal wrapping inside: it moves whole while it fits, and wraps at ITS OWN spaces when it cannot
+// (no overflow, no ellipsis). The 320 / 360 / 390 px geometry (name box inside the column, clear of the thumbs) is the slot's layout cell.
+test('C-2 rider name (16b): the name is ONE unit after «Tu repartidor, » — a 24-char name (the writer\'s max) moves whole, never overflows', async () => {
+  const NAME = 'María Fernanda Guadalupe';
+  const { S, line } = await riderSheet('XP-N9', async ({ orders }) => { const w = await stampRider(orders, 'XP-N9', 'drv_9', NAME); assert.equal(w.first, NAME, 'premise: 24 chars kept whole by the writer'); });
+  try {
+    assert.equal(NAME.length, 24); assert.equal(line, `Tu repartidor, ${NAME}`, 'the approved copy, unchanged');
+    const t = S.q('#layer [data-act="rate-del"]').closest('.rrow2').querySelector('.t'), who = t.querySelector('.who');
+    assert.ok(who && who.textContent === NAME, '🔴 RN-WRAP: the name is its own unit');
+    const cs = S.w.getComputedStyle(who);
+    assert.equal(cs.display, 'inline-block', '🔴 RN-UNIT: the name moves as ONE box while it fits (the break is after the comma)');
+    assert.equal(cs.maxWidth, '100%', '🔴 RN-FIT: the name box is capped at the text column (Codex #143: never into the thumbs)');
+    assert.notEqual(cs.whiteSpace, 'nowrap', '🔴 RN-FIT: a name wider than the column wraps at its own spaces — nowrap overflows (Codex #143)');
+    assert.equal(who.previousSibling && who.previousSibling.nodeValue, 'Tu repartidor, ', 'the break opportunity is the space after the comma');
+  } finally { S.w.close(); }
+});
 test('C-2 rider name: no first name on the rider\'s account (the writer stamps none) ⇒ the fallback «Tu repartidor de Sherpa»', async () => {
   const { S, line, orders } = await riderSheet('XP-N2', async ({ orders }) => { await stampRider(orders, 'XP-N2', 'drv_2', undefined); });
   try {
