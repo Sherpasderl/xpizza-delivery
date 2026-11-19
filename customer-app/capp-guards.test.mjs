@@ -41,9 +41,11 @@ const CAPP_TIP = '2b4aae89';
 // ASSEMBLY STEPS (asm11 step 4, advisor 11-17): a capp commit made ON THE TRAIN line, before the lane's merge — it can't be the pin (a pin on
 // the train line pulls the train into the lane range). Each is listed by full sha with its EXACT file set: excused from the «after the pin» walk
 // only while that set is unchanged, and only while it is in HEAD's history (a step that left the tree is a stale entry). None touches a live
-// form or xpizza-functions/, so the range cells (live forms, server change) lose nothing.
+// form or xpizza-functions/ code (the mutant registry is test data), so the range cells (live forms, server change) lose nothing. The same
+// shape holds a capp commit stacked on MAIN after a deploy (advisor 11-17: fix/capp-pay-labels from 31f05c8a4): main's first-parent line is the train.
 const ASSEMBLY_STEPS = {
   '792a3dde73e0bff5181c4082c0e0a6a291afbd02': ['customer-app/capp-s7a2.test.mjs', 'customer-app/fixtures/s7a2/directory.json', 'customer-app/fixtures/s7a2/gen-directory.mjs', 'review/capp-sbs/scenes-fx.mjs'],
+  '275dcaf2668dd980f8ef15dd11382524c746f7b8': ['customer-app/capp-ui.test.mjs', 'customer-app/capp.css', 'xpizza-functions/tools/mutation-sweep.mutants.json'],   // pay labels (MOCKUP-capp-pay-labels r0)
 };
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)

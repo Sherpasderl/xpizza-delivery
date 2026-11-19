@@ -566,6 +566,8 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .optrow{display:flex;flex-direction:column;gap:10px}
 .optrow .opt{flex-direction:row;align-items:flex-start;gap:12px}
 .optrow .opt .txt{display:flex;flex-direction:column;gap:3px;min-width:0}
+.optrow .opt .txt b{color:var(--ink)}
+.opt .txt .rec{font-size:11px;color:var(--acc)}
 .radio{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--line2);flex:none;margin-top:1px;display:flex;align-items:center;justify-content:center}
 .opt[aria-pressed="true"] .radio{border-color:var(--ink)}
 .opt[aria-pressed="true"] .radio::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--ink)}

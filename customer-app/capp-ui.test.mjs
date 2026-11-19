@@ -4507,3 +4507,27 @@ test('TRIM-NAV-DESK: on the desk the aside IS the cart — the note shows there,
   assert.equal(b.ui.state.screen, 'checkout', '🔴 TRIM-NAV-DESK: the aside\'s checkout proceeds');
   assert.notEqual(b.ui.state.layerKind, 'cart', 'no cart sheet over the desk page');
 });
+// ── PAY LABELS (owner 11-17; MOCKUP-capp-pay-labels r0): the «Pago» rows' bold label is ink, not grey — `.opt span{color:var(--mute)}`
+//    also matched the .txt wrapper (the <b> inherited the grey) and out-specified `.rec` (13 px grey «Recomendado»). jsdom runs the REAL
+//    stylesheet's cascade (boot inlines capp.css); the sub-lines stay muted 13 px. Strings unchanged (payOpts) ──
+const payLook = (b) => b.qa('[aria-label="Pago"] .opt').map((o) => { const cs = (e) => (e ? b.w.getComputedStyle(e) : null), lb = cs(o.querySelector('.txt b')), sub = cs(o.querySelector('.txt > span')), rec = cs(o.querySelector('.txt .rec'));
+  return { val: o.dataset.val, label: lb && [lb.color, lb.fontSize], sub: sub && [sub.color, sub.fontSize], rec: rec && [rec.color, rec.fontSize] }; });
+test('PAY-LABELS-1 (delivery, member): «Pagar en línea» and «Efectivo al entregar» in ink 15 px; «Recomendado» the accent at 11 px; the sub-lines muted 13 px', async () => {
+  const b = bootCo({ member: MEMBER_LIKE() });
+  await toCheckout(b); await settle(); await b.click('[data-act="showpay"]'); await settle();
+  const L = payLook(b);
+  assert.deepEqual(L.map((x) => x.val), ['online', 'cash'], 'premise: the member\'s two delivery rows');
+  assert.equal(b.w.getComputedStyle(b.q('[aria-label="Pago"] .opt')).color, 'var(--ink)', 'premise: the row itself is ink');
+  for (const x of L) assert.deepEqual(x.label, ['var(--ink)', '15px'], `🔴 PAY-LABELS-ink: the ${x.val} label is ink, not the muted sub-line colour`);
+  assert.deepEqual(L[0].rec, ['var(--acc)', '11px'], '🔴 PAY-LABELS-rec: «Recomendado» is the accent at 11 px');
+  for (const x of L) assert.deepEqual(x.sub, ['var(--mute)', '13px'], `the ${x.val} sub-line stays muted 13 px`);
+});
+test('PAY-LABELS-2 (pickup, member): the one card row\'s «Pagar en línea» in ink; its sub-line muted; no «Recomendado»', async () => {
+  const b = bootCo({ member: PK_MEMBER() });
+  await toCheckout(b); await settle();
+  await b.click('[data-act="type"][data-val="pickup"]'); await settle();
+  const L = payLook(b);
+  assert.deepEqual(L.map((x) => [x.val, x.rec]), [['online', null]], 'premise: pickup = the one card row, no «Recomendado»');
+  assert.deepEqual(L[0].label, ['var(--ink)', '15px'], '🔴 PAY-LABELS-ink: the pickup label is ink');
+  assert.deepEqual(L[0].sub, ['var(--mute)', '13px'], 'the sub-line stays muted 13 px');
+});

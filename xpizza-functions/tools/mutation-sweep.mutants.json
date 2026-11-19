@@ -41299,5 +41299,39 @@
   "kills_with": [
    "✗ RB-READ-CAP:"
   ]
+ },
+ {
+  "id": "paylbl-01",
+  "slice": "capp-pay-labels",
+  "label": "the «Pago» row labels are grey again (the .txt wrapper's muted colour reaches the <b>)",
+  "file": "../customer-app/capp.css",
+  "from": ".optrow .opt .txt b{color:var(--ink)}\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^PAY-LABELS",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PAY-LABELS-ink"
+  ]
+ },
+ {
+  "id": "paylbl-02",
+  "slice": "capp-pay-labels",
+  "label": "«Recomendado» is a 13 px grey again (.opt span out-specifies .rec)",
+  "file": "../customer-app/capp.css",
+  "from": ".opt .txt .rec{font-size:11px;color:var(--acc)}\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^PAY-LABELS",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PAY-LABELS-rec"
+  ]
  }
 ]
