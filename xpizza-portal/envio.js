@@ -440,8 +440,12 @@ function renderMessage(view) {
   const others = S.entries.filter((e) => e.rid !== S.pick && e.hub).slice(0, MP.LIMITS.others).map((e) => ({ lat: e.hub.lat, lng: e.hub.lng }));
   const limit = pickedLimit();
   const bands = EL.mapBands(S.rows || []).map((b) => ({ km: b.km, fee: b.fee, ok: b.ok, out: !!(limit && b.ok && b.km > limit.km) }));
-  return MP.renderMessage({ mount: S.map.mount, view, theme: themeNow(), hub: p && p.hub ? { lat: p.hub.lat, lng: p.hub.lng } : null,
-    name: p ? p.label.slice(0, MP.LIMITS.name) : '', others, bands, mapType: S.mapType, limit });
+  const base = { mount: S.map.mount, view, theme: themeNow(), hub: p && p.hub ? { lat: p.hub.lat, lng: p.hub.lng } : null,
+    name: p ? p.label.slice(0, MP.LIMITS.name) : '', others, bands, mapType: S.mapType, limit };
+  if (!S.map.v3) return MP.renderMessage(base);
+  // Z2 (protocol v3, only after THIS document's hello): the draft's zones the map draws, and the drawing session (null: none)
+  const zones = (S.zonesDraft || []).map((z) => ({ id: z.id, name: z.name, points: z.points.map((q) => ({ lat: q.lat, lng: q.lng })) }));
+  return MP.renderMessage({ ...base, zones, drawing: null });
 }
 // ENVÍO v3 A2: the viewer's map style — read once per mount from localStorage (a throwing / unknown value → «Mapa»), written on a pick
 const STYLE_KEY = 'sherpa.envio.mapView';
@@ -482,12 +486,22 @@ function startMap(box) {
   try { mount = MP.newMountId(window.crypto); } catch (_) { return; }
   // Codex r1 F6: the frame's listener lives as long as THIS frame (S.map === m), not as long as one request generation: a
   // discard / reload bumps the generation, the map stays; every session end (sign-out, revocation, unmount) stops the frame
-  const m = { frame: null, mount, deadline: null, listening: false, ready: false, failed: false, onMsg: null, postedPick: undefined };
+  const m = { frame: null, mount, deadline: null, listening: false, ready: false, failed: false, v3: false, onMsg: null, postedPick: undefined };
   m.onMsg = (event) => {
     if (S.map !== m || !S.root) return;
     const msg = MP.acceptFromChild(event, { frameWindow: m.frame && m.frame.contentWindow, mount });
     if (!msg) return;
-    if (msg.kind === 'listening') { m.listening = true; postRender('reset'); return; }   // never clears the deadline
+    // Z2 (r2 P2-5, r3): `listening` = a child DOCUMENT announcing itself (a same-frame reload too) — the mount starts over for it: `failed`
+    // cleared FIRST, protocol back to v2, not ready, and a document after the first gets its own 8 s deadline; then the v2 render.
+    // `listening` never clears the deadline (C2)
+    if (msg.kind === 'listening') {
+      const again = m.listening || m.failed || m.ready;
+      m.failed = false; m.v3 = false; m.ready = false; m.listening = true;
+      if (again) { clearTimeout(m.deadline); m.deadline = setTimeout(() => mapFailed('timeout'), TIMING.deadlineMs); paintMapBox(); }
+      postRender('reset');
+      return;
+    }
+    if (msg.kind === 'hello') { m.v3 = true; postRender('keep'); return; }   // v3 only after THIS document's hello: its `listening` reset v3 first
     if (msg.kind === 'ready') { if (m.failed) return; m.ready = true; clearTimeout(m.deadline); paintMapBox(); return; }
     if (msg.kind === 'failed') mapFailed(msg.cause);
   };

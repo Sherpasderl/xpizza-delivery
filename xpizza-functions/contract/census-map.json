@@ -1059,6 +1059,7 @@
   "xpizza-portal/envio.js#load": "portal ENVÍO (PLAN-portal-envio-step1 r2) — the Sherpa-admin delivery-fee screen: reads the HTTP status of getDeliveryPricing (403 → revoke, else outage); no persisted order",
   "xpizza-portal/envio.js#renderMessage": "portal ENVÍO (PLAN-portal-envio-step1 r2) — the Sherpa-admin delivery-fee screen: lat / lng of the picked branch pin sent to the map frame (geometry only); no persisted order",
   "xpizza-portal/envio.js#renderMessage>anon": "portal ENVÍO (PLAN-portal-envio-step1 r2) — the Sherpa-admin delivery-fee screen: lat / lng of the other branches' pins sent to the map frame (geometry only); no persisted order",
+  "xpizza-portal/envio.js#renderMessage>anon>anon": "portal ENVÍO zones Z2 (PLAN-portal-zones-protocol-v3 r1 §2) — the Sherpa-admin delivery-fee screen: lat / lng of the draft no-delivery zones' vertices sent to the map frame in a v3 render (geometry only); no persisted order, no money",
   "xpizza-portal/envio.js#render": "portal ENVÍO (PLAN-portal-envio-step1 r2) — the Sherpa-admin delivery-fee screen: `status` is the screen's own UI state (loading / ready / offline / forbidden), not an order status",
   "xpizza-portal/envio.js#frozen": "portal ENVÍO (PLAN-portal-envio-step1 r2) — the Sherpa-admin delivery-fee screen: `status` is the screen's own UI state (loading / ready), not an order status",
   "xpizza-portal/envio.js#paintBands": "portal ENVÍO (PLAN-portal-envio-step1 r2) — the Sherpa-admin delivery-fee screen: `status` is the screen's own UI state (loading / ready), not an order status",
