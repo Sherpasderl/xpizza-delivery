@@ -281,6 +281,12 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
         delete body.rewardGroups; declared.body.add(`${c.name}: rewardGroups (reward-groups)`);
       }
     }
+    // «Quitar del menú» (declared, switch ON 11-19, owner #4): the editor read states productRemoval:true and carries the ON fields
+    // (liveOrder / rewardKeys / pendingRemovals — their content is pinned by catalog/remove-product-server.test.js), then dropped
+    if (/getEditableCatalog/.test(c.name) && c.status === 200 && body && !(g.body && Object.prototype.hasOwnProperty.call(g.body, 'productRemoval'))) {
+      assert.strictEqual(body.productRemoval, true, `${c.name}: productRemoval:true («Quitar del menú», switched ON 11-19)`);
+      delete body.productRemoval; delete body.liveOrder; delete body.rewardKeys; delete body.pendingRemovals; declared.body.add(`${c.name}: productRemoval / liveOrder / rewardKeys / pendingRemovals (Quitar del menú ON)`);
+    }
     assert.deepStrictEqual(body, g.body, `${c.name}: body (beyond the declared fields)`);
     // calls: golden ⊆ candidate (as a multiset), and every EXTRA call is a declared read
     const left = [...c.calls];

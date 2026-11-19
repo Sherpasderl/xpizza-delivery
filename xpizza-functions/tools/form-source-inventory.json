@@ -185,6 +185,7 @@
     "xpizza-functions/catalog/review-diff.test.js",
     "xpizza-functions/catalog/reward-group-guard.test.js",
     "xpizza-functions/catalog/reward-removed.test.js",
+    "xpizza-functions/catalog/rollback-refs.test.js",
     "xpizza-functions/catalog/s1-extras-review.test.js",
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
@@ -639,6 +640,7 @@
     "xpizza-functions/catalog/review-diff.test.js",
     "xpizza-functions/catalog/reward-group-guard.test.js",
     "xpizza-functions/catalog/reward-removed.test.js",
+    "xpizza-functions/catalog/rollback-refs.test.js",
     "xpizza-functions/catalog/s1-extras-review.test.js",
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
@@ -1117,6 +1119,7 @@
     "xpizza-functions/catalog/review-diff.test.js",
     "xpizza-functions/catalog/reward-group-guard.test.js",
     "xpizza-functions/catalog/reward-removed.test.js",
+    "xpizza-functions/catalog/rollback-refs.test.js",
     "xpizza-functions/catalog/s1-extras-review.test.js",
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
@@ -1568,6 +1571,7 @@
     "xpizza-functions/catalog/resolve-lines.test.js",
     "xpizza-functions/catalog/review-diff.test.js",
     "xpizza-functions/catalog/reward-removed.test.js",
+    "xpizza-functions/catalog/rollback-refs.test.js",
     "xpizza-functions/catalog/s1-extras-review.test.js",
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
@@ -2929,6 +2933,7 @@
   "catalog/review-diff.js",
   "catalog/reward-icons.js",
   "catalog/reward-removed.js",
+  "catalog/rollback-refs.js",
   "catalog/serve-memo.js",
   "catalog/snapshot-fallback.js",
   "catalog/source-accounting.js",
@@ -3455,6 +3460,7 @@
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js",
+      "tools/rbrefs-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
@@ -3469,6 +3475,7 @@
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js",
+      "tools/rbrefs-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
@@ -3479,6 +3486,7 @@
     {
      "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
      "inverses": [
+      "tools/rbrefs-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
@@ -3492,6 +3500,7 @@
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js",
+      "tools/rbrefs-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
@@ -3502,6 +3511,7 @@
     {
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
+      "tools/rbrefs-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2bext-module-inverse.js",
@@ -3511,7 +3521,8 @@
    ],
    "lifts": [
     "xpizza-functions/catalog/publish-paths.test.js",
-    "xpizza-functions/frozenkeys-wiring.guard.test.js"
+    "xpizza-functions/frozenkeys-wiring.guard.test.js",
+    "xpizza-functions/rbrefs-wiring.guard.test.js"
    ]
   },
   "catalog/catalog-transform.js": {
@@ -3961,6 +3972,10 @@
    "lifts": []
   },
   "catalog/reward-removed.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/rollback-refs.js": {
    "pins": [],
    "lifts": []
   },
@@ -8219,6 +8234,7 @@
    "pins": [],
    "lifts": [
     "xpizza-functions/catalog/publish-request-consequences.test.js",
+    "xpizza-functions/catalog/rollback-refs.test.js",
     "xpizza-functions/catalog/s2b-lifecycle-real.test.js",
     "xpizza-functions/catalog/s2core-three-path.test.js",
     "xpizza-functions/portal/portal-split.test.js",

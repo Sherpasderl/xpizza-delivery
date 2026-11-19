@@ -778,10 +778,10 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
       /* 🔴 THE TARGET'S ORDERING, READ WITH THE OTHER READS BECAUSE THE REBASE MAY WRITE IT. Only on
          the rollback path, one document. It is needed to place an object the source LOST back where
          the target had it relative to its surviving neighbours — see the re-add note below. */
-      let targetOrder = null;
+      let targetOrder = null; let targetStructure = null;
       if (isRollback) {
         const st = await tx.get(versionsColOf(db, rid).doc(versionId).collection('meta').doc('menu_structure'));
-        targetOrder = st.exists ? ((st.data() || {}).item_order || null) : null;
+        targetOrder = st.exists ? ((st.data() || {}).item_order || null) : null; targetStructure = st.exists ? (st.data() || null) : null;   // «Quitar del menú» × rollback (Codex #176 P2-1): the re-added dishes' own refs
       }
 
       let activeStamps = null;
@@ -1050,7 +1050,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
         const reAddedCount = readded.dish.length + readded.extra.length;
         if (rebased || reAddedCount) {
           const patch = { items, extras };
-          if (order) patch.structure = { ...(liveSrc.structure || {}), item_order: order };
+          if (order) patch.structure = require('./rollback-refs').restoreOwnRefs({ ...(liveSrc.structure || {}), item_order: order }, targetStructure, readded.dish.map((r) => r.key));   // + each re-added dish's OWN refs (Codex #176 P2-1)
           tx.update(sourceRefOf(db, rid), patch);
           try {
             console.log('identity_rollback_source_rebased', JSON.stringify({ rid, target: versionId,
