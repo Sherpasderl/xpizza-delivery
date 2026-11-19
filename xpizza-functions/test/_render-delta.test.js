@@ -92,9 +92,9 @@ const XC = { cold: ['x_pizza'] }; const LC = { cold: ['la_musa'] }; const WARM =
   const extra = line1(() => RD.assertSameOps(off, [off[0], FLAG, off[1], off[2]], 'L'));
   assert.ok(extra && extra.includes('"path":"config/phone_wire_strict"') && /at 1/.test(extra) && /ON-only/.test(extra), `RD-DIFF-EXTRA line 1 names the extra op and its index: ${extra}`);
   assert.ok(/ON-only \[\{"db":"rtdb","op":"once","path":"config\/phone_wire_strict"\}\]; OFF-only \[\]/.test(extra), `RD-DIFF-ON-ONLY-LIST the ON-only list holds exactly the extra op: ${extra}`);
-  const ins = line1(() => RD.assertInserted(off, [off[0], FLAG, o('orders/<oid>'), off[1], off[2]], 1, RD.PROBE_ABSENT(), 'L'));
+  const ins = line1(() => RD.assertInserted(off, [off[0], FLAG, o('orders/<oid>'), off[1], off[2]], 1, [o('orders/<oid>')], 'L'));
   assert.ok(ins && ins.includes('config/phone_wire_strict'), `RD-DIFF-INSERTED line 1 names the actual extra op, not only the declared delta: ${ins}`);
-  const sc = line1(() => RD.assertShortCircuit(off, [off[0], FLAG, o('orders/<oid>')], 1, RD.PROBE_ABSENT(), 'L'));
+  const sc = line1(() => RD.assertShortCircuit(off, [off[0], FLAG, o('orders/<oid>')], 1, [o('orders/<oid>')], 'L'));
   assert.ok(sc && sc.includes('config/phone_wire_strict'), `RD-DIFF-SHORT line 1 names the actual extra op: ${sc}`);
   const miss = line1(() => RD.assertSameOps(off, [off[0], off[2]], 'L'));
   assert.ok(miss && /OFF-only/.test(miss) && miss.includes('"op":"once","path":"orders/<oid>"'), `RD-DIFF-MISSING line 1 names the missing op: ${miss}`);

@@ -79,6 +79,10 @@ const GOLDEN = path.join(__dirname, '..', 'catalog', 'd4b-charge-trace.golden.js
 // exclusive `transaction` where the frozen trace has an `update` of the same fields; mapped, counted, pinned (non-vacuous).
 const { preExclusiveClaimOps } = require('../catalog/_hosted-claim-delta');
 const CLAIM_DELTA = { n: 0 };
+// PLAN-3a-order-owner r1: the DECLARED probe-hoist delta — the order probe's one `once orders/<oid>` moved back to its 717f97e
+// slot before comparing (catalog/_probe-hoist-delta.js); the golden is NOT recaptured; every mapping is counted
+const { preProbeHoistOps } = require('../catalog/_probe-hoist-delta');
+const HOIST_DELTA = { n: 0 };
 const CAPTURE = process.env.D4B_TRACE_CAPTURE || '';
 let FINISHED = false;
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('d4b-charge-trace(emulator): FAILED — exited without completing'); process.exitCode = 1; } });
@@ -284,16 +288,17 @@ async function traced(rid, oid, uid, phone) {
       // codex r2 P2: every d4b case is a charge that persists its own content → DECLARED bound (never inferred from the trace)
       const s3 = (ops, content, label) => SD.compareShape(ops, [], { mode: 'bound', content, route: 'chargeOnlineOrder', label }).actual;
       assert.ok(CONTENT[rid][k], `${rid} ${k}: premise — the request persisted its order (the content-key delta is content-bound)`);
-      { const got = s3(preExclusiveClaimOps(DR.without(rest, `${rid} ${k}`).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), CLAIM_DELTA), CONTENT[rid][k], `${rid} ${k}`); assert.deepStrictEqual(got, golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen 717f97e trace — ${RD.opsDiff(golden[rid][k], got)}`); }
+      { const got = s3(preExclusiveClaimOps(preProbeHoistOps(DR.without(rest, `${rid} ${k}`).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), HOIST_DELTA), CLAIM_DELTA), CONTENT[rid][k], `${rid} ${k}`); assert.deepStrictEqual(got, golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen 717f97e trace — ${RD.opsDiff(golden[rid][k], got)}`); }
       if (JSON.stringify(DR.without(rest, `${rid} ${k}`).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e))) !== JSON.stringify(golden[rid][k])) S3_DELTA_SEEN += 1;
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to 717f97e (+${floorCalls.length} allowlisted floor get)`);
     }
     assert.ok(CLAIM_DELTA.n > 0, `non-vacuity: the declared exclusive-claim delta was applied (${CLAIM_DELTA.n} mapping(s))`);
+    assert.strictEqual(HOIST_DELTA.n, Object.keys(golden).reduce((a, r) => a + Object.keys(golden[r]).length, 0), `🔴 the declared probe-hoist delta maps EVERY golden case exactly once (${HOIST_DELTA.n} mapping(s))`);
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(golden).sort());
     assert.ok(S3_DELTA_SEEN > 0, 'non-vacuity: WITHOUT the §3 declared delta at least one case differs from the golden (the content key really changed)');
     { // sensitivity: a content binding of DIFFERENT content does not map — the comparison stays RED
       const k = 'a_normal_fresh', rid = Object.keys(golden).find((r) => JSON.stringify(out[r][k]) !== JSON.stringify(golden[r][k])) || 'x_pizza';
-      const rest = DR.without(CTL.withoutControlRead(out[rid][k], rid, { expected: 0, label: `${rid} ${k} (sensitivity)` }), `${rid} ${k} (sensitivity)`).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e));
+      const rest = preProbeHoistOps(DR.without(CTL.withoutControlRead(out[rid][k], rid, { expected: 0, label: `${rid} ${k} (sensitivity)` }), `${rid} ${k} (sensitivity)`).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)));
       const wrong = { ...CONTENT[rid][k], itemsText: `${CONTENT[rid][k].itemsText} | 1x Otra (L1)` };
       let stillRed = false; try { stillRed = JSON.stringify(SD.compareShape(rest, golden[rid][k], { mode: 'bound', content: wrong, route: 'chargeOnlineOrder' }).actual) !== JSON.stringify(golden[rid][k]); } catch (_) { stillRed = true; }
       assert.ok(stillRed, '🔴 a corrupted (different-content) binding must leave the comparison RED');
@@ -330,7 +335,7 @@ async function traced(rid, oid, uid, phone) {
       const ctlOpts = { expected: 1, label: 'x_pizza post-TTL a_normal_retry (switch cache cold)',
         anchor: ({ after }) => !!after && after.db === 'rtdb' && after.op === 'once' && after.path === 'orders/<oid>' };
       const rest = CTL.withoutControlRead(t.trace, 'x_pizza', ctlOpts);
-      assert.deepStrictEqual(SD.compareShape(DR.without(rest, 'post-TTL').filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), [], { mode: 'bound', content: t.content, route: 'chargeOnlineOrder', label: 'post-TTL' }).actual, golden.x_pizza.a_normal_retry, '🔴 the post-TTL request, minus its floor GET and its switch read, equals the frozen golden');
+      assert.deepStrictEqual(SD.compareShape(preProbeHoistOps(DR.without(rest, 'post-TTL').filter((e) => !isFloorRead(e) && !isExtrasModeRead(e))), [], { mode: 'bound', content: t.content, route: 'chargeOnlineOrder', label: 'post-TTL' }).actual, golden.x_pizza.a_normal_retry, '🔴 the post-TTL request, minus its floor GET and its switch read, equals the frozen golden');
       CTL.assertOtherRidRefused(t.trace, 'x_pizza', 'la_musa', ctlOpts);
       console.log(`  ✓ x_pizza post-TTL a_normal_retry: exactly 1 allowlisted floor GET + exactly 1 switch read (before the classifier's order read); the rest identical to the golden; a switch read on la_musa's path is refused`);
     }
@@ -376,7 +381,7 @@ async function traced(rid, oid, uid, phone) {
         // the bound reuse (the same answer as the render-OFF reuse), and the request ends there
         await warm(rid, uid, 'r');
         p = await pair(`${rid} render-ON retry (bound reuse)`, at(rid, R, uid, '99361001'), at(rid, N, uid, '99362001'));
-        RD.assertShortCircuit(p.off, p.on, RD.afterUidCheck(p.off, rid), RD.PROBE_FULL(rid), `${rid} render-ON retry (bound reuse)`);
+        RD.assertShortCircuit(p.off, p.on, RD.afterOrderProbe(p.off, rid), RD.PROBE_FULL(rid), `${rid} render-ON retry (bound reuse)`);
         // the retry, with render ON, of an order issued with render OFF (in flight across the flip): no bound fingerprint →
         // the probe stops at the order read and the current path runs unchanged
         await warm(rid, uid, 't');
