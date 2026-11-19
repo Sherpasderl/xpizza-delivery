@@ -216,6 +216,57 @@ test('F — a 400 zones refusal from the REAL validator: per-zone (zone_id) ⇒ 
   }
 });
 
+// Codex #179 P2-1..3 (draft loss): every server read the screen applies goes through ONE draft-preserving adoption — leaving and coming
+// back (the «Revisar en Sucursales» link included), a fees-only save confirmed by the recovery read, «Volver a comprobar» — and an
+// unsent zones draft holds the shell's leave guard
+const envioView = (p) => p.mods.shell._registered.find((r) => r.id === 'envio');
+test('#179 P2-1: «Revisar en Sucursales» → back to Envío keeps the zones draft; a dirty zones draft holds canLeave', async () => {
+  const srv = server({ policy: withZones(), world: world(CLOSED, CLOSED) });
+  const p = await open(srv);
+  await rename(p, 'Sector A', 'Sector Norte');
+  assert.equal(envioView(p).canLeave(), false, '🔴 an unsent zones draft holds the leave guard');
+  await srv.db.ref('restaurants/r_dos/identity/hours').remove(); srv.forgetIdentities();
+  await saveAll(p);
+  p.d.querySelector('.envzfail .zblink').click(); await settle(30);
+  assert.equal(p.d.getElementById('viewsuc').classList.contains('hidden'), false, 'premise: on Sucursales');
+  await p.open(); await settle(60);
+  assert.ok(zrow(p, 'Sector Norte'), '🔴 the zones draft survived the round trip');
+  assert.equal(zrow(p, 'Sector A'), undefined, 'not the stored name');
+});
+test('#179 P2-2: a fees-only save whose answer drops, confirmed by the recovery read, keeps the UNSENT zones draft', async () => {
+  const srv = server({ policy: withZones(), world: world(CLOSED, CLOSED) });
+  const p = await open(srv);
+  await rename(p, 'Sector A', 'Sector Norte');
+  p.type(0, 'fee', '45'); await settle(5);
+  await srv.db.ref('restaurants/r_uno/identity/hours').set(OPEN); srv.forgetIdentities();
+  await saveAll(p);
+  const fees = [...p.d.querySelectorAll('.envzfail button')].find((b) => b.textContent === P('feesOnly'));
+  srv.fault.post = 'afterDrop';   // the server commits; the answer is lost ⇒ the recovery read decides
+  fees.click(); await settle(120);
+  assert.equal((await srv.node()).bands[0].cents, 4500, 'premise: the fees landed (the real core)');
+  assert.ok(zrow(p, 'Sector Norte'), '🔴 the unsent zone rename is still the draft');
+  assert.ok(p.bar().classList.contains('show') && dk(p.bar()).includes(P('barOther')), 'and the bar still offers it');
+});
+test('#179 P2-3: «Volver a comprobar» refreshes the lock and keeps an unsent fee edit', async () => {
+  const srv = server({ policy: withZones(), world: world(undefined, CLOSED) });
+  const p = await open(srv);
+  p.type(0, 'fee', '45'); await settle(5);
+  const g0 = srv.gets;
+  card(p).querySelector('.ecallout button').click(); await settle(60);
+  assert.equal(srv.gets, g0 + 1, 'premise: a fresh read');
+  assert.equal(p.input(0, 'fee').value, '45', '🔴 the fee edit survives the recheck');
+});
+
+test('#179 P3: the client judges names as the server does — 16 emoji (32 UTF-16 units) is too long in place; an accent makes a DIFFERENT name', async () => {
+  const p = await open(server({ policy: withZones(), world: world(CLOSED, CLOSED) }));
+  await rename(p, 'Sector A', '😀'.repeat(16));
+  const fe = card(p).querySelector('.zlist .ferr');
+  assert.ok(fe && fe.textContent === P('nameLong'), '🔴 over 30 UTF-16 units is refused in place');
+  key(card(p).querySelector('.zrow.editing input'), 'Escape'); await settle(5);
+  await rename(p, 'Sector A', 'Séctor B');
+  assert.ok(zrow(p, 'Séctor B'), '🔴 «Séctor B» ≠ «Sector B» (the server lowercases only)');
+});
+
 test('E — the hours cannot be read at the save (503 hours_unavailable): the panel, the draft kept, «Reintentar» resends the SAME attempt', async () => {
   const reg = { fresh: true };
   const W = world(CLOSED, CLOSED);

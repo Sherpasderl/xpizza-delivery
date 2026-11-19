@@ -178,7 +178,27 @@ function refreshEntries() {
   S.entries = EL.pickerEntries(S.branchesRaw.map((b) => (Object.prototype.hasOwnProperty.call(p, b.rid) ? { ...b, max_km: p[b.rid], limit_invalid: false } : b)), curTop());
 }
 const pickedRestaurant = () => S.restaurants.find((r) => r.rids.includes(S.pick)) || null;
-async function load({ fresh } = {}) {
+const feesDirty = () => !!(S.rows && S.loaded && S.loaded.kind === 'policy' && EL.isDirty(S.rows, S.loaded.bands));
+// Codex #179 P2-1..3 — the ONE place a server read is applied: every caller (a load, the recovery read of a landed save, a mount from
+// the cache) adopts server truth here and keeps what the admin has NOT sent. `discard` = the admin asked to drop the draft («Recargar»
+// after a conflict, the malformed re-read); `landed` = the attempt this read confirms (what it SENT is server truth now; the rest stays).
+// Unsent fee / limit edits keep their base version (S.loaded): the CAS still catches a newer server write at save. `cached` = the
+// session cache's body, which never carries the zones or their lock (cacheable): it says nothing about them, so their state stays.
+function applyRead(b, { discard = false, landed = null, cached = false } = {}) {
+  const zonesState = cached && !discard && S.zones ? { zones: S.zones, draft: S.zonesDraft } : null;
+  const keepZones = !discard && zonesDirty() && !(landed && landed.sentZones) ? S.zonesDraft.map((z) => ({ id: z.id, name: z.name, points: z.points.map((pt) => ({ ...pt })) })) : null;
+  const keepFees = !discard && !landed && !!(S.attempt || limitDirty() || limitInvalid() || feesDirty());
+  if (keepFees) {
+    // the draft wins on screen; the directory and the zones lock follow the server
+    S.branchesUnavailable = !Array.isArray(b.branches);
+    S.branchesRaw = Array.isArray(b.branches) ? b.branches : S.branchesRaw;
+    S.zones = EL.zonesFromBody(b);
+    refreshEntries();
+  } else adoptBody(b);
+  if (zonesState) { S.zones = zonesState.zones; S.zonesDraft = zonesState.draft; return; }
+  if (keepZones && S.zones && S.zones.zones !== null) S.zonesDraft = keepZones;
+}
+async function load({ discard = false } = {}) {
   const g = snap();
   let res;
   try { res = await getDeliveryPricingRaw({ token, assertLive: g.assertLive }); } catch (err) { if (!g.alive()) return; res = { transport: true }; }
@@ -193,17 +213,8 @@ async function load({ fresh } = {}) {
   const rv = bodyVersion(res.body);
   if (rv !== null && rv < S.floor) { if (S.status !== 'ready') { S.status = 'ready'; render(); } return; }
   store.set(CACHE(S.uid), cacheable(res.body));
-  const keepDraft = !fresh && (S.attempt || limitDirty() || limitInvalid() || zonesDirty() || (S.rows && S.loaded && S.loaded.kind === 'policy' && EL.isDirty(S.rows, S.loaded.bands)));
-  if (keepDraft) {
-    // the draft wins on screen; the CAS catches a newer server version at save. The directory still refreshes.
-    S.branchesUnavailable = !Array.isArray(res.body.branches);
-    S.branchesRaw = Array.isArray(res.body.branches) ? res.body.branches : S.branchesRaw;
-    S.zones = EL.zonesFromBody(res.body);   // the lock follows the server (the list is the draft's)
-    refreshEntries();
-  } else {
-    adoptBody(res.body);
-    if (fresh) S.banner = null;
-  }
+  applyRead(res.body, { discard });
+  if (discard) S.banner = null;
   S.status = 'ready';
   render();
 }
@@ -286,7 +297,7 @@ function settleEnvioOutcome(attempt, o, recoveryRes) {
       // version, atomically (another admin's write in the same version is server truth, never overwritten later by a stale screen)
       const rb = recoveryRes && recoveryRes.status === 200 && recoveryRes.body && typeof recoveryRes.body === 'object' && bodyVersion(recoveryRes.body) !== null ? recoveryRes.body : null;
       if (rb) {
-        adoptBody(rb);
+        applyRead(rb, { landed: attempt });
         S.attempt = null; S.phase = null; S.banner = null;
         store.set(CACHE(S.uid), cacheable(rb));
         render();
@@ -325,7 +336,7 @@ function settleEnvioOutcome(attempt, o, recoveryRes) {
       render(); return;
     case 'current_malformed':
       S.attempt = null; S.phase = null; S.banner = null;
-      load({ fresh: true }); return;
+      load({ discard: true }); return;
     case 'forbidden': revoke(); return;
     case 'refused': case 'unauthenticated':
       if (o === 'refused') console.warn('envio save: refused');
@@ -655,7 +666,7 @@ function paintBanner() {
   const L0 = S.loaded;
   let box = null;
   if (S.banner === 'conflict') {
-    const r = button('btn', COPY.reload, () => { S.banner = null; load({ fresh: true }); });
+    const r = button('btn', COPY.reload, () => { S.banner = null; load({ discard: true }); });
     r.prepend(ic('reload'));
     box = errbox(COPY.conflictT, COPY.conflictP, r);
   } else if (S.zonesFail) {
@@ -807,7 +818,7 @@ function paintZones() {
     const tb = el('b'); tb.append(open ? phText(EL.zonesCopy('lockedTitle'), EL.zonesCopy('lockedTitlePh')) : document.createTextNode(EL.zonesCopy('hoursTitle')));
     t.append(tb, document.createTextNode(' '), open ? phText(EL.zonesCopy('lockedBody'), EL.zonesCopy('lockedBodyPh')) : document.createTextNode(EL.zonesCopy('hoursBody')));
     co.append(ic('info'), t);
-    if (!open) co.append(button('btn ghost sm', EL.zonesCopy('recheck'), () => load({ fresh: true })));
+    if (!open) co.append(button('btn ghost sm', EL.zonesCopy('recheck'), () => load()));   // re-reads the lock; unsent edits stay (#179 P2-3)
     r.zonesLock.append(co);
   }
   r.zonesList.replaceChildren();
@@ -817,7 +828,7 @@ function paintZones() {
     const sw = el('span', 'zsw'); sw.append(ic('hatch'));
     if (editing) {
       // rename in place (v2 «.zrow.editing»): Enter keeps it in the draft, Esc cancels; empty / too long / a taken name stay here
-      const zoneName = el('input'); zoneName.type = 'text'; zoneName.value = S.zoneEdit.value; zoneName.setAttribute('aria-label', `Nombre de ${zone.name}`);
+      const zoneName = el('input'); zoneName.type = 'text'; zoneName.value = S.zoneEdit.value; zoneName.setAttribute('aria-label', 'Nombre de la zona');   // v2 verbatim (Codex #179 inline-copy audit)
       zoneName.addEventListener('input', () => { S.zoneEdit = { ...S.zoneEdit, value: zoneName.value }; });
       zoneName.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') { e.preventDefault(); S.zoneEdit = null; paintZones(); focusZone(zone.id, 'Renombrar'); }
@@ -853,13 +864,15 @@ const focusZone = (id, title) => { const row = S.refs && [...S.refs.zonesList.qu
 function zoneRenameSave(id) {
   const e = S.zoneEdit;
   if (!e || e.id !== id) return;
+  // Codex #179 P3: judged as the server judges the name this sends (delivery/zones.js normalizeInput + compactProblem): 1..name_max
+  // UTF-16 units, unique by toLowerCase() alone (no accent folding). The client only collapses whitespace runs before sending, so a
+  // pasted tab / newline (a control character the server refuses) never reaches it; the server judges exactly the string sent.
   const name = String(e.value).replace(/\s+/g, ' ').trim();
   const max = S.zones && S.zones.caps ? S.zones.caps.name_max : 30;
-  const fold = (v) => String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
   let line = null;
   if (!name) line = EL.zonesCopy('nameEmpty');
-  else if ([...name].length > max) line = EL.zonesCopy('nameLong');
-  else if ((S.zonesDraft || []).some((z) => z.id !== id && fold(z.name) === fold(name))) line = EL.zonesCopy('nameTaken');
+  else if (name.length > max) line = EL.zonesCopy('nameLong');
+  else if ((S.zonesDraft || []).some((z) => z.id !== id && String(z.name).trim().toLowerCase() === name.toLowerCase())) line = EL.zonesCopy('nameTaken');
   if (line) { S.zoneEdit = { ...e, line }; paintZones(); const i0 = S.refs.zonesList.querySelector('.zrow.editing input'); if (i0) i0.focus(); return; }
   S.zonesDraft = S.zonesDraft.map((z) => (z.id === id ? { ...z, name } : z));
   S.zoneEdit = null;
@@ -1137,7 +1150,8 @@ registerView({
   revoke,
   mount(host, sel) {
     bump();
-    if (sel.uid !== S.uid) { S.attempt = null; S.phase = null; }
+    const otherUser = sel.uid !== S.uid;
+    if (otherUser) { S.attempt = null; S.phase = null; }
     S.uid = sel.uid;
     S.host = host;
     S.root = el('div', 'envio');
@@ -1147,7 +1161,8 @@ registerView({
     const held = S.attempt && S.attempt.uid === S.uid && S.loaded ? S.attempt : null;
     const cached = S.uid ? store.get(CACHE(S.uid)) : null;
     if (held) S.status = 'ready';
-    else if (cached) { adoptBody(cached); S.status = 'ready'; } else { S.status = 'loading'; S.rows = [{ km: '', fee: '' }]; }
+    // #179 P2-1: a draft left on a link out survives (the same adoption path; another admin ⇒ discard)
+    else if (cached) { applyRead(cached, { discard: otherUser, cached: true }); S.status = 'ready'; } else { S.status = 'loading'; S.rows = [{ km: '', fee: '' }]; }
     render();
     load();
     if (held && S.phase !== 'not_landed') recover(held);
@@ -1155,13 +1170,15 @@ registerView({
   unmount() {
     bump();
     dropPage();
-    // Codex r1 F3: an attemptUnresolved attempt (and its draft) outlives the view for this session; everything else is per visit
+    // Codex r1 F3: an attemptUnresolved attempt outlives the view for this session. Codex #179 (advisor 11-19, ONE rule): so does an unsent
+    // draft — fees, limits and zones are kept (S.rows / S.limitEdits / S.zonesDraft) and re-adopted through applyRead at the next mount,
+    // on their CAS base version (S.loaded), shown by the «Sin guardar» bar; the confirm, picker and note are per visit
     S.confirm = null; S.picker = null; S.note = null;
     if (!S.attempt) { S.phase = null; S.banner = null; }
     if (S.host) S.host.replaceChildren();
     S.host = null; S.root = null; S.status = 'idle';
   },
-  canLeave: () => !S.attempt && !limitDirty() && !limitInvalid() && !(S.rows && S.loaded && S.loaded.kind === 'policy' && EL.isDirty(S.rows, S.loaded.bands)),
+  canLeave: () => !S.attempt && !limitDirty() && !limitInvalid() && !feesDirty() && !zonesDirty(),   // #179 P2-1: an unsent zones draft holds it too
   // Codex r2 F3: an attempt kept while the view is unmounted holds the shell's reload guard (selection / self-update)
   pending: () => !!S.attempt,
 });

@@ -528,7 +528,10 @@ test('Codex r1 F1: every exit releases the background — «Volver» / Escape re
   assert.ok(inertNodes(P).length > 0, 'premise: open again');
   P.d.getElementById('navprod').click(); await settle(20);
   assert.equal(inertNodes(P).length, 0, 'unmount releases');
-  await P.open(); await editTo10(P);
+  // advisor 11-19 (Codex #179, ONE rule): an unsent draft survives navigation within the session — back on Envío the edited table is
+  // still there, so «Guardar» opens on it with no re-edit
+  await P.open();
+  assert.deepEqual(P.rows().slice(0, 3), [['3', '40'], ['6', '60'], ['10', '80']], 'the draft came back with the view');
   P.btn('Guardar', P.bar()).click(); await settle();
   assert.ok(inertNodes(P).length > 0, 'premise: open again');
   P.d.dispatchEvent(new P.w.CustomEvent('portal:auth', { detail: { uid: null } })); await settle(20);
@@ -678,6 +681,24 @@ test('Codex r1 F8: the picker is a combobox → listbox; aria-activedescendant f
 });
 
 // ── Codex build r2 (narrow): the three partials ─────────────────────────────────────────────────────────────────────────
+// advisor 11-19 (Codex #179, ONE rule): a draft kept across navigation keeps its CAS base — another writer's newer version while the
+// view was away still ends in the conflict path at «Guardar», never a silent overwrite of their write
+test('#179 a draft kept across navigation keeps its base version: another writer saves while away ⇒ «Guardar» gets the conflict, their write stands', async () => {
+  const P = await page();
+  await P.signIn(); await P.open();
+  await editTo10(P);
+  P.d.getElementById('navprod').click(); await settle(20);
+  await P.srv.db.ref(CORE.PATH).set(POLICY(4, [{ max_km: 5, cents: 7000 }]));   // someone else saved while the view was away
+  await P.open(); await settle(60);
+  assert.deepEqual(P.rows().slice(0, 3), [['3', '40'], ['6', '60'], ['10', '80']], 'premise: the draft came back (the newer read did not replace it)');
+  assert.ok(P.bar().classList.contains('show'), 'the «Sin guardar» bar shows it');
+  P.btn('Guardar', P.bar()).click(); await settle();
+  P.btn('Guardar cambios').click(); await settle(30);
+  assert.ok(P.text().includes('Alguien más cambió las tarifas, recargá'), '🔴 the conflict path, not a silent overwrite');
+  const node = await P.srv.node();
+  assert.equal(node.policy_version, 4, 'their version stands'); assert.equal(node.bands[0].cents, 7000, 'their bands stand');
+});
+
 test('Codex r2 F1: an OUTCOME closes the confirm with meaningful focus — saved → the page heading; conflict → the result box (never <body>)', async () => {
   const P = await page();
   await P.signIn(); await P.open();
