@@ -456,3 +456,59 @@ test('Z2 child: the session is painted from the child\'s own list — open: the 
   assert.equal(editing.zones.length, 0, 'the edited zone is drawn once — as the session');
   assert.ok(editing.draw.d.endsWith('Z') && editing.draw.closing === null, 'a zone being edited is closed');
 });
+
+// ── Codex #204 (child) ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// P2-1: the REAL handlers — mousedown → mouseup → click without movement on vertex 1 is a CLICK (finish), not a drag; a real drag
+// (movement past the threshold) is a drag. A fake projection (1 px per 1e-5°) and a DOM stub that paints.
+function liveEnv() {
+  const E = fakeEnv();
+  const stub = () => ({ ownerDocument: E.doc, style: { setProperty() {} }, setAttribute() {}, append() {}, replaceChildren() {}, remove() {}, textContent: '' });
+  E.doc.createElementNS = stub;
+  const num = (v) => (typeof v === 'function' ? v() : v);
+  E.maps.OverlayView.prototype.getProjection = () => ({ fromLatLngToDivPixel: (ll) => ({ x: num(ll.lng) * 1e5, y: -num(ll.lat) * 1e5 }) });
+  const ev = (q) => ({ latLng: { lat: () => q.lat, lng: () => q.lng } });
+  const fire = (t, q) => { for (const f of [...(E.maps.made[0].ls[t] || [])]) f(q ? ev(q) : undefined); };
+  const kinds = () => E.parent.posted.map(([m]) => m.kind);
+  return { E, fire, kinds };
+}
+const v3With = (drawing) => MP.renderMessage({ mount: M, view: 'keep', theme: 'light', hub: HUB, name: 'La Musa', others: [], bands: [], mapType: 'roadmap', limit: null, zones: [], drawing });
+test('#204-P2 child: an unmoved press on vertex 1 (mousedown → mouseup → click) is a CLICK — the finish, never a drag', async () => {
+  const { E, fire, kinds } = liveEnv();
+  boot({ win: E.win, doc: E.doc, loadMaps: E.loadMaps }); await tick();
+  E.fromParent(v3With(DRAW())); await tick();
+  for (const q of [P(0), P(1), P(2)]) fire('click', q);
+  assert.deepEqual(kinds().filter((k) => k === 'draft_points').length, 3, 'premise: three taps through the real click handler');
+  const jitter = { lat: P(0).lat + 0.000001, lng: P(0).lng };   // 0.1 px: a hand's tremor, far under the drag threshold
+  fire('mousedown', P(0)); fire('mousemove', jitter); fire('mouseup', jitter); fire('click', P(0));
+  assert.equal(kinds()[kinds().length - 1], 'finish', '🔴 the click on vertex 1 closes the shape (a tremor is not a drag)');
+});
+test('#204-P2b child (EDITING): an unmoved click on a vertex is nothing; a REAL drag (past the threshold) sends the finish at its end', async () => {
+  const { E, fire, kinds } = liveEnv();
+  boot({ win: E.win, doc: E.doc, loadMaps: E.loadMaps }); await tick();
+  E.fromParent(v3With(DRAW({ zone: 'z_aaaaaaaa', points: [P(0), P(1), P(2), P(3)] }))); await tick();
+  const n = kinds().length;
+  fire('mousedown', P(1)); fire('mouseup', P(1)); fire('click', P(1));
+  assert.equal(kinds().length, n, '🔴 an unmoved click on a handle is not an edit');
+  const far = { lat: P(1).lat + 0.002, lng: P(1).lng };
+  fire('mousedown', P(1)); fire('mousemove', far); fire('mouseup', far); fire('click', far);
+  const last = E.parent.posted[E.parent.posted.length - 1][0];
+  assert.deepEqual([last.kind, last.points[1]], ['finish', far], '🔴 the drag end is the finish, with the moved vertex');
+  assert.equal(kinds().filter((k) => k === 'finish').length, 1, 'and the click after the drag adds nothing');
+});
+
+// P3-1: UNCONFIRMED (and any non-editable session) shows NO handles and no close preview; the exhaustion itself repaints
+test('#204-P3 child: retries exhausted ⇒ the view says unconfirmed, the overlay draws no handles, and the change is announced (repaint)', () => {
+  let changes = 0;
+  const sent = [], timers = [];
+  const c = drawController({ send: (kind, body) => sent.push({ kind, ...body }), schedule: (f) => { timers.push(f); return timers.length; }, cancel: () => {}, onChange: () => { changes += 1; } });
+  c.onRender(DRAW());
+  for (let i = 0; i < 3; i++) c.tap(P(i));
+  c.tapVertex(0);
+  const before = changes;
+  for (let i = 0; i < 15; i++) { const t = timers.splice(0); for (const f of t) f(); }
+  assert.equal(c.view().unconfirmed, true, 'the presentation state is exposed');
+  assert.ok(changes > before, '🔴 the exhaustion asks for a repaint');
+  const v3 = MP.renderMessage({ mount: M, view: 'keep', theme: 'light', hub: HUB, name: 'La Musa', others: [], bands: [], mapType: 'roadmap', limit: null, zones: [], drawing: null });
+  const m = overlayModel(v3, flat(640), 1, c.view());
+  assert.deepEqual([m.draw.vtx.length, m.draw.closing], [0, null], '🔴 no handles, no close preview');
+});

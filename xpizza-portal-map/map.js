@@ -52,8 +52,10 @@ export function overlayModel(msg, project, u, live = null) {
   }
   if (live && live.points.length) {
     const closed = live.closed || live.zone !== null;
-    out.draw = { d: poly(live.points, closed), closing: !closed && live.points.length >= 2 ? poly([live.points[live.points.length - 1], live.points[0]], false) : null,
-      vtx: live.points.map((q, i) => { const p = project(q); return { x: p.x, y: p.y, n: i + 1, first: i === 0 }; }) };
+    // Codex #204 P3-1: handles and the close preview only while the session takes edits (never UNCONFIRMED, closed or waiting on a finish)
+    const handles = live.editable === true;
+    out.draw = { d: poly(live.points, closed), closing: handles && !closed && live.points.length >= 2 ? poly([live.points[live.points.length - 1], live.points[0]], false) : null,
+      vtx: handles ? live.points.map((q, i) => { const p = project(q); return { x: p.x, y: p.y, n: i + 1, first: i === 0 }; }) : [] };
   }
   const hub = msg.hub, c = project(hub);
   const pathOf = (km) => { const pts = G.ringPath(hub, km).map(project); return `M${pts.map((p) => `${r2(p.x)} ${r2(p.y)}`).join('L')}Z`; };
@@ -129,7 +131,7 @@ function paint(svg, model, u) {
 export const DRAW_LIMITS = Object.freeze({ points: 24, RETRY_MS: 500, TRIES: 10 });
 const samePt = (a, b) => !!a && !!b && a.lat === b.lat && a.lng === b.lng;
 const copyPts = (ps) => ps.map((q) => ({ lat: q.lat, lng: q.lng }));
-export function drawController({ send, schedule = setTimeout, cancel = clearTimeout }) {
+export function drawController({ send, schedule = setTimeout, cancel = clearTimeout, onChange = () => {} }) {
   let s = null;   // { session, zone, points, seq, closed, finish: null | { seq, points, tries, timer }, unconfirmed }
   const editable = () => !!s && !s.closed && !s.finish && !s.unconfirmed;
   const post = (kind) => send(kind, { session: s.session, seq: s.seq, points: copyPts(s.points) });
@@ -138,7 +140,7 @@ export function drawController({ send, schedule = setTimeout, cancel = clearTime
   function retry() {
     if (!s || !s.finish) return;
     s.finish.timer = null;
-    if (s.finish.tries >= DRAW_LIMITS.TRIES) { s.unconfirmed = true; return; }
+    if (s.finish.tries >= DRAW_LIMITS.TRIES) { s.unconfirmed = true; onChange(); return; }   // Codex #204 P3-1: inert now — repaint (no handles)
     s.finish.tries += 1; postFinish();
     s.finish.timer = schedule(retry, DRAW_LIMITS.RETRY_MS);
   }
@@ -155,7 +157,7 @@ export function drawController({ send, schedule = setTimeout, cancel = clearTime
     else if (outcome === 'ended') s = null;
   }
   return {
-    view: () => (s ? { session: s.session, zone: s.zone, points: copyPts(s.points), closed: s.closed, editable: editable() } : null),
+    view: () => (s ? { session: s.session, zone: s.zone, points: copyPts(s.points), closed: s.closed, unconfirmed: s.unconfirmed, editable: editable() } : null),
     onRender(d) {
       if (!d || (s && d.session !== s.session)) { stop(); s = null; }   // no session, or another one: the old one is over (ended)
       if (!d) return;
@@ -200,11 +202,11 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
   const box = doc.getElementById('map');
   const send = (kind, cause) => { try { parent.postMessage(MP.childMessage(kind, mount, cause), MP.PORTAL_ORIGIN); } catch (_) { /* the portal is gone */ } };
   const st = { latest: null, maps: null, map: null, layer: null, failed: false, ready: false, userMoved: false, programmatic: false, width: 0, type: null,
-    cursor: null, drag: null, justDragged: false };   // Z2: the drawing cursor, a handle being dragged, the click that ends a drag
+    cursor: null, press: null, drag: null, justDragged: false };   // Z2: the drawing cursor, a handle being dragged, the click that ends a drag
   const fail = (cause) => { if (st.failed || st.ready) return; st.failed = true; send('failed', cause); };
   // Z2: the map's v2 messages (hello, draft_points, finish, edit_request) — the exact portal origin, never '*'
   const sendMap = (kind, body) => { try { parent.postMessage(MP.mapMessage(kind, mount, body), MP.PORTAL_ORIGIN); } catch (_) { /* the portal is gone */ } };
-  const ctl = drawController({ send: sendMap });
+  const ctl = drawController({ send: sendMap, onChange: () => { if (st.layer) st.layer.draw(); cursor(); } });
   st.ctl = ctl;
 
   win.addEventListener('message', (ev) => {
@@ -272,17 +274,29 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
       else { const z = zoneAt(ptOf(e.latLng)); if (z) ctl.tapZone(z); }
       st.layer.draw(); cursor();
     });
-    // a handle drag: the map's own pointer events; the session hears only the END (r1 §5: never on every move)
+    // a handle drag: the map's own pointer events; the session hears only the END (r1 §5: never on every move). Codex #204 P2-1: a press
+    // becomes a DRAG only once the pointer moves past DRAG_PX (mockup px) — an unmoved press is a CLICK, left to the click handler
+    const DRAG_PX = 4;
+    const pxOf = (ll) => { const proj = st.layer && st.layer.getProjection && st.layer.getProjection(); return proj ? proj.fromLatLngToDivPixel(ll) : null; };
     st.map.addListener('mousedown', (e) => {
       const v = ctl.view();
       if (!e || !e.latLng || !v || !v.editable) return;
       const i = vertexAt(e.latLng);
       if (i === -1) return;
-      st.drag = { i, pt: ptOf(e.latLng) }; st.map.setOptions({ draggable: false });
+      st.press = { i, at: pxOf(e.latLng) };
     });
-    st.map.addListener('mousemove', (e) => { if (st.drag && e && e.latLng) { st.drag.pt = ptOf(e.latLng); st.layer.draw(); } });
+    st.map.addListener('mousemove', (e) => {
+      if (!st.press || !e || !e.latLng) return;
+      if (!st.drag) {
+        const now = pxOf(e.latLng), u = W() / G.MOCK.w;
+        if (!now || !st.press.at || Math.hypot(now.x - st.press.at.x, now.y - st.press.at.y) <= DRAG_PX * u) return;
+        st.drag = { i: st.press.i, pt: ptOf(e.latLng) }; st.map.setOptions({ draggable: false });
+      }
+      st.drag.pt = ptOf(e.latLng); st.layer.draw();
+    });
     st.map.addListener('mouseup', () => {
-      if (!st.drag) return;
+      st.press = null;
+      if (!st.drag) return;   // no movement: a click (the click handler decides)
       const d = st.drag; st.drag = null; st.justDragged = true;
       st.map.setOptions({ draggable: true });
       ctl.dragEnd(d.i, d.pt); st.layer.draw(); cursor();

@@ -207,6 +207,9 @@ const feesDirty = () => !!(S.rows && (S.feesBase ? EL.isDirty(S.rows, S.feesBase
 // Unsent fee / limit edits keep their base version (S.loaded): the CAS still catches a newer server write at save. `cached` = the
 // session cache's body, which never carries the zones or their lock (cacheable): it says nothing about them, so their state stays.
 function applyRead(b, { discard = false, landed = null, cached = false } = {}) {
+  // Codex #204 P1 (plan r1 §8): ANY applied read ends the transient drawing session and its pending messages — a session opened on one
+  // version never commits against the next (an EDITING finish would overwrite another admin's newer zone without a conflict)
+  endDrawing();
   // Codex #180 (owner 11-19, A) — THREE invariants: (1) any dirty draft (fees, limits OR zones) keeps its own CAS base (S.loaded) —
   // a newer read never moves it, so «Guardar» against a newer server conflicts; (2) the read floor ALWAYS advances on a read the screen
   // accepts, independent of the draft (a delayed older read can never unlock a live lock); (3) only `discard` clears a draft — an
@@ -690,7 +693,7 @@ function buildPage() {
   refs.mapNote = el('p', 'efnote');
   // Z2 frame 1b: the drawing tool line under the map — the hint, «Cancelar», «Terminar»
   refs.mtool = el('div', 'mtool hidden');
-  refs.drawCancel = button('btn ghost', COPY.drawCancel, () => endDrawing());
+  refs.drawCancel = button('btn ghost', COPY.drawCancel, () => endDrawing({ focus: true }));
   refs.drawFinish = button('btn accent', COPY.drawFinish, () => requestFinish());
   refs.drawNote = el('span', 'efnote', COPY.drawTool);
   refs.drawLine = el('p', 'ferr'); refs.drawLine.setAttribute('role', 'alert');   // a refused shape: the approved red one-liner (note 12)
@@ -927,7 +930,7 @@ function namingRow() {
   const row = el('div', 'zrow editing');
   const sw = el('span', 'zsw'); sw.append(ic('hatch'));
   const inp = el('input'); inp.type = 'text'; inp.value = d.name; inp.placeholder = EL.zonesCopy('namePh'); inp.setAttribute('aria-label', EL.zonesCopy('namePh'));
-  const cancel = button('btn ghost', EL.zonesCopy('nameCancel'), () => endDrawing());
+  const cancel = button('btn ghost', EL.zonesCopy('nameCancel'), () => endDrawing({ focus: true }));
   const done = button('btn accent', EL.zonesCopy('nameDone'), () => commitDrawn());
   const err = el('p', 'ferr hidden'); err.setAttribute('role', 'alert');
   const sync = () => {
@@ -937,7 +940,7 @@ function namingRow() {
     err.textContent = say; err.classList.toggle('hidden', !say);
   };
   inp.addEventListener('input', () => { d.name = inp.value; sync(); });
-  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !done.disabled) { e.preventDefault(); commitDrawn(); } else if (e.key === 'Escape') { e.preventDefault(); endDrawing(); } });
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !done.disabled) { e.preventDefault(); commitDrawn(); } else if (e.key === 'Escape') { e.preventDefault(); endDrawing({ focus: true }); } });
   row.append(sw, inp, cancel, done);
   sync();
   return [row, err];
@@ -1059,7 +1062,8 @@ function startDrawing() {
   let session;
   try { session = MP.newMountId(window.crypto); } catch (_) { return; }   // 16 random bytes, the mount id's own minting
   S.drawing = { session, zone: null, points: [], seq: 0, ack: null, request: null, closed: false, line: null, name: '' };
-  paintDraw(); postRender('keep');
+  paintZones(); postRender('keep');   // the list follows the session (rename / remove off) — paintZones paints the draw state too
+  if (S.refs) S.refs.drawCancel.focus();   // «Dibujar zona» is not drawn while drawing: the focus goes to the tool line
 }
 // draft_points (r1 §4–§5, r2 P2-6): only for the live session and a higher seq; a WHOLE list replaces the session's points (never the
 // draft). Coalesced: the latest pending message is applied at most once per animation frame and 30 times a second per mount (beyond
@@ -1093,7 +1097,7 @@ function shapeLine(points) {
   if (!pr) return null;
   return pr.problem === 'zone_out_of_range' ? 'out_of_range' : pr.problem === 'zone_caps' ? 'too_big' : 'self_cross';
 }
-const LINE_COPY = { min_points: 'drawMin', self_cross: 'drawCross', max_points: 'pointsCapTool', too_big: 'drawBig', out_of_range: 'refusedBody' };
+const LINE_COPY = { min_points: 'drawMin', self_cross: 'drawCross', max_points: 'pointsCapTool', too_big: 'drawBig' };   // out_of_range: the frame-F panel
 // finish (r3 #181-6, r4): NEVER coalesced — applied on receipt, superseding the session's pending draft_points. The first finish for
 // (session, seq) runs ONE transition: refused ⇒ the session stays open with its line (ack rejected); taken ⇒ a new zone waits for its
 // name (ack accepted; nothing in the draft before «Listo»). A duplicate re-sends the SAME ack (never a second change); a finish for an
@@ -1113,6 +1117,10 @@ function onFinish(m, msg) {
   const line = shapeLine(d.points);
   d.ack = line ? { session: d.session, seq: msg.seq, outcome: 'rejected', line } : { session: d.session, seq: msg.seq, outcome: 'accepted' };
   d.line = line;
+  // r2 P2-7: beyond |lat| 60 (not reachable in practice) the backstop is the frame-F refusal panel, not an inline line; a later finish clears it
+  if (S.zonesFail && S.zonesFail.drawn) S.zonesFail = null;
+  if (line === 'out_of_range') S.zonesFail = { kind: 'refused', key: 'zones.invalid', zoneId: d.zone, drawn: true };
+  if (S.refs) paintBanner();
   if (!line && d.zone !== null) {
     // EDITING commits on its finish (the drag end): that zone's points in the draft, ONCE — the session ends (a late duplicate meets no
     // session and only gets the render saying so); re-checked at the commit
@@ -1144,9 +1152,11 @@ function commitDrawn() {
   if (line) return;
   const ZS = globalThis.ZoneShape;
   const points = d.points.map((q) => { const g = ZS.normalizePoint(q); return { lat: g[0], lng: g[1] }; });
-  S.zonesDraft = [...(S.zonesDraft || []), { id: mintZoneId(), name, points }];
+  const id = mintZoneId();
+  S.zonesDraft = [...(S.zonesDraft || []), { id, name, points }];
   clearTimeout(d.reqT); S.drawing = null;
   afterEdit(); paintDraw();
+  focusZone(id, 'Renombrar');   // the naming row is gone with the focus in it: the new zone's own row takes it
 }
 // the portal's «Terminar» (r2 P2-6): it never closes anything itself — it asks the map for its finish (the final whole list) and waits
 // ≤ TIMING.finishMs; unanswered, the request is withdrawn and the session stays open with no change
@@ -1166,15 +1176,19 @@ function startEditing(id) {
   let session;
   try { session = MP.newMountId(window.crypto); } catch (_) { return; }
   S.drawing = { session, zone: id, points: zone.points.map((q) => ({ lat: q.lat, lng: q.lng })), seq: 0, ack: null, request: null, closed: false, line: null, name: '' };
-  paintDraw(); paintZones(); postRender('keep');
+  paintZones(); postRender('keep');
 }
-// «Cancelar» (and every end that commits nothing): the session goes — with any coalesced message — and the draft is untouched
-function endDrawing() {
-  if (!S.drawing) return;
-  clearTimeout(S.drawing.reqT);
+// «Cancelar» (and every end that commits nothing): the session goes — with any coalesced message — and the draft is untouched. The list
+// follows (Codex #204 P2-2); a «Cancelar» PRESS returns the focus (a new zone: «Dibujar zona»; an edit: that zone's «Renombrar»)
+function endDrawing({ focus = false } = {}) {
+  const d = S.drawing;
+  if (!d) return;
+  clearTimeout(d.reqT);
   S.drawing = null;
+  if (S.zonesFail && S.zonesFail.drawn) S.zonesFail = null;   // a drawn shape's frame-F panel goes with its session
   if (S.map) { S.map.pending = null; dropFrame(S.map.frameReq); S.map.frameReq = null; }
-  paintDraw(); postRender('keep');
+  paintZones(); if (S.refs) paintBanner(); postRender('keep');
+  if (focus && S.refs) { if (d.zone !== null) focusZone(d.zone, 'Renombrar'); else if (!S.refs.zonesDraw.disabled) S.refs.zonesDraw.focus(); }
 }
 function paintDraw() {
   // r2 P2-4: the predicate is re-checked on every repaint (every map, read, save or lock change reaches here) — false mid-session ⇒ the
@@ -1184,12 +1198,17 @@ function paintDraw() {
   if (!r || !r.mtool) return;
   const on = !!S.drawing;
   const full = on && S.drawing.points.length >= MP.ZONE_LIMITS.points;   // addendum G: the 24th point — the hint counts, the tool line says the cap
-  r.mapHint.replaceChildren(...(on ? [document.createTextNode(full ? EL.zonesCopy('pointsCap') : COPY.drawingHint)] : [ic('ring'), document.createTextNode(COPY.mapHint)]));
-  r.drawNote.textContent = full ? EL.zonesCopy('pointsCapTool') : COPY.drawTool;
+  // Codex #204 P3-2: EDITING says what editing does (drag a point; a drag end saves it to the draft) — never the drawing instructions
+  const editing = on && S.drawing.zone !== null;
+  const ez = editing ? (S.zonesDraft || []).find((z) => z.id === S.drawing.zone) : null;
+  const hint = !on ? null : editing ? EL.zonesCopy('editHint', { nombre: ez ? ez.name : '' }) : full ? EL.zonesCopy('pointsCap') : COPY.drawingHint;
+  r.mapHint.replaceChildren(...(on ? [document.createTextNode(hint)] : [ic('ring'), document.createTextNode(COPY.mapHint)]));
+  r.drawNote.textContent = editing ? EL.zonesCopy('editTool') : full ? EL.zonesCopy('pointsCapTool') : COPY.drawTool;
+  r.drawFinish.classList.toggle('hidden', editing);   // a drag end commits an edit: nothing to «Terminar»
   r.mapHint.classList.toggle('drawhint', on);
   r.map.classList.toggle('drawing', on);
   r.mtool.classList.toggle('hidden', !on || S.drawing.closed);
-  const line = on && S.drawing.line ? EL.zonesCopy(LINE_COPY[S.drawing.line]) : null;
+  const line = on && S.drawing.line && S.drawing.line !== 'out_of_range' ? EL.zonesCopy(LINE_COPY[S.drawing.line]) : null;   // out_of_range: frame F (onFinish)
   if (line) { r.drawLine.textContent = line; if (!r.drawLine.isConnected) r.mtool.after(r.drawLine); } else r.drawLine.remove();
   r.zonesDraw.classList.toggle('hidden', on);
   r.zonesDraw.disabled = !canDraw();

@@ -5,8 +5,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { settle } from './ventas-harness.mjs';
-import { server, page, posted, POLICY, B3 } from './envio-harness.mjs';
+import { server, page, posted, POLICY, B3, CORE } from './envio-harness.mjs';
 import { childMessage, mapMessage } from './envio-map-protocol.js';
+import { zonesCopy } from './envio-logic.js';
+const P = (k, vars) => zonesCopy(k, vars);   // the shipped string, or its ⟦zones.key⟧ placeholder while the owner has not approved it
 import { readFileSync } from 'node:fs';
 import { runInThisContext } from 'node:vm';
 import { createRequire } from 'node:module';
@@ -296,9 +298,9 @@ test('Z2 (m7) finish-before-flush: a pending draft_points is superseded — the 
   const p = await open();
   const { out, session } = await drawing(p);
   drawPts(p, session, 1, pts(2));
-  finish(p, session, 2, GOOD);   // no settle between: the draft_points is still pending
+  finish(p, session, 2, GOOD);   // no settle between: the draft_points is still pending — and the finish must not wait for the frame
+  assert.equal(last(out).drawing.ack && last(out).drawing.ack.outcome, 'accepted', '🔴 the finish closes it at once (never coalesced, Codex #204: asserted BEFORE the frame flush)');
   await settle(80);
-  assert.equal(last(out).drawing.ack && last(out).drawing.ack.outcome, 'accepted', '🔴 the finish closes it (never coalesced)');
   assert.deepEqual(last(out).drawing.points, GOOD, 'the finish\'s list');
 });
 
@@ -441,4 +443,77 @@ test('Z2 a save starting (the page frozen) ends an open session — the open sha
   p.btn('Guardar cambios').click(); await settle(80);
   assert.equal(inDrawing(p), false, '🔴 the save ended the open session');
   assert.equal(last(out).drawing, null);
+});
+
+// ── Codex #204 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// P1: ANY applied read ends the transient session (and its pending messages) — a session opened on cached v3 never commits against v4
+test('#204-P1 an EDITING session opened on the cached v3 ends when v4 is adopted; its late finish changes nothing; v4\'s zone stands', async () => {
+  const p = await open();
+  p.d.getElementById('navprod').click(); await settle(20);
+  const V4 = [{ id: 'z_aaaaaaaa', name: 'Sector A', points: SQ(15.6, -88.1) }];
+  await p.srv.db.ref(CORE.PATH).set({ ...POLICY(4, B3), no_delivery_zones: V4 });   // another admin saved v4 while we were away
+  let release; p.srv.hold.get = new Promise((r) => { release = r; });
+  await p.open(); await settle(30);   // the cached v3 is on screen; the fresh GET is held
+  const out = posted(p);
+  await live(p);
+  editReq(p, 'z_aaaaaaaa'); await settle();
+  const { session } = last(out).drawing;
+  assert.deepEqual(last(out).drawing.points, AS_SENT[0].points, 'premise: editing the CACHED v3 shape');
+  p.srv.hold.get = null; release(); await settle(80);   // v4 arrives and is adopted
+  assert.equal(p.mods.envio._envioState.drawing, null, '🔴 the adoption ended the session');
+  finish(p, session, 1, EDITED); await settle();
+  const z = p.mods.envio._envioState.zonesDraft.find((x) => x.id === 'z_aaaaaaaa');
+  assert.deepEqual(z.points.map((q) => [q.lat, q.lng]), V4[0].points, '🔴 v4\'s zone stands — the old editor never overwrites it');
+  assert.equal(p.bar().classList.contains('show'), false, 'nothing unsaved');
+});
+
+// P2-2: every session transition repaints the list (rename / remove follow the session) and puts the focus somewhere sensible
+const zbtns = (p) => [...p.d.querySelectorAll('section.envzones .zrow:not(.editing) button.ib')];
+test('#204-P2 starting a drawing turns rename / remove off; «Cancelar» on the naming row removes the row and its note, turns them back on, focuses «Dibujar zona»', async () => {
+  const p = await open();
+  const { session } = await drawing(p);
+  assert.ok(zbtns(p).length && zbtns(p).every((b) => b.disabled), '🔴 drawing: rename / remove off');
+  finish(p, session, 3, GOOD); await settle();
+  [...nameRow(p).querySelectorAll('button')].find((b) => b.textContent === 'Cancelar').click(); await settle();
+  assert.equal(nameRow(p), null, '🔴 the naming row is gone');
+  assert.equal(p.d.querySelector('section.envzones .zlist + p.efnote'), null, 'its note too');
+  assert.ok(zbtns(p).every((b) => !b.disabled), '🔴 rename / remove are back');
+  assert.equal(p.d.activeElement, drawBtn(p), 'the focus returns to «Dibujar zona»');
+});
+test('#204-P2b cancelling an EDITING session turns rename / remove back on and focuses that zone\'s «Renombrar»', async () => {
+  const p = await open();
+  const out = posted(p);
+  await live(p);
+  editReq(p, 'z_aaaaaaaa'); await settle();
+  assert.ok(zbtns(p).every((b) => b.disabled), 'premise: off while editing');
+  [...mapSec(p).querySelectorAll('.mtool button')].find((b) => b.textContent === 'Cancelar').click(); await settle();
+  assert.equal(last(out).drawing, null);
+  assert.ok(zbtns(p).every((b) => !b.disabled), '🔴 back on');
+  assert.equal(p.d.activeElement && p.d.activeElement.title, 'Renombrar', 'the edited zone\'s rename');
+});
+
+// P3-2: EDITING says what editing does (drag a point) — never the drawing instructions it ignores; no «Terminar» (a drag end commits)
+test('#204-P3 EDITING shows the editing line and only «Cancelar» — never «Tocá el mapa…» or «Terminar»', async () => {
+  const p = await open();
+  await live(p);
+  editReq(p, 'z_aaaaaaaa'); await settle();
+  const tool = mapSec(p).querySelector('.mtool');
+  assert.notEqual(tool.querySelector('.efnote').textContent, 'Tocá el mapa para marcar cada punto. Para cerrar la zona, tocá el primer punto o «Terminar».', '🔴 not the drawing line');
+  assert.equal(tool.querySelector('.efnote').textContent, P('editTool'), 'the editing line (the owner\'s copy, or its placeholder until approved)');
+  assert.equal(mapSec(p).querySelector('h3 .ehint').textContent, P('editHint', { nombre: 'Sector A' }));
+  assert.deepEqual([...tool.querySelectorAll('button')].filter((b) => !b.classList.contains('hidden')).map((b) => b.textContent), ['Cancelar'], '🔴 no «Terminar»');
+});
+
+// P3-3: a shape beyond |lat| 60 is refused with the frame-F panel (r2 P2-7), not an inline line
+test('#204-P3b a shape above 60° latitude ⇒ the frame-F refusal panel; no inline line; nothing in the draft', async () => {
+  const p = await open();
+  const { out, session } = await drawing(p);
+  const NORTH = [{ lat: 61, lng: -88.05 }, { lat: 61, lng: -88.04 }, { lat: 61.01, lng: -88.04 }, { lat: 61.01, lng: -88.05 }];
+  finish(p, session, 1, NORTH); await settle();
+  assert.equal(last(out).drawing.ack.line, 'out_of_range');
+  const box = p.d.querySelector('.envzfail');
+  assert.ok(box, '🔴 the frame-F panel');
+  assert.equal(box.querySelector('b').textContent, P('refusedTitleBare')); assert.equal(box.querySelector('p').textContent, P('refusedBody'));
+  assert.equal(toolLine(p), null, 'no inline line for it');
+  assert.deepEqual(last(out).zones, AS_SENT);
 });

@@ -440,6 +440,8 @@ export const ZONES_COPY = Object.freeze({
   pointsCap: '24 de 24 puntos', pointsCapTool: 'Máximo 24 puntos por zona. Cerrá la zona o quitá un punto.',   // addendum G: the 24th point while drawing
   // Z2 — a drawn shape refused before any draft change (the approved v2 page note 12 + addendum G), and the naming row (note 13)
   drawMin: 'Marcá al menos 3 puntos.', drawCross: 'La zona se cruza a sí misma. Mové un punto.', drawBig: 'La zona es demasiado grande: hasta 20 km de lado.',
+  // EDITING a drawn zone (Codex #204 P3-2): no approved frame draws it — null until the owner approves the proposed lines (⟦zones.key⟧ + the SHIP GATE red)
+  editHint: null, editTool: null,
   namePh: 'Nombre de la zona', nameNote: 'Nombrá la zona para ubicarla después. Hasta 30 caracteres.', nameCancel: 'Cancelar', nameDone: 'Listo',
 });
 export const zonesCopy = (k, vars = null) => {
