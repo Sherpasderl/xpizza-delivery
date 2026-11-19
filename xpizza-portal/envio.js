@@ -153,6 +153,14 @@ document.addEventListener('portal:auth', (e) => {
 // ── load ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const bodyVersion = (b) => { const v = b && (b.current_malformed === true ? b.policy_version_raw : b.policy_version); return Number.isSafeInteger(v) && v >= 0 ? v : null; };
 const raiseFloor = (v) => { if (Number.isSafeInteger(v) && v > S.floor) S.floor = v; };
+// Codex #186 — the ONE place the table is reset to a base: the rows and the base they are judged against (S.feesBase) move TOGETHER, so
+// no path can reset one without the other. `loaded` = the base: a policy ⇒ its bands; anything else (malformed, none) ⇒ an empty
+// table and no base (then any typed value is a draft). User edits change S.rows only — never the base.
+function resetRowsTo(loaded) {
+  const bands = loaded && loaded.kind === 'policy' ? loaded.bands : null;
+  S.rows = EL.rowsFromBands(bands || []);
+  S.feesBase = bands;
+}
 function adoptBody(b) {
   S.loaded = EL.loadedState(b);
   S.zones = EL.zonesFromBody(b);
@@ -164,8 +172,7 @@ function adoptBody(b) {
   S.branchesRaw = Array.isArray(b.branches) ? b.branches : [];
   S.restaurants = EL.restaurantsOf(S.branchesRaw);
   S.limitEdits = {};
-  S.rows = EL.rowsFromBands(S.loaded.kind === 'policy' ? S.loaded.bands : []);
-  S.feesBase = S.loaded.kind === 'policy' ? S.loaded.bands : null;
+  resetRowsTo(S.loaded);
   refreshEntries();
   if (!S.pick || !S.entries.some((e) => e.rid === S.pick)) S.pick = EL.defaultPick(S.entries);
   S.note = null;
@@ -329,7 +336,7 @@ function settleEnvioOutcome(attempt, o, recoveryRes) {
       // ENVÍO step 2: the sent zones ARE the stored ones now (the same transaction); unsent ⇒ the stored list is untouched
       if (attempt.sentZones && S.zones) { S.zones = { ...S.zones, zones: attempt.sentZones.map((z) => ({ id: z.id, name: z.name, points: z.points.map((pt) => ({ ...pt })) })) }; S.zonesDraft = S.zones.zones.map((z) => ({ ...z, points: z.points.map((pt) => ({ ...pt })) })); }
       S.loaded = { kind: 'policy', version, bands: attempt.sentBands.map((b) => ({ ...b })) };
-      S.rows = EL.rowsFromBands(S.loaded.bands); S.feesBase = S.loaded.bands;
+      resetRowsTo(S.loaded);
       // ENVÍO v3: the sent limits ARE the stored ones now (the same transaction): fold them into the loaded rows, nothing left pending
       const sent = new Map(attempt.sentLimits.map((e) => [e.rid, e.km]));
       const landed = (rows) => rows.map((b) => (sent.has(b.rid) ? { ...b, max_km: sent.get(b.rid), limit_invalid: false } : b));
@@ -352,7 +359,7 @@ function settleEnvioOutcome(attempt, o, recoveryRes) {
       render(); return;
     case 'superseded': case 'conflict':
       S.attempt = null; S.phase = null; S.banner = 'conflict';
-      S.rows = EL.rowsFromBands(S.loaded && S.loaded.kind === 'policy' ? S.loaded.bands : []);
+      resetRowsTo(S.loaded);
       render(); return;
     case 'forbidden': revoke(); return;
     case 'refused': case 'unauthenticated':
@@ -385,7 +392,7 @@ function discard() {
   if (attemptUnresolved()) return;
   bump();   // a late answer for a request of the dropped state is ignored (the map has its own lifetime: F6)
   S.attempt = null; S.phase = null; S.banner = null; S.confirm = null; S.note = null;
-  S.rows = EL.rowsFromBands(S.loaded && S.loaded.kind === 'policy' ? S.loaded.bands : []);
+  resetRowsTo(S.loaded);
   S.limitEdits = {};   // Codex HIGH r1 P2: the limit edits go too — the field, the picker and the map follow the loaded limits again
   // ENVÍO step 2: the zones draft goes back to the read too
   S.zonesDraft = S.zones && S.zones.zones ? S.zones.zones.map((z) => ({ ...z, points: z.points.map((pt) => ({ ...pt })) })) : null;
@@ -1179,7 +1186,7 @@ registerView({
     const cached = S.uid ? store.get(CACHE(S.uid)) : null;
     if (held) S.status = 'ready';
     // #179 P2-1: a draft left on a link out survives (the same adoption path; another admin ⇒ discard)
-    else if (cached) { applyRead(cached, { discard: otherUser, cached: true }); S.status = 'ready'; } else { S.status = 'loading'; S.rows = [{ km: '', fee: '' }]; }
+    else if (cached) { applyRead(cached, { discard: otherUser, cached: true }); S.status = 'ready'; } else { S.status = 'loading'; resetRowsTo(null); }
     render();
     load();
     if (held && S.phase !== 'not_landed') recover(held);
