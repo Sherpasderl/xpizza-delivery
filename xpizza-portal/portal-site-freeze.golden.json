@@ -158,7 +158,8 @@
   "ventas.js",
   "ventas.test.mjs",
   "whoami-fit.test.mjs",
-  "wiring-ast.mjs"
+  "wiring-ast.mjs",
+  "zone-shape.js"
  ],
  "bytes": {
   "DESIGN.md": {
@@ -190,8 +191,8 @@
    "bytes": 20184
   },
   "index.html": {
-   "sha256": "8a7b5933c45699a10845ad8b234954c89d932ece9c665788947916efc052d838",
-   "bytes": 14972
+   "sha256": "3e09d7e2448c38308f17d9f6ceb66014027ce06c0d406f66a97fb162929785f9",
+   "bytes": 15209
   },
   "netlify.toml": {
    "sha256": "19d652c8a70380312a0de8a1bc681a5b3cf6401c4b1d7141e8ab57d2be4eb9da",
