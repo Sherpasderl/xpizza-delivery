@@ -541,3 +541,19 @@ test('#206b an adoption ends the session with the focus on the tool line\'s «Ca
   assert.equal(p.mods.envio._envioState.drawing, null, 'premise: the adoption ended the session');
   assert.equal(p.d.activeElement, drawBtn(p), '🔴 the focus is on a visible control');
 });
+// Codex #208: the target is resolved from the FINAL DOM — an adoption ends an EDITING session and then re-renders the whole list; the focus
+// lands on the edited zone's «Renombrar» in the rebuilt list (never on <body>)
+test('#208 an adoption during EDITING, the focus on «Cancelar» ⇒ the edited zone\'s «Renombrar» in the REBUILT list', async () => {
+  const p = await open();
+  p.d.getElementById('navprod').click(); await settle(20);
+  let release; p.srv.hold.get = new Promise((r) => { release = r; });
+  await p.open(); await settle(30);
+  await live(p);
+  editReq(p, 'z_aaaaaaaa'); await settle();
+  const cancel = [...mapSec(p).querySelectorAll('.mtool button')].find((b) => b.textContent === 'Cancelar');
+  cancel.focus();
+  assert.equal(p.d.activeElement, cancel, 'premise: the focus is on the tool line');
+  p.srv.hold.get = null; release(); await settle(80);
+  const ren = [...p.d.querySelectorAll('section.envzones .zrow')].find((r) => r.dataset.zone === 'z_aaaaaaaa').querySelector('button.ib[title="Renombrar"]');
+  assert.equal(p.d.activeElement, ren, '🔴 the rebuilt row\'s «Renombrar» has the focus');
+});

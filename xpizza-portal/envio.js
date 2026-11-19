@@ -1054,14 +1054,21 @@ function paintLegend() {
 // It gates «Dibujar zona», an edit_request, and every commit.
 // Codex #206 — ONE focus rule for every session transition: the focused control is noted before the repaint; if the repaint hid, removed
 // or disabled it, the focus moves to the transition's target (a control the transition leaves visible). Focus elsewhere — the map frame,
-// another card — is never moved.
+// another card — is never moved. Codex #208: judged and resolved from the FINAL DOM — after the whole synchronous repaint (an adoption's
+// render() rebuilds the list after its endDrawing), the target re-queried by its stable key (a zone id, the page's current refs).
+// hidden BY THIS PAGE: a `.hidden` ancestor inside the envio root (the shell's own wrappers are not the page's business)
+const hiddenHere = (el) => { const h = el.closest('.hidden'); return !!h && !!S.root && S.root.contains(h); };
 function transition(paint, target) {
   const a = typeof document !== 'undefined' ? document.activeElement : null;
   paint();
-  const lost = !!a && a !== document.body && (!a.isConnected || !!a.closest('.hidden') || a.disabled === true);
-  if (!lost) return;
-  const t = target();
-  if (t && t.isConnected && !t.disabled) t.focus();
+  if (!a || a === document.body) return;
+  queueMicrotask(() => {
+    const now = document.activeElement;
+    if (now !== a && now !== document.body) return;   // the person moved the focus meanwhile
+    if (a.isConnected && !hiddenHere(a) && a.disabled !== true) return;   // still a usable control: nothing lost
+    const t = target();
+    if (t && t.isConnected && !hiddenHere(t) && !t.disabled) t.focus();
+  });
 }
 const zoneBtn = (id, title) => { const row = S.refs && [...S.refs.zonesList.querySelectorAll('.zrow')].find((x) => x.dataset.zone === id); return row ? row.querySelector(`button.ib[title="${title}"]`) : null; };
 function canDraw(isNew = true) {
