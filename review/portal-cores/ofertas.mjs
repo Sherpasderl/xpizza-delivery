@@ -99,11 +99,14 @@ export async function backend(root) {
     const b = await write('marketingOfferSave', { rid, expected_rev: 0, offer: offer({ name: '2 por 1 en pizzas clásicas', type: 'bogo', params: { items: bogoItems, free_per_order: 1 },
       schedule: { start: hn(2026, 11, 13), end: hn(2026, 11, 30, 23, 59) + 59999, days: [5, 6], window: { from: 1260, to: 0 } } }) }, hn(2026, 11, 11, 9));
     await write('marketingOfferSetState', { rid, offer_id: b.id, to: 'active', expected_rev: b.rev }, hn(2026, 11, 11, 9, 5));
-    // Pausada por vos — «L 50 de bienvenida» (Clientes nuevos), every day, since 15 oct; paused by the owner on 9 nov
+    // Pausada por vos — «L 50 de bienvenida» (Clientes nuevos), every day, since 15 oct; paused by the owner on 9 nov. Only when THIS world's
+    // audience switch is on (asm11: audience ships OFF — the writer refuses an audience:'new' offer without it); today's world keeps it OFF
+    if (CFG.audienceEnabled(WORLD_CONFIG)) {
     const c = await write('marketingOfferSave', { rid, expected_rev: 0, offer: offer({ name: 'L 50 de bienvenida', type: 'nuevos', audience: 'new', params: { off_cents: 5000 },
       schedule: { start: hn(2026, 10, 15), end: null, days: [0, 1, 2, 3, 4, 5, 6], window: null } }) }, hn(2026, 10, 14, 9));
     const c1 = await write('marketingOfferSetState', { rid, offer_id: c.id, to: 'active', expected_rev: c.rev }, hn(2026, 10, 14, 9, 5));
     await write('marketingOfferSetState', { rid, offer_id: c.id, to: 'paused_owner', expected_rev: c1.rev }, hn(2026, 11, 9, 16));
+    }
     // Terminada — «Fin de semana: 10 % en pastas», 1 of 3 branches (Los Próceres), Sáb y Dom, ended 8 nov
     const rp = 'pv_proceres';
     const d = await write('marketingOfferSave', { rid: rp, expected_rev: 0, offer: offer({ name: 'Fin de semana: 10 % en pastas', type: 'pct', params: { pct: 10, max_cents: 10000 }, branches: [rp],
@@ -118,9 +121,13 @@ export async function backend(root) {
       schedule: { start: null, end: null, days: [0, 1, 2, 3, 4, 5, 6], window: { from: 1080, to: 1260 } } }) }, hn(2026, 11, 10, 18));
   }
 
+  // the world's marketing config: offers ON, audience OFF (as production ships, asm11); the go-live gate (32a95e405) needs the owner's marker
+  const WORLD_CONFIG = { offers_enabled: true, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } };
   async function reset(scn) {
     failTx = null; clockNow = T0; plan = PLANS[scn] ? [...PLANS[scn]] : null;
     fake = createFakeDb({
+      // the owner's post-#10 marker: the pending-sweep exit is deployed (marketing/config.js EXIT_MARKER) — offers may be switched ON
+      platform_config: { pending_sweep_exit: { at: 1, by: 'owner' } },
       brands: { [BRAND]: { name: BRAND_NAME, active: true, locations: Object.fromEntries(ROWS.map(([rid]) => [rid, 'member'])), activation: { state: 'on', since: 1 } } },
       restaurants: Object.fromEntries(ROWS.map(([rid, name]) => [rid, { identity: { brand_id: BRAND, name, active: true, prep_default_min: 20, version: 1,
         hub_lat: 14.09, hub_lng: -87.2, delivery_radius_km: 4, phone: '+50497128830', hours: days(ALL_DAY) } }])),
@@ -136,8 +143,7 @@ export async function backend(root) {
     const cat = items[0] && items[0].display && items[0].display.cat;
     bogoItems = items.filter((i) => i.display && i.display.cat === cat).slice(0, 2).map((i) => i.key);
     if (bogoItems.length !== 2) throw new Error(`premise: the published menu has two dishes in its first category (${JSON.stringify(bogoItems)})`);
-    const cfg = await CFG.writeMarketingConfig(db, { expected: 0, actor: 'cli:shoot', now: 1,
-      config: { offers_enabled: true, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } } });
+    const cfg = await CFG.writeMarketingConfig(db, { expected: 0, actor: 'cli:shoot', now: 1, config: WORLD_CONFIG });
     if (!cfg || cfg.ok !== true) throw new Error(`premise: the config writer turned offers ON (${JSON.stringify(cfg)})`);
     if (scn === 'populated' || scn === 'unknown' || plan) await seedOffers();
     if (scn === 'cfm-refused') {   // Centro to the live limit (live_max 10): it holds «Almuerzo» + «2 por 1» live; 8 more by the REAL core
