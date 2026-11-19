@@ -994,6 +994,7 @@
   "payments/sdk/coordinator.js#cancelSdkOrder": "payment",
   "payments/sdk/coordinator.js#cancelSdkOrder>anon": "payment",
   "payments/sdk/sweeper.js#visitDueOrder": "payment",
+  "payments/sdk/cards.js#nullSpentToken": "payment",
   "payments/sdk/coordinator.js#orderRevision": "payment",
   "payments/sdk/flow.js#markerFault": "payment",
   "payments/sdk/flow.js#sdkGoLiveAdmits": "payment",
@@ -1011,6 +1012,9 @@
   "payments/sdk/order-auth.js#valid": "payment",
   "payments/sdk/pixelpay-adapter.js#post": "payment",
   "payments/sdk/pixelpay-adapter.js#pspAuthorize": "payment",
+  "payments/sdk/pixelpay-adapter.js#pspDeleteToken": "payment",
+  "payments/sdk/psp-adapter.js#pspDeleteToken": "payment",
+  "payments/sdk/token-queue.js#drainProviderDeletes": "payment",
   "payments/sdk/pixelpay-adapter.js#pspCapture": "payment",
   "payments/sdk/pixelpay-adapter.js#pspStatus": "payment",
   "payments/sdk/pixelpay-adapter.js#pspVoid": "payment",
@@ -1877,6 +1881,43 @@
  },
  "opaqueWriteResolutions": [
   {
+   "file": "xpizza-functions/payments/sdk/record-token.js",
+   "fn": "enqueueAndDrop",
+   "how": "computed-key-at-root",
+   "detail": "*/*/token",
+   "fields": [],
+   "reason": "card-cleanup (owner unparked 11-18): `provider_token_deletes/${hash}/token` — the provider-delete queue item (token-queue.enqueueEntries) — a server-only node (rules .read/.write false), never an /orders path",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/payments/sdk/record-token.js",
+   "fn": "enqueueAndDrop",
+   "how": "computed-key-at-root",
+   "detail": "*/*/sources/*",
+   "fields": [],
+   "reason": "card-cleanup (owner unparked 11-18): `provider_token_deletes/${hash}/sources/order_${oid}` — the queue item's source { aid, uid, at } — a server-only node (rules .read/.write false), never an /orders path",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/payments/sdk/token-queue.js",
+   "fn": "drainProviderDeletes",
+   "how": "dynamic-root-path",
+   "detail": "*/*/ok_at",
+   "fields": [],
+   "reason": "card-cleanup (owner unparked 11-18): `provider_token_deletes/${hash}/ok_at` — OUR recorded provider 200 (the probe rule) — a server-only node (rules .read/.write false), never an /orders path",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/payments/sdk/token-queue.js",
+   "fn": "drainProviderDeletes",
+   "how": "dynamic-root-path",
+   "detail": "*/*",
+   "fields": [],
+   "reason": "card-cleanup (owner unparked 11-18): `provider_token_deletes/${hash}` — the item's retry state { tries, next_at, last_status } — a server-only node (rules .read/.write false), never an /orders path",
+   "count": 1
+  },
+
+  {
    "file": "xpizza-functions/index.js",
    "fn": "createOrderApp.all",
    "how": "computed-key-at-root",
@@ -2157,6 +2198,7 @@
   }
  ],
  "moneyPathNonFactReads": {
+  "customer_uid@xpizza-functions/payments/sdk/coordinator.js#placeOriginal": "card-cleanup r3: the customer the card token belongs to, stored WITH the token (payment_sdk_tokens {t, uid}) so the saved-card exclusion still has it after the order is purged — an identity key, never an amount; asserted by token-queue TQ-NO-UID-SAVED / TQ-NO-UID-RESUBMITTED-SAVED",
   "resolution@xpizza-functions/ledger/projector.js#projectOrder": "ledger S3 (Codex #114 #4): the PRESENCE of resolve-manual close_fulfilled's marker (resolution offline_fulfilled) puts the order on the MANUAL HOLD — nothing is posted; never an amount or a selector of money",
   "created_at@xpizza-functions/ledger/projector.js#projectOrder": "ledger S3 (Codex #110 r2 condition): the AUTHORITATIVE order date — every journal is DATED by it (the snapshot's created_at is informational); never an amount or a selector of money",
   "active_attempt_id@xpizza-functions/ledger/projector.js#projectOrder": "ledger S3: selects WHICH paid attempt is the order's sale (the primary collection); any other paid attempt goes to customer_refund_suspense — the amounts are the PROVIDER-reported ones, never this pointer's",

@@ -48,6 +48,7 @@ async function visitDueOrder(deps, orderId) {
   await C.sweepPendingRoles(deps, orderId);
   await C.trackExpiry(deps, orderId);
   await require('./cards').completeVaultForOrder(deps, orderId);   // D4 row 12: the saved-card vault write, resumable (S3)
+  await require('./cards').nullSpentToken(deps, orderId);   // card items 2 (owner 11-18): the token goes once nothing can read it
   const rec = await C.readRecord(deps.db, orderId);
   order = await C.readOrder(deps.db, orderId);
   if (rec && rec.frozen && order && order.payment_terminal && now - order.payment_terminal.at > CAPTURE_OVERDUE_MS
@@ -80,6 +81,10 @@ async function sweepSdkPayments(deps) {
       out.closed += 1;
     }
   }
+  // Codex #158 r1 F2: the token nodes no due entry points at (isolated: a failure never fails the due pass)
+  try { out.tokens = await require('./cards').sweepTokenOrphans(deps); } catch (_) { out.tokens = { error: true }; }
+  // card-cleanup: the provider-delete drain (bounded; INERT while the SDK config is off), isolated from the passes above
+  try { out.providerDeletes = await require('./token-queue').drainProviderDeletes(deps); } catch (_) { out.providerDeletes = { error: true }; }
   return out;
 }
 

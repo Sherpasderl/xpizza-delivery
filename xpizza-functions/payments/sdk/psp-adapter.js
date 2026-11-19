@@ -38,6 +38,15 @@ function makeAdapter(impl) {
       if (r.outcome === 'voided' && r.uuid !== uuid) return { outcome: 'unknown' };
       return { outcome: r.outcome, uuid, code: r.code || null };
     },
+    // card-cleanup: the provider token delete (the drain). The HTTP STATUS decides (the probe rule: 200 / 400 / 401·403 / other), so it
+    // is passed through; a throw or a malformed answer is status 0 (UNKNOWN), never a success
+    async pspDeleteToken({ token }) {
+      if (!isNonEmpty(token)) throw new Error('psp-adapter: delete needs a token');
+      if (typeof impl.pspDeleteToken !== 'function') return { status: 0, success: false };
+      const r = await settleCall(() => impl.pspDeleteToken({ token }), null);
+      if (!r || !Number.isInteger(r.status)) return { status: 0, success: false };
+      return { status: r.status, success: r.success === true };
+    },
     async pspStatus({ uuid }) {
       if (!isNonEmpty(uuid)) throw new Error('psp-adapter: status needs uuid');
       const r = await settleCall(() => impl.pspStatus({ uuid }), null);

@@ -127,6 +127,8 @@ const D = {
     // fix/privacy-gaps-5f (Codex #133 HIGH 1) — the one-time owner card fence for accounts deleted before the fence (DRY RUN unless --apply):
     // requireProject({ requireFlag: true }) before any client
     'fence-deleted-cards',
+    // owner GO 11-18 (card token off the payment record) — the one-time owner migration payment_sdk.token → payment_sdk_tokens (DRY RUN
+    // unless --apply): requireProject({ requireFlag: true }) before any argument or client
     // P5a follow-up — the READ-ONLY identity-usable check (booleans/counts per restaurant; Firestore writes patched to throw):
     // requireProject({ requireFlag: true }) before any client
     'identity-usable-check',

@@ -8,15 +8,15 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { BASE, HUNKS, FILES, unapplyPrivacyModule } = require('./tools/privacy-module-inverse');
+const { BASE, FILE_BASES, baseOf, HUNKS, FILES, unapplyPrivacyModule } = require('./tools/privacy-module-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 assert.ok(FILES.length >= 1 && HUNKS.length >= 1, 'PRIVACY: non-vacuity — the layer owns files');
 for (const F of FILES) {
   const disk = fs.readFileSync(path.join(__dirname, F), 'utf8');
-  const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
+  const base = git(['show', `${baseOf(F)}:xpizza-functions/${F}`]);   // asm12 step 04 (RULING A): cards.js = BASE + cardclean (c41b29ce6)
   assert.notStrictEqual(disk, base, `PRIVACY: non-vacuity — ${F} carries the privacy hunks`);
-  assert.strictEqual(unapplyPrivacyModule(F, disk), base, `PRIVACY: 🔴 ${F} minus the privacy hunks is not ${BASE}:${F}`);
+  assert.strictEqual(unapplyPrivacyModule(F, disk), base, `PRIVACY: 🔴 ${F} minus the privacy hunks is not ${baseOf(F)}:${F}`);
   for (const h of HUNKS.filter((x) => x.file === F)) {
     const k = Math.floor(h.now.length / 2);
     assert.throws(() => unapplyPrivacyModule(F, disk.replace(h.now, h.now.slice(0, k) + '\u0000' + h.now.slice(k + 1))), /occurs 0 times/, `PRIVACY: ${F}: a byte inside a hunk`);
@@ -24,7 +24,7 @@ for (const F of FILES) {
   }
 }
 assert.strictEqual(unapplyPrivacyModule('tb-unowned.js', 'x\n'), 'x\n', 'PRIVACY: an unowned file passes through');
-ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === ${BASE.slice(0, 9)} byte-for-byte; tamper / duplicate detected; other files pass through`);
+ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === their base (${BASE.slice(0, 9)}; cards.js ${baseOf('payments/sdk/cards.js').slice(0, 9)}) byte-for-byte; tamper / duplicate detected; other files pass through`);
 {
   // Codex #133 r1 (5): the inverse is GENERATED, so a regeneration that carried a real code change along (e.g. `data.sent = true;`)
   // would keep both this pin and DRVC green. Two locks: (a) the APPROVED MANIFEST — the base, the owned files and the sha256 of every
@@ -36,6 +36,7 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === ${BASE.s
   const { isPureLogStatement } = require('./tools/log-stmt');
   const MANIFEST = Object.freeze({
     base: '31f05c8a40c35fe0c442be8839593954c3afc8b1',
+    fileBases: { 'payments/sdk/cards.js': 'c41b29ce60859001304840abe20f0e2596a030e9' },   // asm12 step 04 (advisor RULING A, 11-19): cardclean also edits cards.js
     files: ['index.js', 'whatsapp.js', 'signup-endpoints.js', 'payments/sdk/cards.js'],
     hunks: [
   '61b7262179326cb0ffd9d71ce5a3bae98033e4e8850a7a73f2fc811d29e00e19',   // index.js
@@ -69,7 +70,8 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === ${BASE.s
   '25ccb39e19ebf4374a12a3f2f93e8d633a20c962de20ee5b1c005139b21cfd2b',   // payments/sdk/cards.js
   '6dd9800e290f06eed59fa23c55fc8caff7414fb633d5c767b60305a5c8353ab5',   // payments/sdk/cards.js
   'eb8ba401ffcbdee66632b95dffe5c4b9a13c5a8ad17b4486c14bd934b82e1ed8',   // payments/sdk/cards.js
-  '1932a95a3a3b6bfee5c55dd8ae4b7df5644a569848cb456babbe187b2104b3de',   // payments/sdk/cards.js
+  'dec397f314b482a15c614c0edcb9289d5f00fa5781963fc7a5a229bea5eb144d',   // payments/sdk/cards.js — asm12: the fence block, now its own hunk (cardclean's code sits between it and the exports)
+  '551b8984b4f3dda845e5eec8cbe6b8005b82c20991cd70137ccf8512b4fb39fa',   // payments/sdk/cards.js — asm12: the exports line (the privacy names added to cardclean's exports)
     ],
   });
   const NON_LOG = [
@@ -120,8 +122,8 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === ${BASE.s
   ["payments/sdk/cards.js","now","  }"],
   ["payments/sdk/cards.js","now","  await db.ref('card_fence_cursor').set(rows.length === batch ? rows[rows.length - 1][0] : null);   // a short page ends the lap"],
   ["payments/sdk/cards.js","now","  return { fenced, failed };"],
-  ["payments/sdk/cards.js","now","module.exports = { fenceCards, drainCardFences, isDeletedUid, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };"],
-  ["payments/sdk/cards.js","was","module.exports = { completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };"],
+  ["payments/sdk/cards.js","now","module.exports = { fenceCards, drainCardFences, isDeletedUid, sweepTokenOrphans, nullSpentToken, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };"],   // asm12: the union with cardclean's exports
+  ["payments/sdk/cards.js","was","module.exports = { sweepTokenOrphans, nullSpentToken, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };"],
   ];
   const shaOf = (h) => crypto.createHash('sha256').update(`${h.file}\0${h.now}\0${h.was}`).digest('hex');
   // the multiset of lines one side has that the other lacks
@@ -138,7 +140,7 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === ${BASE.s
     }
     return { bad, unused: NON_LOG.map((x, i) => i).filter((i) => !used.has(i)) };
   }
-  assert.deepStrictEqual({ base: BASE, files: [...FILES], hunks: HUNKS.map(shaOf) }, { base: MANIFEST.base, files: MANIFEST.files, hunks: MANIFEST.hunks },
+  assert.deepStrictEqual({ base: BASE, fileBases: { ...FILE_BASES }, files: [...FILES], hunks: HUNKS.map(shaOf) }, { base: MANIFEST.base, fileBases: MANIFEST.fileBases, files: MANIFEST.files, hunks: MANIFEST.hunks },
     'PRIVACY: 🔴 MANIFEST — the generated inverse is not the approved one (base, files or a hunk changed): a regeneration needs review and a new pin here');
   const live = contentProblems(HUNKS);
   assert.deepStrictEqual(live.bad, [], `PRIVACY: 🔴 CONTENT — a privacy hunk changes a line that is neither a pure log statement nor an enumerated non-log line:\n  ${live.bad.join('\n  ')}`);

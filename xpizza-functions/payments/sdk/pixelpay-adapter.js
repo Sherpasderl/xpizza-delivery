@@ -73,6 +73,46 @@ function parseLempiras(v) {
   return Number(w) * 100 + Number(f.padEnd(2, '0'));
 }
 
+// card-cleanup (PLAN (3b), advisor-approved): the provider TOKEN DELETE is the EXACT wire request the probes prove — the real
+// @pixelpay/sdk-core 2.5.2 Tokenization.deleteCard sent through axios 1.17.0 (test/fixtures/pixelpay-sdk-2.5.2/sdk-delete-wire.json):
+// DELETE {endpoint}/api/v2/tokenization/card/{token}?lang=es&from=sdk-javascript&sdk_version=2.5.2 (no env: the proven live request
+// sets none — sandbox mode adds env=sandbox as setupSandbox does), these headers IN THIS ORDER, no body. Sent with node's http(s)
+// client (not fetch: fetch adds headers of its own). provider-delete-request.test.js proves equality on a loopback server.
+const SDK_VERSION = '2.5.2';
+const TOKEN_RE = /^[A-Za-z0-9-]{8,128}$/;   // the token goes into the path raw (as the SDK does) — so only this charset is ever sent
+function deleteTokenRequest(cfg, token) {
+  if (!TOKEN_RE.test(String(token))) throw new Error('pixelpay-adapter: refusing a token outside the provider charset');
+  const q = `lang=es&from=sdk-javascript&sdk_version=${SDK_VERSION}${cfg.mode === 'sandbox' ? '&env=sandbox' : ''}`;
+  const headers = [['Accept', 'application/json'], ['Content-Type', 'application/json'], ['x-auth-key', cfg.key_id], ['x-auth-hash', cfg.auth_hash]];
+  if (cfg.gw_token) headers.push(['x-gw-access-token', cfg.gw_token]);
+  headers.push(['User-Agent', `axios/1.17.0`], ['Accept-Encoding', 'gzip, compress, deflate, br']);
+  return { method: 'DELETE', url: `${cfg.endpoint}/api/v2/tokenization/card/${token}?${q}`, headers };
+}
+function sendRaw({ method, url, headers }, deadlineMs) {
+  return new Promise((resolve) => {
+    let done = false; const finish = (v) => { if (!done) { done = true; clearTimeout(timer); resolve(v); } };
+    const u = new URL(url);
+    const lib = u.protocol === 'https:' ? require('https') : require('http');
+    // RAW headers in the proven order: node does not add Host / Connection for a raw list, so they are appended exactly as the SDK's
+    // request carries them (sdk-delete-wire.json) — without Host an HTTP/1.1 server answers its own 400 before any handler runs
+    const flat = []; for (const [k, v] of headers) flat.push(k, v);
+    flat.push('Host', u.host, 'Connection', 'keep-alive');
+    const rq = lib.request({ method, hostname: u.hostname, port: u.port || undefined, path: `${u.pathname}${u.search}`, headers: flat }, (rs) => {
+      const chunks = []; rs.on('data', (c) => chunks.push(c));
+      rs.on('end', () => {
+        let buf = Buffer.concat(chunks); const enc = String(rs.headers['content-encoding'] || '').toLowerCase(); const z = require('zlib');
+        try { buf = enc === 'gzip' ? z.gunzipSync(buf) : enc === 'deflate' ? z.inflateSync(buf) : enc === 'br' ? z.brotliDecompressSync(buf) : buf; } catch (_) { /* undecodable: no json */ }
+        let json = null; try { json = JSON.parse(buf.toString('utf8')); } catch (_) { json = null; }
+        finish({ status: rs.statusCode, json });
+      });
+      rs.on('error', () => finish({ status: null, json: null }));
+    });
+    const timer = setTimeout(() => { rq.destroy(); finish({ status: null, json: null }); }, deadlineMs);
+    rq.on('error', () => finish({ status: null, json: null }));
+    rq.end();
+  });
+}
+
 function makePixelPayImpl(cfg, { fetchImpl = fetch, deadlineMs = DEADLINE_MS, log = console } = {}) {
   const sandbox = cfg.mode === 'sandbox';
   const diag = (call, http_status, outcome, code, op_id) => { try { log.info(`sdkpp ${JSON.stringify({ call, http_status, outcome, code: code || null, op_id: op_id || null })}`); } catch (_) { /* logging never decides */ } };
@@ -138,6 +178,12 @@ function makePixelPayImpl(cfg, { fetchImpl = fetch, deadlineMs = DEADLINE_MS, lo
       diag('void', status, out.outcome, null, op_id);
       return out;
     },
+    // card-cleanup: the provider token delete (the drain) — the status decides; never the token / response body in a log
+    async pspDeleteToken({ token }) {
+      const r = await sendRaw(deleteTokenRequest(cfg, token), deadlineMs);
+      diag('delete_token', r.status, r.status === 200 ? 'ok' : 'other', null, null);
+      return { status: Number.isInteger(r.status) ? r.status : 0, success: !!(r.json && r.json.success === true) };
+    },
     async pspStatus({ uuid }) {
       const { status, json } = await post('status', { payment_uuid: uuid }, [cfg.key_id, uuid, cfg.app_url]);
       let out = { state: 'inconclusive', uuid };
@@ -151,4 +197,4 @@ function makePixelPayImpl(cfg, { fetchImpl = fetch, deadlineMs = DEADLINE_MS, lo
   };
 }
 
-module.exports = { parseConfig, makePixelPayImpl, toLempiras, parseLempiras, EVIDENCE, DEADLINE_MS, CONFIG_KEYS, VOID_REASON };
+module.exports = { deleteTokenRequest, SDK_VERSION, TOKEN_RE, parseConfig, makePixelPayImpl, toLempiras, parseLempiras, EVIDENCE, DEADLINE_MS, CONFIG_KEYS, VOID_REASON };

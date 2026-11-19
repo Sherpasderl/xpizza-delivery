@@ -35,6 +35,7 @@ const legacy = () => ({ order_id: 'x', restaurant_id: 'tb_norte', status: 'deliv
       sdk_fence: { k1: { order_id: 'o_live', owner: 'u_u_cust000000000000000000', at: 1 } },
       // Codex #154 r1 (advisor 11-18): a DELETED account's fence now HOLDS its provider tokens until the PixelPay delete; its work lists
       card_fence_owed: { u_fenc000000000000000000: 5 }, card_delete_pending: { u_fenc000000000000000000: { at: 5 } }, card_fence_cursor: 'u_fenc000000000000000000',
+      payment_sdk_tokens: { o_live: { att_x: { t: 'tok_live', uid: null } } }, payment_sdk_tokens_cursor: 'o_live', provider_token_deletes: { ['b'.repeat(64)]: { token: 'tok_q', sources: { order_o_live: { aid: 'att_x', uid: null, at: 1 } } } }, provider_token_deletes_cursor: 'b'.repeat(64),   // owner GO 11-18: the card token outside the record — server-only
     });
   });
   await seed();
@@ -53,7 +54,7 @@ const legacy = () => ({ order_id: 'x', restaurant_id: 'tb_norte', status: 'deliv
     await no(`SPRE-SERVER-ONLY ${r} writes ${node}`, () => db.ref(node).set({ x: 1 }));
   }
   // D4 (advisor 11-12): the payment server's own nodes are server-only for EVERY client — the customer included on its own uid
-  for (const [r, db] of Object.entries(roles)) for (const node of ['sdk_recovery_queue', 'sdk_recovery_queue/q1', 'recovery_phone_budget/h1', 'order_recovery_otp/o_live', 'order_access_tickets/t1', 'customer_cards/u_cust000000000000000000', 'sdk_checkout_subject/u_u_cust000000000000000000', 'recovery_verify_pad', 'sdk_fence', 'sdk_fence/k1']) {
+  for (const [r, db] of Object.entries(roles)) for (const node of ['sdk_recovery_queue', 'sdk_recovery_queue/q1', 'recovery_phone_budget/h1', 'order_recovery_otp/o_live', 'order_access_tickets/t1', 'customer_cards/u_cust000000000000000000', 'payment_sdk_tokens', 'payment_sdk_tokens/o_live', 'payment_sdk_tokens/o_live/att_x', 'payment_sdk_tokens_cursor', 'provider_token_deletes', `provider_token_deletes/${'b'.repeat(64)}`, `provider_token_deletes/${'b'.repeat(64)}/token`, 'provider_token_deletes_cursor', 'sdk_checkout_subject/u_u_cust000000000000000000', 'recovery_verify_pad', 'sdk_fence', 'sdk_fence/k1']) {
     await no(`SPRE-D4-SERVER-ONLY ${r} reads ${node}`, () => db.ref(node).once('value'));
     await no(`SPRE-D4-SERVER-ONLY ${r} writes ${node}`, () => db.ref(node).set({ x: 1 }));
   }
