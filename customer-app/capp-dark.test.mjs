@@ -210,3 +210,29 @@ test('capp-dark §5 controls: the scan SEES a new rule, an SVG attribute, a temp
   const cut = { ...all, css: all.css.replace('.qty-add-btn{width:36px;height:36px;border-radius:50%;background:#fff;', '.qty-add-btn{width:36px;height:36px;border-radius:50%;background:var(--surf2);') };
   assert.ok(cut.css !== all.css && !inventory(cut).includes(first), '🔴 DK-lit control: a literal turned into a token leaves the inventory (its entry would be stale)');
 });
+// LOC-SAND (owner 2026-11-18, MOCKUP-capp-location-off-banner.html option A): «Ubicación desactivada» loses its amber fill for the
+// approved sand caution (MOCKUP-pastel-chips, the portal's sand) — fill, text, icon and «Activar» take the sand pair, plus the sand
+// hairline. ONE .locrow rule serves the checkout (capp-ui.js) AND Inicio (capp-home.js; owner: «apply it on Inicio too»). The --warn
+// tokens are untouched here (their sweep is a later, separate mockup).
+const declsOf = (body) => new Map(body.split(';').map((d) => d.trim()).filter(Boolean).map((d) => { const k = d.indexOf(':'); return [d.slice(0, k).trim(), d.slice(k + 1).trim()]; }));
+test('LOC-SAND: the sand trio is a theme token (light + all three dark forms, the mockup\'s exact hexes); .locrow is sand with the hairline, layout unchanged; ONE rule for checkout + Inicio; --warn untouched', () => {
+  const top = rulesOf(CSS).filter((r) => r.selector);
+  const light = top.filter((r) => r.selector === '.app');
+  assert.equal(light.length, 1, 'premise: one light token home (.app)');
+  const L = declsOf(light[0].body);
+  assert.deepEqual(['--sand', '--sand-bg', '--sand-line'].map((k) => L.get(k)), ['#7A4A24', '#F7EEE5', '#E6D2BE'], '🔴 LOC-SAND: the light sand trio');
+  const dark = pairsOf(CSS).pairs.get('');
+  for (const f of ['forced', 'attr', 'media']) {
+    const D = declsOf(dark[f]);
+    assert.deepEqual(['--sand', '--sand-bg', '--sand-line'].map((k) => D.get(k)), ['#E6BC93', '#2B2119', '#51402F'], `🔴 LOC-SAND: the dark sand trio (${f} form)`);
+  }
+  const loc = top.filter((r) => /locrow/.test(r.selector));
+  assert.deepEqual(loc.map((r) => r.selector), ['.locrow', '.locrow svg.i', '.locrow button'], '🔴 LOC-SAND: ONE rule set — no screen-scoped .locrow override (checkout and Inicio look the same)');
+  assert.deepEqual(Object.fromEntries(declsOf(loc[0].body)), { display: 'flex', 'align-items': 'center', gap: '10px', padding: '10px 14px', 'border-radius': '12px',
+    background: 'var(--sand-bg)', color: 'var(--sand)', 'box-shadow': 'inset 0 0 0 1px var(--sand-line)', 'font-size': '13.5px', 'font-weight': '500' }, '🔴 LOC-SAND: the row is sand + the sand hairline; padding, radius and type unchanged');
+  assert.deepEqual(Object.fromEntries(declsOf(loc[1].body)), { width: '18px', height: '18px' }, 'the icon is untouched (it takes the row\'s colour)');
+  assert.deepEqual(Object.fromEntries(declsOf(loc[2].body)), { 'margin-left': 'auto', border: '0', background: 'transparent', color: 'var(--sand)', 'font-weight': '700', 'font-size': '13.5px',
+    padding: '6px 0 6px 8px', 'text-decoration': 'underline', 'text-underline-offset': '3px' }, '🔴 LOC-SAND: «Activar» is sand, still the underlined text link');
+  assert.deepEqual([L.get('--warn'), L.get('--warn-bg')], ['#8A5A00', '#FFF1D6'], 'the --warn tokens are untouched (their sweep comes later)');
+  assert.deepEqual([declsOf(dark.forced).get('--warn'), declsOf(dark.forced).get('--warn-bg')], ['#F2BE4B', '#3A2B06'], 'dark --warn untouched');
+});

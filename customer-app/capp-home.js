@@ -316,7 +316,7 @@
     // C-6b (f1a/f1b): the page heading Google indexes + the guest's approved promo card (only where sign-up exists; the member's
     // sample card has no data ⇒ absent). Desktop only (CSS)
     // Codex C-6b r1 #3: while auth is unresolved its footprint is RESERVED (invisible) — the H1 row never shifts when a guest resolves
-    const promo = vm.signupOn && vm.auth !== 'member' ? `<div class="promo"${vm.auth === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true"'}><span class="ic">${IC.user}</span><span class="t"><b>Creá tu cuenta y pagá en efectivo</b><span>Recompensas, promos y envío gratis</span></span></div>` : '';
+    const promo = vm.signupOn && vm.auth !== 'member' ? `<div class="promo"${vm.auth === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true"'}><span class="ic">${IC.user}</span><span class="t"><b>Creá tu cuenta y pagá en efectivo</b><span>Recompensas y promos</span></span></div>` : '';
     const h1row = !vm.desk ? '' : `<div class="h1row"><div><h1>${c ? `Pedí a domicilio en ${esc(c)}` : 'Pedí a domicilio'}</h1><p>Restaurantes de tu zona, con envío por Sherpa. Entregamos solo en Honduras.</p></div>${promo}</div>`;
     const page = (body, credit) => shellWrap(vm, `<div class="scroller">${head}${h1row}<div class="home-body">${body}${footHtml(vm)}</div>${credit || ''}</div>`);   // the footer on EVERY Inicio state (Codex C-6a r1 #5)
     if (!all.length) {
@@ -454,7 +454,7 @@
     const known = vm.auth === 'guest';
     return shellWrap(vm, `<div class="flow"><div class="flowbar plain"><h1>Cuenta</h1></div>
     <div class="guestcard"${known ? '' : ' style="visibility:hidden" aria-hidden="true"'}><h2>Tu cuenta</h2>
-      <ul><li>${IC.check}<span>Opción de pago en efectivo y tarjeta</span></li><li>${IC.check}<span>Recompensas, promos y envío gratis</span></li><li>${IC.check}<span>Programá pedidos y guardá tu dirección</span></li></ul>
+      <ul><li>${IC.check}<span>Opción de pago en efectivo y tarjeta</span></li><li>${IC.check}<span>Recompensas y promos</span></li><li>${IC.check}<span>Programá pedidos y guardá tu dirección</span></li></ul>
       ${known ? '<button class="primary" data-act="signin" data-ctx="account">Entrá o creá tu cuenta</button>' : '<span class="primary" aria-hidden="true">Entrá o creá tu cuenta</span>'}</div>
     <div class="rows">${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>Los de este teléfono</span></span>${IC.chev}</button>` : ''}${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}</div></div>`);
   }
