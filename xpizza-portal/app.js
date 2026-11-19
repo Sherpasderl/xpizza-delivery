@@ -11,7 +11,7 @@ import { pendingTexts, loadedName } from './editor.js';   // S4 — the session'
 // PLAN-public-menu-display T1 — a section's display NAME (owner-approved mockup «Cambiar nombre de sección», 2026-10-25)
 import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
-import { groupByCategory, renderRail, renderDetail, s4Copy, SECTION_NAME_PROBLEM, SECTION_NAME_MAX } from './render.js';
+import { groupByCategory, renderRail, renderDetail, s4Copy, nProd, SECTION_NAME_PROBLEM, SECTION_NAME_MAX } from './render.js';
 import { addCategory, dropStagedCategory, sectionIsNew, addSubcat, moveItem, pendingSections, reorderSections, reorderSubcats, reorderItems, renameSubcat, stagedName } from './editor.js';   // STRUCTURE S4 (the drawing half)
 import { movedGroups, reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
@@ -985,6 +985,8 @@ function holdDrawerForRename() {
   for (const c of $('drawer').querySelectorAll('button.uploader, .phph2b button, .phacts button, .pherr button, .phrm button')) if (!c.closest('[data-held]')) lockControl(c, true);
 }
 const categoryName = (id) => { const c = categoriesOf().find((x) => x && String(x.id) === String(id)); return (c && typeof c.name === 'string' && c.name.trim()) ? c.name : String(id); };
+// the outcome panels' context: the extras facts (extras-logic) + the draft's category NAMES for the S4 lines that name one (S4-B / S4-F)
+const outcomeCtx = () => ({ ...extrasOutcomeCtx(state.draft), sectionNameOf: (id) => stagedName(state.draft, id) || categoryName(id) });   // staged names first (as structure.categoryName)
 // What a NEW product inherits from its section — said in the review so the owner knows before publishing.
 function inheritedRules(catId) {
   const st = (draftSource(state.draft) || {}).structure || {};
@@ -1895,7 +1897,7 @@ function menuMoveTo(key, t) {
   }
   const backToStaged = wasNew && stagedNow().some((c) => String(c.id) === from);
   repaintFromDraft();
-  if (backToStaged) sayToast(s4Copy('toastBack', { producto: row.display.name, seccion: t.label, categoria: categoryName(from) }));
+  if (backToStaged) sayToast(s4Copy('toastBack', { producto: row.display.name, seccion: t.label, categoria: stagedName(state.draft, from) || categoryName(from) }));   // a staged section's name (categoryName alone falls back to the id)
 }
 // the shared toast (#opstoast, shell.js's look): written here directly — app.js cannot import shell.js (shell imports app; the cycle)
 let toastTimer = null;
@@ -1941,7 +1943,7 @@ function subPaint(focusK) {
   const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
   const modal = $('xsubcat').querySelector('.modal');
   const mh = mk('div', 'mh'); const t = mk('div', 'mt', 'Nueva subcategoría'); t.id = 'xsc-t';
-  mh.append(t, mk('div', 'ms', p.first ? s4Copy('sheetSubFirst', { categoria: p.cat.name, n: p.rows.length }) : s4Copy('sheetSub', { categoria: p.cat.name, subs: (p.cat.subcats || []).join(' \u00b7 ') })));
+  mh.append(t, mk('div', 'ms', p.first ? s4Copy('sheetSubFirst', { categoria: p.cat.name, nprod: nProd(p.rows.length) }) : s4Copy('sheetSub', { categoria: p.cat.name, subs: (p.cat.subcats || []).join(' \u00b7 ') })));
   const mb = mk('div', 'mb mk-form');
   const fN = mk('div', 'fld'); const lr = mk('div', 'mk-lrow');
   const lab = mk('label', null, s4Copy('subName')); lab.htmlFor = 'xsc-name';
@@ -1951,6 +1953,7 @@ function subPaint(focusK) {
   subName.className = 'mgname-in'; subName.id = 'xsc-name'; subName.type = 'text'; subName.value = p.name; subName.placeholder = s4Copy('subPh'); subName.dataset.k = 'sub:name';
   subName.addEventListener('input', bound(() => {
     p.name = subName.value; cnt.textContent = `${[...p.name].length}/${SECTION_NAME_MAX}`;
+    paintMoveLine();   // the S4-B line follows the typed name in place (no rebuild under the caret)
     if (p.nameLine) { p.nameLine = null; subPaint('sub:name'); }
   }));
   fN.append(lr, subName);
@@ -1978,7 +1981,15 @@ function subPaint(focusK) {
   }
   fP.append(lr2, box);
   if (p.line) { const l = mk('div', 'ferr mk-ferr', p.line); l.setAttribute('role', 'alert'); fP.append(l); }
-  fP.append(mk('p', 'mk-sub', p.first ? s4Copy('firstLine', { categoria: p.cat.name }) : s4Copy('moveLine', { nueva: p.name })));
+  if (p.first) fP.append(mk('p', 'mk-sub', s4Copy('firstLine', { categoria: p.cat.name })));
+  // S4-B: «…pasan a {nueva}.» only once a name is typed (advisor 11-19: never «…pasan a .»), kept current as the merchant types
+  const moveLine = p.first ? null : mk('p', 'mk-sub', '');
+  function paintMoveLine() {
+    if (!moveLine) return;
+    const t = typeof p.name === 'string' ? p.name.trim() : '';
+    if (t) { moveLine.textContent = s4Copy('moveLine', { nueva: t }); if (!moveLine.isConnected) fP.append(moveLine); } else moveLine.remove();
+  }
+  paintMoveLine();
   mb.append(fN, fP);
   const mf = mk('div', 'mf');
   const subCancel = document.createElement('button'); subCancel.type = 'button'; subCancel.className = 'btn ghost'; subCancel.textContent = 'Cancelar'; subCancel.dataset.k = 'sub:cancel';
@@ -2618,7 +2629,7 @@ function openChoiceRemove(s, from) {
   cfCard.setAttribute('aria-labelledby', 'mk-cf-t'); cfCard.setAttribute('aria-describedby', 'mk-cf-d');
   const h = mkEl('h3', null, `¿Quitar la elección ${label}?`); h.id = 'mk-cf-t';
   const marked = plan.options.find((o) => o.id === plan.priceFrom);
-  const p = mkEl('p', null, marked ? `${dish} queda con un solo precio: L ${marked.price}, el de la opción recomendada. Podés cambiarlo antes de publicar.` : IE.s3Copy('removePick')); p.id = 'mk-cf-d';
+  const p = mkEl('p', null, marked ? `${dish} queda con un solo precio: L ${marked.price}, el de la opción recomendada. Podés cambiarlo antes de publicar.` : IE.s3Copy('removePick', { nombre: dish })); p.id = 'mk-cf-d';
   const acts = mkEl('div', 'mk-cfa');
   const cfCancel = document.createElement('button'); cfCancel.className = 'btn ghost'; cfCancel.type = 'button'; cfCancel.textContent = 'Cancelar';
   const cfQuit = document.createElement('button'); cfQuit.className = 'btn ghost mk-quiet-danger'; cfQuit.type = 'button'; cfQuit.textContent = 'Quitar elección';
@@ -3818,7 +3829,7 @@ async function openReviewFlow() {
       // outcomeFor means every server error on the write path lands somewhere the merchant can act on,
       // whichever call produced it. The generic durable panel catches anything unmapped.
       if (gen !== opGeneration) return;      // a stale failure must not paint over the current world
-      if (showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)))) $('scrim').classList.add('show');
+      if (showOutcome(outcomeFor(e, 'edit', outcomeCtx()))) $('scrim').classList.add('show');
   } finally {
     endWrite(writeId, lock, gen);   // settled; the ticket is the UI's again (or nobody's)
     // LIFECYCLE: the lock is held while the review is LIVE — the modal open, the merchant attesting —
@@ -3980,7 +3991,7 @@ async function runPublish() {
     out = await attempt;
   } catch (e) {
     if (gen !== opGeneration) return;     // stale: auth changed or a newer review began mid-flight
-    showOutcome(outcomeFor(e, 'publish', extrasOutcomeCtx(state.draft)));
+    showOutcome(outcomeFor(e, 'publish', outcomeCtx()));
     return;
   } finally {
     endWrite(writeId, lock, gen);
@@ -4110,7 +4121,7 @@ async function sendToOwnerFlow() {
     document.dispatchEvent(new CustomEvent('portal:publish-request-sent'));   // pubreq.js: «Enviado al dueño para publicar»
   } catch (e) {
       if (gen !== opGeneration) return;      // a stale failure must not paint over the current world
-      if (showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)))) $('scrim').classList.add('show');
+      if (showOutcome(outcomeFor(e, 'edit', outcomeCtx()))) $('scrim').classList.add('show');
   } finally {
     endWrite(writeId, lock, gen);
     releaseEditLock(lock);                   // nothing stays live: no review holds the draft on this path

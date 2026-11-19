@@ -16,7 +16,7 @@
 
 import { isPhotoLine, lineKind, COPY as PHOTO } from './photo-logic.js';
 import { COPY as IE_COPY, s3Copy } from './item-edit-logic.js';
-import { s4Copy } from './render.js';   // STRUCTURE S4-F: the addendum's panel lines (⟦s4.key⟧ until approved)   // «Quitar del menú» (Q-11): the approved «sección vacía» lines
+import { s4Copy, nProd } from './render.js';   // STRUCTURE S4-F: the addendum's panel lines (⟦s4.key⟧ until approved)   // «Quitar del menú» (Q-11): the approved «sección vacía» lines
 
 // The acknowledgement set: the server's OWN objects, untouched.
 //
@@ -221,7 +221,7 @@ function sectionRowsOf(d, names = {}) {
   const place = (n) => `pasa al ${n}.\u00ba lugar`;
   for (const c of Array.isArray(S.subcats) ? S.subcats : []) {
     if (!c) continue;
-    if (c.change === 'added') row(catName(c.cat), s4Copy('rowSubcat'), 'Nuevo', [s4Copy('subAddedRow', { sub: c.new, n: dishesIn(c.cat, c.new) })], c, true);
+    if (c.change === 'added') row(catName(c.cat), s4Copy('rowSubcat'), 'Nuevo', [s4Copy('subAddedRow', { sub: c.new, nprod: nProd(dishesIn(c.cat, c.new)) })], c, true);
     else if (c.change === 'renamed') row(catName(c.cat), s4Copy('rowSubcat'), 'Cambio', [c.old, '\u2192', c.new], c, true);
   }
   const ord = S.categories && S.categories.order;
@@ -258,7 +258,8 @@ function sectionRowsOf(d, names = {}) {
   const declared = [...promotedIds, ...(Array.isArray(S.added) ? S.added.map((a) => a && a.id).filter((id) => id != null && !promotedIds.includes(id)) : [])];
   for (const id of declared) {
     const i = order.indexOf(id);
-    row(catName(id), s4Copy('rowCatNew'), 'Nuevo', [s4Copy('promoteRow', { n: dishesIn(id), anterior: i > 0 ? catName(order[i - 1]) : '' })], { id }, true);
+    // first place: no «pasa después de» clause (advisor 11-19)
+    row(catName(id), s4Copy('rowCatNew'), 'Nuevo', [i > 0 ? s4Copy('promoteRow', { nprod: nProd(dishesIn(id)), anterior: catName(order[i - 1]) }) : s4Copy('promoteRowFirst', { nprod: nProd(dishesIn(id)) })], { id }, true);
   }
   // each dish moved INTO one of those sections (its «Categoría» line is this row)
   for (const c of Array.isArray(d.changed) ? d.changed : []) {
@@ -1407,9 +1408,12 @@ export function outcomeFor(err, op = 'publish', ctx = {}) {
   if (code === 'subcat_partial' || code === 'section_not_attachable_yet') {
     const sec = b && typeof b.key === 'string' ? b.key : (b && typeof b.cat === 'string' ? b.cat : null);
     const partial = code === 'subcat_partial';
-    base.title = s4Copy(partial ? 'partialTitle' : 'notAttachTitle'); base.detail = s4Copy(partial ? 'partialBody' : 'notAttachBody');
+    // the S4 addendum's lines name the category (S4-B / S4-F): the caller's lookup turns the server's id into the draft's name
+    const v = { categoria: sec !== null && ctx && typeof ctx.sectionNameOf === 'function' ? ctx.sectionNameOf(sec) : (sec || '') };
+    base.title = s4Copy(partial ? 'partialTitle' : 'notAttachTitle', v); base.detail = s4Copy(partial ? 'partialBody' : 'notAttachBody', v);
     base.action = { id: PUBLISH_ACTIONS.FIX_SECTION, label: s4Copy('goSection') }; base.generic = false;
-    base.section = sec; base.sectionLine = s4Copy(partial ? 'partialLine' : 'notAttachLine');
+    base.section = sec; base.sectionLine = s4Copy(partial ? 'partialLine' : 'notAttachLine', v);
+    base.ownCopy = true;   // the S4 addendum's own approved lines: the edit-path rewrite below never touches them («Publicala…» is not a publish message)
   }
   // the description has its own (looser) rule: quotes are fine there, the signs < and > are not
   if (code === 'text_unsafe' && base.field === 'desc') {
@@ -1457,8 +1461,8 @@ export function outcomeFor(err, op = 'publish', ctx = {}) {
     // as true of the save that was refused as of a publish (the approved recovery sheet / RESET copy)
     // (and «Publicá parte de los cambios primero.» is an instruction, as true of a refused save)
     if (['deleted_ids_base_moved', 'deleted_ids_unbound', 'deleted_ids_stale_baseline', 'existing_extra_removed', 'structure_caps'].includes(code)) return base;
-    if (base.generic || /public/i.test(base.title)) base.title = 'No se pudo guardar el borrador';
-    if (base.generic || /verific|en vivo|public/i.test(base.detail)) {
+    if (!base.ownCopy && (base.generic || /public/i.test(base.title))) base.title = 'No se pudo guardar el borrador';
+    if (!base.ownCopy && (base.generic || /verific|en vivo|public/i.test(base.detail))) {
       base.detail = 'No pudimos guardar tu borrador. Tus cambios siguen en pantalla — probá de nuevo; si sigue fallando, recargá la página.';
     }
     // «Quitar del menú» (D-8 + Q-11 RULED): the last dish of a section / subsection — today's panel, titled with the approved line

@@ -470,11 +470,13 @@ test('the «Ventas» layer (Nav B 11-14 + the V3b handover): app.js keeps ONE hu
 
 test('the «reward group» refusal: review.js gains exactly ONE hunk (the reward_group_add_blocked row) — folding it out gives RGB_BASE byte-for-byte', () => {
   assert.deepEqual(Object.keys(RGB_FOLD), ['review.js'], 'the layer touches review.js only');
+  // STR34 (S3/S4, the newest layer) sits ABOVE RGB and also edits review.js: RGB is judged on review.js minus STR34
+  const onRGB = (f) => withoutSTR34(f, diskFile(f));
   const was = execFileSync('git', ['show', `${RGB_BASE}:xpizza-portal/review.js`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
-  assert.notEqual(withoutRGB('review.js', diskFile('review.js')), diskFile('review.js'), 'non-vacuity: the fold changes something');
-  assert.equal(withoutRGB('review.js', diskFile('review.js')), was, `review.js minus the layer ≠ ${RGB_BASE}`);
-  assert.notEqual(withoutRGB('review.js', diskFile('review.js') + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold (and fails the pin)');
-  assert.throws(() => withoutRGB('review.js', diskFile('review.js').replace('agregarle extras nuevos', 'agregarle extras')), 'an edit INSIDE the row breaks the fold');
+  assert.notEqual(withoutRGB('review.js', onRGB('review.js')), onRGB('review.js'), 'non-vacuity: the fold changes something');
+  assert.equal(withoutRGB('review.js', onRGB('review.js')), was, `review.js minus the layer ≠ ${RGB_BASE}`);
+  assert.notEqual(withoutRGB('review.js', onRGB('review.js') + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold (and fails the pin)');
+  assert.throws(() => withoutRGB('review.js', onRGB('review.js').replace('agregarle extras nuevos', 'agregarle extras')), 'an edit INSIDE the row breaks the fold');
 });
 
 test('STRUCTURE S3 UI + S4 writer: editor.js gains exactly the named hunks — folding them out gives STR34_BASE byte-for-byte', () => {

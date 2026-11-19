@@ -7,8 +7,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { editable, settle, page, SRC, errJson } from './drawer-harness.mjs';
 
-const { S4_COPY } = await import('./render.js');
-const P = (k) => `⟦s4.${k}⟧`;
+const { S4_COPY, s4Copy, nProd } = await import('./render.js');
+const P = (k, v) => s4Copy(k, v);   // the shipped string (⟦s4.key⟧ while a key is still null)
 const ON = () => editable({ sections: true });
 const rail = (p) => p.d.getElementById('rail');
 const items = (p) => [...rail(p).querySelectorAll('.railitem')];
@@ -29,6 +29,31 @@ test('OFF (sections absent / not true): the rail is today\'s — no «Nueva cate
     assert.ok(items(p).length > 0, 'premise: the rail');
     assert.equal(railAdd(p), null, `no action for ${JSON.stringify(over)}`);
   }
+});
+
+// advisor 11-19 (#7 ships the whole S3/S4 branch with S4 DARK until 5f's server lands): with the server's `sections` switch absent / not
+// true the sections UI is FULLY INERT — no S4 element in the menu's rail or list on any section, no S4 field in the draft, no write, and
+// the same reads as every other OFF shape (S4 has no endpoint of its own: all it could ever send rides editCatalog)
+test('INERT (sections absent / false / a truthy non-boolean): no S4 element in the menu rail or list on ANY section, no S4 draft field, no write, the same reads', async () => {
+  const S4_SEL = '.railadd, .mk-newcat, .mk-subh, .mk-subline, .mk-subpen, .mk-subin, .rgrip, .mk-htag, .mk-headline, .mk-more';
+  const reads = [];
+  for (const over of [{}, { sections: false }, { sections: 'true' }]) {
+    const p = await page({ read: () => editable(over) });
+    await p.signIn();
+    assert.ok(items(p).length > 1, 'premise: several sections to visit');
+    for (let i = 0; i < items(p).length; i++) {
+      items(p)[i].click(); await settle(5);
+      const hits = [...p.d.querySelectorAll('#rail, #detail')].flatMap((root) => [...root.querySelectorAll(S4_SEL)]).map((e) => e.className);
+      assert.deepEqual(hits, [], `🔴 ${JSON.stringify(over)} section ${i}: no S4 element`);
+      assert.ok(![...detail(p).querySelectorAll('button')].some((b) => /Mover a|Nueva subcategoría|Quitar categoría/.test(b.textContent)), `${JSON.stringify(over)} section ${i}: no S4 action`);
+    }
+    assert.equal(p.mods.app.state.sections, false, 'the switch reads OFF');
+    const st = (p.src() || {}).structure || {};
+    assert.equal('staged_categories' in st, false, '🔴 no S4 field in the draft');
+    assert.deepEqual(p.calls.filter((c) => ['editCatalog', 'requestPublish', 'publishEdited'].includes(c.fn)), [], '🔴 no write while browsing');
+    reads.push(p.calls.map((c) => c.fn).join(','));
+  }
+  assert.equal(new Set(reads).size, 1, `every OFF shape makes the same reads (${reads[0]})`);
 });
 
 test('E — «Nueva categoría» at the rail\'s foot opens the inline box (label, counter, «Nombre de la categoría», «Cancelar» · «Crear»); the counter follows in place', async () => {
@@ -93,7 +118,7 @@ test('S4-D — «Quitar categoría» asks first (E3\'s small confirm); «Cancela
   detail(p).querySelector('.mk-emptyacts button').click(); await settle(5);
   const m = p.d.querySelector('#xscrim.show .modal');
   assert.ok(m, 'the confirm'); assert.ok(m.classList.contains('sm'));
-  assert.equal(m.querySelector('.mt').textContent, P('dropTitle')); assert.equal(m.querySelector('.ms').textContent, P('dropSub'));
+  assert.equal(m.querySelector('.mt').textContent, P('dropTitle', { nombre: 'Postres' })); assert.equal(m.querySelector('.ms').textContent, P('dropSub'));
   assert.equal(m.querySelector('.mb p').textContent, P('dropBody'));
   const bs = [...m.querySelectorAll('.mf button')];
   assert.deepEqual(bs.map((b) => b.textContent), ['Cancelar', P('dropCat')]);
@@ -151,7 +176,7 @@ test('S4-A — the FIRST subcategory: every product checked and locked, the line
   b.click(); await settle(5);
   const m = sheet(p);
   assert.equal(m.querySelector('.mh .mt').textContent, 'Nueva subcategoría');
-  assert.equal(m.querySelector('.mh .ms').textContent, P('sheetSubFirst'));
+  assert.equal(m.querySelector('.mh .ms').textContent, P('sheetSubFirst', { categoria: 'Dim Sum', nprod: nProd(rowsIn(p).length) }));
   const inp = m.querySelector('input.mgname-in');
   assert.equal(m.querySelector(`label[for="${inp.id}"]`).textContent, P('subName')); assert.equal(inp.placeholder, P('subPh'));
   assert.equal(p.d.activeElement, inp);
@@ -161,7 +186,7 @@ test('S4-A — the FIRST subcategory: every product checked and locked, the line
   assert.deepEqual([m.querySelector('.mk-pick .mk-subh .mk-sn').textContent, m.querySelector('.mk-pick .mk-subh .mk-n').textContent], ['Dim Sum', `${ids.length} de ${ids.length}`]);
   assert.equal(rowsIn(p).length, ids.length);
   assert.ok(rowsIn(p).every((r) => r.classList.contains('mk-fixed') && r.querySelector('input').checked && r.querySelector('input').disabled), '🔴 checked and locked');
-  assert.equal(m.querySelector('p.mk-sub').textContent, P('firstLine'));
+  assert.equal(m.querySelector('p.mk-sub').textContent, P('firstLine', { categoria: 'Dim Sum' }));
   assert.deepEqual([...m.querySelectorAll('.mf button')].map((x) => x.textContent), ['Cancelar', P('createSub')]);
   p.type(inp, 'Al vapor'); await settle(2);
   assert.equal(m.querySelector('.fld .mk-lrow .mk-cnt').textContent, '8/40');
@@ -178,12 +203,13 @@ test('S4-B — a FURTHER subcategory: the merchant marks members (current subsec
   await p.signIn(); await pick(p, 'Bebidas');
   subBtn(p).click(); await settle(5);
   const m = sheet(p);
-  assert.equal(m.querySelector('.mh .ms').textContent, P('sheetSub'));
+  assert.equal(m.querySelector('.mh .ms').textContent, P('sheetSub', { categoria: 'Bebidas', subs: 'Sodas · Cervezas' }));
   assert.ok(rowsIn(p).every((r) => !r.querySelector('input').checked && !r.querySelector('input').disabled), 'none marked, all free');
   assert.ok(['Sodas', 'Cervezas'].includes(rowsIn(p)[0].querySelector('.mogsub').textContent), 'its current subsection');
   assert.equal(m.querySelector('.mk-pick .mk-subh .mk-lnk').textContent, 'Marcar todos');
-  assert.equal(m.querySelector('p.mk-sub').textContent, P('moveLine'));
+  assert.equal(m.querySelector('p.mk-sub'), null, 'no move line until a name is typed (advisor 11-19: never «…pasan a .»)');
   p.type(m.querySelector('input.mgname-in'), 'Jugos'); await settle(2);
+  assert.equal(sheet(p).querySelector('p.mk-sub').textContent, P('moveLine', { nueva: 'Jugos' }), '🔴 the line names the new subcategory');
   const before = JSON.stringify(p.src());
   sBtn(p, P('createSub')).click(); await settle(5);
   assert.ok(sheet(p), 'stays open');
@@ -276,12 +302,12 @@ test('S4-D — a dish moved INTO a new section promotes it; its menu then says s
   assert.ok(pid, 'promoted');
   await pick(p, 'Postres');
   more(rowOf(p, nm)).click(); await settle(5);
-  assert.equal(menu(p).querySelector('.mk-popnote').textContent, P('menuNote'), '🔴 the line in the menu');
+  assert.equal(menu(p).querySelector('.mk-popnote').textContent, P('menuNote', { categoria: 'Postres' }), '🔴 the line in the menu');
   mItem(p, 'Dim Sum').click(); await settle(10);
   assert.equal(p.src().items.find((i) => i.key === 'dimsum_01').display.cat, 'dim_sum');
   assert.deepEqual((p.src().structure.staged_categories || []).map((c) => c.name), ['Postres'], 'staged again');
   const t = p.d.querySelector('.toast.show');
-  assert.ok(t, 'the toast'); assert.equal(t.textContent, P('toastBack'));
+  assert.ok(t, 'the toast'); assert.equal(t.textContent, P('toastBack', { producto: nm, seccion: 'Dim Sum', categoria: 'Postres' }));
 });
 
 // the removal switch as getEditableCatalog serves it, over a stamped menu (identity_id: the server's bootstrap stamps every live dish)
@@ -304,7 +330,7 @@ test('S4-D — «Quitar del menú» on the last dish of a section promoted in th
   const m = p.d.querySelector('#xscrim.show .modal, #xscrim.show .mk-sheet');
   assert.ok(m, 'the approved R2 confirm');
   const ps = [...m.querySelectorAll('p')].map((x) => x.textContent);
-  assert.equal(ps[ps.length - 1], P('unpromoteLine'), '🔴 the un-promote sentence after the approved body');
+  assert.equal(ps[ps.length - 1], P('unpromoteLine', { categoria: 'Postres' }), '🔴 the un-promote sentence after the approved body');
 });
 test('3(b) — «Quitar del menú» on a LIVE section\'s last dish: the approved line under the row, no confirm, nothing written', async () => {
   const p = await page({ read: RM });
@@ -354,12 +380,12 @@ test('S4-F — subcat_partial at «Revisar y publicar»: the panel, «Ir a la se
   await create(p, 'Postres');
   p.d.getElementById('review').click(); await settle(60);
   const b = p.d.querySelector('#mbody .conflict');
-  assert.ok(b, 'the panel'); assert.equal(b.querySelector('h3').textContent, P('partialTitle'));
+  assert.ok(b, 'the panel'); assert.equal(b.querySelector('h3').textContent, P('partialTitle', { categoria: 'Dim Sum' }));
   const go = b.querySelector('button'); assert.equal(go.textContent, P('goSection'));
   go.click(); await settle(20);
   assert.ok(items(p).find((x) => x.querySelector('b').firstChild.textContent === 'Dim Sum').classList.contains('on'), '🔴 the section selected');
   const line = detail(p).querySelector('.dhead + .ferr');
-  assert.ok(line, 'the line under the header'); assert.equal(line.textContent, P('partialLine')); assert.equal(line.getAttribute('role'), 'alert');
+  assert.ok(line, 'the line under the header'); assert.equal(line.textContent, P('partialLine', { categoria: 'Dim Sum' })); assert.equal(line.getAttribute('role'), 'alert');
   await pick(p, 'Starters');
   assert.equal(detail(p).querySelector('.dhead + .ferr'), null, 'another section: gone');
 });
@@ -435,7 +461,7 @@ test('E — a subsection head: its grip moves it (↓ / ↑); its pencil renames
   const inp = detail(p).querySelector('.mk-subh input.mk-subin');
   assert.equal(inp.value, 'Sodas'); assert.equal(p.d.activeElement, inp);
   p.type(inp, 'cervezas'); key(inp, 'Enter'); await settle(5);
-  assert.equal(detail(p).querySelector('.mk-subh + .ferr, .mk-subh .ferr').textContent, P('subNameTaken'), 'taken: the line in place');
+  assert.equal(detail(p).querySelector('.mk-subh + .ferr, .mk-subh .ferr').textContent, P('subNameTaken', { categoria: 'Bebidas' }), 'taken: the line in place');
   p.type(detail(p).querySelector('.mk-subh input.mk-subin'), 'Refrescos'); key(detail(p).querySelector('.mk-subh input.mk-subin'), 'Enter'); await settle(5);
   assert.deepEqual(subsOfCat(p, 'bebidas'), ['Cervezas', 'Refrescos']);
   assert.equal(p.src().items.filter((i) => i.display.cat === 'bebidas' && i.display.subcat === 'Sodas').length, 0, 'every member follows');
@@ -459,7 +485,7 @@ test('E — a dish row: its grip moves it within its subsection (↓); dragged p
 });
 
 test('copy: frame E\'s approved strings are literal; the addendum\'s proposed ones are ⟦s4.key⟧ placeholders', () => {
-  assert.deepEqual(Object.keys(S4_COPY).sort(), ['afterRow', 'barOrder', 'barSub', 'barSubs', 'capsCats', 'createSub', 'dropBody', 'dropCat', 'dropSub', 'dropTitle', 'emptyBody', 'emptyTitle', 'firstLine', 'goSection', 'menuNote', 'mismatchBody', 'moveLine', 'nameAll', 'nameTaken', 'needOne', 'neverShown', 'notAttachBody', 'notAttachLine', 'notAttachOption', 'notAttachTitle', 'partialBody', 'partialLine', 'partialTitle', 'products', 'promoteRow', 'rowCatEmpty', 'rowCatNew', 'rowCatSubcat', 'rowSubcat', 'sheetSub', 'sheetSubFirst', 'subAddedRow', 'subCaps', 'subName', 'subNameTaken', 'subPh', 'subcatNeedsDish', 'toastBack', 'unnamedLine', 'unpromoteLine']);
+  assert.deepEqual(Object.keys(S4_COPY).sort(), ['afterRow', 'barOrder', 'barSub', 'barSubs', 'capsCats', 'createSub', 'dropBody', 'dropCat', 'dropSub', 'dropTitle', 'emptyBody', 'emptyTitle', 'firstLine', 'goSection', 'menuNote', 'mismatchBody', 'moveLine', 'nameAll', 'nameTaken', 'needOne', 'neverShown', 'notAttachBody', 'notAttachLine', 'notAttachOption', 'notAttachTitle', 'partialBody', 'partialLine', 'partialTitle', 'products', 'promoteRow', 'promoteRowFirst', 'rowCatEmpty', 'rowCatNew', 'rowCatSubcat', 'rowSubcat', 'sheetSub', 'sheetSubFirst', 'subAddedRow', 'subCaps', 'subName', 'subNameTaken', 'subPh', 'subcatNeedsDish', 'toastBack', 'unnamedLine', 'unpromoteLine']);
 });
 
 // THE SHIP GATE: red while ANY S4 string is a placeholder — the branch cannot ride a train before the owner approves the addendum's copy

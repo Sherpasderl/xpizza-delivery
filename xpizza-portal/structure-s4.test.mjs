@@ -374,16 +374,22 @@ test('pendingSections is a PURE reader (the wiring guards rule it so): a deep-fr
 // S4-F — the save's S4 refusals as the review's outcome panels (the server's codes; the copy the addendum proposes is ⟦s4.key⟧)
 test('S4-F: the three mismatch codes are the stale-draft panel; subcat_partial / section_not_attachable_yet go «Ir a la sección»', async () => {
   const { outcomeFor, PUBLISH_ACTIONS } = await import('./review.js');
-  const P4 = (k) => `⟦s4.${k}⟧`;
+  const { s4Copy: s4CopyFn } = await import('./render.js');
+  const P4 = (k, v) => s4CopyFn(k, v);   // the shipped string
   for (const code of ['staged_anchor_invalid', 'staged_promotion_mismatch', 'category_id_mismatch']) {
     const o = outcomeFor({ code, body: { error: code } }, 'edit');
     assert.equal(o.title, 'Tu borrador cambió', `${code}: the approved title`); assert.equal(o.detail, P4('mismatchBody'));
     assert.equal(o.action.id, PUBLISH_ACTIONS.RELOAD, code);
   }
-  const sp = outcomeFor({ code: 'subcat_partial', body: { error: 'subcat_partial', key: 'dim_sum' } }, 'edit');
-  assert.deepEqual([sp.title, sp.detail, sp.action.id, sp.action.label, sp.section, sp.sectionLine], [P4('partialTitle'), P4('partialBody'), PUBLISH_ACTIONS.FIX_SECTION, P4('goSection'), 'dim_sum', P4('partialLine')]);
-  const na = outcomeFor({ code: 'section_not_attachable_yet', body: { error: 'section_not_attachable_yet', key: 'postres' } }, 'edit');
-  assert.deepEqual([na.title, na.detail, na.action.id, na.section], [P4('notAttachTitle'), P4('notAttachBody'), PUBLISH_ACTIONS.FIX_SECTION, 'postres']);
+  // the lines name the category: the caller's context turns the server's id into the draft's name (app.js outcomeCtx)
+  const ctx = { sectionNameOf: (id) => ({ dim_sum: 'Dim Sum', postres: 'Postres' })[id] };
+  const sp = outcomeFor({ code: 'subcat_partial', body: { error: 'subcat_partial', key: 'dim_sum' } }, 'edit', ctx);
+  const D = { categoria: 'Dim Sum' };
+  assert.equal(sp.title, 'Dim Sum cambió mientras editabas', '🔴 the name, never the id');
+  assert.deepEqual([sp.title, sp.detail, sp.action.id, sp.action.label, sp.section, sp.sectionLine], [P4('partialTitle', D), P4('partialBody', D), PUBLISH_ACTIONS.FIX_SECTION, P4('goSection'), 'dim_sum', P4('partialLine', D)]);
+  const na = outcomeFor({ code: 'section_not_attachable_yet', body: { error: 'section_not_attachable_yet', key: 'postres' } }, 'edit', ctx);
+  const Q = { categoria: 'Postres' };
+  assert.deepEqual([na.title, na.detail, na.action.id, na.section], [P4('notAttachTitle', Q), P4('notAttachBody', Q), PUBLISH_ACTIONS.FIX_SECTION, 'postres']);
 });
 
 test('stagedName is a PURE reader: the draft\'s staged name, else the loaded draft\'s; a deep-frozen draft, byte-identical after', () => {

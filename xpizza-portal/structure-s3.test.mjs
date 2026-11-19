@@ -238,7 +238,8 @@ test('x_pizza (name keys): «Agregar elección» on a plain dish and its first o
 // ── B3 (S3 addendum): the review's «Estructura» rows from the REAL save's `choices` (choice-activation choiceRows), every server fact
 // shown ONCE — an option's add / remove, the mark's tag line and a plain dish's reprice are its choice row, never ALSO a generic line ──
 const { reviewModel } = await import('./review.js');
-const P3 = (k) => `⟦s3.${k}⟧`;
+const { s3Copy: s3CopyFn } = await import('./item-edit-logic.js');
+const P3 = (k, v) => s3CopyFn(k, v);   // the shipped string
 function reviewCtxOf(adopted, loaded) {
   const items = adopted.items.filter((r) => r && r.display && typeof r.key === 'string');
   const gone = loaded.items.filter((r) => r && r.display && typeof r.key === 'string');
@@ -270,11 +271,11 @@ test('B3 — every choice facet is ONE «Estructura» row from the real save; th
     const rows = m.structure.map((r) => [r.name, r.sub, r.kind, r.parts.join(' '), !!r.appOnly]);
     const beerName = src.items.find((i) => i.key === BEER).display.name;
     assert.deepEqual(rows, [
-      [beerName, [`cat:${src.items.find((i) => i.key === BEER).display.cat}`, src.items.find((i) => i.key === BEER).display.subcat].filter(Boolean).join(' \u00b7 '), 'Nuevo', P3('revLauncher'), false],
+      [beerName, [`cat:${src.items.find((i) => i.key === BEER).display.cat}`, src.items.find((i) => i.key === BEER).display.subcat].filter(Boolean).join(' \u00b7 '), 'Nuevo', P3('revLauncher', { nombre: 'Tamaño', n: 2, min: 102 }), false],
       ['Pad Thai · Proteína', 'Elección requerida', 'Cambio', 'Proteína → Proteína a elegir', false],
       ['Pad Thai · Proteína', 'Elección requerida', 'Nuevo', 'Tofu · L 330', false],
       ['Pad Thai · Proteína', 'Elección requerida', 'Quitado', 'Camarones', false],
-      ['Pad Thai · Proteína', 'Elección requerida', 'Nuevo', P3('revRecNew'), false],
+      ['Pad Thai · Proteína', 'Elección requerida', 'Nuevo', P3('revRecNew', { new: 'Pollo' }), false],
     ], '🔴 one row per facet');
     assert.deepEqual(m.added, [], '🔴 the new options are their «Nuevo» rows, not ALSO «Se agregan»');
     assert.deepEqual(m.removed, [], 'the removed option is its «Quitado» row');
@@ -285,7 +286,7 @@ test('B3 — every choice facet is ONE «Estructura» row from the real save; th
     globalThis.fetch = B2.fetch;
     const res2 = await editCatalog({ rid: 'la_musa', source: draftSource(d2), baseSourceUpdateTime: B2.read.sourceUpdateTime, token: async () => 't', loadedBase: B2.read.deletionBase });
     const m2 = reviewModel(res2.diff, reviewCtxOf(res2.source, B2.read.source));
-    assert.deepEqual(m2.structure.map((r) => [r.name, r.kind, r.parts.join(' ')]), [['Pad Thai', 'Quitado', P3('revPlain')]], '🔴 the dish that lost its choice: one row');
+    assert.deepEqual(m2.structure.map((r) => [r.name, r.kind, r.parts.join(' ')]), [['Pad Thai', 'Quitado', P3('revPlain', { nombre: 'Proteína', precio: 342 })]], '🔴 the dish that lost its choice: one row');
     assert.deepEqual(m2.removed, [], 'its options are that row');
     assert.equal(m2.rows.filter((r) => r.key === 'noodle_01' && r.field === 'price').length, 0, 'its reprice is that row (and the seal)');
     assert.equal(m2.products.filter((p) => p.key === 'noodle_01').length, 0);

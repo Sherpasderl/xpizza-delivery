@@ -7,8 +7,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { editable, settle, page, errJson } from './drawer-harness.mjs';
 
-const { S3_COPY } = await import('./item-edit-logic.js');
-const P = (k) => `⟦s3.${k}⟧`;
+const { S3_COPY, s3Copy } = await import('./item-edit-logic.js');
+const P = (k, v) => s3Copy(k, v);   // the shipped string (⟦s3.key⟧ while a key is still null)
 const ON = () => editable({ extrasAuthoring: true, choiceEdit: true });
 const PAD = 'noodle_01';
 const reqCard = (p) => p.drawer().querySelector('.mk-grp.mk-req');
@@ -158,7 +158,7 @@ test('B2b — «Quitar elección» with ZERO marks: the pick list (radiogroup), 
   await editing(p);
   gf(p, 'Quitar elección').click(); await settle(5);
   let c = cf(p);
-  assert.equal(c.querySelector('p').textContent, P('removePick'));
+  assert.equal(c.querySelector('p').textContent, P('removePick', { nombre: 'Pad Thai' }));
   const pf = c.querySelector('.mk-pf');
   assert.equal(pf.getAttribute('role'), 'radiogroup'); assert.equal(pf.getAttribute('aria-label'), P('pickAria'));
   const opt = [...pf.querySelectorAll('label.optrow')];

@@ -25,7 +25,8 @@ const E = await import('./editor.js');
 const { editCatalog } = await import('./api.js');
 const { reviewModel, renderReview } = await import('./review.js');
 const ON = { sections: true };
-const P = (k) => `⟦s4.${k}⟧`;
+const { s4Copy } = await import('./render.js'); const { s3Copy } = await import('./item-edit-logic.js');
+const P = (k, v) => s4Copy(k, v);   // the shipped string (⟦s4.key⟧ while a key is still null)
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
 // the review's names, as app.js productReviewCtx gives them: the draft's (the adopted source), a loaded row for what left
@@ -61,11 +62,11 @@ test('S4-E (REAL diff) — a new section with its dish, the order, a subsection 
   const m = reviewModel(res.diff, ctxOf(res.source, B.read.source));
   const wonton = B.read.source.items.find((i) => i.key === 'dimsum_01').display.name;
   assert.deepEqual(rowsOf(m), [
-    ['Dim Sum', P('rowSubcat'), 'Nuevo', P('subAddedRow'), false],
+    ['Dim Sum', P('rowSubcat'), 'Nuevo', P('subAddedRow', { sub: 'Al vapor', nprod: '4 productos' }), false],
     ['Bebidas', P('rowSubcat'), 'Cambio', 'Sodas → Refrescos', false],
     ['Starters', 'Categoría', 'Orden', 'pasa al 1.º lugar', false],
     ['Salsas', 'Categoría', 'Nuevo', 'categoría vacía · se muestra cuando tenga productos', false],
-    ['Postres', P('rowCatNew'), 'Nuevo', P('promoteRow'), false],
+    ['Postres', P('rowCatNew'), 'Nuevo', P('promoteRow', { nprod: '1 producto', anterior: 'Bebidas' }), false],
     [wonton, 'Dim Sum', 'Cambio', 'Dim Sum → Postres', false],
   ], '🔴 one row per S4 line, in the mockup\'s order (la_musa renders categories generically: no app-only mark)');
   const said = (c) => (c.field === 'subcat') || (c.key === 'dimsum_01' && c.field === 'cat');
@@ -96,7 +97,7 @@ test('S4-E (REAL diff) — a PUBLISHED staged entry: dropped, renamed, and one p
   assert.deepEqual(rowsOf(m), [
     ['Combos', P('rowCatEmpty'), 'Quitado', P('neverShown'), false],
     ['Antojitos', P('rowCatEmpty'), 'Cambio', 'Antojitos → Entradas', false],
-    ['Postres', P('rowCatNew'), 'Nuevo', P('promoteRow'), false],
+    ['Postres', P('rowCatNew'), 'Nuevo', P('promoteRow', { nprod: '1 producto', anterior: 'Bebidas' }), false],
     [wonton, 'Dim Sum', 'Cambio', 'Dim Sum → Postres', false],
   ], '🔴 the published staged lines, one row each');
 });
@@ -112,13 +113,16 @@ test('S4-E (REAL diff) — a subsection renamed AND reordered in one save (5f 29
   const m = reviewModel(res.diff, ctxOf(res.source, B.read.source));
   assert.deepEqual(rowsOf(m), [
     ['Bebidas', P('rowSubcat'), 'Cambio', 'Sodas → Refrescos', false],
-    ['Cervezas', P('rowCatSubcat'), 'Orden', 'pasa al 1.º lugar', false],
+    ['Cervezas', P('rowCatSubcat', { categoria: 'Bebidas' }), 'Orden', 'pasa al 1.º lugar', false],
   ], '🔴 the reorder survives a same-save rename');
 });
 
 // S3 × Q-B (5f 437ce1ef4): «Solo en la app Sherpa» on a choice facet follows the diff's OWN row.app_only — a dish gaining its choice and a
 // new option carry it; a label, a removed option and a «Recomendada» row never do (no portal rule)
-const choiceFacets = (m) => m.structure.filter((r) => r.src && typeof r.src.launcher === 'string').map((r) => [r.kind, r.parts.join(' ').startsWith('⟦s3.') ? r.parts.join(' ') : r.kind === 'Cambio' && r.parts.includes('→') ? 'label' : 'option', !!r.appOnly]);
+// which S3 copy a facet row carries, read from the SHIPPED strings (s3Copy): the gained choice (revLauncher), a first / changed mark
+// (revRecNew / revRecChanged); otherwise a renamed label (was → now) or an option row
+const s3Key = (t) => (/^elección .* · \d+ opciones · desde L /.test(t) ? 'revLauncher' : t.startsWith('Recomendada · ') ? (t.includes(' → ') ? 'revRecChanged' : 'revRecNew') : null);
+const choiceFacets = (m) => m.structure.filter((r) => r.src && typeof r.src.launcher === 'string').map((r) => { const t = r.parts.join(' '); return [r.kind, s3Key(t) || (r.kind === 'Cambio' && r.parts.includes('→') ? 'label' : 'option'), !!r.appOnly]; });
 async function choiceSave(generic) {
   SW.choiceEdit = true; SW.choicesGeneric = generic;
   try {
@@ -145,11 +149,11 @@ test('S3 × Q-B (REAL diff, 5f 437ce1ef4) — a form that cannot render choices:
   const { res, m } = await choiceSave(false);
   assert.deepEqual(res.diff.choices.map((c) => [!!c.became, c.app_only === undefined ? 'absent' : c.app_only]), [[true, true], [false, true]], 'premise: the server marks the gained choice and the row with a new option');
   assert.deepEqual(choiceFacets(m), [
-    ['Nuevo', '⟦s3.revLauncher⟧', true],
+    ['Nuevo', 'revLauncher', true],
     ['Cambio', 'label', false],
     ['Nuevo', 'option', true],
     ['Quitado', 'option', false],
-    ['Nuevo', '⟦s3.revRecNew⟧', false],
+    ['Nuevo', 'revRecNew', false],
   ], '🔴 the app-only mark follows row.app_only: the gained choice and the NEW option; never the label, the removal or the mark');
 });
 test('S3 × Q-B (REAL diff, as shipped: both forms render choices generically) — no «Solo en la app Sherpa» on any choice facet', async () => {
@@ -158,7 +162,7 @@ test('S3 × Q-B (REAL diff, as shipped: both forms render choices generically) �
   assert.ok(choiceFacets(m).length === 5 && choiceFacets(m).every((f) => f[2] === false), '🔴 as shipped: no app-only mark on a choice facet');
 });
 // S3 × Q-A (5f 66b2b0239): a group label over 40 is the server's label_too_long — its line lands on the choice's card
-test('S3 × Q-A (REAL refusal) — a 41-character group label: the server refuses label_too_long; the drawer line is the card\'s ⟦s3.labelTooLong⟧', async () => {
+test('S3 × Q-A (REAL refusal) — a 41-character group label: the server refuses label_too_long; the drawer line is the card\'s labelTooLong (owner 11-19)', async () => {
   SW.choiceEdit = true;
   try {
     const IE = await import('./item-edit-logic.js');
@@ -170,7 +174,7 @@ test('S3 × Q-A (REAL refusal) — a 41-character group label: the server refuse
     try { await editCatalog({ rid: 'la_musa', source: E.draftSource(d), baseSourceUpdateTime: B.read.sourceUpdateTime, token: async () => 't', loadedBase: B.read.deletionBase }); } catch (e) { err = e; }
     assert.ok(err && err.body && err.body.error === 'label_too_long', `premise: the REAL server refuses ${err && JSON.stringify(err.body)}`);
     const line = IE.refusalLine(err.body);
-    assert.deepEqual(line && [line.code, line.field, line.message], ['label_too_long', 'options', '\u27e6s3.labelTooLong\u27e7'], '🔴 label_too_long lands on the choice card');
+    assert.deepEqual(line && [line.code, line.field, line.message], ['label_too_long', 'options', s3Copy('labelTooLong')], '🔴 label_too_long lands on the choice card');
   } finally { SW.choiceEdit = false; }
 });
 
@@ -183,12 +187,12 @@ test('S4-E (documented shape) — the published staged entry: drop / rename / an
   const names = { a: 'Dim Sum', b: 'Ensaladas', combos: 'Combos', antojitos: 'Entradas', postres: 'Postres', helados: 'Helados', pizzas: 'Pizzas' };
   const m = reviewModel({ added: [], removed: [], renamed: [], changed: [], sections }, { structure: { categoryName: (id) => names[id] || id, dishesIn: () => 1 } });
   assert.deepEqual(rowsOf(m), [
-    ['Especiales', P('rowCatSubcat'), 'Orden', 'pasa al 1.º lugar', true],
+    ['Especiales', P('rowCatSubcat', { categoria: 'Pizzas' }), 'Orden', 'pasa al 1.º lugar', true],
     ['Combos', P('rowCatEmpty'), 'Quitado', P('neverShown'), false],
     ['Antojitos', P('rowCatEmpty'), 'Cambio', 'Antojitos → Entradas', false],
-    ['Entradas', P('rowCatEmpty'), 'Orden', P('afterRow'), false],
-    ['Postres', P('rowCatNew'), 'Nuevo', P('promoteRow'), true],
-    ['Helados', P('rowCatNew'), 'Nuevo', P('promoteRow'), true],
+    ['Entradas', P('rowCatEmpty'), 'Orden', P('afterRow', { categoria: 'Ensaladas' }), false],
+    ['Postres', P('rowCatNew'), 'Nuevo', P('promoteRow', { nprod: '1 producto', anterior: 'Ensaladas' }), true],
+    ['Helados', P('rowCatNew'), 'Nuevo', P('promoteRow', { nprod: '1 producto', anterior: 'Postres' }), true],
   ]);
 });
 
