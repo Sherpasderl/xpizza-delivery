@@ -162,7 +162,8 @@ async function nullSpentToken(deps, orderId) {
   });
   // owner GO 11-18: the token NODE goes with the pointer — and a finished order with no pointer sweeps any ORPHAN (a write-ahead whose
   // claim lost, or a crash between the pointer drop and this remove): nothing at payment_sdk_tokens outlives a finished order
-  if (out === 'nulled' || (out === 'none' && (finished || !isObj(order)) && await T.hasTokens(deps.db, orderId))) await T.dropTokens(deps.db, orderId);
+  // card-cleanup (PLAN DELTA (1)): never a bare drop — the node goes in ONE update that queues each token for the provider delete
+  if (out === 'nulled' || (out === 'none' && (finished || !isObj(order)) && await T.hasTokens(deps.db, orderId))) await T.enqueueAndDrop(deps.db, orderId, isObj(order) ? order.customer_uid : null, deps.clock());
   return out;
 }
 // Codex #158 r1 F2: an orphan token node may have NO due entry (a cancel cleanup raced a failing placement; a migration write-ahead lost its

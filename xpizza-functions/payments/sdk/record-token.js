@@ -14,10 +14,17 @@ const KEY = 'token';
 const node = (db, orderId, attemptId) => db.ref(attemptId ? `payment_sdk_tokens/${orderId}/${attemptId}` : `payment_sdk_tokens/${orderId}`);
 // Codex #158 r1 F1: CREATE-ONCE per attempt — two requests with the same attempt id and DIFFERENT tokens can both pass the replay check;
 // the first token stays, the second gets 'conflict' (its claim is refused before any PSP call). The same token again is a no-op 'ok'.
+// card-cleanup (PLAN DELTA (2), Finding A): the stash also writes the LIVE-NODE reference payment_sdk_token_refs/{sha256(token)}/{oid},
+// concurrently with the create-once transaction (no extra sequential round trip): while any order's node holds a token, the provider
+// drain must not delete it (token-queue ownership). A conflict removes the refused token's reference again.
+const refPath = (token, orderId) => `payment_sdk_token_refs/${require('./token-queue').hashOf(token)}/${orderId}`;
 async function stashToken(db, orderId, attemptId, token) {
   let conflict = false;
-  const res = await node(db, orderId, attemptId).transaction((cur) => { conflict = false; if (cur == null) return token; if (cur === token) return cur; conflict = true; return undefined; });
-  if (conflict) return 'conflict';
+  const [, res] = await Promise.all([
+    db.ref(refPath(token, orderId)).set(true),
+    node(db, orderId, attemptId).transaction((cur) => { conflict = false; if (cur == null) return token; if (cur === token) return cur; conflict = true; return undefined; }),
+  ]);
+  if (conflict) { await db.ref(refPath(token, orderId)).remove().catch(() => {}); return 'conflict'; }
   if (!res || !res.committed) throw Object.assign(new Error('token stash not committed'), { code: 'stash_not_committed' });
   return 'ok';
 }
@@ -29,7 +36,22 @@ async function readAttemptToken(db, orderId, rec, attemptId) {
 const readToken = (db, orderId, rec) => readAttemptToken(db, orderId, rec, rec && rec.token_attempt);
 const hasToken = (rec) => !!rec && (typeof rec.token_attempt === 'string' || typeof rec[KEY] === 'string');
 function dropPointer(rec) { delete rec.token_attempt; delete rec[KEY]; }
-const dropTokens = (db, orderId) => node(db, orderId).remove();
+// card-cleanup (PLAN DELTA (1)): the node is NEVER dropped bare — ONE multi-path update removes exactly the attempts read (a newer
+// write-ahead that lands after the read stays for the next visit), their live-node references, AND queues each token for the provider
+// delete (token-queue.enqueueEntries). Q3: PixelPay keeps a used token alive, so this queue item is our only handle once the node goes.
+async function enqueueAndDrop(db, orderId, uid, now) {
+  const v = (await node(db, orderId).once('value')).val();
+  const upd = {};
+  for (const [aid, token] of Object.entries(v && typeof v === 'object' ? v : {})) {
+    upd[`payment_sdk_tokens/${orderId}/${aid}`] = null;
+    if (typeof token !== 'string' || !token) continue;
+    upd[refPath(token, orderId)] = null;
+    Object.assign(upd, require('./token-queue').enqueueEntries(token, `order_${orderId}`, { aid, uid: typeof uid === 'string' && uid ? uid : null, at: now }));
+  }
+  if (Object.keys(upd).length) await db.ref().update(upd);
+  return Object.keys(v && typeof v === 'object' ? v : {}).length;
+}
+const hasLiveRefs = async (db, hash) => (await db.ref(`payment_sdk_token_refs/${hash}`).once('value')).exists();
 const hasTokens = async (db, orderId) => (await node(db, orderId).once('value')).exists();
 // Codex #158 r1 F2: the orphan sweep walks the token nodes THEMSELVES (an orphan may have no due entry): key-order pages behind a rotating
 // cursor (payment_sdk_tokens_cursor, server-only), wrapping at the end
@@ -41,4 +63,4 @@ async function pageTokenOrders(db, batch) {
   await db.ref('payment_sdk_tokens_cursor').set(ids.length === batch ? ids[ids.length - 1] : null);   // a short page ends the lap
   return ids;
 }
-module.exports = { stashToken, claimFor, readToken, readAttemptToken, hasToken, dropPointer, dropTokens, hasTokens, pageTokenOrders };
+module.exports = { stashToken, claimFor, readToken, readAttemptToken, hasToken, dropPointer, enqueueAndDrop, hasLiveRefs, hasTokens, pageTokenOrders };

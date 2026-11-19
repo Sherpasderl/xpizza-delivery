@@ -1012,6 +1012,9 @@
   "payments/sdk/order-auth.js#valid": "payment",
   "payments/sdk/pixelpay-adapter.js#post": "payment",
   "payments/sdk/pixelpay-adapter.js#pspAuthorize": "payment",
+  "payments/sdk/pixelpay-adapter.js#pspDeleteToken": "payment",
+  "payments/sdk/psp-adapter.js#pspDeleteToken": "payment",
+  "payments/sdk/token-queue.js#drainProviderDeletes": "payment",
   "payments/sdk/pixelpay-adapter.js#pspCapture": "payment",
   "payments/sdk/pixelpay-adapter.js#pspStatus": "payment",
   "payments/sdk/pixelpay-adapter.js#pspVoid": "payment",
@@ -1877,6 +1880,51 @@
   }
  },
  "opaqueWriteResolutions": [
+  {
+   "file": "xpizza-functions/payments/sdk/record-token.js",
+   "fn": "enqueueAndDrop",
+   "how": "computed-key-at-root",
+   "detail": "refPath(token, orderId)",
+   "fields": [],
+   "reason": "card-cleanup (owner unparked 11-18): `payment_sdk_token_refs/${hash}/${oid}` — the live-node reference removed with the node — a server-only node (rules .read/.write false), never an /orders path",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/payments/sdk/record-token.js",
+   "fn": "enqueueAndDrop",
+   "how": "computed-key-at-root",
+   "detail": "*/*/token",
+   "fields": [],
+   "reason": "card-cleanup (owner unparked 11-18): `provider_token_deletes/${hash}/token` — the provider-delete queue item (token-queue.enqueueEntries) — a server-only node (rules .read/.write false), never an /orders path",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/payments/sdk/record-token.js",
+   "fn": "enqueueAndDrop",
+   "how": "computed-key-at-root",
+   "detail": "*/*/sources/*",
+   "fields": [],
+   "reason": "card-cleanup (owner unparked 11-18): `provider_token_deletes/${hash}/sources/order_${oid}` — the queue item's source { aid, uid, at } — a server-only node (rules .read/.write false), never an /orders path",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/payments/sdk/token-queue.js",
+   "fn": "drainProviderDeletes",
+   "how": "dynamic-root-path",
+   "detail": "*/*/ok_at",
+   "fields": [],
+   "reason": "card-cleanup (owner unparked 11-18): `provider_token_deletes/${hash}/ok_at` — OUR recorded provider 200 (the probe rule) — a server-only node (rules .read/.write false), never an /orders path",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/payments/sdk/token-queue.js",
+   "fn": "drainProviderDeletes",
+   "how": "dynamic-root-path",
+   "detail": "*/*",
+   "fields": [],
+   "reason": "card-cleanup (owner unparked 11-18): `provider_token_deletes/${hash}` — the item's retry state { tries, next_at, last_status } — a server-only node (rules .read/.write false), never an /orders path",
+   "count": 1
+  },
 
   {
    "file": "xpizza-functions/index.js",

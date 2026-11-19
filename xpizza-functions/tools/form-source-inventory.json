@@ -3062,6 +3062,7 @@
   "payments/sdk/subject.js",
   "payments/sdk/sweeper.js",
   "payments/sdk/switch-endpoint.js",
+  "payments/sdk/token-queue.js",
   "payments/sdk/void-eligibility.js",
   "phone-countries.js",
   "phone/flag.js",
@@ -7819,6 +7820,10 @@
    "lifts": []
   },
   "payments/sdk/switch-endpoint.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/token-queue.js": {
    "pins": [],
    "lifts": []
   },

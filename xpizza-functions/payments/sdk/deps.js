@@ -10,6 +10,7 @@ const UNCONFIGURED = Object.freeze({
   pspCapture: async () => { throw new Error('sdk psp adapter not configured'); },
   pspVoid: async () => { throw new Error('sdk psp adapter not configured'); },
   pspStatus: async () => { throw new Error('sdk psp adapter not configured'); },
+  pspDeleteToken: async () => { throw new Error('sdk psp adapter not configured'); },
 });
 
 // The go-live materializer (ruling #9 A) is the shared confirm-and-materialize, registered ONCE by the composition root with

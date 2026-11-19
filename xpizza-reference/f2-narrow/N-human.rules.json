@@ -823,6 +823,18 @@
       ".read": false,
       ".write": false
     },
+    "payment_sdk_token_refs": {
+      ".read": false,
+      ".write": false
+    },
+    "provider_token_deletes": {
+      ".read": false,
+      ".write": false
+    },
+    "provider_token_deletes_cursor": {
+      ".read": false,
+      ".write": false
+    },
     "sdk_checkout_subject": {
       ".read": false,
       ".write": false

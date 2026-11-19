@@ -83,6 +83,8 @@ async function sweepSdkPayments(deps) {
   }
   // Codex #158 r1 F2: the token nodes no due entry points at (isolated: a failure never fails the due pass)
   try { out.tokens = await require('./cards').sweepTokenOrphans(deps); } catch (_) { out.tokens = { error: true }; }
+  // card-cleanup: the provider-delete drain (bounded; INERT while the SDK config is off), isolated from the passes above
+  try { out.providerDeletes = await require('./token-queue').drainProviderDeletes(deps); } catch (_) { out.providerDeletes = { error: true }; }
   return out;
 }
 

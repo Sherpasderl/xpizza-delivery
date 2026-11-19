@@ -18,7 +18,7 @@ let pass = 0; const fails = [];
 const cell = (L, fn) => { try { fn(L); pass += 1; console.log(`  ✓ ${L}`); } catch (e) { fails.push(L); console.log(`  ✗ ${L}: ${String((e && e.message) || e).split('\n')[0]}`); } };
 const OWNER = 'payments/sdk/record-token.js';
 const MIGRATION = 'tools/migrate-sdk-tokens.js';
-const PATH_ALLOWED = [OWNER, 'payments/sdk/rules-clauses.js'];   // Codex #158: the migration writes through record-token.stashToken
+const PATH_ALLOWED = [OWNER, 'payments/sdk/rules-clauses.js'];   // payment_sdk_tokens, its cursor and payment_sdk_token_refs   // Codex #158: the migration writes through record-token.stashToken
 const POINTER_ALLOWED = [OWNER, MIGRATION];
 const FILES = execFileSync('git', ['ls-files', '*.js', ':!*.test.js', ':!test/**', ':!**/node_modules/**'], { cwd: FN, encoding: 'utf8' }).split('\n').filter(Boolean);
 const real = (f) => fs.readFileSync(path.join(FN, f), 'utf8');
@@ -35,7 +35,7 @@ function staticText(n) {
   return '';
 }
 function scan(files, read) {
-  const pathSites = new Set(); const pointerSites = new Set();
+  const pathSites = new Set(); const pointerSites = new Set(); const queueSites = new Set();
   for (const f of files) {
     const ast = parse(read(f));
     const walk = (n, parent) => {
@@ -44,7 +44,9 @@ function scan(files, read) {
       if (typeof n.type !== 'string') return;
       // the outermost string-building expression only (a `+` chain's parts are not re-counted)
       const building = (x) => x && (x.type === 'Literal' || x.type === 'TemplateLiteral' || (x.type === 'BinaryExpression' && x.operator === '+'));
-      if (building(n) && !(parent && parent.type === 'BinaryExpression' && parent.operator === '+' && building(parent)) && /sdk_tokens/.test(staticText(n))) pathSites.add(f);
+      if (building(n) && !(parent && parent.type === 'BinaryExpression' && parent.operator === '+' && building(parent)) && /payment_sdk_token/.test(staticText(n))) pathSites.add(f);
+      // card-cleanup: the provider-delete queue has ONE owner too
+      if (building(n) && !(parent && parent.type === 'BinaryExpression' && parent.operator === '+' && building(parent)) && /provider_token_deletes/.test(staticText(n))) queueSites.add(f);
       if (n.type === 'Identifier' && n.name === 'token_attempt') pointerSites.add(f);
       // Codex #158 r1 F4: the pointer key by static evaluation — a literal, a template or a `+` join of literal pieces
       if (building(n) && !(parent && parent.type === 'BinaryExpression' && parent.operator === '+' && building(parent)) && /token_attempt/.test(staticText(n))) pointerSites.add(f);
@@ -52,15 +54,33 @@ function scan(files, read) {
     };
     walk(ast, null);
   }
-  return { path: [...pathSites].sort(), pointer: [...pointerSites].sort() };
+  return { path: [...pathSites].sort(), pointer: [...pointerSites].sort(), queue: [...queueSites].sort() };
 }
 const S = scan(FILES, real);
 
 cell('RT-PATH', (L) => assert.deepStrictEqual(S.path, [...PATH_ALLOWED].sort(), `${L}: payment_sdk_tokens is named ONLY by record-token.js and the rules clause list`));
+cell('RT-QUEUE', (L) => assert.deepStrictEqual(S.queue, ['payments/sdk/rules-clauses.js', 'payments/sdk/token-queue.js'], `${L}: provider_token_deletes is named ONLY by token-queue.js and the rules clause list (producers ride its enqueueEntries)`));
+// the vendored SDK fixture is TEST-ONLY: over EVERY tracked JS / MJS file (tests included), only the equality cell names it
+cell('RT-FIXTURE', (L) => {
+  const all = execFileSync('git', ['ls-files', '*.js', '*.mjs', ':!test/fixtures/pixelpay-sdk-2.5.2/**'], { cwd: FN, encoding: 'utf8' }).split('\n').filter(Boolean);
+  // a file LOADS the fixture only through a string naming its path (require / import / readFile / path.join) — comments do not count
+  const names = (f) => {
+    let ast; try { ast = parse(fs.readFileSync(path.join(FN, f), 'utf8')); } catch (_) { return true; }   // unparseable ⇒ counted (never silently passed)
+    let hit = false;
+    const walk = (n) => { if (hit || !n || typeof n !== 'object') return; if (Array.isArray(n)) { n.forEach(walk); return; } if (typeof n.type !== 'string') return;
+      if ((n.type === 'Literal' && typeof n.value === 'string' && n.value.includes('pixelpay-sdk-2.5.2')) || (n.type === 'TemplateElement' && String(n.value.cooked).includes('pixelpay-sdk-2.5.2'))) { hit = true; return; }
+      for (const [k, v] of Object.entries(n)) if (k !== 'start' && k !== 'end') walk(v); };
+    walk(ast); return hit;
+  };
+  const users = all.filter(names);
+  assert.deepStrictEqual(users, ['payments/sdk/provider-delete-request.test.js', 'payments/sdk/record-token.guard.test.js'], `${L}: the vendored SDK fixture is named ONLY by the equality cell (and this guard's own exclusion) — never by runtime code (${users.join(', ')})`);
+  const planted = (() => { const t = 'z-runtime.js'; const src = "module.exports = require('../test/fixtures/pixelpay-sdk-2.5.2/lib/models/Settings.js');"; let ast = parse(src); let hit = false; const w = (n) => { if (hit || !n || typeof n !== 'object') return; if (Array.isArray(n)) { n.forEach(w); return; } if (n.type === 'Literal' && typeof n.value === 'string' && n.value.includes('pixelpay-sdk-2.5.2')) { hit = true; return; } for (const v of Object.values(n)) w(v); }; w(ast); return hit && t; })();
+  assert.ok(planted, `${L}: control — a runtime require of the fixture would be caught`);
+});
 cell('RT-POINTER', (L) => assert.deepStrictEqual(S.pointer, [...POINTER_ALLOWED].sort(), `${L}: the record's token pointer is touched ONLY by record-token.js and the migration tool`));
 cell('RT-OWNER', (L) => {
   const ex = Object.keys(require(path.join(FN, OWNER))).sort();
-  assert.deepStrictEqual(ex, ['claimFor', 'dropPointer', 'dropTokens', 'hasToken', 'hasTokens', 'pageTokenOrders', 'readAttemptToken', 'readToken', 'stashToken'], `${L}: the owner's exports are exactly the reviewed surface`);
+  assert.deepStrictEqual(ex, ['claimFor', 'dropPointer', 'enqueueAndDrop', 'hasLiveRefs', 'hasToken', 'hasTokens', 'pageTokenOrders', 'readAttemptToken', 'readToken', 'stashToken'], `${L}: the owner's exports are exactly the reviewed surface`);
   assert.ok(FILES.length > 500 && FILES.includes('index.js') && FILES.includes(OWNER), `${L}: premise — the scan spans the whole tree (${FILES.length} files)`);
 });
 cell('RT-RULES', (L) => {
