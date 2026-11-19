@@ -4,6 +4,8 @@
 // reconcilePayments raises it daily as aged_manual_review in its reconcile_breaches alert; a retried cancel meets the gate.
 //   CPE-PARK    the real cancelOrderCore parks the refused order
 //   CPE-DAILY   the real reconcilePayments re-raises it (aged_manual_review) once it is older than 6 h
+//   CPE-PRUNE   Codex #211 P1-2: an already-CANCELLED parked order keeps its cancel alert AND its daily breach through the real handler's prune
+//   CPE-SCHED   Codex #211 P2-4: a parked SCHEDULED order (release tomorrow) is still re-raised (aged_manual_review)
 // Run: npm run test:cancel-park
 require('./_emulator-required')('database');
 const assert = require('assert');
@@ -32,11 +34,33 @@ const H = 3600000;
   const o = (await db.ref(`orders/${OID}`).once('value')).val();
   assert.deepStrictEqual([o.payment_status, o.blocked_reason, o.cancel_parked_at, o.cancel_claim_id || null], ['manual_review', 'cancel_captured_no_uuid', now, null], '🔴 CPE-PARK: the refused order is parked');
   ok('CPE-PARK: the REAL cancelOrderCore parks a refused captured-no-uuid order (manual_review), the claim released');
+  // CPE-PRUNE fixture: an already-cancelled order with captured money and no payment id (the A refusal) — parked by the real cancel
+  const OA = 'CPE2', AA = 'c0ffee00c0ffee99';
+  await db.ref(`orders/${OA}`).set({ order_id: OA, order_type: 'pickup', status: 'cancelled', payment_status: 'confirmed', payment_method: 'online', total: 299, total_cents: 29900,
+    customer_name: 'T', items_text: 'x', restaurant_id: 'x_pizza', active_attempt_id: AA, created_at: now - 7 * H });
+  await db.ref(`payment_attempts/${AA}`).set({ order_id: OA, hosted_state: 'paid', hosted_callback_verified: true });
+  await cancelOrderCore({ db, voidOrRefund: async () => { throw new Error('must not void'); }, alert: (k, d) => paymentAlert(db, k, d), serverTimestamp: 0 },
+    { orderId: OA, actor: 'disp@tb', reason: 'customer', now, claimId: 'CLE2' });
+  assert.strictEqual((await db.ref(`orders/${OA}/payment_status`).once('value')).val(), 'manual_review', 'CPE-PRUNE premise: the cancelled order is parked');
+  // CPE-SCHED fixture: a scheduled online order (release tomorrow), captured with no payment id — parked by the real cancel
+  const OS = 'CPE3', AS = 'c0ffee00c0ffeeaa';
+  await db.ref(`orders/${OS}`).set({ order_id: OS, order_type: 'pickup', status: 'scheduled', payment_status: 'confirmed', payment_method: 'online', total: 299, total_cents: 29900,
+    customer_name: 'T', items_text: 'x', restaurant_id: 'x_pizza', active_attempt_id: AS, created_at: now - 7 * H, release_at: now + 24 * H, scheduled_for: now + 25 * H });
+  await db.ref(`payment_attempts/${AS}`).set({ order_id: OS, hosted_state: 'paid', hosted_callback_verified: true });
+  await cancelOrderCore({ db, voidOrRefund: async () => { throw new Error('must not void'); }, alert: (k, d) => paymentAlert(db, k, d), serverTimestamp: 0 },
+    { orderId: OS, actor: 'disp@tb', reason: 'customer', now, claimId: 'CLE3' });
+  assert.deepStrictEqual([(await db.ref(`orders/${OS}/status`).once('value')).val(), (await db.ref(`orders/${OS}/payment_status`).once('value')).val()], ['scheduled', 'manual_review'], 'CPE-SCHED premise: the scheduled order is parked, still scheduled');
   await app.reconcilePayments.run({});
   const breaches = Object.values((await db.ref('dispatcher_alerts').once('value')).val() || {}).filter((a) => a && a.type === 'payment_reconcile_breaches');
   const kinds = breaches.flatMap((a) => ((a.detail && a.detail.breaches) || []).filter((b) => b && b.orderId === OID).map((b) => b.kind));
   assert.ok(kinds.includes('aged_manual_review'), `🔴 CPE-DAILY: the real reconcilePayments raises aged_manual_review for the parked order (${JSON.stringify(kinds)})`);
   ok('CPE-DAILY: the REAL reconcilePayments re-raises the parked order (aged_manual_review)');
+  const all = Object.values((await db.ref('dispatcher_alerts').once('value')).val() || {});
+  const refs = (oid) => all.filter((a) => a && a.detail && (a.detail.orderId === oid || (Array.isArray(a.detail.breaches) && a.detail.breaches.some((b) => b && b.orderId === oid && b.kind === 'aged_manual_review'))));
+  assert.deepStrictEqual(refs(OA).map((a) => a.type).sort(), ['payment_cancel_manual_review', 'payment_reconcile_breaches'], '🔴 CPE-PRUNE: after the real handler\'s prune, the cancelled parked order keeps its cancel alert AND its aged_manual_review breach');
+  ok('CPE-PRUNE: the REAL reconcilePayments raises and then KEEPS a cancelled parked order\'s alerts (its prune never dismisses an unresolved money state)');
+  assert.ok(refs(OS).some((a) => a.type === 'payment_reconcile_breaches'), '🔴 CPE-SCHED: the parked scheduled order is re-raised (aged_manual_review)');
+  ok('CPE-SCHED: the REAL reconcilePayments re-raises a parked SCHEDULED order (not exempted)');
   FINISHED = true;
   console.log(`cancel-park(emulator): OK (${n})`);
   process.exit(0);

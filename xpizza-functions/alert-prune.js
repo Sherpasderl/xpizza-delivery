@@ -26,12 +26,13 @@ function alertOrderIds(alert) {
 // refunding_paid_after_close, AND a normally-materialized order — is kept: a materialized order can
 // still be a live breach (e.g. confirmed_without_verified_payment), so we NEVER auto-nuke on
 // materialization (money-integrity alerts must survive) — narrower than the plan's Task-8 wording.
-// H1a A-R1: a handheld-reject notice (payment_handheld_reject_*) is KEPT while its order's refund is still pending, even
-// though the order is cancelled — checked BEFORE the cancelled return. Every other alert is unchanged.
-function orderStillFlagged(order, alert) {
+// Codex #211 P1-2 (cancel-park): an UNRESOLVED MONEY state (manual_review / manual_reconciliation / refund_pending / resolving_*) still
+// needs a person WHATEVER the order's fulfilment status — kept, never pruned. (It subsumes H1a A-R1's handheld-reject refund_pending keep.)
+const UNRESOLVED_MONEY = new Set(['manual_review', 'manual_reconciliation', 'refund_pending']);
+const unresolvedMoney = (order) => !!order && (UNRESOLVED_MONEY.has(order.payment_status) || (typeof order.payment_status === 'string' && order.payment_status.startsWith('resolving_')));
+function orderStillFlagged(order, alert) {   // `alert` is kept in the signature: callers pass it
   if (!order) return false;
-  const handheldReject = !!alert && typeof alert.type === 'string' && alert.type.startsWith('payment_handheld_reject_');
-  if (handheldReject && order.payment_status === 'refund_pending') return true;
+  if (unresolvedMoney(order)) return true;
   if (order.status === 'cancelled') return false;
   if (order.payment_status === 'refunded' || order.payment_status === 'abandoned') return false;
   return true;
@@ -56,4 +57,4 @@ function alertsToPrune(alerts, orders) {
   return prune;
 }
 
-module.exports = { alertOrderIds, orderStillFlagged, alertsToPrune };
+module.exports = { alertOrderIds, orderStillFlagged, alertsToPrune, unresolvedMoney };

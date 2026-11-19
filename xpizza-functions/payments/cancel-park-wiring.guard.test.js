@@ -5,6 +5,8 @@
 // aged_manual_reconciliation rule.
 //   CPW-AGED   the aged_manual_review rule is an executable IfStatement of the loop, pushing that breach kind
 //   CPW-PEER   it sits beside (after) the aged_manual_reconciliation rule, in the same loop
+//   CPW-SCHED  Codex #211 P2-4: the scheduled/releasing exemption's `continue` is CONDITIONAL on `!unresolvedMoney(o)` (alert-prune's one
+//              definition), so a parked scheduled order still meets the aged money-state rules
 // Run: node payments/cancel-park-wiring.guard.test.js
 const assert = require('assert');
 const fs = require('fs');
@@ -39,4 +41,15 @@ assert.ok(/age > 6 \* 3600 \* 1000/.test(textOf(loopBody[rv].test)), 'CPW-AGED: 
 ok('CPW-AGED: the aged_manual_review re-raise is real code in reconcilePayments\' loop (6 h bound)');
 assert.ok(mr >= 0 && rv > mr, `🔴 CPW-PEER: it sits right after the aged_manual_reconciliation rule (${mr} < ${rv})`);
 ok('CPW-PEER: beside the aged_manual_reconciliation rule, in the same loop');
+{
+  const sched = loopBody.find((s) => s.type === 'IfStatement' && /o\.status === 'scheduled'/.test(textOf(s.test)));
+  assert.ok(sched && sched.consequent.type === 'BlockStatement', 'premise: the scheduled/releasing exemption block');
+  const body = sched.consequent.body; const last = body[body.length - 1];
+  assert.ok(!body.some((s) => s.type === 'ContinueStatement'), '🔴 CPW-SCHED: the scheduled exemption has NO unconditional continue (a parked scheduled order must reach the money-state rules)');
+  assert.ok(last && last.type === 'IfStatement' && last.consequent.type === 'ContinueStatement' && /^!require\('\.\/alert-prune'\)\.unresolvedMoney\(o\)$/.test(textOf(last.test)),
+    `🔴 CPW-SCHED: it ends with \`if (!require('./alert-prune').unresolvedMoney(o)) continue;\` (got ${last ? textOf(last).slice(0, 120) : 'nothing'})`);
+  const schedIdx = loopBody.indexOf(sched);
+  assert.ok(schedIdx < rv, 'CPW-SCHED: the money-state rules come after the exemption (reached through its conditional continue)');
+  ok('CPW-SCHED: a scheduled/releasing order in an unresolved money state is NOT exempted — it meets the aged money-state rules');
+}
 console.log(`cancel-park-wiring.guard: OK (${n})`);

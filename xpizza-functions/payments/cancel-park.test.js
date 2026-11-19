@@ -10,12 +10,28 @@
 //   CP-SAME     every refusal still answers 409 manual_review, still raises cancel_manual_review, still writes its payment_audit row
 //   CP-PUSH     the alert push FAILS ⇒ the order is still parked (the durable twin of the alert)
 //   CP-RETRY    a second cancel on a parked order ⇒ the gate's refusal; voidOrRefund is never called
-//   CP-GUARD    the A-path CAS never overwrites a resolver-owned / already-reviewed / reversed order
+//   CP-RACE     Codex #211: a REAL writer changes the order AFTER cancel's read, right before the park transaction (a void → refunded /
+//               refund_pending, a verify-failing callback → manual_reconciliation, the real resolver's claim, a real cancel claim) ⇒ the park
+//               never overwrites it; with our claim, ONLY our claim is released (a resolver's fields stay)
 // Through the REAL cancelOrderCore on the honest RTDB model. Run: node payments/cancel-park.test.js
 const assert = require('assert');
 const { cancelOrderCore } = require('../cancel-order-core');
 const { paymentAlert } = require('../lib/payment-alert');
 const { makeHonestDb: makeDb } = require('../_honest-rtdb-model');
+const { handleHostedCallback } = require('../pixelpay-hosted-webhook');
+const { voidOrRefund: realVoid } = require('../pixelpay-cancel');
+const realClient = require('../pixelpay-client');
+const { buildMaterializeUpdates } = require('../materialize');
+const { paymentHash } = require('../pixelpay');
+const { resolvePixelPayConfig } = require('../pixelpay-config');
+const MR = require('../manual-resolve');
+const C = require('../cancel-order');
+process.env.PIXELPAY_MODE = 'sandbox';
+let voidOk = true;   // the provider's answer to a void (the stubbed PixelPay; the REAL client / voidOrRefund run)
+globalThis.fetch = async (url) => {
+  if (!String(url).endsWith('/api/v2/transaction/void')) throw new Error(`unexpected fetch ${url}`);
+  return new Response(JSON.stringify(voidOk ? { success: true, message: 'ok' } : { success: false, message: 'no' }), { status: 200 });
+};
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const OID = 'CPK1', AID = 'c0ffee00c0ffee77';
@@ -72,14 +88,43 @@ const PARKED = (reason) => ['manual_review', reason, NOW, null, null, null];
     ok('CP-RETRY: a retried cancel on a parked order is refused at the gate (no claim, no void)');
   }
   {
-    // CP-GUARD: the A-path CAS (an already-cancelled order) never overwrites an order that moved
-    for (const [label, over] of [['a resolver claim', { payment_status: 'resolving_refund' }], ['already reviewed', { payment_status: 'manual_review', blocked_reason: 'other' }], ['refunded', { payment_status: 'refunded' }]]) {
-      const db = makeDb({ orders: { [OID]: ORDER({ status: 'cancelled', ...over }) }, payment_attempts: { [AID]: { order_id: OID, hosted_state: 'paid', hosted_callback_verified: true } } });
-      const before = JSON.stringify(db.getAt(`orders/${OID}`));
+    // CP-RACE (Codex #211 P1-1 / P2-3 / P2-5): the REAL writer runs AFTER cancel's read, right before the park transaction (the honest
+    // model's beforeTx hook on the order's Nth transaction: B/C = the 2nd — after the claim; A = the 1st). Nothing it wrote is overwritten.
+    const KEY = resolvePixelPayConfig().app_key, SECRET = resolvePixelPayConfig().secret;
+    const HOID = `${OID}-${AID}`;
+    const cbDeps = (db) => ({ db, restaurant: { lat: 15.5, lng: -88, name: 'TB', phone: 'p' }, buildMaterializeUpdates, alert: (k, d) => paymentAlert(db, k, d), genToken: () => 'TOK', client: realClient, voidOrRefund: realVoid });
+    const paid = (db) => handleHostedCallback(cbDeps(db), { order: HOID, status: 'paid', amount: 299, uuid: 'U-DECLINED', transaction_id: 'T9', payment_hash: paymentHash(HOID, KEY, SECRET) }, NOW + 1);   // the SAME payment arriving late (B.6 set cancel_pending ⇒ auto-void)
+    const badHash = (db) => handleHostedCallback(cbDeps(db), { order: HOID, status: 'paid', amount: 299, uuid: 'PAY-9', transaction_id: 'T9', payment_hash: 'f'.repeat(32) }, NOW + 1);
+    const resolverClaim = (db) => db.ref(`orders/${OID}`).transaction((cur) => MR.claimDecision(cur, 'refund', 'RCL', NOW + 2));
+    const otherCancelClaim = (db) => db.ref(`orders/${OID}`).transaction((cur) => C.claimDecision(cur, 'CL-OTHER', NOW + 2));
+    const race = async (label, { ord, att, nth, inject, ok: okVoid = true, want }) => {
+      voidOk = okVoid; voids = 0; let db; let seen = 0; let fired = false;
+      db = makeDb({ orders: { [OID]: ORDER({ active_attempt_id: AID, ...ord }) }, payment_attempts: { [AID]: { order_id: OID, hosted_order_id: HOID, ...att } } }, {
+        beforeTx: async (p) => { if (fired || p !== `orders/${OID}`) return; seen += 1; if (seen === nth) { fired = true; await quiet(() => inject(db)); } },
+      });
       await cancel(db);
-      assert.strictEqual(JSON.stringify(db.getAt(`orders/${OID}`)), before, `🔴 CP-GUARD: ${label} ⇒ the order is never overwritten`);
-    }
-    ok('CP-GUARD: the already-cancelled park never overwrites a resolver-owned / reviewed / refunded order');
+      assert.ok(fired, `${label} premise: the real writer ran right before the park transaction`);
+      const o = db.getAt(`orders/${OID}`);
+      want(o, label);
+      assert.ok(o.blocked_reason === undefined && o.cancel_parked_at === undefined, `🔴 ${label}: NOT parked over the concurrent outcome (${o.payment_status}, ${o.blocked_reason})`);
+    };
+    const C_ATT = { hosted_state: 'created', payment_uuid: 'U-DECLINED' }, C_ORD = { status: 'new', payment_status: 'pending' };
+    const B_ATT = { hosted_state: 'paid', hosted_callback_verified: true }, A_ORD = { status: 'cancelled' };
+    const released = (o) => [o.cancel_claim_id || null, o.resolving_action || null, o.resolving_phase || null];
+    // C (claimed): a paid callback auto-voids (B.6 set cancel_pending) → refunded / refund_pending, our claim still on the order
+    await race('CP-RACE-C-REFUNDED', { ord: C_ORD, att: C_ATT, nth: 2, inject: paid, want: (o, L) => assert.deepStrictEqual([o.status, o.payment_status, ...released(o)], ['cancelled', 'refunded', null, null, null], `🔴 ${L}: the void's refunded stands; only our claim is released`) });
+    await race('CP-RACE-C-REFUND-PENDING', { ord: C_ORD, att: C_ATT, nth: 2, inject: paid, ok: false, want: (o, L) => assert.deepStrictEqual([o.status, o.payment_status, ...released(o)], ['cancelled', 'refund_pending', null, null, null], `🔴 ${L}: refund_pending stands; only our claim is released`) });
+    // C / B (claimed): a verify-failing callback queues manual_reconciliation
+    await race('CP-RACE-C-RECON', { ord: C_ORD, att: C_ATT, nth: 2, inject: badHash, want: (o, L) => assert.deepStrictEqual([o.payment_status, ...released(o)], ['manual_reconciliation', null, null, null], `🔴 ${L}: the queued manual_reconciliation stands`) });
+    await race('CP-RACE-B-RECON', { ord: {}, att: B_ATT, nth: 2, inject: badHash, want: (o, L) => assert.deepStrictEqual([o.payment_status, ...released(o)], ['manual_reconciliation', null, null, null], `🔴 ${L}: the queued manual_reconciliation stands`) });
+    // C (claimed): the real resolver claims the queued reconciliation while our cancel claim is still on the order ⇒ its fields stay
+    await race('CP-RACE-C-RESOLVER', { ord: C_ORD, att: C_ATT, nth: 2, inject: async (db) => { await badHash(db); await resolverClaim(db); },
+      want: (o, L) => assert.deepStrictEqual([o.payment_status, o.resolving_action, o.resolving_phase, o.resolving_claim_id, o.cancel_claim_id || null], ['resolving_refund', 'refund', MR.PHASE.CLAIMED, 'RCL', null], `🔴 ${L}: the resolver's claim is intact (only OUR cancel claim released)`) });
+    // A (no claim, an already-cancelled order): a verify-failing callback / a real cancel claim lands first
+    await race('CP-RACE-A-RECON', { ord: A_ORD, att: B_ATT, nth: 1, inject: badHash, want: (o, L) => assert.strictEqual(o.payment_status, 'manual_reconciliation', `🔴 ${L}: the queued manual_reconciliation stands (P2-3)`) });
+    await race('CP-RACE-A-CLAIM', { ord: A_ORD, att: B_ATT, nth: 1, inject: otherCancelClaim, want: (o, L) => assert.deepStrictEqual([o.payment_status, o.cancel_claim_id, o.resolving_action], ['confirmed', 'CL-OTHER', 'cancel'], `🔴 ${L}: another cancel's claim is left alone`) });
+    assert.strictEqual(voids, 0, 'CP-RACE: cancel itself never voided');
+    ok('CP-RACE: a refund / void / queued reconciliation / resolver claim / cancel claim landing after the read is never overwritten; only OUR claim is released');
   }
   console.log(`cancel-park: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -3128,7 +3128,7 @@ exports.reconcilePayments = onSchedule(
       if (o.status === 'scheduled' || o.status === 'releasing') {
         const ov = SCHED.scheduledOverdue(o, now);
         if (ov.overdue) breaches.push({ orderId, kind: ov.kind });
-        continue;
+        if (!require('./alert-prune').unresolvedMoney(o)) continue;   // Codex #211 P2-4: an unresolved money state is never exempt — it meets the aged rules below
       }
       if (o.payment_method !== 'online') continue;
       const a = o.active_attempt_id ? attempts[o.active_attempt_id] : null;

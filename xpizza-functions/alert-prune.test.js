@@ -46,14 +46,28 @@ assert.deepStrictEqual(alertsToPrune(null, null), []); ok('null-safe → []');
   assert.strictEqual(orderStillFlagged({ status: 'cancelled', payment_status: 'refund_pending' }, hr), true); ok('handheld reject + cancelled + refund_pending → KEEP');
   assert.strictEqual(orderStillFlagged({ status: 'cancelled', payment_status: 'refunded' }, hr), false); ok('handheld reject + cancelled + refunded → dismiss');
   assert.strictEqual(orderStillFlagged({ status: 'cancelled' }, { type: 'payment_handheld_reject_stranded' }), false); ok('handheld reject + cancelled (no refund pending) → dismiss');
-  assert.strictEqual(orderStillFlagged({ status: 'cancelled', payment_status: 'refund_pending' }, { type: 'payment_paid_after_close' }), false); ok('a NON-handheld alert on cancelled + refund_pending → dismiss, as before');
-  assert.strictEqual(orderStillFlagged({ status: 'cancelled', payment_status: 'refund_pending' }), false); ok('no alert argument → unchanged behaviour');
+  assert.strictEqual(orderStillFlagged({ status: 'cancelled', payment_status: 'refund_pending' }, { type: 'payment_paid_after_close' }), true, '🔴 CPR-REFUND-PENDING: any alert on cancelled + refund_pending is kept'); ok('Codex #211 P1-2: ANY alert on cancelled + refund_pending → KEEP (an unresolved money state; was handheld-only)');
+  assert.strictEqual(orderStillFlagged({ status: 'cancelled', payment_status: 'refund_pending' }), true, '🔴 CPR-REFUND-PENDING: cancelled + refund_pending is kept (no alert argument)'); ok('Codex #211 P1-2: no alert argument, cancelled + refund_pending → KEEP');
   const prune = alertsToPrune({
     k1: hr,
     k2: { type: 'payment_handheld_reject_manual_review', detail: { orderId: 'R2' } },
     k3: { type: 'payment_paid_after_close', detail: { orderId: 'R1' } },
   }, { R1: { status: 'cancelled', payment_status: 'refund_pending' }, R2: { status: 'cancelled', payment_status: 'refunded' } }).sort();
-  assert.deepStrictEqual(prune, ['k2', 'k3']); ok('alertsToPrune passes the alert through: the refund-pending handheld notice is kept, the rest pruned');
+  assert.deepStrictEqual(prune, ['k2']); ok('alertsToPrune: every alert on the refund-pending order is kept (Codex #211 P1-2); the refunded order\'s is pruned');
+}
+// Codex #211 P1-2 (cancel-park): an UNRESOLVED MONEY state still needs a person whatever the order's fulfilment status — a parked
+// cancelled order's alerts (the cancel refusal + the daily aged_manual_review breach) are never pruned.
+{
+  const { unresolvedMoney } = require('./alert-prune');
+  for (const ps of ['manual_review', 'manual_reconciliation', 'refund_pending', 'resolving_refund', 'resolving_materialize']) {
+    assert.strictEqual(unresolvedMoney({ status: 'cancelled', payment_status: ps }), true, `🔴 CPR-STATE: ${ps} is an unresolved money state`);
+    assert.strictEqual(orderStillFlagged({ status: 'cancelled', payment_status: ps }, { type: 'payment_reconcile_breaches' }), true, `🔴 CPR-KEEP: cancelled + ${ps} → KEEP`);
+  }
+  for (const ps of ['refunded', 'abandoned', 'confirmed', 'pending', undefined]) assert.strictEqual(unresolvedMoney({ status: 'cancelled', payment_status: ps }), false, `CPR-STATE: ${ps} is not`);
+  const parked = { status: 'cancelled', payment_status: 'manual_review', blocked_reason: 'cancel_no_uuid_cancelled' };
+  const kept = alertsToPrune({ c: { type: 'payment_cancel_manual_review', detail: { orderId: 'P1' } }, b: { type: 'payment_reconcile_breaches', detail: { breaches: [{ orderId: 'P1', kind: 'aged_manual_review' }] } } }, { P1: parked });
+  assert.deepStrictEqual(kept, [], '🔴 CPR-PARKED: a parked cancelled order keeps its cancel alert AND its daily breach');
+  ok('CPR: manual_review / manual_reconciliation / refund_pending / resolving_* are never pruned, whatever the status (a parked cancelled order keeps its alerts)');
 }
 
 console.log(`\n${n} passed`);

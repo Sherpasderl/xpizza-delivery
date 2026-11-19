@@ -7,28 +7,48 @@ const BASE = '31f05c8a4';
 const HUNKS = Object.freeze([
  {
   "file": "index.js",
+  "now": "        if (!require('./alert-prune').unresolvedMoney(o)) continue;   // Codex #211 P2-4: an unresolved money state is never exempt — it meets the aged rules below\n",
+  "was": "        continue;\n"
+ },
+ {
+  "file": "index.js",
   "now": "      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' }); if (o.payment_status === 'manual_review' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_review' });   // + cancel-park option A: a parked (manual_review) order is re-raised daily\n",
   "was": "      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' });\n"
  },
  {
   "file": "cancel-order-core.js",
-  "now": "// PLAN-5f-cancel-park r1 option A (owner FIX 11-19): a refused money cancel PARKS the order for a person — payment_status 'manual_review'\n// (the cancel flow's own human state: the B.2 gate refuses any retry, never a re-void) + blocked_reason + cancel_parked_at — so the refusal\n// is durable even if its alert is lost; reconcilePayments re-raises it daily (aged_manual_review). WITH a claim: ONE transaction that\n// releases OUR claim and parks (replaces releaseCancelClaim on these paths). WITHOUT one (an already-cancelled order): ONE guarded CAS that\n// never overwrites a resolver-owned, already-reviewed or reversed order.\nasync function parkCancelForPerson(orderRef, { claimId, blockedReason, now }) {\n  await orderRef.transaction((cur) => {\n    if (cur === null) return null;                                     // null-first-safe\n    if (!cur) return;\n    if (claimId) {\n      if (cur.cancel_claim_id !== claimId) return;                     // not our claim → leave it\n      return { ...cur, cancel_claim_id: null, resolving_action: null, resolving_phase: null, resolving_claimed_at: null,\n        payment_status: 'manual_review', blocked_reason: blockedReason, cancel_parked_at: now };\n    }\n    if (cur.status !== 'cancelled' || cur.cancel_claim_id || MR.isResolving(cur.payment_status)\n      || ['manual_review', 'refunded', 'refund_pending'].includes(cur.payment_status)) return;   // moved / owned / reversed → never overwrite\n    return { ...cur, payment_status: 'manual_review', blocked_reason: blockedReason, cancel_parked_at: now };\n  });\n}\n\n",
+  "now": "// PLAN-5f-cancel-park r1 option A (owner FIX 11-19): a refused money cancel PARKS the order for a person — payment_status 'manual_review'\n// (the cancel flow's own human state: the B.2 gate refuses any retry, never a re-void) + blocked_reason + cancel_parked_at — so the refusal\n// is durable even if its alert is lost; reconcilePayments re-raises it daily (aged_manual_review). WITH a claim: ONE transaction that\n// releases OUR claim and parks (replaces releaseCancelClaim on these paths). WITHOUT one (an already-cancelled order): ONE CAS.\n// Codex #211: PARKABLE is the ONE rule for both: the order still holds EXACTLY the payment_status cancel judged, and the cancel claim is\n// as cancel left it (ours / none). Any outcome that landed after the read — a void (refunded / refund_pending), a confirmation, a queued\n// manual_reconciliation, a resolver's claim (resolving_*) — changed payment_status, so it is never overwritten. (The judged state itself\n// is never manual_* / resolving_* / refunded / refund_pending: the B.2 gate and cancelledDecision answer those before any park.)\nconst parkable = (cur, judged, claimId) => cur.payment_status === judged && (claimId ? cur.cancel_claim_id === claimId : !cur.cancel_claim_id);\nasync function parkCancelForPerson(orderRef, { claimId, judged, blockedReason, now }) {\n  await orderRef.transaction((cur) => {\n    if (cur === null) return null;                                     // null-first-safe\n    if (!cur) return;\n    if (claimId && cur.cancel_claim_id !== claimId) return;            // not our claim → leave it\n    const base = !claimId ? cur : { ...cur, cancel_claim_id: null,     // release ONLY our claim: a resolver's resolving_* fields stay\n      ...(cur.resolving_action === 'cancel' ? { resolving_action: null, resolving_phase: null, resolving_claimed_at: null } : {}) };\n    if (!parkable(cur, judged, claimId)) return claimId ? base : undefined;   // a concurrent outcome stands\n    return { ...base, payment_status: 'manual_review', blocked_reason: blockedReason, cancel_parked_at: now };\n  });\n}\n\n",
   "was": ""
  },
  {
   "file": "cancel-order-core.js",
-  "now": "      if (d.alert) { await parkCancelForPerson(orderRef, { claimId: null, blockedReason: 'cancel_no_uuid_cancelled', now }); await alert('cancel_manual_review', { orderId, payment_status: order.payment_status }); }   // park first: durable even if the alert is lost\n",
+  "now": "      if (d.alert) { await parkCancelForPerson(orderRef, { claimId: null, judged: order.payment_status, blockedReason: 'cancel_no_uuid_cancelled', now }); await alert('cancel_manual_review', { orderId, payment_status: order.payment_status }); }   // park first: durable even if the alert is lost\n",
   "was": "      if (d.alert) await alert('cancel_manual_review', { orderId, payment_status: order.payment_status });\n"
  },
  {
   "file": "cancel-order-core.js",
-  "now": "      await parkCancelForPerson(orderRef, { claimId, blockedReason: 'cancel_captured_no_uuid', now });   // release our claim AND park, one transaction\n",
+  "now": "      await parkCancelForPerson(orderRef, { claimId, judged: claimed.payment_status, blockedReason: 'cancel_captured_no_uuid', now });   // release our claim AND park, one transaction\n",
   "was": "      await releaseCancelClaim(orderRef, claimId);\n"
  },
  {
   "file": "cancel-order-core.js",
-  "now": "    await parkCancelForPerson(orderRef, { claimId, blockedReason: 'cancel_ambiguous_paid_evidence', now });   // release our claim AND park, one transaction\n",
+  "now": "    await parkCancelForPerson(orderRef, { claimId, judged: claimed.payment_status, blockedReason: 'cancel_ambiguous_paid_evidence', now });   // release our claim AND park, one transaction\n",
   "was": "    await releaseCancelClaim(orderRef, claimId);\n"
+ },
+ {
+  "file": "alert-prune.js",
+  "now": "// Codex #211 P1-2 (cancel-park): an UNRESOLVED MONEY state (manual_review / manual_reconciliation / refund_pending / resolving_*) still\n// needs a person WHATEVER the order's fulfilment status — kept, never pruned. (It subsumes H1a A-R1's handheld-reject refund_pending keep.)\nconst UNRESOLVED_MONEY = new Set(['manual_review', 'manual_reconciliation', 'refund_pending']);\nconst unresolvedMoney = (order) => !!order && (UNRESOLVED_MONEY.has(order.payment_status) || (typeof order.payment_status === 'string' && order.payment_status.startsWith('resolving_')));\nfunction orderStillFlagged(order, alert) {   // `alert` is kept in the signature: callers pass it\n",
+  "was": "// H1a A-R1: a handheld-reject notice (payment_handheld_reject_*) is KEPT while its order's refund is still pending, even\n// though the order is cancelled — checked BEFORE the cancelled return. Every other alert is unchanged.\nfunction orderStillFlagged(order, alert) {\n"
+ },
+ {
+  "file": "alert-prune.js",
+  "now": "  if (unresolvedMoney(order)) return true;\n",
+  "was": "  const handheldReject = !!alert && typeof alert.type === 'string' && alert.type.startsWith('payment_handheld_reject_');\n  if (handheldReject && order.payment_status === 'refund_pending') return true;\n"
+ },
+ {
+  "file": "alert-prune.js",
+  "now": "module.exports = { alertOrderIds, orderStillFlagged, alertsToPrune, unresolvedMoney };\n",
+  "was": "module.exports = { alertOrderIds, orderStillFlagged, alertsToPrune };\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

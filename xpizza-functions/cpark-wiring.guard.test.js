@@ -10,7 +10,7 @@ const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyCparkModule } = require('./tools/cpark-module-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
-assert.deepStrictEqual([...FILES].sort(), ['cancel-order-core.js', 'index.js'], 'CPARK: the owned files');
+assert.deepStrictEqual([...FILES].sort(), ['alert-prune.js', 'cancel-order-core.js', 'index.js'], 'CPARK: the owned files');
 for (const F of FILES) {
   const disk = fs.readFileSync(path.join(__dirname, F), 'utf8');
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
