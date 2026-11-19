@@ -41301,6 +41301,151 @@
   ]
  },
  {
+  "id": "tf-01",
+  "slice": "textfit",
+  "label": "16b: the WhatsApp number may break at its hyphen again (no nowrap on .sg .sub b)",
+  "file": "../customer-app/capp.css",
+  "from": ".sg .sub b{white-space:nowrap}",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "TF-PHONE"
+  ]
+ },
+ {
+  "id": "tf-02",
+  "slice": "textfit",
+  "label": "16b: the sign-in subtitle leaves «vez.» orphaned (no text-wrap)",
+  "file": "../customer-app/capp.css",
+  "from": "line-height:1.5;max-width:34ch;text-wrap:balance}",
+  "to": "line-height:1.5;max-width:34ch}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "TF-ORPHAN: `.sg .sub`"
+  ]
+ },
+ {
+  "id": "tf-03",
+  "slice": "textfit",
+  "label": "16b: the desk guest line leaves «tarjeta.» orphaned",
+  "file": "../customer-app/capp.css",
+  "from": "color:var(--mute);text-wrap:balance}\n.app.desk .guestline b",
+  "to": "color:var(--mute)}\n.app.desk .guestline b",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "TF-ORPHAN: `.app.desk .guestline`"
+  ]
+ },
+ {
+  "id": "tf-04",
+  "slice": "textfit",
+  "label": "16b: the desk dish-card name wraps one word («Chili»)",
+  "file": "../customer-app/capp.css",
+  "from": ".app.desk .icard .nm{font-size:15.5px;text-wrap:balance}",
+  "to": ".app.desk .icard .nm{font-size:15.5px}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "TF-ORPHAN: `.app.desk .icard .nm`"
+  ]
+ },
+ {
+  "id": "tf-05",
+  "slice": "textfit",
+  "label": "16b: the desk dish-card description wraps one word («sauce»)",
+  "file": "../customer-app/capp.css",
+  "from": "-webkit-line-clamp:2;text-wrap:balance}",
+  "to": "-webkit-line-clamp:2}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "TF-ORPHAN: `.app.desk .icard .ds`"
+  ]
+ },
+ {
+  "slice": "textfit",
+  "file": "../customer-app/capp.css",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "id": "tf-08",
+  "label": "16b: the clamped desk description back on `pretty` — Chrome ignores it on a -webkit-box («mozzarella» alone, slot 11-18)",
+  "from": "-webkit-line-clamp:2;text-wrap:balance}",
+  "to": "-webkit-line-clamp:2;text-wrap:pretty}",
+  "kills_with": [
+   "TF-CLAMP"
+  ]
+ },
+ {
+  "slice": "textfit",
+  "file": "../customer-app/capp.css",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "id": "tf-09",
+  "label": "16b: the field hint unbalanced again («pedido.» alone at 390, slot 11-18)",
+  "from": ".fld .note{text-wrap:balance}",
+  "to": ".fld .note{}",
+  "kills_with": [
+   "TF-NOTE"
+  ]
+ },
+ {
+  "id": "tf-06",
+  "slice": "textfit",
+  "label": "GO 10: the centred desktop modal shows the phone sheet's drag handle again",
+  "file": "../customer-app/capp.css",
+  "from": ".app.desk .sheet .grab{display:none}",
+  "to": ".app.desk .sheet .grab{}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "TF-GRAB"
+  ]
+ },
+ {
+  "id": "tf-07",
+  "slice": "textfit",
+  "label": "capp-guards (11-18 re-base): a capp commit after CAPP_TIP no longer fails the range",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "  assert.equal(later, '', `🔴 capp commit(s) after CAPP_TIP",
+  "to": "  assert.equal('', '', `🔴 capp commit(s) after CAPP_TIP",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=still bites",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "GUARD-BITES"
+  ]
+ },
+ {
   "id": "paylbl-01",
   "slice": "capp-pay-labels",
   "label": "the «Pago» row labels are grey again (the .txt wrapper's muted colour reaches the <b>)",
