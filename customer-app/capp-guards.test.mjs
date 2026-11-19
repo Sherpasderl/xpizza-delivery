@@ -269,16 +269,13 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // RC 75c1bccea) followed the TRAIN once the lane came in as a merge's second parent — it flagged train/asm8 + asm9 merges (195147ff,
 // 11273d0c: not capp resolutions) and silently dropped the lane's own merges below.
 const MERGE_ALLOW = {
-  // above BASE 31f05c8a only (advisor 11-18): the offers-r20 / push / asm11 entries (b63d58a0, fc0f3213, 1adc6541, 8839193d) landed with asm11
-  '6fe745ff customer-app/capp-s7a2.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '6fe745ff customer-app/capp.css': 'merge-forward (advisor 11-18): main\'s Figtree `.rate h2` (var(--fig)) + the lane\'s `.rate .rrow2 .t .who{white-space:nowrap}` line — both parents\' lines, 0 new',
-  // feat/capp-dish-stats merge-forward 0895a17c (advisor 11-18): each hunk resolved alone; `git show --cc` lines from NO parent listed
-  '0895a17c customer-app/capp-checkout.js': 'the fingerprint leaves out BOTH decorations: 1 line from no parent — `const { dish_stats: _stats, offers: _offers, ...content } = envelope.menu;` (+ both parents\' comments); of-13 / ds1-fp',
-  '0895a17c customer-app/capp-menu.js': 'the lane\'s `dishStats,` line + main\'s `offers` block — both parents\' lines, 0 from no parent',
-  '0895a17c customer-app/capp-ui.js': 'the lane\'s `S.upsellDesk = null` reset + main\'s empty-cart return with `trimNote` — both parents\' lines, 0 from no parent',
-  '0895a17c customer-app/capp.css': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '0895a17c customer-app/capp-s7a2.test.mjs': 'end-of-file appends on an empty base: union (the lane\'s dish-stats cells + main\'s), 0 from no parent',
-  '0895a17c customer-app/capp-ui.test.mjs': 'end-of-file appends on an empty base: union (the lane\'s dish-stats cells + main\'s), 0 from no parent',
+  // above BASE 31f05c8a only. asm12 (advisor 11-19): the rider 6fe745ff ×2 and dish-stats 0895a17c ×6 merge-forward entries left the walk at
+  // T 6de4b94c9 (their merges are on those lanes' own lines, neither on the banner lane line nor after its pin) — their rulings stay in the
+  // lanes' history (and in this re-pin's commit message)
+  // asm12 step 16 (advisor 11-19): the banner merge 6dccdf27 — proven at train T 6de4b94c9 (`git show --remerge-diff` / `--cc`)
+  '6dccdf27 customer-app/capp-guards.test.mjs': 'hand-resolved union: pins = banner, comment ours ⊇ theirs, MERGE_ALLOW = union; --cc 0 lines from no parent',
+  '6dccdf27 customer-app/capp-s7a2.test.mjs': 'clean 3-way, remerge-diff empty, --cc 0',
+  '6dccdf27 customer-app/capp.css': 'clean 3-way, remerge-diff empty, --cc 0',
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..${CAPP_TIP} + the merges after the pin`, () => {
   const [, tip] = capRange(), synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
