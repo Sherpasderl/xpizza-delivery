@@ -63,7 +63,9 @@ export function open(draft, key, reservedNames = null, opts = {}) {
     name: typeof d.name === 'string' ? d.name : '', desc: typeof d.desc === 'string' ? d.desc : '',
     cat: d.cat == null ? null : String(d.cat), subcat: typeof d.subcat === 'string' ? d.subcat : null,
     price: g ? null : (Number.isInteger(row.price) ? String(row.price) : ''),
-    optionPrices: g ? Object.fromEntries(g.options.map((o) => [o.key, Number.isInteger(o.price) ? String(o.price) : ''])) : {},
+    // Codex #201 (owner: «prices live in one place»): THE option price store, keyed by ROW ID (key, or ref for a row added in an earlier
+    // drawer) — every option of the group; this drawer's new options join it as they are added (their ops carry no price until «Guardar»)
+    optionPrices: g ? Object.fromEntries(g.options.map((o) => [o.key || o.ref, Number.isInteger(o.price) ? String(o.price) : ''])) : {},
     photo: Object.prototype.hasOwnProperty.call(photos, key) ? { ...photos[key] } : undefined,
     // the extras-group price blocks shown under the fields (advisor Q2): their prices are part of the copy too
     extraPrices: Object.fromEntries((draftSource(draft).extras || []).filter((x) => x && typeof x.key === 'string')
@@ -369,14 +371,14 @@ export function view(draft, s) {
   const moved = w.cat !== s.base.cat && w.cat != null;
   const consequenceGap = moved && extrasChange(draft, s) === null;
   if (ch.includes('price') && parsePrice(w.price) === null) errors.price = true;
-  const badOption = s.group && livePrices(s).some(([, v]) => parsePrice(v) === null);
+  const badOption = groupPrices(draft, s).some((o) => parsePrice(o.raw) === null);   // #201: ANY option of the group, «0» included — never a fallback
   const badExtra = ch.includes('extraPrices') && Object.keys(w.extraPrices).some((k) => w.extraPrices[k].trim() !== s.base.extraPrices[k] && parsePrice(w.extraPrices[k]) === null);
   const se = s.serverError;
   if (se && !errors[se.field]) errors[se.field] = se.message;
   const g = s.group ? choiceGroup(draft, s.key) : null;
   const tidy = tidyItemName(w.name);
   // advisor 11-12 (S1 SBS): the row names the choice; its full name's counter is an inline warning from OPTION_NAME_NEAR on
-  const options = g ? g.options.map((o) => { const fullName = `${tidy} - ${o.display.choice}`; return { key: o.key, choice: o.display.choice, fullName, counter: `${chars(fullName)}/${ITEM_NAME_MAX}`, tooLong: chars(fullName) > ITEM_NAME_MAX, nearLimit: chars(fullName) >= OPTION_NAME_NEAR, price: w.optionPrices[o.key] }; }) : null;
+  const options = g ? g.options.map((o) => { const fullName = `${tidy} - ${o.display.choice}`; return { key: o.key || o.ref, choice: o.display.choice, fullName, counter: `${chars(fullName)}/${ITEM_NAME_MAX}`, tooLong: chars(fullName) > ITEM_NAME_MAX, nearLimit: chars(fullName) >= OPTION_NAME_NEAR, price: w.optionPrices[o.key || o.ref] }; }) : null;
   const prices = groupPrices(draft, s);   // Codex #196: THE group's prices — the inputs are drawn from it
   const same = prices.length ? (s.same === null ? new Set(prices.map((o) => o.raw.trim())).size <= 1 : s.same) : null;
   const uploading = !!(s.upload && s.upload.state === 'busy');
@@ -429,7 +431,11 @@ export function save(draft, s) {
   if (ch.includes('denyExtras')) e.denyExtras = w.denyExtras.slice();
   if (ch.includes('extrasNone')) e.extrasPolicy = w.extrasNone ? 'none' : null;
   // STRUCTURE S2 (§3.2): ONE composition — «Sin extras» off, the move, the copy's ops, then the rest — swapped in once
-  if (!commitDish(draft, s.key, e, [...s.choiceOps, ...s.ops], { reserved: s.reserved, extrasAuthoring: s.extrasAuthoring, extrasCatalog: s.extrasCatalog, choiceEdit: s.choiceEdit }).ok) return { ok: false, error: 'invalid' };
+  // #201: this drawer's new options get their prices from the store HERE, once (every one parses: «Guardar» was on)
+  const price = (ref) => parsePrice(s.work.optionPrices[ref]);
+  const priced = s.choiceOps.map((op) => (op.op === 'option.add' ? { ...op, price: price(op.ref) }
+    : op.op === 'choice.add' ? { ...op, options: op.options.map((o) => ({ ...o, price: price(o.ref) })) } : op));
+  if (!commitDish(draft, s.key, e, [...priced, ...s.ops], { reserved: s.reserved, extrasAuthoring: s.extrasAuthoring, extrasCatalog: s.extrasCatalog, choiceEdit: s.choiceEdit }).ok) return { ok: false, error: 'invalid' };
   s.closed = true;
   return { ok: true };
 }
@@ -441,10 +447,13 @@ const choiceTouched = (s) => { if (s.serverError && s.serverError.field === 'opt
 export function choiceOp(s, op) {
   if (!s || s.closed) return { ok: false, code: 'closed' };
   if (!s.choiceEdit) return { ok: false, code: 'choice_edit_off' };
+  const priced = op && op.op === 'option.add' ? op.price : undefined;
+  if (op && op.op === 'option.add') op = { ...op, price: null };   // Codex #201: the price goes to the store, never the op
   const scratch = createDraft(JSON.parse(JSON.stringify(draftSource(s.draft))));
   const r = applyChoiceOps(scratch, [...s.choiceOps, op], { choiceEdit: true });
   if (!r.ok) return r;
   s.choiceOps.push(op);
+  if (op.op === 'option.add') writePrice(s, op.ref, Number.isInteger(priced) ? String(priced) : '');
   return choiceTouched(s);
 }
 // TYPING coalesces (the drawer's inputs fire per keystroke): the choice's label, one option's rename and the «Recomendada» mark each keep ONE
@@ -537,13 +546,14 @@ export function choiceAdd(s, { label, options, marked = 0 } = {}) {
   if (!s || s.closed) return { ok: false, code: 'closed' };
   if (!s.choiceEdit) return { ok: false, code: 'choice_edit_off' };
   if (typeof label !== 'string' || !label.trim()) return { ok: false, code: 'label_required' };
-  const opts = Array.isArray(options) ? options.map((o) => ({ ref: o.ref, choice: o.choice, price: o.price })) : [];
+  const opts = Array.isArray(options) ? options.map((o) => ({ ref: o.ref, choice: o.choice, price: null })) : [];   // prices: the store (#201)
   const add = { op: 'choice.add', key: s.key, label, options: opts };
   const next = [...s.choiceOps, add];
   if (Number.isInteger(marked) && marked > 0 && opts[marked]) next.push({ op: 'choice.recommended', launcher: s.key, option: opts[marked].ref });
   const r = tryOps(s, next);
   if (!r.ok) return r;
   s.choiceOps = next;
+  for (const o of options) writePrice(s, o.ref, Number.isInteger(o.price) ? String(o.price) : '');
   s.work.price = s.base.price;
   return choiceTouched(s);
 }
@@ -559,9 +569,10 @@ export function choiceDropNew(s, ref) {
   const r = tryOps(s, next);
   if (!r.ok) return r;
   s.choiceOps = next;
+  delete s.work.optionPrices[ref];
   return choiceTouched(s);
 }
-const pick = (p) => Object.fromEntries(Object.entries(p).filter(([k]) => k === 'choice' || k === 'price'));
+const pick = (p) => Object.fromEntries(Object.entries(p).filter(([k]) => k === 'choice'));   // a price is the store's (writePrice), never an op's
 // the copy's choice as it would save: { label, options: [{ id, choice, price, marked, isNew }], touched, hold, removed } | null (OFF).
 // TOUCHED is the server's rule against the loaded baseline (S3-r4 §2): a new / removed group, its label, its membership, any member's
 // choice text or mark — a price alone is not. HOLD: a touched group with no mark — 'recommended_removed' when the baseline's marked
@@ -583,7 +594,9 @@ export function choiceModel(draft, s) {
   const was = groupIn(draft.orig, s.key);
   const idOf = (r) => r.key || r.ref;
   if (!now) return { label: null, options: [], touched: !!was, hold: null, removed: !!was };
-  const options = now.members.map((r) => ({ id: idOf(r), choice: r.display.choice, price: r.price, marked: isTag(r), isNew: !r.key }));
+  // #201: an option's price is THE store's (by row id) — never the scratch writer's (which knows no prices before «Guardar»)
+  const priceOf = (r) => (Object.prototype.hasOwnProperty.call(s.work.optionPrices, idOf(r)) ? parsePrice(s.work.optionPrices[idOf(r)]) : r.price);
+  const options = now.members.map((r) => ({ id: idOf(r), choice: r.display.choice, price: priceOf(r), marked: isTag(r), isNew: !r.key }));
   const wasMap = new Map((was ? was.members : []).map((r) => [idOf(r), r]));
   const touched = !was || was.label !== now.label || was.members.length !== now.members.length
     || now.members.some((r) => { const w = wasMap.get(idOf(r)); return !w || w.display.choice !== r.display.choice || isTag(w) !== isTag(r); });
@@ -591,16 +604,12 @@ export function choiceModel(draft, s) {
   const hold = touched && marks === 0 ? { reason: was && was.members.some((r) => isTag(r) && !now.members.some((m) => idOf(m) === idOf(r))) ? 'recommended_removed' : 'recommended_required' } : null;
   return { label: now.label, labelChanged: !was || was.label !== now.label, options, touched, hold, removed: false };
 }
-// Codex #183-4: the EXISTING options still in the prospective group (the copy's choice ops applied). A price edit on an option the copy
-// removes is neither judged nor sent. null = no choice editing in this copy (every option counts, today's rule).
-export function liveOptionKeys(draft, s) {
-  const m = choiceModel(draft, s);
-  if (!m) return null;
-  return new Set(m.removed ? [] : m.options.filter((o) => !o.isNew).map((o) => o.id));
-}
+// the price edits of rows the DRAFT holds (in the store since the drawer opened) that stay in the prospective group — a removed one is
+// neither judged nor sent (#183-4); this drawer's new options are not here (their prices go into their ops at «Guardar»)
 const livePrices = (s) => {
-  const live = s.draft ? liveOptionKeys(s.draft, s) : null;
-  return Object.entries(s.work.optionPrices).filter(([k]) => !live || live.has(k));
+  const m = s.draft ? choiceModel(s.draft, s) : null;
+  const keep = m ? new Set(m.removed ? [] : m.options.map((o) => o.id)) : null;
+  return Object.entries(s.work.optionPrices).filter(([k]) => Object.prototype.hasOwnProperty.call(s.base.optionPrices, k) && (!keep || keep.has(k)));
 };
 // Codex #196 — THE prospective group's prices, ONE model for what the drawer shows, what «Mismo precio para todas» writes and what saves:
 // every option the copy would save, in order — a live option's typed text (the copy's optionPrices), a NEW one's (option.add, or inside a
@@ -611,13 +620,10 @@ export function groupPrices(draft, s) {
   const own = (id) => Object.prototype.hasOwnProperty.call(s.work.optionPrices, id);
   if (!m) return s.group ? Object.entries(s.work.optionPrices).map(([id, raw]) => ({ id, isNew: false, raw })) : [];
   if (m.removed) return [];
-  return m.options.map((o) => ({ id: o.id, isNew: o.isNew, raw: !o.isNew && own(o.id) ? s.work.optionPrices[o.id] : (Number.isInteger(o.price) ? String(o.price) : '') }));
+  return m.options.map((o) => ({ id: o.id, isNew: o.isNew, raw: own(o.id) ? s.work.optionPrices[o.id] : '' }));
 }
-// the ONE writer of an option's price, wherever the copy holds it: a live option's text, or a new option's op
-function writePrice(s, id, raw) {
-  if (Object.prototype.hasOwnProperty.call(s.work.optionPrices, id)) { s.work.optionPrices[id] = raw; return; }
-  if (s.choiceEdit) choiceUpdateNew(s, id, { price: parsePrice(raw) });
-}
+// the ONE writer of an option's price: the copy's store, by row id (the ops get their prices only at «Guardar»)
+function writePrice(s, id, raw) { s.work.optionPrices[id] = raw; }
 // D3 «Quitar elección»: the price that stays — the marked option by default; with no mark the card ASKS (priceFrom null) (addendum B2b)
 export function choiceRemovePlan(draft, s) {
   const m = choiceModel(draft, s);

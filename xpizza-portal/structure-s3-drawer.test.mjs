@@ -132,10 +132,10 @@ test('typing coalesces: the label / a rename / the mark stay ONE op each (the la
   IE.choiceSet(s, { op: 'choice.recommended', launcher: PAD, option: a }); IE.choiceSet(s, { op: 'choice.recommended', launcher: PAD, option: b });
   IE.choiceOp(s, { op: 'option.add', launcher: PAD, ref: ref('q'), choice: '', price: null });
   assert.equal(IE.choiceUpdateNew(s, ref('q'), { choice: 'Tofu' }).ok, true);
-  assert.equal(IE.choiceUpdateNew(s, ref('q'), { price: 330 }).ok, true);
+  IE.set(s, 'optionPrice', { key: ref('q'), raw: '330' });   // #201: THE one writer — the price lives in the copy's store, never in the op
   assert.deepEqual(s.choiceOps.map((o) => o.op), ['choice.label', 'option.rename', 'choice.recommended', 'option.add'], '🔴 one op per slot');
   assert.equal(s.choiceOps[0].label, 'Proteína'); assert.equal(s.choiceOps[1].choice, 'Pollo wok'); assert.equal(s.choiceOps[2].option, b);
-  assert.deepEqual([s.choiceOps[3].choice, s.choiceOps[3].price], ['Tofu', 330]);
+  assert.deepEqual([s.choiceOps[3].choice, s.choiceOps[3].price], ['Tofu', null], 'the add op carries no price until «Guardar»');
   const m = IE.choiceModel(d, s);
   assert.deepEqual(m.options.find((o) => o.id === ref('q')), { id: ref('q'), choice: 'Tofu', price: 330, marked: false, isNew: true });
 });

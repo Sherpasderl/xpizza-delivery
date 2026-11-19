@@ -308,6 +308,72 @@ test('#196-2 Sichuan Spicy Wonton: a choice added (Chico L100 · Grande L500), t
   assert.deepEqual(mem.map((x) => String(x.price)), s, '🔴 what saves is what was shown');
 });
 
+// Codex #201 (owner: «prices live in one place»): ONE price store per drawer, keyed by row id (key OR ref) — a reopened draft finds every
+// option's price there; an unparseable price («0» included) keeps «Guardar» off, never a fallback
+const saveOn = (p) => !p.btn('Guardar').disabled;
+async function padWithTofu(p) {
+  await editing(p);
+  ge(p).querySelector('.mgadd').click(); await settle(5);
+  p.type(rows(p)[3].querySelector('input.moname'), 'Tofu'); p.type(rows(p)[3].querySelector('.mopr input'), '500'); await settle(5);
+  pill(rows(p)[1]).click(); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(groupOf(p.src()).members[3].price, 500, 'premise: Tofu saved in the draft at L500');
+  await p.open(PAD); pencil(p).click(); await settle(5);   // the draft REOPENED: Tofu is a draft row with a ref, no key
+}
+test('#201-1 a reopened draft: «Mismo precio para todas» reaches Tofu (added in an earlier drawer) — shown = saved', async () => {
+  const p = await page({ read: ON });
+  await padWithTofu(p);
+  sameBox(p).click(); await settle(5);
+  const s = shown(p);
+  assert.equal(new Set(s).size, 1, `🔴 one price shown, Tofu included (${s.join(', ')})`);
+  p.btn('Guardar').click(); await settle(10);
+  assert.deepEqual(groupOf(p.src()).members.map((m) => String(m.price)), s, '🔴 what saves is what was shown');
+});
+test('#201-1b a reopened draft: L600 typed into Tofu saves L600', async () => {
+  const p = await page({ read: ON });
+  await padWithTofu(p);
+  p.type(ge(p).querySelector('input.mgname-in'), 'Proteína elegida'); await settle(5);
+  p.type(rows(p)[3].querySelector('.mopr input'), '600'); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(groupOf(p.src()).members[3].price, 600, '🔴 the typed price is the saved price');
+});
+test('#201-1c a reopened choice.add group (Sichuan Spicy Wonton): «Mismo precio» saves what it shows', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PLAIN);
+  d2Act(p).click(); await settle(5);
+  p.type(sheet(p).querySelector('input.mgname-in'), 'Tamaño');
+  p.type(sRows(p)[0].querySelector('input.moname'), 'Chico'); p.type(sRows(p)[0].querySelector('.mopr input'), '100');
+  p.type(sRows(p)[1].querySelector('input.moname'), 'Grande'); p.type(sRows(p)[1].querySelector('.mopr input'), '500');
+  sBtn(p, 'Agregar elección').click(); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  await p.open(PLAIN); pencil(p).click(); await settle(5);
+  assert.deepEqual(shown(p), ['100', '500'], 'premise: reopened with its two prices');
+  sameBox(p).click(); await settle(5);
+  const s = shown(p);
+  assert.equal(new Set(s).size, 1, `🔴 one price shown (${s.join(', ')})`);
+  p.btn('Guardar').click(); await settle(10);
+  const src = p.src(); const dish = src.items.find((i) => i.key === PLAIN);
+  const mem = src.structure.variant_items[String(dish.display.id)].variantIds.map((v) => src.items.find((i) => i.ref === v || String(i.display.id) === String(v)));
+  assert.deepEqual(mem.map((x) => String(x.price)), s, '🔴 what saves is what was shown');
+});
+test('#201-2 «0» on a new option\'s price keeps «Guardar» off — never the dish price behind it', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PLAIN);
+  d2Act(p).click(); await settle(5);
+  p.type(sheet(p).querySelector('input.mgname-in'), 'Tamaño');
+  p.type(sRows(p)[0].querySelector('input.moname'), 'Chico'); p.type(sRows(p)[0].querySelector('.mopr input'), '100');
+  p.type(sRows(p)[1].querySelector('input.moname'), 'Grande'); p.type(sRows(p)[1].querySelector('.mopr input'), '500');
+  sBtn(p, 'Agregar elección').click(); await settle(5);
+  pencil(p).click(); await settle(5);
+  const before = JSON.stringify(p.src());
+  const inp = rows(p)[0].querySelector('.mopr input');
+  inp.focus(); p.type(inp, '0'); await settle(5);
+  assert.equal(inp.value, '0', 'premise: the input says 0');
+  assert.equal(saveOn(p), false, '🔴 «Guardar» is off for an unparseable price');
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(JSON.stringify(p.src()), before, '🔴 nothing is written');
+});
+
 test('D2 — «Cancelar» records nothing; the trash is off at two options; «Agregar opción» adds a row', async () => {
   const p = await page({ read: ON });
   await p.signIn(); await p.open(PLAIN);
@@ -381,6 +447,7 @@ test('names before saving — a duplicate (the server\'s fold) shows its line LI
   assert.equal(rows(p)[1].querySelector('input.moname').getAttribute('aria-invalid'), 'true');
   assert.equal(lineAfter(rows(p)[0]), null, 'the first is not the twin');
   ge(p).querySelector('.mgadd').click(); await settle(5);
+  p.type(rows(p)[3].querySelector('.mopr input'), '300'); await settle(5);   // #201: an unpriced row keeps «Guardar» off — this cell is about NAMES
   assert.equal(lineAfter(rows(p)[3]), null, 'an empty new row: no line yet');
   p.type(ge(p).querySelector('input.mgname-in'), ''); await settle(5);
   assert.equal(lineAfter(ge(p).querySelector('input.mgname-in')), null, 'an emptied name: no line yet');

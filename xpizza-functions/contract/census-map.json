@@ -1243,6 +1243,7 @@
   "xpizza-portal/review.js#sectionRowsOf": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
   "xpizza-portal/app.js#itemsMove": "portal catalog authoring / auth / shell — catalog items, not persisted orders (S4 E: a dish row's grip move — a computed index into the draft's own item order)",
   "xpizza-portal/item-edit-logic.js#choiceUpdateNew>anon>anon": "portal catalog authoring / auth / shell — catalog items, not persisted orders (S3: a NEW option's draft row, spread from the drawer's copy)",
+  "xpizza-portal/item-edit-logic.js#save>anon>anon": "portal catalog authoring / auth / shell — catalog items, not persisted orders (S3 #201: a NEW option of a choice added in this drawer, spread with its price from the drawer's ONE price store at «Guardar»)",
   "xpizza-portal/app.js#renderAddDrawer>anon": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
   "xpizza-portal/app.js#choiceBlock>anon": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
   "xpizza-portal/app.js#showOutcome>anon": "portal catalog authoring / auth / shell — catalog items, not persisted orders",

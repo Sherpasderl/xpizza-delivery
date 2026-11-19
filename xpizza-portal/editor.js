@@ -1304,7 +1304,7 @@ export function editItem(draft, key, edit = {}, { reserved = null, extrasAuthori
   if (price === null || (price !== undefined && opts.length)) return false;   // a group's price lives on its options
   const optPrices = [];
   for (const [k, raw] of Object.entries(e.optionPrices && typeof e.optionPrices === 'object' ? e.optionPrices : {})) {
-    const o = opts.find((x) => x.key === k);
+    const o = opts.find((x) => (x.key || x.ref) === k);   // Codex #201: by row id — an option added in an earlier drawer has a ref
     const p = parsePrice(raw);
     if (!o || p === null) return false;
     optPrices.push([o, p]);

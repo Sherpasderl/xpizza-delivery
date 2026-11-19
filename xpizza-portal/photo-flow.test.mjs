@@ -381,6 +381,21 @@ test('P10b — a manager without the menu permission sees each branch\'s PUBLISH
   assert.equal(rowOf(d, 'Margarita').querySelector('.thumb'), null, 'no photo: no square');
 });
 
+// Codex #201-3: «Disponibilidad por sucursal» (availability.js) registers with the ONE sheet registry — another person never sees A's open
+// drawer (its product, price, branches) or its scrim
+test('#201-3 the availability drawer closes, empties and drops its scrim when another person signs in', async () => {
+  const fake = createPhotoFake({ items: ITEMS() });
+  const { d, w } = await boot(fake, { caps: MANAGER_RO, role: 'manager' });
+  await until(() => rowOf(d, 'Pepperoni'), 'the read-only menu');
+  rowOf(d, 'Pepperoni').querySelector('.rowchev').click(); await settle();
+  const dr = d.getElementById('availdrawer'), sc = d.getElementById('availscrim');
+  assert.ok(dr.classList.contains('show') && !sc.classList.contains('hidden'), 'premise: A has the drawer open');
+  d.dispatchEvent(new w.CustomEvent('portal:auth', { detail: { uid: 'uSomeoneElse' } })); await settle(80);
+  assert.equal(dr.classList.contains('show'), false, '🔴 A\'s drawer is closed');
+  assert.equal(dr.childElementCount, 0, 'and emptied');
+  assert.ok(sc.classList.contains('hidden'), 'its scrim is gone');
+});
+
 test('preview renewal — an image that fails to load triggers ONE re-read of getEditableCatalog; the draft on screen is kept', async () => {
   const fake = createPhotoFake({ items: ITEMS() });
   fake.registry.set('pidPub', { state: 'published' });

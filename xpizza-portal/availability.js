@@ -11,6 +11,7 @@ import { getBranchAvailability, setBranchAvailability } from './api.js';
 import * as L from './branch-logic.js';
 import { $, el, icon, button, toggle, pill, errBox, skeleton, OFFLINE } from './ops-dom.js';
 import { readOnlyThumb } from './photo.js';
+import { sheetOpened, sheetClosed } from './sheets.js';   // Codex #201-3: the drawer ends with the world like every catalog sheet
 
 export function mountAvailability(ctx) {
   const V = { menus: null, loading: false, err: null, writeErr: null, cat: null, drawerKey: null, pending: new Set(), loadedFor: null, observer: null };
@@ -240,8 +241,8 @@ export function mountAvailability(ctx) {
   // ── the drawer (read-only mode) ──
   const drawer = $('availdrawer');
   const dscrim = $('availscrim');
-  function openDrawer(key) { V.drawerKey = key; paintDrawer(); drawer.classList.add('show'); dscrim.classList.remove('hidden'); }
-  function closeDrawer() { V.drawerKey = null; drawer.classList.remove('show'); dscrim.classList.add('hidden'); drawer.replaceChildren(); }
+  function openDrawer(key) { V.drawerKey = key; paintDrawer(); drawer.classList.add('show'); dscrim.classList.remove('hidden'); sheetOpened('avail', closeDrawer); }
+  function closeDrawer() { sheetClosed('avail'); V.drawerKey = null; drawer.classList.remove('show'); dscrim.classList.add('hidden'); drawer.replaceChildren(); }
   dscrim.addEventListener('click', closeDrawer);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && V.drawerKey) closeDrawer(); });
   function paintDrawer() {

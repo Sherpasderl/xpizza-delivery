@@ -2103,18 +2103,38 @@ test('🔴 Codex S2 UI r2 P2-10 — an enclosing bound() exempts nothing: a NEST
 // resetEditFacts closes whatever is registered. The sheets are DERIVED from the markup (every `.scrim` in index.html), so a new sheet that
 // opens without registering is red here. Not catalog sheets: the branch page's three (pause / device / sucursal), and #scrim — the edit
 // outcome panel behind the drawer, which the world's end closes by name. #xscrim (the Extras confirm) opens in extras-view.js.
-test('#196-3 every catalog sheet registers with the ONE registry as it opens (derived from the markup)', () => {
+test('#196-3 / #201-3 every catalog sheet registers with the ONE registry as it opens (derived from the markup + every body-level popup)', () => {
   const html = readFileSync(join(DIR, 'index.html'), 'utf8');
-  const app = readFileSync(join(DIR, 'app.js'), 'utf8');
-  const xv = readFileSync(join(DIR, 'extras-view.js'), 'utf8');
+  const mods = readdirSync(DIR).filter((f) => /\.js$/.test(f) && !f.includes('.test.')).map((f) => [f, readFileSync(join(DIR, f), 'utf8')]);
+  const app = mods.find(([f]) => f === 'app.js')[1];
+  const xv = mods.find(([f]) => f === 'extras-view.js')[1];
   const NOT_CATALOG = new Set(['pausescrim', 'devscrim', 'sucscrim', 'scrim']);
-  const ids = [...html.matchAll(/class="scrim[^"]*" id="([a-z]+)"/g)].map((m) => m[1]).filter((id) => !NOT_CATALOG.has(id));
-  assert.ok(ids.length >= 6, `premise: the catalog sheets are read from the markup (${ids})`);
+  // every backdrop in the markup — `.scrim` AND `.opsscrim` (Codex #201-3: the availability drawer's) — minus the branch page's three and #scrim
+  const ids = [...html.matchAll(/class="[^"]*scrim[^"]*" id="([a-z]+)"/g)].map((m) => m[1]).filter((id) => !NOT_CATALOG.has(id));
+  assert.ok(ids.includes('availscrim') && ids.length >= 7, `premise: the catalog backdrops are read from the markup (${ids})`);
   for (const id of ids.filter((x) => x !== 'xscrim')) {
-    const opens = app.split('\n').filter((l) => l.includes(`$('${id}').classList.add('show')`));
-    assert.ok(opens.length >= 1, `premise: #${id} opens in app.js`);
-    for (const l of opens) assert.ok(/sheetOpened\('[a-z]+', /.test(l), `🔴 #${id} registers its closer as it opens: ${l.trim().slice(0, 90)}`);
-    assert.ok(!app.includes(`$('${id}').classList.toggle('show'`), `#${id} opens only through its registered opener`);
+    let opens = 0;
+    for (const [f, src] of mods) {
+      if (!src.includes(`'${id}'`)) continue;
+      const vars = [...src.matchAll(new RegExp(`const (\\w+) = \\$\\('${id}'\\)`, 'g'))].map((m) => m[1]);
+      const shows = (l) => [`$('${id}')`, ...vars.map((v) => `${v}.`)].some((t) => l.includes(`${t}${t.endsWith('.') ? '' : '.'}classList.add('show')`) || l.includes(`${t}${t.endsWith('.') ? '' : '.'}classList.remove('hidden')`));
+      for (const l of src.split('\n').filter(shows)) { opens += 1; assert.ok(/sheetOpened\('[a-z]+', /.test(l), `🔴 #${id} registers its closer as it opens (${f}): ${l.trim().slice(0, 90)}`); }
+    }
+    assert.ok(opens >= 1, `premise: #${id} has an opener`);
+  }
+  // a popup built on the fly and put on <body> (the «Mover a…» row menu, Codex #201-4) registers in the function that opens it
+  // not overlays: photo.js's OS file picker (a hidden <input type=file>, removed on change / cancel) and ventas-tab.js's CSV download (a
+  // hidden <a download>, clicked and removed at once)
+  const NOT_OVERLAY = new Set(['photo.js:document.body.append(input)', 'ventas-tab.js:document.body.append(a)']);
+  for (const [f, src] of mods) {
+    let at = src.indexOf('document.body.append');
+    while (at !== -1) {
+      if (NOT_OVERLAY.has(`${f}:${src.slice(at, src.indexOf(';', at))}`)) { at = src.indexOf('document.body.append', at + 1); continue; }
+      const fnStart = src.lastIndexOf('\nfunction ', at), fnEnd = src.indexOf('\nfunction ', at);
+      const body = src.slice(fnStart, fnEnd === -1 ? src.length : fnEnd);
+      assert.ok(/sheetOpened\('[a-z]+', /.test(body), `🔴 a body-level popup registers as it opens (${f}: ${body.trim().split('\n')[0].slice(0, 60)})`);
+      at = src.indexOf('document.body.append', at + 1);
+    }
   }
   const xOpens = (xv.match(/scrim\.classList\.add\('show'\)/g) || []).length;
   assert.ok(xOpens >= 1, 'premise: the Extras confirm opens in extras-view.js');
