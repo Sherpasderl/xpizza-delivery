@@ -266,6 +266,8 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // 11273d0c: not capp resolutions) and silently dropped the lane's own merges below.
 const MERGE_ALLOW = {
   // none above BASE 31f05c8a (advisor 11-18): the offers-r20 / push / asm11 entries (b63d58a0, fc0f3213, 1adc6541, 8839193d) landed with asm11
+  'd13a0bb7 customer-app/capp-home.js': "banner→r3 merge: git's clean 3-way merge of both lanes' edits; remerge-diff empty (no hand resolution)",
+  'd13a0bb7 customer-app/capp-s7a2.test.mjs': "banner→r3 merge: git's clean 3-way merge of both lanes' edits; remerge-diff empty (no hand resolution)",
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..${CAPP_TIP} + the merges after the pin`, () => {
   const [, tip] = capRange(), synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
