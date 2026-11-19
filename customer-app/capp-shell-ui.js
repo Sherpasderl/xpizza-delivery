@@ -470,8 +470,11 @@
         tokTimer = null;
         const live = () => !dead && gen === memberGen && S.member && S.member.uid === uid;
         if (!live() || usable(S.member)) return;
-        let t = null; try { t = await fbAuth.idToken(); } catch (_) { t = null; }
+        // Codex #193: the OWNED read — the SDK's user is checked against hers; another user (or none) is the leave, never its token on her
+        let o = null; try { o = await fbAuth.idTokenOwned(); } catch (_) { o = null; }
         if (!live() || usable(S.member)) return;
+        if (o && (o.uid || null) !== uid) { identityMoved(o.uid || null); return; }
+        const t = o ? o.token : null;
         const A = apiMod();
         if (!(A && A.acceptToken(S.member, t, nowMs())) && i + 1 < TOKEN_RETRY_MS.length) retryToken(gen, uid, i + 1);   // accepted ⇒ the notifier patches
       }, TOKEN_RETRY_MS[i]);

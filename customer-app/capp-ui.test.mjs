@@ -3078,7 +3078,8 @@ test('cart core (advisor 11-02): the store\'s INJECTED deps reach its cart path 
 // ── S2-checkout — the capp-ui wiring (MOCKUP-capp-S2-sdk-checkout v7, owner 11-08; advisor design A–D + rulings 1–5, 11-08). Dark unless
 // config.sdkCheckout (the shell sets it only for the INSTALLED app with runtime.sdkPay). Bodies from the strict fake.
 const SDKF = await import('./test/fake-sdk-checkout.mjs');
-const SDK_JWT = `${Buffer.from('{"alg":"RS256"}').toString('base64url')}.${Buffer.from(JSON.stringify({ sub: 'u1', exp: Math.floor((NOON().getTime() + 3600e3) / 1000) })).toString('base64url')}.sig`;
+const SDK_JWT_OF = (uid) => `${Buffer.from('{"alg":"RS256"}').toString('base64url')}.${Buffer.from(JSON.stringify({ sub: uid, exp: Math.floor((NOON().getTime() + 3600e3) / 1000) })).toString('base64url')}.sig`;   // a Firebase ID token names its own user (Codex #193's sink reads it)
+const SDK_JWT = SDK_JWT_OF('u1');
 const SDK_MEMBER = () => ({ uid: 'u1', name: 'Ana Pérez', phone: '96123344', email: 'ana@x.com', idToken: SDK_JWT, lastPay: 'online' });
 const SDK_CARDS = (cards) => ({ status: 200, json: SDKF.listCards(cards || [{ card_id: 'CV4242000000000000AB', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028, expired: false }]) });
 const SDK_AVAIL = (a = true) => ({ status: 200, json: SDKF.sdkPayStatus(a, a ? 0 : 120) });
@@ -3309,7 +3310,7 @@ test('Codex r2 P1 (UI): another account on a device holding an SDK order ⇒ the
   const b1 = bootSdk({ storage, script: { placeSdkOrder: ['network'], placeSdkStatus: ['network'] } });
   await sdkCheckout(b1); await sdkPlace(b1);
   assert.equal(JSON.parse(storage.getItem('capp:rid_a:pending_place')).owner, 'u1', 'premise: the SDK record is bound to its account');
-  const B = { ...SDK_MEMBER(), uid: 'u2', name: 'Beto Díaz' };
+  const B = { ...SDK_MEMBER(), uid: 'u2', name: 'Beto Díaz', idToken: SDK_JWT_OF('u2') };
   const b2 = bootSdk({ storage, member: B, script: {} });
   await settle(); b2.timers.flush(); await settle();
   assert.equal(b2.text('#layer .errsheet h2'), 'Hay un pago de otra cuenta pendiente en este teléfono', '🔴 HELDCOPY-sdk: the SDK hold\'s title at mount (owner 11-13)');
@@ -3321,7 +3322,7 @@ test('HELDCOPY (owner 11-13): B dismisses the sheet and tries to place by card �
   const storage = memStore();
   const b1 = bootSdk({ storage, script: { placeSdkOrder: ['network'], placeSdkStatus: ['network'] } });
   await sdkCheckout(b1); await sdkPlace(b1);
-  const B = { ...SDK_MEMBER(), uid: 'u2', name: 'Beto Díaz' };
+  const B = { ...SDK_MEMBER(), uid: 'u2', name: 'Beto Díaz', idToken: SDK_JWT_OF('u2') };
   const b2 = bootSdk({ storage, member: B, script: {} });
   await settle(); b2.timers.flush(); await settle();
   await b2.click('#layer [data-act="lclose"]'); await settle();

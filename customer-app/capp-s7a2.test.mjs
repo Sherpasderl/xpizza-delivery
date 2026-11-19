@@ -702,15 +702,16 @@ test('stamp: shell.html is stamped as orders-app; on the stamped shell SherpaCli
 const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 const TOK = (uid, expMs = T0 + 3600e3) => `${b64u({ alg: 'RS256', typ: 'JWT' })}.${b64u({ sub: uid, user_id: uid, customer: true, exp: Math.floor(expMs / 1000) })}.sig`;   // the customer claim (getMyOrders requires customer === true)
 const WARNINGS = []; process.on('warning', (w) => WARNINGS.push(w));   // Codex promo r4 #5: no TimeoutOverflowWarning (asserted last)
-// failToken: the next N getIdToken() calls REJECT; failFrom: every call from index N on rejects; tokExp: the issued tokens' exp (ms)
+// failToken: the next N getIdToken() calls REJECT; failFrom: every call from index N on rejects; failIf(): a call rejects while it answers
+// true (the test's network switch); tokExp: the issued tokens' exp (ms)
 // rotate: each getIdToken() issues a NEW token (exp + n s) — a fresh token that really changes ⇒ the setter's notifier fires
 // notifyGate: { on, q } — while on, a sign-out / sign-in changes currentUser AT ONCE but its listeners wait for the test (production's order:
 // the SDK's user moves before onAuthStateChanged fires — Codex #152 #2 / #153 #1: the fake must never be laxer, on BOTH transitions)
-function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0, failFrom = Infinity, tokExp, rotate = false, authGate = null, notifyGate = null } = {}) {
+function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0, failFrom = Infinity, failIf = null, tokExp, rotate = false, authGate = null, notifyGate = null } = {}) {
   const calls = { load: 0, ct: [], out: 0 }; let listeners = [], user = persisted;
   // hold: { on, q } — while on, every token read waits for the test to release it (a slow SDK)
   let tokN = 0; const rot = (n) => (rotate ? (tokExp ?? T0 + 3600e3) + n * 1000 : tokExp);
-  const tok = (u) => { const n = tokN++; return failToken > 0 ? (failToken--, Promise.reject(new Error('network'))) : n >= failFrom ? Promise.reject(new Error('network')) : hold && hold.on ? new Promise((r) => hold.q.push(() => r(TOK(u, rot(n))))) : Promise.resolve(TOK(u, rot(n))); };
+  const tok = (u) => { const n = tokN++; return failToken > 0 ? (failToken--, Promise.reject(new Error('network'))) : n >= failFrom || (failIf && failIf()) ? Promise.reject(new Error('network')) : hold && hold.on ? new Promise((r) => hold.q.push(() => r(TOK(u, rot(n))))) : Promise.resolve(TOK(u, rot(n))); };
   const auth = { get currentUser() { const u = user; return u ? { uid: u, getIdToken: () => tok(u) } : null; } };
   const emitU = () => { for (const l of listeners) l(user ? { uid: user } : null); };
   const authMod = { browserLocalPersistence: 'LOCAL', getAuth: () => auth, setPersistence: async () => {},
@@ -6937,6 +6938,44 @@ for (const [how, flip, line] of [
     } finally { S.w.close(); }
   });
 }
+// Codex #193 (P1): a token of ANOTHER user must never leave with her request — whatever path cached it. (a) Codex's repro: the SDK is
+// Bob (listener held), her token reaches its refresh, the refresh runs, then every owned read fails and she submits; (b) the SINK: a
+// foreign token sits in her cache through the transport's ONE setter (any path, today's or a future one) and the owned read fails
+const c193 = () => {
+  const clock = { t: T0 }, L = longTimers(), sent = [], net = { down: false, once: false }, notifyGate = { on: false, q: [] };
+  const fb = fakeFirebase({ persisted: 'u_ana', tokExp: T0 + 120e3, rotate: true, notifyGate, failIf: () => (net.once ? (net.once = false) : net.down) });
+  const apiFetch = (u, i) => { sent.push([u.split('?')[0], (i && i.headers && i.headers['x-firebase-id-token']) || null]);
+    return u.startsWith('/x/q') ? quoteOk(u, i) : u.startsWith('/x/c') ? Promise.resolve({ status: 200, ok: true, json: async () => ({ ok: true, order_id: JSON.parse(i.body).order_id, tracking_token: 'tok_abcdefgh12' }) }) : new Promise(() => {}); };
+  return { clock, L, sent, net, notifyGate, fb, S: memberBoot({ fb, apiFetch, now: clock, timers: L.T }) };
+};
+const c193Submit = async (S) => { S.click('#cta'); await flush(); if (S.q('#layer [data-act="placing-go"]')) S.click('#layer [data-act="placing-go"]'); await flush(); await flush(); await flush(); };
+test('r3 Codex #193 (P1) repro: the SDK is Bob (listener held) and her token\'s REFRESH runs, then the owned read fails — Bob\'s token never carries her request, and the app leaves', async () => {
+  const { clock, L, sent, net, notifyGate, fb, S } = c193();
+  try {
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
+    await toShellCheckout(S); S.click('#app [data-act="type"][data-val="pickup"]'); await flush(); await flush();
+    const { authMod } = await fb.loadSdk(); notifyGate.on = true; net.down = true; await authMod.signInWithCustomToken(null, 'ct:u_bob');
+    assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: the SDK is Bob, the shell still holds Ana (the listener is held)');
+    const exp = [...L.pend.keys()]; assert.equal(exp.length, 1, 'premise: only her token\'s expiry is armed');
+    sent.length = 0; clock.t = T0 + exp[0].ms; L.fire(); await flush(); await flush();   // her token's refresh threshold: the expiry fires
+    net.once = true; L.fire(); await flush(); await flush(); await flush();   // the refresh runs (one SDK read answers), then the network is down
+    if (!S.q('#swap')) await c193Submit(S);
+    assert.ok(!sent.some(([, t]) => subOf(t) === 'u_bob'), '🔴 C193: Bob\'s token never carries her request');
+    assert.ok(S.q('#swap'), '🔴 C193: the app leaves (the overlay)');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #193 (P1) SINK: a foreign token in her cache (through the ONE setter) and a failed owned read — her request is never sent with it; she leaves', async () => {
+  const { sent, net, S } = c193();
+  try {
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
+    await toShellCheckout(S); S.click('#app [data-act="type"][data-val="pickup"]'); await flush(); await flush();
+    const A = require('./capp-api.js'); assert.ok(A.acceptToken(S.ui.state.member, TOK('u_bob'), T0), 'premise: the ONE setter took a usable token of another user');
+    net.down = true; sent.length = 0;
+    await c193Submit(S);
+    assert.ok(!sent.some(([, t]) => subOf(t) === 'u_bob'), '🔴 C193-SINK: a token whose user is not hers never leaves with her request');
+    assert.ok(S.q('#swap'), '🔴 C193-SINK: the app leaves (the overlay)');
+  } finally { S.w.close(); }
+});
 test('r3 Codex #178 #3 (P2): a REFUSED sign-out keeps her device book byte for byte and the address in use — even when her profile can no longer be re-read', async () => {
   const { S, st, addr } = await dirBoot({ fbOpts: { failSignOut: 1 } });
   try {

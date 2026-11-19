@@ -36,7 +36,7 @@ function server(script, storage) {
 }
 let RNG = 0;
 const ANA = { uid: 'u_ana', idToken: null, getIdToken: async () => JWT };
-const JWT = (() => { const b = (o) => Buffer.from(JSON.stringify(o)).toString('base64url'); return `${b({ alg: 'RS256' })}.${b({ exp: Math.floor(at(23) / 1000) })}.sig`; })();
+const JWT = (() => { const b = (o) => Buffer.from(JSON.stringify(o)).toString('base64url'); return `${b({ alg: 'RS256' })}.${b({ sub: 'u_ana', user_id: 'u_ana', exp: Math.floor(at(23) / 1000) })}.sig`; })();   // the real writer's claims: a Firebase ID token names its user (sub = user_id — Codex #193's sink reads it)
 function rig({ script, storage = memStorage(), member = ANA, guestCardOnly = false, rid = 'rid_a', subtle } = {}) {
   const srv = server(script, storage); const clock = { t: at(12) };
   const make = () => A.createApi({ config: { restaurantId: rid, orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL, sdkCheckout: true, ...(guestCardOnly ? { guestCardOnly: true } : {}) },   // the app's setting under the SDK checkout
@@ -601,7 +601,7 @@ test('F5: a placement «unavailable» flips ONLY that restaurant\'s cache, until
 const CARD20 = 'CV4242000000000000AB';
 const SAVED20 = { kind: 'saved', card_id: CARD20 };
 const CARD20B = 'CB5555000000000000CD';
-const JWT_B = (() => { const b = (o) => Buffer.from(JSON.stringify(o)).toString('base64url'); return `${b({ alg: 'RS256' })}.${b({ exp: Math.floor(at(23) / 1000), b: 1 })}.sig`; })();
+const JWT_B = (() => { const b = (o) => Buffer.from(JSON.stringify(o)).toString('base64url'); return `${b({ alg: 'RS256' })}.${b({ sub: 'u_bea', user_id: 'u_bea', exp: Math.floor(at(23) / 1000), b: 1 })}.sig`; })();
 const BEA = { uid: 'u_bea', idToken: null, getIdToken: async () => JWT_B };
 function realRig({ storage = memStorage(), member = ANA, guestCardOnly = false } = {}) {
   const clock = { t: at(12) }; const who = { m: member };

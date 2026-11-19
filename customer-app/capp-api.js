@@ -74,6 +74,13 @@
       return typeof exp === 'number' && Number.isInteger(exp) && Number.isFinite(exp * 1000) ? exp * 1000 : null;
     } catch (_) { return null; }
   }
+  // the user a token NAMES (Codex #193): its `sub` — and `user_id`, when present, must agree; anything else ⇒ null. A consistency check on
+  // our own token at the sink (never trust: the server verifies the signature)
+  function tokenUid(t) {
+    if (typeof t !== 'string' || !t) return null;
+    const parts = t.split('.'); if (parts.length !== 3 || !parts.every((p) => p && B64URL.test(p))) return null;
+    try { const pl = segJson(parts[1]); const s = pl && pl.sub; return typeof s === 'string' && s && (pl.user_id === undefined || pl.user_id === s) ? s : null; } catch (_) { return null; }
+  }
   function tokenUsable(m, now) {
     const t = m && typeof m.idToken === 'string' && m.idToken ? m.idToken : null; if (!t) return null;
     const e = tokenExpMs(t), n = typeof now === 'number' && Number.isFinite(now) ? now : Date.now();
@@ -337,7 +344,12 @@
         if (fresh) acceptToken(m, fresh, now());   // the ONE setter: stored only if usable, and the screen is told
       }
       if (!current() || m.moved) return null;
-      return tokenUsable(m, now());   // never an expired token (Codex promo r3): usable, or no header at all
+      const t = tokenUsable(m, now());   // never an expired token (Codex promo r3): usable, or no header at all
+      // Codex #193 (P1): THE sink — every member request (post, the SDK checkout's Bearer, the last-tip read) takes its token HERE; a token
+      // whose user is not this member (or that names none) never leaves, whatever path cached it: the #178 #2 refusal (moved, the host told)
+      const tu = t ? tokenUid(t) : null;
+      if (t && tu !== m.uid) { m.moved = true; if (typeof m.onMoved === 'function') { try { m.onMoved(tu); } catch (_) {} } return null; }
+      return t;
     }
     const headersFor = (extra, token) => { const h = { 'Content-Type': 'application/json', ...(extra || {}) }; if (token) h['x-firebase-id-token'] = token; return h; };
     async function post(url, body, extraHeaders) {

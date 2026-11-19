@@ -42403,5 +42403,22 @@
   "kills_with": [
    "C189-1: her order is not dispatched (never with her cached token)"
   ]
+ },
+ {
+  "id": "r3-rs-28",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #193): the sink check removed — a cached token of another user leaves with her request",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (t && tu !== m.uid) { m.moved = true; if (typeof m.onMoved === 'function') { try { m.onMoved(tu); } catch (_) {} } return null; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#193 \\(P1\\) SINK",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C193-SINK: a token whose user is not hers never leaves with her request"
+  ]
  }
 ]
