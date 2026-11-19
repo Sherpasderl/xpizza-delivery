@@ -17,12 +17,14 @@
 // footer, and this), and the first that was fatal to the whole page.
 //
 // app.js cannot be imported directly: it pulls in auth.js → firebase.js → a CDN URL node cannot fetch.
-// So the source is rewritten to import a local stub for that ONE module and nothing else, written
-// beside the originals so every other relative import resolves to the real file. What executes here is
-// the real app.js logic.
+// So the source is rewritten to import a local stub for that ONE module and nothing else. The rewritten
+// copy is written beside the originals so every other relative import resolves to the real file; the
+// stub itself lives in a temp dir outside xpizza-portal/ (see loadAppModule). What executes here is the
+// real app.js logic.
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { pendingChanges, createDraft as makeDraft } from './editor.js';
@@ -103,17 +105,22 @@ function installDom() {
 
 // Rewrite ONLY the CDN-bound import; everything else resolves to the real module.
 async function loadAppModule(sourceTransform = (s) => s) {
-  const stub = join(DIR, '__auth-stub.test.mjs');
+  /* The auth stub lives OUTSIDE xpizza-portal/ (a temp dir, imported by URL). Written beside app.js as
+     __auth-stub.test.mjs, a stub left behind by a killed run matched the portal's `*.test.mjs` globs on the
+     next run (advisor asm11). Every write is inside the try, so the finally always cleans up. The app copy
+     stays beside the originals: its other relative imports must resolve to the real files. */
+  const stubDir = mkdtempSync(join(tmpdir(), 'portal-auth-stub-'));
+  const stub = join(stubDir, 'auth-stub.mjs');
   const tmp = join(DIR, `__app-under-test.${Date.now()}.mjs`);
-  writeFileSync(stub, 'export const token = async () => "TK-test";\nexport const login = async () => {};\nexport const logout = async () => {};\nexport const authErrorMessage = () => "";\n');
-  const src = sourceTransform(readFileSync(join(DIR, 'app.js'), 'utf8'))
-    .replace(/from '\.\/auth\.js'/g, "from './__auth-stub.test.mjs'");
-  writeFileSync(tmp, src);
   try {
+    writeFileSync(stub, 'export const token = async () => "TK-test";\nexport const login = async () => {};\nexport const logout = async () => {};\nexport const authErrorMessage = () => "";\n');
+    const src = sourceTransform(readFileSync(join(DIR, 'app.js'), 'utf8'))
+      .replace(/from '\.\/auth\.js'/g, `from '${pathToFileURL(stub).href}'`);
+    writeFileSync(tmp, src);
     return await import(`${pathToFileURL(tmp).href}?t=${Date.now()}`);
   } finally {
     try { unlinkSync(tmp); } catch (_) { /* best effort */ }
-    try { unlinkSync(stub); } catch (_) { /* best effort */ }
+    try { rmSync(stubDir, { recursive: true, force: true }); } catch (_) { /* best effort */ }
   }
 }
 
