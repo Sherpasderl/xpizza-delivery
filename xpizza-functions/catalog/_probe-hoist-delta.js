@@ -1,6 +1,6 @@
 'use strict';
 // PLAN-3a-order-owner r1 (Codex #172 P1-a, ecff209bb) — the ONE declared I/O delta of the order-owner probe hoist against older
-// baselines: chargeOnlineOrder's read-only order probe (the SAME single `once orders/<oid>`, no read added, no write moved) now
+// baselines: the card charge handler's read-only order probe (the SAME single `once orders/<oid>`, no read added, no write moved) now
 // runs at the first point the verified uid is known — right after the uid check (`get deleted_uids/<uid>`) — instead of after
 // the bookkeeping. Golden tests whose baseline predates the hoist (the frozen 717f97e d4b trace) move exactly that one read back
 // before comparing, and count every mapping so the delta is PINNED (a test asserts it occurred), never hidden.
