@@ -267,6 +267,12 @@ try {
   for (const p of ['payment_sdk', 'payment_sdk_due']) assert.strictEqual((await rtdb.ref(p).get()).val(), null, FAIL('invocations', `settleSdkOnStatus wrote ${p} on the pay tap`));
   const sdkAlerts = Object.entries((await rtdb.ref('dispatcher_alerts').get()).val() || {}).filter(([, a]) => a && typeof a.type === 'string' && a.type.startsWith('payment_sdk_')).map(([k]) => k);
   assert.deepStrictEqual(sdkAlerts, [], FAIL('invocations', `settleSdkOnStatus raised an SDK alert on the pay tap: ${sdkAlerts.join(', ')}`));
+  // offer-audience T8: markAudienceOnStatus is in the multiset (onValueWritten /orders/{orderId}/status) but must be a NO-OP here — the
+  // pay tap's statuses are never delivered/completed/cancelled (marketing/audience-writer.js onOrderStatus returns 'none' before any read).
+  // Its writes are customer_seen/, customer_seen_m/, audience_alerts/ and orders/{id}/offer_reconcile (+ the order's audience_ids removal
+  // on a terminal status): none may exist. (The writer runs whether or not audience_enabled is on — the markers start dark.)
+  for (const p of ['customer_seen', 'customer_seen_m', 'audience_alerts']) assert.strictEqual((await rtdb.ref(p).get()).val(), null, FAIL('invocations', `markAudienceOnStatus wrote ${p} on the pay tap`));
+  for (const id of Object.keys(journeyVals)) assert.strictEqual((await rtdb.ref(`orders/${id}/offer_reconcile`).get()).val(), null, FAIL('invocations', `markAudienceOnStatus decided orders/${id}/offer_reconcile on the pay tap`));
   ok(`the pay tap's invocation multiset equals the declared one (${invs.length} invocations: ${Object.entries(ms).map(([k, v]) => `${k}×${v}`).join(', ')}); no invocation error, parked = declared`);
 
   // per-call served version: every PRICING call served exactly {ACTIVE} live; the others are the declared non-pricing calls

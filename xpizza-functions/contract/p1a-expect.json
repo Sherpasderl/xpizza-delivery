@@ -9,6 +9,7 @@
   "detectOutOfSequence": 2,
   "earnRewardsOnCompletion": 1,
   "logOrderLifecycle": 1,
+  "markAudienceOnStatus": 1,
   "materializeOnConfirm": 3,
   "merchantPushOnStatus": 1,
   "mirrorStatusToHistory": 1,
