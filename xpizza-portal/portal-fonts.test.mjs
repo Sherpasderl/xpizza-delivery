@@ -112,6 +112,10 @@ test('preconnects: www.gstatic.com + the Functions origin (tied to their source 
 // P2 — the §4 rendered-font census (portal-fonts.cdp.mjs, heavy slot; FF-same at the first view×theme, every repeat identical): gate (b)
 // has a verdict for EVERY primary declaration × every weight a --disp rule requests, none is FAIL, the latin subset is COVERED at both
 // requested weights, and every §4 state is in it (P-crop only with the dish-photos B tip)
+// the newer panes (PLAN-portal-fonts-census-gaps-r0 §1, advisor 11-16), answered by the lanes' REAL cores. Extras is NOT here: it is dark
+// (catalog/platform-structure.js EXTRAS_CATALOG = false) — its state joins with the commit that turns the page on
+const CORE = ['IN-inicio', 'V-rend', 'V-detail', 'C-calif', 'C-filters', 'C-earlier', 'M-ofertas', 'M-builder', 'M-review', 'M-detail', 'N-envio',
+  'M-builder-bogo', 'M-review-bogo'];   // owed 2 (advisor 11-18): the 2×1 builder / review draw the dishes (marketing-builder.js:133/195/540)
 test('the committed census (platform/fonts/census/portal.census.json): gate (b) per declaration × requested weight, every state', () => {
   const c = JSON.parse(readFileSync(join(DIR, '..', 'platform/fonts/census/portal.census.json'), 'utf8'));
   // the census must have MEASURED the hosted face — a record of the previous face is stale evidence (the subsets' ranges can start
@@ -119,6 +123,31 @@ test('the committed census (platform/fonts/census/portal.census.json): gate (b) 
   const hosted = Object.keys(man.surfaces.portal.families);
   assert.deepEqual([...new Set(c.gateB.map((x) => x.family))], hosted, `🔴 the census measured ${[...new Set(c.gateB.map((x) => x.family))]} but the portal hosts ${hosted} — re-capture it (heavy slot)`);
   assert.ok(c.repeats >= 3 && c.repeatsAgree === true, 'three repeats, identical');
+  // Codex #105 r2 (advisor ruling 11-16): no core THREW in any state; every core state showed a value from the answer its OWN data
+  // function served; every state carries its `unserved` calls (an empty array, never absent); and every unserved section whose
+  // real-data render is measured nowhere in this record is in «owed» — no silent hole
+  for (const k of ['threw', 'unserved', 'served', 'rendered', 'data', 'unservedSections']) {
+    assert.ok(c[k] && typeof c[k] === 'object', `🔴 the census record carries no measured ${k} (re-capture with the fixed tool)`);
+    assert.deepEqual(Object.keys(c[k]).sort(), Object.keys(c.states).sort(), `a ${k} entry for exactly every state`);
+  }
+  for (const [s, t] of Object.entries(c.threw)) assert.deepEqual(t, [], `🔴 ${s}: a core threw during the capture: ${JSON.stringify(t)}`);
+  for (const [s, u] of Object.entries(c.unserved)) assert.ok(Array.isArray(u), `${s}: unserved is a list`);
+  for (const s of CORE) {
+    const d = c.data[s];
+    assert.ok(d && typeof d.fn === 'string' && typeof d.shown === 'string' && d.shown.length > 0, `🔴 ${s}: no served value recorded on the page`);
+    assert.ok(!c.unserved[s].includes(d.fn), `🔴 ${s}: its own data function ${d.fn} went unserved`);
+  }
+  assert.ok(Array.isArray(c.owed), '🔴 the census record carries no «owed» list');
+  assert.ok(c.notes && /FAILURE pane/.test(c.notes['N-envio'] || ''), '🔴 the record notes that N-envio measures the map FAILURE pane (advisor 11-18: the ready pane is unreachable off the production origin)');
+  assert.deepEqual(c.owed, [], '🔴 a section is owed: its real-data render is measured nowhere (owed 2, advisor 11-18: none may stay owed)');
+  // Codex #105 r3: measured only on POSITIVE evidence in the measuredIn state's own record — it was served the function (2xx), never
+  // went without it, and rendered that very section (its root measured on that state's pane); an existing state alone proves nothing
+  const measured = (x) => x.section !== null && x.measuredIn !== null && !!c.states[x.measuredIn] && !c.unserved[x.measuredIn].includes(x.fn)
+    && c.served[x.measuredIn].includes(x.fn) && c.rendered[x.measuredIn][x.section] === true;
+  for (const [s, xs] of Object.entries(c.unservedSections)) {
+    assert.deepEqual([...new Set(xs.map((x) => x.fn))].sort(), [...c.unserved[s]].sort(), `${s}: a section entry for exactly every unserved function`);
+    for (const x of xs) assert.equal(c.owed.some((o) => o.fn === x.fn && o.section === x.section), !measured(x), `${s} ${x.fn} «${x.section}»: in «owed» exactly when its real-data render is measured nowhere`);
+  }
   const weights = new Set();
   for (const f of SHEETS) for (const m of read(f).matchAll(/\{([^{}]*font-family\s*:\s*var\(--disp\)[^{}]*)\}/g)) for (const x of m[1].matchAll(/font-weight\s*:\s*(\d{3})/g)) weights.add(Number(x[1]));
   assert.deepEqual([...weights].sort(), [750, 800], 'the weights --disp rules request (the census is keyed on exactly these)');
@@ -131,7 +160,8 @@ test('the committed census (platform/fonts/census/portal.census.json): gate (b) 
   for (const w of weights) assert.ok(c.gateB.some((x) => x.weight === w && x.verdict === 'covered' && /^U\+0000-00FF/.test(x.raw)), `latin × ${w} is covered by a painted codepoint`);
   const want = ['L-login', 'L-error', 'I-email', 'I-busy', 'I-busy-retry', 'I-busy-fallback', 'I-password', 'I-reset-sent', 'I-error', 'I-invalid',
     'P-editor', 'P-drawer', 'P-review', 'P-receipt', 'P-conflict', 'P-readonly', 'A-drawer', 'S-list', 'S-detail', 'Z-pause', 'E-devices', 'E-unlink',
-    'V-ventas', 'T-team', 'T-invite', 'T-edit', 'T-sent', 'T-remove', ...(existsSync(join(DIR, 'photo.js')) ? ['P-crop'] : [])];
+    'V-ventas', 'T-team', 'T-invite', 'T-edit', 'T-sent', 'T-remove', ...(existsSync(join(DIR, 'photo.js')) ? ['P-crop'] : []),
+    ...CORE];
   assert.deepEqual(Object.keys(c.states).sort(), want.sort(), 'every §4 state is in the census');
 });
 

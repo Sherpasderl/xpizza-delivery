@@ -27,11 +27,13 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import { launch, serveDir, router, census, attribute, runsOf, GEO, OBSERVER, sleep } from './platform/perf/cdp-fonts.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { launch, serveDir, router, census, attribute, runsOf, deadlineKeysOf, GEO, OBSERVER, sleep, failStateOnDeadline } from './platform/perf/cdp-fonts.mjs';
+import { driveFailure } from './review/portal-cores/drive-failure.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const SITE = 'xpizza-portal';
+const ML = await import(pathToFileURL(path.join(ROOT, SITE, 'marketing-logic.js')).href);   // the portal's OWN offer words (the 2×1 review's ceiling)
 const BASELINE_REV = process.env.FONTS_BASELINE_REV || 'd23bef66';   // the base this slice stacks on: today's portal (Google Archivo)
 // the hosted face, its pin and its range come from the ONE manifest (never a copy here)
 const MAN = JSON.parse(fs.readFileSync(path.join(ROOT, 'platform/fonts/fonts.manifest.json'), 'utf8')).surfaces.portal;
@@ -139,6 +141,18 @@ const navLabel = (t) => at(`(() => { const b = [...document.querySelectorAll('.s
 const rowChev = (n = 0) => at(`(__q('#detail .irow .rowchev')[${n}].click(), true)`, 500);
 // P-review / P-receipt: one real edit (Margarita 280 → 290, the list-row price input) so «Revisar cambios» has a diff
 const editPrice = async (c) => { await c.ev(`(() => { const i = __q('#detail .price input')[1]; const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, '290'); i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`); await sleep(150); };
+// census-gaps helpers (the SBS harness's own proven verbs: its nav matcher `button.nav, button.mn`; click a selector; click the element
+// under a selector whose text contains a string) — the existing states keep navLabel unchanged
+const navAny = (t) => at(`(() => { const b = [...document.querySelectorAll('button.nav, button.mn')].find((x) => x.offsetParent !== null && x.textContent.trim().startsWith(${JSON.stringify(t)})); if (!b) throw new Error('no nav ' + ${JSON.stringify(t)}); b.click(); return true; })()`, 1500);
+const clickSel = (sel, n = 0, ms = 700) => at(`(() => { const e = __q(${JSON.stringify(sel)})[${n}]; if (!e) throw new Error('premise: no ' + ${JSON.stringify(sel)} + ' #' + ${n}); e.click(); return true; })()`, ms);
+const clickHas = (sel, t, ms = 900) => at(`(() => { const e = __q(${JSON.stringify(sel)}).find((x) => x.offsetParent !== null && x.textContent.includes(${JSON.stringify(t)})); if (!e) throw new Error('premise: no ' + ${JSON.stringify(sel)} + ' with ' + ${JSON.stringify(t)}); e.click(); return true; })()`, ms);
+const waitHas = (sel, t, ms = 6000) => async (c) => { for (let i = 0; i * 100 < ms; i++) { if (await c.ev(`[...document.querySelectorAll(${JSON.stringify(sel)})].some((x) => x.textContent.includes(${JSON.stringify(t)}))`)) return; await sleep(100); } throw new Error(`premise: ${sel} «${t}» never appeared`); };
+const waitFor = (sel, ms = 6000) => async (c) => { for (let i = 0; i * 100 < ms; i++) { if (await c.ev(`!!document.querySelector(${JSON.stringify(sel)})`)) return; await sleep(100); } throw new Error(`premise: ${sel} never appeared`); };
+const OFERTAS = seq(nav('navsuc'), navAny('Marketing'), waitFor('.mk5-row'));
+const BOGO = seq(OFERTAS, clickHas('.mk5-tabs *', 'Crear campaña'), clickSel('.mk5-card[data-otype="bogo"]'), clickSel('.mk5b-row[data-row="prod"] .mk5b-rowh'),
+  clickSel('.mk5b-row[data-row="prod"] .mk5b-add'), waitFor('.mk5b-row[data-row="prod"] .mk5b-opt'));   // the picker lists the served dishes
+const CALIF = seq(navAny('Calificaciones'), waitFor('.calif .dist'));
+const VENTAS = seq(nav('navventas'), waitFor('.vd-fig'));
 const STATES = {
   'L-login':         { page: 'index', signedOut: true, container: '#loginform', drive: async () => {} },
   'L-error':         { page: 'index', signedOut: true, container: '#loginform', drive: seq(at("__type('email', 'duena@ejemplo.test')", 50), at("__type('pass', 'x1')", 50), at("__submit('loginform')", 600)) },
@@ -193,12 +207,35 @@ const STATES = {
       await sleep(900);
       if (!(await c.ev("!!document.querySelector('#drawer .phcrop img')"))) throw new Error('premise: the crop step did not open on the picked photo');
     }) },
+  // ── census-gaps (PLAN-portal-fonts-census-gaps-r0 §1): the newer panes, each answered by its lane's REAL cores (`cores` = review/portal-cores/<name>.mjs,
+  // `scn` = its scenario), the page on that backend's clock; routes are the SBS manifest's proven ones; `text` = the pane premise's known string
+  'IN-inicio':       { page: 'index', cores: 'ventas', scn: 'populated', container: '#viewinicio', text: 'Buen', drive: seq(nav('navinicio'), at('true', 1500)) },
+  'V-rend':          { page: 'index', cores: 'ventas', scn: 'populated', container: '#viewventas', text: 'Últimos 14 días', drive: VENTAS },
+  'V-detail':        { page: 'index', cores: 'ventas', scn: 'populated', container: '.main:not(.hidden)', text: 'Descargar', drive: seq(VENTAS, clickHas('button', 'Ver más detalle', 1500)) },
+  'C-calif':         { page: 'index', cores: 'calificaciones2', scn: 'list', container: '.calif', text: 'Ana P.', drive: CALIF },
+  'C-filters':       { page: 'index', cores: 'calificaciones2', scn: 'list', container: '.cf-filt.cf-sub .cf-menu.cf-show', text: '1 estrella', drive: seq(CALIF, clickSel('.cf-filt.cf-sub .cf-pill', 0)) },
+  'C-earlier':       { page: 'index', cores: 'calificaciones2', scn: 'list', container: '.calif .cf-seg', text: 'Centro',
+    drive: seq(CALIF, clickSel('.cf-filt:not(.cf-sub) .cf-pill', 1), clickHas('.cf-menu.cf-show [role=option], .cf-menu.cf-show button', 'Todas las sucursales', 1500), waitFor('.calif .cf-seg')) },
+  'M-ofertas':       { page: 'index', cores: 'ofertas', scn: 'populated', container: '.main:not(.hidden)', text: 'Almuerzo: 15 % en todo el menú', drive: OFERTAS },
+  'M-builder':       { page: 'index', cores: 'ofertas', scn: 'populated', container: '.mk5b-dlg', text: 'Nueva oferta', drive: seq(OFERTAS, clickHas('.mk5-tabs *', 'Crear campaña'), clickSel('.mk5-card[data-otype="pct"]')) },
+  'M-review':        { page: 'index', cores: 'ofertas', scn: 'populated', container: '.mk5r-modal', text: 'Revisá tu oferta',
+    drive: seq(OFERTAS, clickHas('.mk5-tabs *', 'Crear campaña'), clickSel('.mk5-card[data-otype="pct"]'), clickSel('.mk5b-go')) },
+  // owed 2 (advisor 11-18): the dish list draws ONLY in a 2×1 (marketing-builder.js:133 loadMenu, :195 «Productos», :540 the review row) — the
+  // builder with the «Productos» picker open (every served dish a row), then the review with one dish ticked; plain visible clicks only
+  'M-builder-bogo':  { page: 'index', cores: 'ofertas', scn: 'populated', container: '.mk5b-dlg', text: 'Agregar producto', drive: BOGO },
+  'M-review-bogo':   { page: 'index', cores: 'ofertas', scn: 'populated', container: '.mk5r-modal', text: 'Revisá tu oferta',
+    drive: seq(BOGO, clickSel('.mk5b-row[data-row="prod"] .mk5b-opt input'), clickSel('.mk5b-go')) },
+  'M-detail':        { page: 'index', cores: 'ofertas', scn: 'populated', container: '.mk5d-head', text: 'Almuerzo: 15 % en todo el menú', drive: seq(OFERTAS, clickHas('.mk5-lnk', 'Almuerzo: 15 %')) },
+  // the map frame posts ONLY to the production portal origin (xpizza-portal-map/map.js → PORTAL_ORIGIN), so here no 'ready' / 'failed'
+  // arrives and envio.js's own 8 s deadline flips the pane mid-census (owed-2 E, 77 → 74 nodes): the drive waits for that outcome
+  'N-envio':         { page: 'index', cores: 'zones', scn: 'closed', container: '.envio', text: 'Tarifas de envío', note: 'measures the map FAILURE pane («No se pudo cargar el mapa.» after the own 8 s deadline in envio.js): the map frame talks only to the production portal origin, so its ready pane cannot be reached here; this is NOT coverage of the ready pane', drive: seq(navAny('Envío'), waitFor('.envio'), waitHas('.envio .mapline:not(.hidden)', 'No se pudo cargar el mapa.', 12000)) },
 };
 
 // ── the router: every external https request answered per state ──
 function decideFor(st) {
   const ok = (body) => ({ body: JSON.stringify(body) });
-  return (url, req) => {
+  const coreFn = (url) => { const fn = fnOf(url); return st.backend && fn && fn !== 'reportClientVersion' ? fn : null; };
+  const d0 = (url, req) => {
     if (/fonts\.googleapis\.com\/css2/.test(url)) return st.baseline ? { body: BASELINE_CSS, headers: { 'content-type': 'text/css' } } : 'fail';
     if (/fonts\.gstatic\.com\/s\//.test(url)) {
       const f = st.baseline && PIN.files.find((x) => x.url === url.split('?')[0]);
@@ -208,6 +245,7 @@ function decideFor(st) {
     }
     const fn = fnOf(url);
     if (!fn) return 'fail';                                                        // the SDK host, the heartbeat, anything else
+    if (coreFn(url)) return answerCore(st, fn, url, req);                           // census-gaps §2: a REAL core (a promise; router awaits it)
     if (fn === 'getMyBranches') return ok(E1(st.role || 'owner', st.caps || OWNER));
     if (fn === 'getEditableCatalog') return ok(st.photos ? { ...MENU(), photosEnabled: true, photos: {}, photoPreviews: {}, legacyPreviews: {} } : MENU());   // P-crop: uploads on
     if (fn === 'getBranchAvailability') return ok(AVAIL());
@@ -218,8 +256,37 @@ function decideFor(st) {
     if (fn === 'getBranchDevices') return ok(DEVICES);
     if (fn === 'getSalesStats') return ok(STATS);
     if (fn === 'reportClientVersion') return 'fail';
+    if (!st.unserved.includes(fn)) st.unserved.push(fn);   // advisor 11-16 (#105 r2): recorded, never silent
     return { status: 404, body: JSON.stringify({ error: 'not_found' }) };
   };
+  // Codex #105 r3: POSITIVE evidence per state — every function the page was answered with a 2xx (a core's or the canned router's;
+  // never a CORS preflight), so a section counts as measured only where its function was really served
+  const note = (fn, req, r) => { if (fn && req.method !== 'OPTIONS' && r && typeof r === 'object' && !(r.status >= 300) && !st.served.includes(fn)) st.served.push(fn); return r; };
+  const d = (url, req) => { const r = d0(url, req), fn = fnOf(url); return r && typeof r.then === 'function' ? r.then((x) => note(fn, req, x)) : note(fn, req, r); };
+  d.peek = (url, req) => (coreFn(url) ? 'core' : d(url, req));   // a second listener's look: never a second call into a core
+  return d;
+}
+// ── census-gaps (PLAN-portal-fonts-census-gaps-r0 §2): the newer panes answer from the lanes' REAL cores — review/portal-cores, the SBS
+// backends moved in-repo (each loads the harnesses of THIS tree). Never canned: a call a backend does not serve is a 404, recorded in
+// `unserved`; a core that throws is a 500, recorded in `threw` — an async decide must never reject (the router would leave the request hanging).
+const CORES = new Map();
+async function coreBackend(name) {
+  if (!CORES.has(name)) { const { backend } = await import(pathToFileURL(path.join(ROOT, 'review/portal-cores', `${name}.mjs`)).href); CORES.set(name, await backend(ROOT)); }
+  return CORES.get(name);
+}
+async function answerCore(st, fn, url, req) {
+  if (req.method === 'OPTIONS') return { body: '' };   // the router answers a preflight itself (CORS 204); the core never sees it
+  try {
+    const headers = Object.fromEntries(Object.entries(req.headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
+    let body; try { body = req.postData ? JSON.parse(req.postData) : undefined; } catch (_) { body = undefined; }
+    const r = await st.backend.call({ fn, method: req.method, query: queryOf(url), headers, body });
+    if (!r || r.status === 404) {   // not served: no answer, or the core's own explicit 404 (Codex #105 r3) — both recorded
+      if (!st.unserved.includes(fn)) st.unserved.push(fn);
+      return { status: 404, body: r ? (typeof r.body === 'string' ? r.body : JSON.stringify(r.body ?? { error: 'not_found' })) : JSON.stringify({ error: 'not_found' }) };
+    }
+    if (r.status >= 200 && r.status < 300 && !r.contentType) (st.answers[fn] ||= []).push({ query: queryOf(url), body: typeof r.body === 'string' ? JSON.parse(r.body) : r.body });   // what the page was served (the data premise reads it)
+    return { status: r.status, body: typeof r.body === 'string' ? r.body : JSON.stringify(r.body), headers: { ...(r.contentType ? { 'content-type': r.contentType } : {}), ...(r.headers || {}) } };
+  } catch (e) { st.threw.push(`${fn}: the core threw (${String(e && e.message).slice(0, 120)})`); return { status: 500, body: JSON.stringify({ error: 'core_threw' }) }; }
 }
 const PINNED = new Map();
 function pinnedBytes(f) {   // the baseline's bytes: the PINNED files, found by full sha256 + length among the committed copies
@@ -283,18 +350,125 @@ export function classifyShifts(shifts, fontEv, fontRes) {
   });
 }
 const showShifts = (cls) => { for (const x of cls) console.log(`      ${x.font ? 'FONT ' : 'shell'} shift @${Math.round(x.t)} ms ${+x.v.toPrecision(4)} [${x.why}] ${x.sources.slice(0, 4).map((s) => s.desc).join(' | ')}`); };
-const FREEZE = `(() => { const T = ${T0}; const D = Date; class FD extends D { constructor(...a) { super(...(a.length ? a : [T])); } static now() { return T; } } window.Date = FD; })();`;
+const freezeAt = (T0) => `(() => { const T = ${T0}; const D = Date; class FD extends D { constructor(...a) { super(...(a.length ? a : [T])); } static now() { return T; } } window.Date = FD; })();`;
+const FREEZE = freezeAt(T0);
 const QUIET = `document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}'; document.head.appendChild(s); });`;
 const THEME = (t) => `document.addEventListener('DOMContentLoaded', () => document.documentElement.setAttribute('data-theme', ${JSON.stringify(t)}));`;
 const settle = async (cdp) => { await cdp.ev('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))'); };
-async function premisePane(cdp, sel) {
+async function premisePane(cdp, sel, text, gaps = []) {
   const ok = await cdp.ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return 'missing';
     const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
     if (cs.display === 'none' || cs.visibility === 'hidden' || r.width === 0 || r.height === 0) return 'hidden';
-    return (e.innerText || '').trim() ? 'ok' : 'empty'; })()`);
-  if (ok !== 'ok') throw new Error(`premise: ${sel} is ${ok}`);
+    const t = (e.innerText || '').trim(); if (!t) return 'empty';
+    return ${JSON.stringify(text || '')} && !t.includes(${JSON.stringify(text || '')}) ? 'without «' + ${JSON.stringify(text || '')} + '»' : 'ok'; })()`);
+  if (ok !== 'ok') throw new Error(`premise: ${sel} is ${ok}${gaps.length ? ` — core gaps: ${gaps.join('; ')}` : ''}`);
 }
 
+// ── Codex #105 (P2) r2 (advisor ruling 11-16): a core state passes only on its REAL data. A core that THROWS (500) during the capture
+// fails the state, naming the fn; so does a 404 for the state's OWN data function; and each core state shows a value taken from the
+// answer the page was actually served (a static label can survive a failed core on fallback content). `any`: strings, or [module,
+// export, arg] formatted IN THE PAGE by the portal's own code. Every other 404 is recorded per state in `unserved` (below).
+const served = (A, fn, pick) => { const v = (A[fn] || []).map(pick).find((x) => x !== undefined && x !== null && x !== '');
+  if (v === undefined) throw new Error(`premise: ${A[fn] ? `no ${fn} answer carries the value` : `no 2xx answer from ${fn}`}`); return v; };
+const today = (a) => !!(a.query && a.query.from && a.query.from === a.query.to);
+const salesAny = (A, wantToday) => { const a = (A.getSalesStats || []).find((x) => today(x) === wantToday);
+  const cents = served({ getSalesStats: a ? [a] : undefined }, 'getSalesStats', (x) => x.body.kpis && x.body.kpis.sales_cents);
+  return [cents, ...(a.body.branches || []).map((b) => b.kpis && b.kpis.sales_cents).filter(Number.isFinite)].map((c) => ['ventas-logic.js', 'lempiras', c]); };
+const activeOffer = (A) => served(A, 'getMarketing', (x) => ((x.body.offers || []).find((o) => o.state === 'active') || {}).name);
+const offerNames = (A) => served(A, 'getMarketing', (x) => { const n = (x.body.offers || []).map((o) => o.name).filter(Boolean); return n.length ? n : undefined; });
+// the builder / review show the served branches (getMyBranches, via marketing.js ctx.branches) as builderText's branchText — every
+// branch is chosen by default (marketing-builder.js:97) ⇒ «Las N sucursales» (marketing-logic.js:380), or a single branch's name; the
+// review row shortens it to «Las N» (marketing-builder.js:538, v5's review)
+const branchAny = (A, review) => served(A, 'getMyBranches', (x) => { const b = (x.body.branches || []).filter((r) => r && r.name);
+  return b.length ? [review ? `Las ${b.length}` : `Las ${b.length} sucursales`, `Solo ${b[0].name}`, ...b.map((r) => r.name)] : undefined; });
+// the 2×1 builder's dishes: the served source's dish names, as loadMenu reads them (marketing-builder.js:145 display.name || key)
+const dishNames = (A) => served(A, 'getEditableCatalog', (x) => { const n = ((x.body.source && x.body.source.items) || []).map((i) => (i.display && i.display.name) || i.key).filter(Boolean); return n.length ? n : undefined; });
+// the 2×1 REVIEW draws no dish name — «Productos» is a count (marketing-logic.js:397); the one served value it draws is the ceiling,
+// top price × free_per_order (marketing-logic.js:398–400, printed at marketing-builder.js:545). Each served dish as loadMenu maps it
+// (marketing-builder.js:145, price × 100) × every free_per_order the form allows (1..LIMITS.free_per_order_max — the builder's default is
+// not exported), through the portal's own builderText: the exact «Hasta L N por canje.» it prints
+const ceilingAny = (A) => served(A, 'getEditableCatalog', (x) => { const out = [];
+  for (const i of (x.body.source && x.body.source.items) || []) {
+    if (!(Number.isSafeInteger(i.price) && i.price > 0)) continue;
+    const it = { key: i.key, name: (i.display && i.display.name) || i.key, price_cents: i.price * 100, cat: i.display && i.display.cat };
+    for (let k = 1; k <= ML.LIMITS.free_per_order_max; k++) { const c = ML.builderText({ ...ML.emptyForm('bogo'), items: [it.key], free_per_order: k }, { branches: [], items: [it] }).cost.ceiling; if (c) out.push(c); }
+  }
+  return out.length ? out : undefined; });
+const CORE_DATA = {
+  'IN-inicio': { fn: 'getSalesStats', at: (A) => ({ scope: '#viewinicio', any: salesAny(A, true) }) },
+  'V-rend':    { fn: 'getSalesStats', at: (A) => ({ scope: '#viewventas', any: salesAny(A, false) }) },
+  'V-detail':  { fn: 'getSalesStats', at: (A) => ({ scope: '.main:not(.hidden)', any: salesAny(A, false) }) },
+  'C-calif':   { fn: 'getMerchantReviews', at: (A) => ({ scope: '.calif', any: [served(A, 'getMerchantReviews', (x) => (x.body.reviews || []).map((r) => r.customer).find(Boolean))] }) },
+  'C-filters': { fn: 'getMerchantReviews', at: (A) => ({ scope: '.calif', any: [served(A, 'getMerchantReviews', (x) => (x.body.reviews || []).map((r) => r.customer).find(Boolean))] }) },
+  'C-earlier': { fn: 'getMerchantRatingComments', at: (A) => ({ scope: '.calif', any: [served(A, 'getMerchantRatingComments', (x) => (x.body.comments || []).map((c) => c.comment).find(Boolean))] }) },
+  'M-ofertas': { fn: 'getMarketing', at: (A) => ({ scope: '.main:not(.hidden)', any: [activeOffer(A)] }) },
+  'M-builder': { fn: 'getMyBranches', at: (A) => ({ scope: '.mk5b-dlg', any: branchAny(A) }) },
+  'M-review':  { fn: 'getMyBranches', at: (A) => ({ scope: '.mk5r-modal', any: branchAny(A, true) }) },
+  'M-detail':  { fn: 'getMarketing', at: (A) => ({ scope: '.mk5d-head', any: offerNames(A) }) },
+  'M-builder-bogo': { fn: 'getEditableCatalog', at: (A) => ({ scope: '.mk5b-dlg', any: dishNames(A) }) },
+  'M-review-bogo':  { fn: 'getEditableCatalog', at: (A) => ({ scope: '.mk5r-modal', any: ceilingAny(A) }) },
+  // the zone names draw inside the map iframe (its own origin, not in the pane's text); the fee table is the pane's own: every served band
+  // as the portal's rowsFromBands writes it into the km / fee inputs, in order (envio.js:634-635)
+  'N-envio':   { fn: 'getDeliveryPricing', at: (A) => ({ scope: '.envio', any: [['envio-logic.js', 'rowsFromBands', served(A, 'getDeliveryPricing', (x) => (Array.isArray(x.body.bands) && x.body.bands.length ? x.body.bands : undefined))]] }) },
+};
+// ── #105 r2 (advisor ruling 11-16, item 3): an unserved call is not a silent hole. Per function the page may call: the pane sections that
+// draw from it (their root, as the portal builds it) and the census state that renders that section WITH data. At the pane check each
+// unserved section is MEASURED: is its root on the captured pane (visible, inside or around the state's container)? A section measured
+// nowhere (`measuredIn: null`) — or a function no section declares — goes in the record's «owed» list. Sources: inicio.js:5-8,
+// ventas.js, app.js:483, availability.js:34, marketing.js:106/222, calificaciones.js:334, envio.js:936, team.js:417, equipos.js.
+const UNSERVED = {
+  getSalesStats:             [{ section: 'Inicio · Ventas / Pedidos / Ticket promedio', root: '#viewinicio', measuredIn: 'IN-inicio' },
+                              { section: 'Ventas · rendimiento', root: '#viewventas', measuredIn: 'V-rend' }],
+  getEditableCatalog:        [{ section: 'Productos · el menú (rail + detalle)', root: '#viewmenu', measuredIn: 'P-editor' },
+                              // marketing-builder.js:138 reads the dishes for «Productos» in a 2×1's builder and its review (owed 2, advisor 11-18)
+                              { section: 'Marketing · builder: los platos de la oferta', root: '.mk5b-dlg', measuredIn: 'M-builder-bogo' },
+                              { section: 'Marketing · revisión: el tope por canje de la oferta', root: '.mk5r-modal', measuredIn: 'M-review-bogo' }],   // it draws the ceiling, not the dishes
+  getBranchAvailability:     [{ section: 'Productos · agotados por sucursal', root: '#availdrawer', measuredIn: 'A-drawer' }],
+  getMarketing:              [{ section: 'Marketing · Ofertas', root: '.mk5-sect', measuredIn: 'M-ofertas' }],
+  getMerchantReviews:        [{ section: 'Calificaciones · reseñas', root: '.calif', measuredIn: 'C-calif' }],
+  getMerchantRatingComments: [{ section: 'Calificaciones · comentarios anteriores', root: '.calif', measuredIn: 'C-earlier' }],
+  getDeliveryPricing:        [{ section: 'Envío · tarifas y zonas', root: '.envio', measuredIn: 'N-envio' }],
+  memberList:                [{ section: 'Equipo de trabajo', root: '.teamv', measuredIn: 'T-team' }],
+  getBranchDevices:          [{ section: 'Equipos', root: '#viewequipos', measuredIn: 'E-devices' }],
+};
+for (const [fn, xs] of Object.entries(UNSERVED)) for (const x of xs) if (x.measuredIn !== null && !STATES[x.measuredIn]) throw new Error(`premise: UNSERVED ${fn}: measuredIn ${x.measuredIn} is no census state`);
+async function unservedSections(cdp, def, st) {   // measured on the captured pane; an undeclared function is listed with section null
+  const out = [];
+  for (const fn of st.unserved) {
+    if (!UNSERVED[fn]) { out.push({ fn, section: null, onPane: null, measuredIn: null }); continue; }
+    for (const x of UNSERVED[fn]) out.push({ fn, section: x.section, measuredIn: x.measuredIn, onPane: await cdp.ev(`(() => { const c = document.querySelector(${JSON.stringify(def.container)}), r = document.querySelector(${JSON.stringify(x.root)});
+      if (!c || !r) return false; const b = r.getBoundingClientRect(), cs = getComputedStyle(r);
+      return !(cs.display === 'none' || cs.visibility === 'hidden' || b.width === 0 || b.height === 0) && (c.contains(r) || r.contains(c)); })()`) });
+  }
+  return out;
+}
+// Codex #105 r3: every declared section, MEASURED in every state: its root visible and inside / around the captured container
+const SECTION_ROOTS = [...new Map(Object.values(UNSERVED).flat().map((x) => [x.section, x.root])).entries()];
+const renderedSections = (cdp, def) => cdp.ev(`(() => { const c = document.querySelector(${JSON.stringify(def.container)}), out = {};
+  for (const [s, root] of ${JSON.stringify(SECTION_ROOTS)}) { const r = document.querySelector(root); let on = false;
+    if (c && r) { const b = r.getBoundingClientRect(), cs = getComputedStyle(r); on = !(cs.display === 'none' || cs.visibility === 'hidden' || b.width === 0 || b.height === 0) && (c.contains(r) || r.contains(c)); }
+    out[s] = on; }
+  return out; })()`);
+for (const [n, d] of Object.entries(STATES)) if (d.cores && !CORE_DATA[n]) throw new Error(`premise: core state ${n} has no data premise (CORE_DATA)`);   // refused before any launch
+async function corePremise(cdp, name, def, st, when) {
+  if (!def.cores) return;
+  if (st.threw.length) throw new Error(`premise: ${name}: a core threw during the capture (${when}) — ${st.threw.join('; ')}`);
+  const own = CORE_DATA[name].fn;
+  if (st.unserved.includes(own)) throw new Error(`premise: ${name}: its own data function ${own} was not served (404) during the capture (${when})`);
+  if (when !== 'pane') return;
+  const d = { fn: own, ...CORE_DATA[name].at(st.answers) };
+  const r = await cdp.ev(`(async () => { const root = document.querySelector(${JSON.stringify(d.scope)}); if (!root) return { ok: false, want: [], why: 'no ${d.scope}' };
+    const text = (root.innerText || '') + ' ' + [...root.querySelectorAll('input, textarea')].map((i) => i.value).join(' ');
+    const want = []; for (const w of ${JSON.stringify(d.any)}) { const v = typeof w === 'string' ? w : (await import(new URL(w[0], location.href).href))[w[1]](w[2]);
+      want.push(Array.isArray(v) ? v.map((o) => Object.values(o).join(' ')).join(' ') : v); }   // a list of rows: its values in order, as the inputs hold them
+    return { ok: want.some((x) => x && text.includes(x)), want, shown: want.find((x) => x && text.includes(x)) }; })()`);
+  if (!r.ok) throw new Error(`premise: ${name}: the served ${d.fn} answer is not on the page — wanted ${r.want.join(' | ') || r.why} in ${d.scope}`);
+  st.data = { fn: d.fn, shown: r.shown };   // recorded: the served value the page showed
+}
+
+// #105 r2: every state's threw / unserved / data / unserved sections, written unconditionally (an empty array, never an absent field)
+const recordOf = (byState) => { const m = (k) => Object.fromEntries(Object.entries(byState).map(([n, r]) => [n, r.after[k]]));
+  return { notes: Object.fromEntries(Object.keys(byState).filter((n) => STATES[n].note).map((n) => [n, STATES[n].note])), threw: m('threw'), unserved: m('unserved'), served: m('served'), rendered: m('rendered'), data: m('data'), unservedSections: m('sections') }; };
 // ── one run: boot an entry page in a state under a font policy ──
 async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy = false, stateName = 'P-editor', deterministic = false, holdMs = 6000, faceChange = false,
   view = 1280, theme = 'light', typing = false }) {
@@ -302,7 +476,8 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
   const load1 = os.loadavg()[0];   // the slot rule: load1 > 45 ⇒ UNTRUSTED STOP (checked before EVERY run, not only at launch)
   LOAD_MAX = Math.max(LOAD_MAX, load1);
   if (load1 > 45) { console.log(`\nUNTRUSTED STOP: 1-min load ${load1.toFixed(2)} > 45 before ${side} ${stateName} @${view}px`); process.exit(3); }
-  const st = { ...def, baseline: side === 'baseline', fontGate };
+  const st = { ...def, baseline: side === 'baseline', fontGate, name: stateName, threw: [], unserved: [], served: [], answers: {}, data: null };
+  if (def.cores) { st.backend = await coreBackend(def.cores); await st.backend.reset(def.scn); }   // census-gaps: a fresh REAL world per run
   const root = side === 'baseline' ? baselineRoot() : ROOT;
   const srv = await serveDir(root, {
     gate: (rel) => (new RegExp(`^${SITE}/fonts/.*\\.woff2$`).test(rel) ? fontGate : undefined),
@@ -318,12 +493,13 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     },
   });
   const cdp = await launch({ width: view, height: view < 600 ? 844 : 900, dpr: view < 600 ? 2 : 1, throttle });
+  const where = (step) => cdp.at(`${stateName} (${side}) @${view}px ${theme} · ${step}`); where('boot');   // a CDP deadline names the state + step
   let rtRef = null;
   try {
     const errs = [];
     const decide = decideFor(st);
     const rt = await router(cdp, decide); rtRef = rt;
-    cdp.on('Fetch.requestPaused', (p) => { const u = p.request.url; if (decide(u, p.request) === 'hold' && !isFontUrl(u)) errs.push(`unexpected hold: ${u}`); });
+    cdp.on('Fetch.requestPaused', (p) => { const u = p.request.url; if (decide.peek(u, p.request) === 'hold' && !isFontUrl(u)) errs.push(`unexpected hold: ${u}`); });
     await cdp.s('Log.enable');
     cdp.on('Runtime.exceptionThrown', (p) => errs.push(`exception: ${(p.exceptionDetails.exception && p.exceptionDetails.exception.description) || p.exceptionDetails.text}`.slice(0, 200)));
     cdp.on('Runtime.consoleAPICalled', (p) => { if (p.type === 'error') errs.push(`console.error: ${p.args.map((a) => a.value ?? a.description ?? '').join(' ')}`.slice(0, 200)); });
@@ -336,7 +512,10 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
       const afterFcp = () => new Promise((r) => (fcpAt !== null ? r() : waiters.push(r))).then(() => new Promise((r) => setTimeout(r, Math.max(0, fcpAt + ${Number(ms)} - performance.now()))));
       if (${JSON.stringify(fn)} === 'auth') { window.__authGate = afterFcp(); return; }   // FONTS_DELAY=auth:<ms>: the session resolves <ms> after FCP
       const f = window.fetch.bind(window); window.fetch = async (u, o) => { const res = await f(u, o); if (String(u).includes('/${fn}')) await afterFcp(); return res; }; })();` }); }
-    if (deterministic) for (const src of [FREEZE, QUIET]) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: src });
+    // the page's clock: a core state runs on its backend's clock (the REAL world's «now»), deterministic or not; else T0 when deterministic
+    const clock = st.backend && Number.isFinite(st.backend.clock) ? st.backend.clock : null;
+    if (clock !== null) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: freezeAt(clock) });
+    if (deterministic) for (const src of [clock === null ? FREEZE : null, QUIET].filter(Boolean)) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: src });
     const t0 = Date.now();
     const page = def.page === 'aceptar' ? `aceptar.html${def.noInvite ? '' : `?invite=${INVITE_ID}&mode=signIn&oobCode=fx&apiKey=fx`}` : 'index.html';
     await cdp.s('Page.navigate', { url: `${srv.base}/${SITE}/${page}` });
@@ -345,7 +524,8 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     const bootMs = Date.now() - t0;
     for (let i = 0; i < 400 && !(await cdp.ev('!!window.__paintSnap').catch(() => false)); i++) await sleep(25);
     const paintSnap = await cdp.ev('window.__paintSnap || null');
-    await def.drive(cdp); await settle(cdp);
+    where('drive'); try { await def.drive(cdp); } catch (e) { throw driveFailure(stateName, def.cores ? CORE_DATA[stateName].fn : null, st.unserved, e); }   // a failed drive names its own-data 404 first
+    await settle(cdp);
     // FF-typing: the list-row price «1280», caret INSIDE (after «12»), a sentinel caret colour on BOTH sides (byte-identical)
     let caret0 = null;
     if (typing) {
@@ -355,8 +535,9 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
         i.focus(); i.setSelectionRange(2, 2); return true; })()`);
       caret0 = await caretOf(cdp);
     }
-    const before = { nodes: await census(cdp), geo: await cdp.ev(GEO), bootMs, cls: await cdp.ev('window.__cls'), caret: caret0 };
-    let heldMs = 0;
+    where('before');
+    const before = { nodes: await census(cdp, { deadlines: true }), geo: await cdp.ev(GEO), bootMs, cls: await cdp.ev('window.__cls'), caret: caret0 };
+    where('fonts'); let heldMs = 0;
     const fontUrls = () => [...rt.seen].filter((u) => isFontUrl(u));
     if (fontGate === 'hold') {
       if (srv.heldCount() + rt.holds.size === 0 && !fontUrls().length) throw new Error('premise: no font request was held — the cell would prove nothing');
@@ -367,18 +548,41 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     for (let i = 0; ; i++) { const open = fontUrls().filter((u) => !rt.finished.has(u)); if (!open.length) break; if (i > 1200) throw new Error(`font requests never completed: ${open.join(', ')}`); await sleep(25); }
     await cdp.ev('document.fonts.ready.then(() => true)'); await sleep(250);
     let geo = await cdp.ev(GEO); for (let i = 0; i < 20; i++) { await settle(cdp); const g = await cdp.ev(GEO); if (JSON.stringify(g) === JSON.stringify(geo)) break; geo = g; }
-    await premisePane(cdp, def.container);
+    where('premise');
+    await premisePane(cdp, def.container, def.text, [...st.threw, ...st.unserved.map((f) => `${f}: not served (404)`)]);
+    await corePremise(cdp, stateName, def, st, 'pane');
+    const sections = await unservedSections(cdp, def, st);
     const caret1 = typing ? await caretOf(cdp) : null;
     const typedValue = typing ? await cdp.ev(`document.getElementById('__typing').value`) : null;
-    const after = { heldMs, bootMs, paintSnap, paintGeo: paintSnap ? paintSnap.geo : null, errs, refused: [...rt.refused], nodes: await census(cdp), geo, cls: await cdp.ev('window.__cls'), shifts: await cdp.ev('window.__shiftSrc'), fontEv: await cdp.ev('window.__fontEv'), fontRes: await cdp.ev(FONT_RES),
+    const after = { heldMs, bootMs, paintSnap, paintGeo: paintSnap ? paintSnap.geo : null, errs, refused: [...rt.refused], nodes: null, geo, cls: await cdp.ev('window.__cls'), shifts: await cdp.ev('window.__shiftSrc'), fontEv: await cdp.ev('window.__fontEv'), fontRes: await cdp.ev(FONT_RES),
       fontsFailed: fontUrls().filter((u) => rt.finished.get(u) === 'failed').length, caret: caret1, typedValue };
     const shot = async () => Buffer.from((await cdp.s('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })).data, 'base64');
     const raw = deterministic ? await shot() : null;
     if (deterministic) { await cdp.ev(`(async () => { const ff = new FontFace('__Invalidate', "local('Arial')"); document.fonts.add(ff); await ff.load(); return true; })()`); await settle(cdp); await sleep(300); }
     const png = deterministic ? await shot() : null;
-    const probe = await attribute(cdp, after.nodes);
+    // Codex #105 r3 (advisor 11-16): census → probe → a SECOND census; the two must be identical, else the state FAILS as «capture
+    // unstable» — never retried, never passed (census() takes its text from one DOM snapshot but each node's glyph counts from the live
+    // render). The r3c freeze (Emulation.setVirtualTimePolicy) proved the page stable and was dropped: the '(none)' failures were the
+    // probe's unsettled spans (cdp-fonts.mjs attribute() now waits for its faces).
+    let probe = null;
+    const sig = (ns) => ns.map((n) => JSON.stringify([n.path, n.family, n.weight, n.style, n.codepoints, n.fonts]));
+    const firstDiff = (a, b) => { const x = sig(a), y = sig(b); const i = x.findIndex((v, k) => v !== y[k]); return i >= 0 ? (a[i] || b[i]).path : (x.length !== y.length ? (b[x.length] || a[y.length]).path : null); };
+    where('census'); after.nodes = await census(cdp, { deadlines: true });
+    where('probe'); probe = await attribute(cdp, after.nodes);
+    { const again = await census(cdp, { deadlines: true }), d = firstDiff(after.nodes, again);
+      if (d !== null) throw new Error(`capture unstable: ${stateName}: ${d} changed during the census (${after.nodes.length} → ${again.length} nodes)`);
+      // r3d (advisor 11-18): a node rewritten faster than the census reads it is gone before its query in BOTH passes — equal lists, so
+      // the diff above cannot see it. census() now records it (path only): any vanished node fails the state the same way.
+      const v = [...new Set([...after.nodes.vanished, ...again.vanished])];
+      if (v.length) throw new Error(`capture unstable: ${stateName}: ${v[0]} vanished during the census (${v.length} node${v.length === 1 ? '' : 's'})`); }
+    // #105 r3: read AFTER the probe, so the node census and the probe stay back to back on the settled pane (r3 diag: 1/5 fidelity fails
+    // with it between them, 0/5 without)
+    where('end'); const rendered = await renderedSections(cdp, def);
+    await corePremise(cdp, stateName, def, st, 'end');   // a core call that failed AFTER the pane check still fails the state
+    Object.assign(after, { threw: [...st.threw], unserved: [...st.unserved], served: [...st.served].sort(), rendered, sections, data: st.data });   // #105 r2: recorded UNCONDITIONALLY
     return { before, after, probe, png, raw };
   } finally {
+    where('cleanup');
     try { if (rtRef) await rtRef.failHeld(() => true); } catch (_) {}
     cdp.close(); srv.close();
   }
@@ -459,6 +663,8 @@ function gateB(byState, decls, reqW, without = new Set()) {
 function gateD(r) {
   const ranges = primaryDecls().flatMap((d) => d.range); const bad = [];
   for (const n of r.after.nodes) {
+    // Codex #140 P2: a key the face wait ran out on (the space included) is never a pass, whatever the node's stack
+    for (const k of deadlineKeysOf(n, r.probe)) bad.push(`${n.path.slice(-50)}: (deadline) — the face wait ran out for U+${Number(k.split('|')[3]).toString(16).toUpperCase().padStart(4, '0')}`);
     if (!hostedOf(firstFamily(n.family))) continue;
     for (const run of runsOf(n, r.probe).runs) if (!hostedOf(run.familyName) && run.codepoints.some((cp) => inRange(cp, ranges)))
       bad.push(`${n.path.slice(-50)}: ${run.familyName} draws ${JSON.stringify(String.fromCodePoint(...run.codepoints.filter((cp) => inRange(cp, ranges))))} inside ${FACE}'s ranges`);
@@ -468,6 +674,9 @@ function gateD(r) {
 const hostedPainted = (nodes) => nodes.some((n) => n.fonts.some((f) => hostedOf(f.familyName) && f.glyphCount > 0));
 const moved = (a, b) => (a.length === b.length ? a.filter((g, i) => g !== b[i]).length : -1);
 const fails = []; let CHECKS = 0; const check = (ok, msg) => { CHECKS++; console.log(`  ${ok ? '✓' : '✗'} ${msg}`); if (!ok) fails.push(msg); };
+// owed-2 E (advisor 11-18): every cell / state runs in a deadline cell — a CDP call never answered fails THAT state, named (state · step ·
+// method), and the run goes on to its summary; any other error ends the run as before
+const cell = (fn) => failStateOnDeadline(fn, check);
 { const st = arg('states'); if (st) { if (!st.length || st.some((x) => !x)) refuse('--states selects no state'); for (const x of st) if (!STATES[x]) refuse(`unknown state ${JSON.stringify(x)}`); } }
 const fidelity = (r, label) => { const bad = r.after.nodes.flatMap((n) => runsOf(n, r.probe).fidelity.map((f) => `${n.path.slice(-40)} ${f}`)); check(!bad.length, `${label}: probe fidelity (${bad.length ? bad.slice(0, 3).join('; ') : 'every node'})`); };
 const expectedErr = (e, r) => typeof e === 'object' && /^Failed to load resource/.test(e.log) && (isFontUrl(e.url) || r.after.refused.includes(e.url));
@@ -489,7 +698,7 @@ for (let rep = 1; rep <= REPEATS; rep++) {
   for (const view of VIEWS) {
     console.log(`\n== repeat ${rep} · ${view}px`);
     for (const [page, stateName] of Object.entries(CELL_STATES)) {
-      if (CELLS.includes('fast')) {
+      if (CELLS.includes('fast')) await cell(async () => {
         const r = await run({ side: process.env.FONTS_FAST_SIDE || 'candidate', stateName, view, throttle: !!process.env.FONTS_FAST_THROTTLE });   // FONTS_FAST_THROTTLE=1: diagnostic (CPU 4× + Slow 4G, fonts NOT held)   // FONTS_FAST_SIDE=baseline: today's portal, the diagnostic reference
         check(hostedPainted(r.after.nodes), `[${page}] FF-fast: ${FACE} paints (census)`);
         check(!!r.after.paintSnap && r.after.paintGeo.length > 20, `[${page}] FF-fast premise: geometry captured in-page at FCP + 1 rAF (FCP ${r.after.paintSnap && Math.round(r.after.paintSnap.fcp)} ms; ${FACE} loaded then: ${r.after.paintSnap ? r.after.paintSnap.loaded.length : '?'})`);
@@ -507,22 +716,22 @@ for (let rep = 1; rep <= REPEATS; rep++) {
         check(fontCls === 0, `[${page}] FF-fast: FONT-ATTRIBUTED CLS 0 over the whole window from navigation start (${+fontCls.toPrecision(3)}; total ${r.after.cls})`);
         if (shellCls) { console.log(`    · logged against FINDING-portal-shell-late-shift.md: shell-content CLS ${+shellCls.toFixed(4)}`); SHELL_LOG.push({ page, view, rep, cls: shellCls }); }
         if (cls.length) showShifts(cls);
-      }
-      if (CELLS.includes('clsctrl') && page === 'aceptar') {   // NEGATIVE CONTROL for the geometry rule: old policy ⇒ a box VISIBLE at first paint moves ⇒ FAIL
+      });
+      if (CELLS.includes('clsctrl') && page === 'aceptar') await cell(async () => {   // NEGATIVE CONTROL for the geometry rule: old policy ⇒ a box VISIBLE at first paint moves ⇒ FAIL
         const r = await run({ stateName, view, fontGate: 'hold', holdMs: 2500, oldPolicy: true });
         const g = visMoved(r);
         check(!hostedPainted(r.before.nodes) && hostedPainted(r.after.nodes) && g.visible > 20, `[${page}] GEO-ctrl premise: first paint on the fallback with ${g.visible} rendered boxes; the old policy swapped at release (${r.after.heldMs} ms)`);
         check(!g.countChanged && g.moved.length > 0, `[${page}] GEO-ctrl: boxes RENDERED at first paint MOVE under the swap, so the FF-fast geometry rule FAILS it (${g.moved.length} moved; e.g. ${(g.moved[0] || '').slice(0, 90)})`);
-      }
-      if (CELLS.includes('clsctrl') && page === 'index') {   // NEGATIVE CONTROL for the ruling: a deliberate font SWAP inside #viewmenu must FAIL it
+      });
+      if (CELLS.includes('clsctrl') && page === 'index') await cell(async () => {   // NEGATIVE CONTROL for the ruling: a deliberate font SWAP inside #viewmenu must FAIL it
         const r = await run({ stateName, view, fontGate: 'hold', holdMs: 2500, oldPolicy: true });
         const cls = classifyShifts(r.after.shifts, r.after.fontEv, r.after.fontRes), font = cls.filter((x) => x.font);
         const inside = font.filter((x) => x.sources.some((s) => s.inViewmenu));
         check(hostedPainted(r.after.nodes) && !hostedPainted(r.before.nodes), `[${page}] CLS-ctrl premise: the old policy swapped fallback → ${FACE} at release (${r.after.heldMs} ms)`);
         check(inside.length > 0 && font.reduce((a, x) => a + x.v, 0) > 0, `[${page}] CLS-ctrl: the swap's shift inside #viewmenu is FONT-ATTRIBUTED, so the FF-fast rule FAILS it (${inside.length} entr${inside.length === 1 ? 'y' : 'ies'}; arm (a) ${inside.filter((x) => x.armA).length}, arm (b) ${inside.filter((x) => x.armB).length}; font CLS ${+font.reduce((a, x) => a + x.v, 0).toPrecision(3)})`);
         showShifts(cls);
-      }
-      if (CELLS.includes('slow')) {
+      });
+      if (CELLS.includes('slow')) await cell(async () => {
         const r = await run({ stateName, view, fontGate: 'hold', throttle: true });
         check(!!r.after.paintSnap && r.after.paintSnap.loaded.length === 0, `[${page}] FF-slow premise: NO ${FACE} loaded at the FCP snapshot (${r.after.paintSnap ? JSON.stringify(r.after.paintSnap.loaded) : 'no snapshot'}) — else VOID`);
         check(!hostedPainted(r.before.nodes), `[${page}] FF-slow premise: the fallback is painted before release (fonts released at ${r.after.heldMs} ms)`);
@@ -530,24 +739,24 @@ for (let rep = 1; rep <= REPEATS; rep++) {
         const m = moved(r.before.geo, r.after.geo);
         check(r.after.geo.length > 20 && m === 0, `[${page}] FF-slow: 0 of ${r.after.geo.length} boxes moved (${m})`);
         check(r.after.cls - r.before.cls === 0, `[${page}] FF-slow: CLS across the font window 0 (${r.after.cls - r.before.cls})`); if (r.after.cls) showShifts(classifyShifts(r.after.shifts, r.after.fontEv, r.after.fontRes));
-      }
-      if (CELLS.includes('failed')) {
+      });
+      if (CELLS.includes('failed')) await cell(async () => {
         const r = await run({ stateName: page === 'index' ? 'P-drawer' : 'I-password', view, fontGate: 'fail' });
         check(r.after.fontsFailed > 0, `[${page}] FF-failed premise: the font requests really failed (${r.after.fontsFailed})`);
         check(!hostedPainted(r.after.nodes), `[${page}] FF-failed: the fallback paints and is kept`);
         check(moved(r.before.geo, r.after.geo) === 0, `[${page}] FF-failed: 0 boxes move; usable (${page === 'index' ? 'a drawer opened' : 'the email step submitted → password'})`);
         const unexpected = r.after.errs.filter((e) => !expectedErr(e, r)).map((e) => (typeof e === 'object' ? `log: ${e.log} ${e.url}` : e));
         check(unexpected.length === 0, `[${page}] FF-failed: no page exceptions / console errors beyond the expected font failures (${unexpected.length ? unexpected.slice(0, 4).join(' | ') : 'none'})`);
-      }
-      if (CELLS.includes('ctrl')) {
+      });
+      if (CELLS.includes('ctrl')) await cell(async () => {
         const r = await run({ stateName, view, fontGate: 'hold', throttle: true, oldPolicy: true });
         check(!!r.after.paintSnap && r.after.paintSnap.loaded.length === 0, `[${page}] FF-ctrl premise: NO ${FACE} loaded at the FCP snapshot — else VOID`);
         check(!hostedPainted(r.before.nodes) && hostedPainted(r.after.nodes), `[${page}] FF-ctrl: the OLD policy swaps (fallback → ${FACE})`);
         const m = moved(r.before.geo, r.after.geo);
         check(m > 0, `[${page}] FF-ctrl: the geometry check SEES it — ${m} of ${r.after.geo.length} boxes moved`);
-      }
+      });
     }
-    if (CELLS.includes('typing')) {
+    if (CELLS.includes('typing')) await cell(async () => {
       const r = await run({ stateName: 'P-editor', view, fontGate: 'hold', throttle: true, typing: true });
       check(!!r.before.caret && !!r.after.caret, `[typing] FF-typing premise: the caret rendered before and after (x ${r.before.caret && r.before.caret.x} → ${r.after.caret && r.after.caret.x})`);
       check(r.after.caret && r.before.caret && r.after.caret.x === r.before.caret.x, `[typing] FF-typing: the RENDERED caret did not move (0 px)`);
@@ -556,15 +765,15 @@ for (let rep = 1; rep <= REPEATS; rep++) {
       check(moved(r.before.geo, r.after.geo) === 0, '[typing] FF-typing: 0 boxes move');
       const c = await run({ stateName: 'P-editor', view, fontGate: 'hold', throttle: true, typing: true, oldPolicy: true });
       check(c.after.caret && c.before.caret && c.after.caret.x !== c.before.caret.x, `[typing] FF-typing control: the SAME caret MOVES under the old policy (${c.before.caret && c.before.caret.x} → ${c.after.caret && c.after.caret.x}) — else the 0 above is void`);
-    }
+    });
   }
   if (CELLS.includes('same')) {
     for (const view of VIEWS) for (const theme of THEMES) {
       console.log(`\n== FF-same · repeat ${rep} · ${view}px · ${theme}`);
       const byState = {};
       const states = Object.keys(STATES).filter((s) => !arg('states') || arg('states').includes(s));
-      for (const stn of states) {
-        if (STATES[stn].requires && !fs.existsSync(path.join(ROOT, STATES[stn].requires))) { console.log(`    · ${stn}: N/A — ${STATES[stn].requires} is not in this tip (listed, skipped)`); continue; }
+      for (const stn of states) await cell(async () => {
+        if (STATES[stn].requires && !fs.existsSync(path.join(ROOT, STATES[stn].requires))) { console.log(`    · ${stn}: N/A — ${STATES[stn].requires} is not in this tip (listed, skipped)`); return; }
         const base = await run({ side: 'baseline', stateName: stn, deterministic: true, view, theme });
         const cand = await run({ side: process.env.FONTS_SELF_CONTROL ? 'baseline' : 'candidate', stateName: stn, deterministic: true, view, theme });
         byState[stn] = cand;
@@ -576,12 +785,12 @@ for (let rep = 1; rep <= REPEATS; rep++) {
         if (d || process.env.FONTS_SAVE) for (const [k, b] of [['base', base.png], ['cand', cand.png]]) fs.writeFileSync(path.join(OUT, `${stn}-${view}-${theme}-${k}.png`), b);
         check(d === 0, `${stn} gate (c): pixel-exact, equalized history (${d} differing pixels; raw ${dRaw}, informational)`);
         for (const [side, r] of [['baseline', base], ['candidate', cand]]) { const bad = gateD(r); check(!bad.length, `${stn} gate (d) ${side}: no silent fallback${bad.length ? ` — ${bad.slice(0, 3).join('; ')}` : ''}`); }
-      }
-      if (byState['P-drawer']) {   // FC-ctrl: a REAL face change survives the normalization ⇒ the gate must fail
+      });
+      if (byState['P-drawer']) await cell(async () => {   // FC-ctrl: a REAL face change survives the normalization ⇒ the gate must fail
         const b0 = await run({ side: 'baseline', stateName: 'P-editor', deterministic: true, view, theme });
         const c0 = await run({ side: 'candidate', stateName: 'P-editor', deterministic: true, view, theme, faceChange: true });
         check(pixelDiff(b0.png, c0.png) > 0, 'FC-ctrl: a deliberate face change (.nm → the 600 weight) FAILS the normalized pixel gate');
-      }
+      });
       const decls = primaryDecls(), reqW = requestedWeights();
       const vb = gateB(byState, decls, reqW);
       for (const v of vb) check(!/^FAIL/.test(v.verdict), `gate (b) ${v.family} ${v.weight} ${v.raw.slice(0, 18)}…: ${v.verdict}`);
@@ -591,6 +800,7 @@ for (let rep = 1; rep <= REPEATS; rep++) {
       const named = gateB(byState, decls, reqW, painters).filter((v) => /^FAIL/.test(v.verdict) && `${v.family}|${v.weight}|${v.style}` === pick);
       check(!!pick && named.length > 0, `FB-ctrl: removing ${painters.size} state(s) that paint ${pick} makes gate (b) FAIL, naming it (${named.length} declaration·weight)`);
       if (view === VIEWS[0] && theme === THEMES[0]) fs.writeFileSync(path.join(OUT, `portal.census.${rep}.json`), JSON.stringify({ rep, view, theme, gateB: vb.map(({ range, ...x }) => x),
+        ...recordOf(byState),
         states: Object.fromEntries(Object.entries(byState).map(([s, r]) => [s, r.after.nodes.map((n) => ({ path: n.path, family: n.family, weight: n.weight, runs: runsOf(n, r.probe).runs.map((x) => ({ font: x.familyName, cps: x.codepoints.length })) }))])) }, null, 1));
     }
   }
@@ -602,14 +812,14 @@ for (let rep = 1; rep <= REPEATS; rep++) {
       console.log(`\n== FF-census · repeat ${rep} · ${view}px · ${theme}`);
       const byState = {};
       const states = Object.keys(STATES).filter((s) => !arg('states') || arg('states').includes(s));
-      for (const stn of states) {
-        if (STATES[stn].requires && !fs.existsSync(path.join(ROOT, STATES[stn].requires))) { console.log(`    · ${stn}: N/A — ${STATES[stn].requires} is not in this tip (listed, skipped)`); continue; }
+      for (const stn of states) await cell(async () => {
+        if (STATES[stn].requires && !fs.existsSync(path.join(ROOT, STATES[stn].requires))) { console.log(`    · ${stn}: N/A — ${STATES[stn].requires} is not in this tip (listed, skipped)`); return; }
         const cand = await run({ side: 'candidate', stateName: stn, deterministic: true, view, theme });
         byState[stn] = cand;
         fidelity(cand, `${stn} candidate`);
         check(hostedPainted(cand.after.nodes), `${stn}: ${FACE} paints`);
         for (const [side, r] of [['candidate', cand]]) { const bad = gateD(r); check(!bad.length, `${stn} gate (d) ${side}: no silent fallback${bad.length ? ` — ${bad.slice(0, 3).join('; ')}` : ''}`); }
-      }
+      });
       const decls = primaryDecls(), reqW = requestedWeights();
       const vb = gateB(byState, decls, reqW);
       for (const v of vb) check(!/^FAIL/.test(v.verdict), `gate (b) ${v.family} ${v.weight} ${v.raw.slice(0, 18)}…: ${v.verdict}`);
@@ -619,6 +829,7 @@ for (let rep = 1; rep <= REPEATS; rep++) {
       const named = gateB(byState, decls, reqW, painters).filter((v) => /^FAIL/.test(v.verdict) && `${v.family}|${v.weight}|${v.style}` === pick);
       check(!!pick && named.length > 0, `FB-ctrl: removing ${painters.size} state(s) that paint ${pick} makes gate (b) FAIL, naming it (${named.length} declaration·weight)`);
       if (view === VIEWS[0] && theme === THEMES[0]) fs.writeFileSync(path.join(OUT, `portal.census.${rep}.json`), JSON.stringify({ rep, view, theme, gateB: vb.map(({ range, ...x }) => x),
+        ...recordOf(byState),
         states: Object.fromEntries(Object.entries(byState).map(([s, r]) => [s, r.after.nodes.map((n) => ({ path: n.path, family: n.family, weight: n.weight, runs: runsOf(n, r.probe).runs.map((x) => ({ font: x.familyName, cps: x.codepoints.length })) }))])) }, null, 1));
     }
   }

@@ -68,6 +68,32 @@ export async function waitForLoad({ maxLoad = 30, pollMs = 60000, maxWaitMs = 30
   }
 }
 
+// The CDP wire over one browser socket: command ids → their answers, events → their handlers.
+// r3d (advisor 11-18): every command has a BACKSTOP — one Chrome never answers (a promise that can't settle under paused virtual time)
+// rejects naming its method, instead of hanging the run until its process kill (M-probe-*: 600 s).
+// owed-2 E (advisor 11-18): the deadline names WHERE — the label the caller sets (state · step) — and is coded CDP_DEADLINE, so a census
+// fails THAT state (failStateOnDeadline below), never the whole run.
+export function session(ws, { deadlineMs = Number(process.env.FONTS_CDP_DEADLINE_MS) || 90000 } = {}) {
+  let id = 0, label = ''; const pend = new Map(); const handlers = new Map();
+  ws.addEventListener('message', (e) => {
+    const m = JSON.parse(e.data);
+    if (m.id && pend.has(m.id)) { const p = pend.get(m.id); pend.delete(m.id); clearTimeout(p.timer); m.error ? p.reject(new Error(`${p.method}: ${m.error.message}`)) : p.resolve(m.result); return; }
+    if (m.method) for (const fn of handlers.get(m.method) || []) { try { fn(m.params); } catch (err) { console.error(err); } }
+  });
+  const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => { const i = ++id;
+    const timer = setTimeout(() => { if (pend.delete(i)) reject(Object.assign(new Error(`cdp: ${label ? `${label}: ` : ''}${method} got no answer in ${deadlineMs / 1000} s`), { code: 'CDP_DEADLINE' })); }, deadlineMs);
+    pend.set(i, { resolve, reject, method, timer });
+    // Codex #140: a send that throws at once (serialisation, a closed socket) leaves nothing waiting for the deadline
+    try { ws.send(JSON.stringify({ id: i, method, params, sessionId })); } catch (err) { clearTimeout(timer); pend.delete(i); reject(err); } });
+  return { send, handlers, pending: () => pend.size, at: (l) => { label = String(l || ''); } };
+}
+
+// One state (or cell) of a census: a CDP deadline inside it is a ✗ named by the deadline's message (state · step · method) and the run
+// goes on to its summary; any other error is rethrown unchanged.
+export async function failStateOnDeadline(fn, check) {
+  try { return await fn(); } catch (e) { if (!e || e.code !== 'CDP_DEADLINE') throw e; check(false, e.message); return null; }
+}
+
 export async function launch({ width = 390, height = 844, dpr = 2, throttle = false, args = [] } = {}) {
   await waitForLoad();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'cdp-fonts-'));
@@ -82,13 +108,7 @@ export async function launch({ width = 390, height = 844, dpr = 2, throttle = fa
       chrome.stderr.on('data', (d) => { b += d; const m = b.match(/DevTools listening on (ws:\/\/\S+)/); if (m) { clearTimeout(t); resolve(m[1]); } });
     });
     const ws = new WebSocket(wsUrl); await new Promise((r) => ws.addEventListener('open', r, { once: true }));
-    let id = 0; const pend = new Map(); const handlers = new Map();
-    ws.addEventListener('message', (e) => {
-      const m = JSON.parse(e.data);
-      if (m.id && pend.has(m.id)) { const p = pend.get(m.id); pend.delete(m.id); m.error ? p.reject(new Error(`${p.method}: ${m.error.message}`)) : p.resolve(m.result); return; }
-      if (m.method) for (const fn of handlers.get(m.method) || []) { try { fn(m.params); } catch (err) { console.error(err); } }
-    });
-    const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => { const i = ++id; pend.set(i, { resolve, reject, method }); ws.send(JSON.stringify({ id: i, method, params, sessionId })); });
+    const { send, handlers, at } = session(ws);
     const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
     const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
     const s = (m, p) => send(m, p, sessionId);
@@ -105,7 +125,7 @@ export async function launch({ width = 390, height = 844, dpr = 2, throttle = fa
       if (r.exceptionDetails) throw new Error(`page threw: ${JSON.stringify(r.exceptionDetails).slice(0, 400)}`);
       return r.result.value;
     };
-    return { s, on, ev, close: () => { try { ws.close(); } catch (_) {} close(); } };
+    return { s, on, ev, at, close: () => { try { ws.close(); } catch (_) {} close(); } };
   } catch (e) { close(); throw e; }
 }
 
@@ -118,7 +138,7 @@ export async function router(cdp, decide) {
   on('Network.loadingFinished', (p) => { const u = byReq.get(p.requestId); if (u) finished.set(u, 'ok'); });
   on('Network.loadingFailed', (p) => { const u = byReq.get(p.requestId); if (u) finished.set(u, 'failed'); });
   on('Fetch.requestPaused', async (p) => {
-    const url = p.request.url; const d = decide(url, p.request);
+    const url = p.request.url; const d = await decide(url, p.request);
     try {
       if (d === 'continue') return await s('Fetch.continueRequest', { requestId: p.requestId });
       if (d === 'fail') { refused.add(url); return await s('Fetch.failRequest', { requestId: p.requestId, errorReason: 'Failed' }); }   // recorded: the fixture's OWN refusals
@@ -160,15 +180,21 @@ function transform(text, tt) {
 // aggregates descendants and pseudo-elements, which blurs attribution — calibrated). Covers DOM text, the UA shadow text of inputs
 // (values / placeholders, via pierce) and ::before / ::after content (queried on the pseudo node). Only nodes the renderer reports
 // fonts for (i.e. painted) are kept. → [{ nodeId, path, family, weight, style, clamp, codepoints:[int], spaces, fonts:[…] }]
-export async function census(cdp) {
+// Codex #159 P2: { deadlines: true } (opt-in; portal-fonts) rethrows a CDP_DEADLINE from a per-node query — a deadline is never a
+// vanished node there; by default (every other consumer) it is recorded as vanished exactly as before
+export async function census(cdp, { deadlines = false } = {}) {
   const { s } = cdp;
+  const pass = (e) => { if (deadlines && e && e.code === 'CDP_DEADLINE') throw e; };
   const { root } = await s('DOM.getDocument', { depth: -1, pierce: true });
-  const out = [];
-  const styleOf = async (nodeId) => { try { return (await s('CSS.getComputedStyleForNode', { nodeId })).computedStyle; } catch (_) { return null; } };
+  // r3d (advisor 11-18): a node it cannot read (gone from the page between the snapshot and its query — a node rewritten faster than the
+  // census) is RECORDED by its path in out.vanished, never silently dropped (M-st: a 3 ms rewrite was dropped by BOTH censuses, so the
+  // stability re-read compared two equal lists). Path only — never its text. out stays the node list every consumer reads.
+  const out = []; const vanished = []; out.vanished = vanished;
+  const styleOf = async (nodeId) => { try { return (await s('CSS.getComputedStyleForNode', { nodeId })).computedStyle; } catch (e) { pass(e); return null; } };
   const record = async (fontNodeId, styleNodeId, raw, label) => {
-    const props = await styleOf(styleNodeId); if (!props) return;
+    const props = await styleOf(styleNodeId); if (!props) { vanished.push(label); return; }
     let fonts = [];
-    try { ({ fonts } = await s('CSS.getPlatformFontsForNode', { nodeId: fontNodeId })); } catch (_) { return; }
+    try { ({ fonts } = await s('CSS.getPlatformFontsForNode', { nodeId: fontNodeId })); } catch (e) { pass(e); vanished.push(label); return; }
     if (!fonts.length) return;
     const shown = transform(raw, cssText(props, 'text-transform'));
     const clamp = cssText(props, '-webkit-line-clamp');
@@ -188,7 +214,8 @@ export async function census(cdp) {
     const label = node.nodeType === 1 ? `${trail}>${node.localName}${(node.attributes || []).reduce((a, v, i, arr) => (i % 2 === 0 && v === 'id' ? `${a}#${arr[i + 1]}` : a), '')}` : trail;
     if (node.pseudoType) {
       const props = await styleOf(node.nodeId);
-      const m = props && cssText(props, 'content').match(/^"(.*)"$/);
+      if (!props) { vanished.push(`${trail}::${node.pseudoType}`); return; }   // Codex #140 P1: an unreadable pseudo is recorded too
+      const m = cssText(props, 'content').match(/^"(.*)"$/);
       if (m && m[1].trim()) await record(node.nodeId, node.nodeId, m[1], `${trail}::${node.pseudoType}`);
       return;
     }
@@ -203,8 +230,21 @@ export async function census(cdp) {
 // The per-codepoint probe. For each distinct (family stack, weight, style, codepoint) among the nodes, render it alone in an off-screen
 // span carrying exactly that computed font and read the ONE platform font that draws it. Mutates nothing visible; removes its probes.
 // → Map(`${family}|${weight}|${style}|${cp}` → familyName)
-export async function attribute(cdp, nodes) {
+export async function attribute(cdp, nodes, { settleMs = Number(process.env.FONTS_SETTLE_MS) || 5000 } = {}) {
   const { s, ev } = cdp;
+  // portal census r3 (advisor 11-16): a fresh probe span's face is resolved ASYNCHRONOUSLY — read before that, the renderer reports NO
+  // font for it ('(none)'), which read as a fidelity / gate (d) failure on a page that drew the codepoint in the hosted face (r3c V: the
+  // page frozen and stable, the probe still '(none)'). So every read waits for the faces it asks about: document.fonts.load per
+  // (style, weight, family stack) with exactly the probed characters, then document.fonts.ready. A WAIT for the renderer's own event,
+  // never a retry: a stack whose face cannot draw a codepoint still resolves to its fallback, and the per-node checks still fail it.
+  const waitFaces = (keys) => ev(`(async () => { const want = new Map();
+    for (const k of ${JSON.stringify(keys)}) { const [fam, w, st, cp] = k.split('|'); const f = st + ' ' + w + ' 32px ' + fam; want.set(f, (want.get(f) || '') + String.fromCodePoint(Number(cp))); }
+    await Promise.all([...want].map(([f, t]) => document.fonts.load(f, t).catch(() => null))); await document.fonts.ready; return true; })()`);
+  // r3d (advisor 11-18): the wait races a NODE-side deadline (page timers stop under paused virtual time, so it cannot live in the page).
+  // false ⇒ it ran out: the caller reads those keys as '(deadline)' — never the renderer's unsettled answer — so the per-node fidelity
+  // check and gate (d) FAIL naming them. A late answer (or the session backstop's rejection) is absorbed; an early rejection still throws.
+  const settleFaces = (keys) => { const w = waitFaces(keys); let t;
+    return Promise.race([w.then(() => true), new Promise((r) => { t = setTimeout(() => { w.catch(() => {}); r(false); }, settleMs); })]).finally(() => clearTimeout(t)); };
   const keys = [...new Set(nodes.flatMap((n) => [...n.codepoints, 32].map((cp) => `${n.family}|${n.weight}|${n.style}|${cp}`)))];
   const map = new Map();
   for (let i = 0; i < keys.length; i += 200) {
@@ -214,8 +254,10 @@ export async function attribute(cdp, nodes) {
         e.id = '__fp' + j; e.style.cssText = 'white-space:pre;font-size:32px'; e.style.fontFamily = fam; e.style.fontWeight = w; e.style.fontStyle = st;
         e.textContent = String.fromCodePoint(Number(cp)); host.appendChild(e); }
       document.documentElement.appendChild(host); return true; })()`);
+    const settled = await settleFaces(batch);
     const { root } = await s('DOM.getDocument', { depth: 0 });
     for (let j = 0; j < batch.length; j++) {
+      if (!settled) { map.set(batch[j], '(deadline)'); continue; }
       const { nodeId } = await s('DOM.querySelector', { nodeId: root.nodeId, selector: `#__fp${j}` });
       const { fonts } = await s('CSS.getPlatformFontsForNode', { nodeId });
       map.set(batch[j], fonts.length === 1 ? fonts[0].familyName : fonts.map((f) => f.familyName).join('+') || '(none)');
@@ -231,6 +273,7 @@ export async function attribute(cdp, nodes) {
     await ev(`(() => { const e = document.createElement('span'); e.id = '__fp1'; e.style.cssText = 'position:fixed;left:8px;top:8px;z-index:2147483647;white-space:pre;font-size:32px';
       e.style.fontFamily = ${JSON.stringify(fam)}; e.style.fontWeight = ${JSON.stringify(w)}; e.style.fontStyle = ${JSON.stringify(st)}; e.textContent = String.fromCodePoint(${Number(cp)});
       document.documentElement.appendChild(e); return true; })()`);
+    if (!(await settleFaces([k]))) { map.set(k, '(deadline)'); await ev(`document.getElementById('__fp1').remove(), true`); continue; }
     await new Promise((r) => setTimeout(r, 50));
     const { root } = await s('DOM.getDocument', { depth: 0 });
     const { nodeId } = await s('DOM.querySelector', { nodeId: root.nodeId, selector: '#__fp1' });
@@ -243,6 +286,12 @@ export async function attribute(cdp, nodes) {
 
 // Runs per node, from the probe: [{ familyName, codepoints:[int] }]; plus the fidelity check (probe counts per font == the node's own
 // glyph counts). A node's mismatch is returned, never silently ignored.
+// Codex #140 P2: every key of this node the face wait ran out on — its codepoints AND its stack's space (a node with no spaces never
+// meets the space key in its runs, so a '(deadline)' space would otherwise pass). Fidelity fails on any; the portal gate (d) too.
+export function deadlineKeysOf(node, probe) {
+  const keys = [...new Set([...node.codepoints, 32])].map((cp) => `${node.family}|${node.weight}|${node.style}|${cp}`);
+  return keys.filter((k) => probe.get(k) === '(deadline)');
+}
 export function runsOf(node, probe) {
   const runs = new Map();
   for (const cp of node.codepoints) { const f = probe.get(`${node.family}|${node.weight}|${node.style}|${cp}`); if (!runs.has(f)) runs.set(f, []); runs.get(f).push(cp); }
@@ -252,6 +301,8 @@ export function runsOf(node, probe) {
   // a space for this stack, and at most one per raw whitespace run (collapsing / line-edge trimming can only remove spaces).
   const spaceFont = probe.get(`${node.family}|${node.weight}|${node.style}|32`);
   const problems = [];
+  const late = deadlineKeysOf(node, probe);
+  if (late.length) problems.push(`(deadline): the face wait ran out for ${late.map((k) => `U+${Number(k.split('|')[3]).toString(16).toUpperCase().padStart(4, '0')}`).join(', ')} — never read`);
   for (const f of new Set([...Object.keys(probeCounts), ...Object.keys(nodeCounts)])) {
     const extra = (nodeCounts[f] || 0) - (probeCounts[f] || 0);
     const allowed = f === spaceFont ? node.spaces : 0;
