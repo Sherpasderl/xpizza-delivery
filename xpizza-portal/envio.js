@@ -95,6 +95,7 @@ const S = {
   map: null,               // { frame, mount, deadline, listening, ready, failed, onMsg }
   zones: null,             // ENVÍO step 2: envio-logic zonesFromBody(the read) — { zones | null, editable, lock, caps }; fail closed
   zonesDraft: null,        // Z1b: the zones as edited (a copy of the read's list), compared with the server's sameZones
+  feesBase: null,          // #184: the bands an unsent fee draft was edited against (null = no readable policy) — owned by the draft, not S.loaded
   zonesLastGood: null,     // #180: the last READABLE stored list — a kept draft's comparison while a read is unreadable
   zoneEdit: null,          // Z1b: { id, value, line } — the row being renamed in place
   zoneRemove: null,        // Z1b: the zone id whose «Quitar zona» confirm is open
@@ -125,7 +126,7 @@ function clearSession({ dropCache }) {
   stopMap();
   if (dropCache && S.uid) store.del(CACHE(S.uid));
   S.loaded = null; S.rows = null; S.note = null; S.entries = []; S.branchesUnavailable = false; S.pick = null;
-  S.restaurants = []; S.branchesRaw = []; S.limitEdits = {};   // Codex HIGH r1 P2: ALL v3 state ends with the session
+  S.restaurants = []; S.branchesRaw = []; S.limitEdits = {}; S.feesBase = null;   // Codex HIGH r1 P2: ALL v3 state ends with the session
   S.banner = null; S.attempt = null; S.phase = null; S.confirm = null; S.picker = null; S.status = 'idle'; S.floor = 0;
   // ENVÍO step 2 (found fixing #180): the zones state ends with the session too — another admin never inherits an unsent zones draft
   S.zones = null; S.zonesDraft = null; S.zonesLastGood = null; S.zoneEdit = null; S.zoneRemove = null; S.zonesFail = null;
@@ -164,6 +165,7 @@ function adoptBody(b) {
   S.restaurants = EL.restaurantsOf(S.branchesRaw);
   S.limitEdits = {};
   S.rows = EL.rowsFromBands(S.loaded.kind === 'policy' ? S.loaded.bands : []);
+  S.feesBase = S.loaded.kind === 'policy' ? S.loaded.bands : null;
   refreshEntries();
   if (!S.pick || !S.entries.some((e) => e.rid === S.pick)) S.pick = EL.defaultPick(S.entries);
   S.note = null;
@@ -185,7 +187,9 @@ function refreshEntries() {
   S.entries = EL.pickerEntries(S.branchesRaw.map((b) => (Object.prototype.hasOwnProperty.call(p, b.rid) ? { ...b, max_km: p[b.rid], limit_invalid: false } : b)), curTop());
 }
 const pickedRestaurant = () => S.restaurants.find((r) => r.rids.includes(S.pick)) || null;
-const feesDirty = () => !!(S.rows && S.loaded && S.loaded.kind === 'policy' && EL.isDirty(S.rows, S.loaded.bands));
+// #184: judged against the DRAFT's own base (S.feesBase), never the loaded kind — a malformed read cannot make an edit «clean»;
+// with no readable policy as its base, any typed value is a draft
+const feesDirty = () => !!(S.rows && (S.feesBase ? EL.isDirty(S.rows, S.feesBase) : S.rows.some((r) => String(r.km).trim() || String(r.fee).trim())));
 // Codex #179 P2-1..3 — the ONE place a server read is applied: every caller (a load, the recovery read of a landed save, a mount from
 // the cache) adopts server truth here and keeps what the admin has NOT sent. `discard` = the admin asked to drop the draft («Recargar»
 // after a conflict, the malformed re-read); `landed` = the attempt this read confirms (what it SENT is server truth now; the rest stays).
@@ -325,7 +329,7 @@ function settleEnvioOutcome(attempt, o, recoveryRes) {
       // ENVÍO step 2: the sent zones ARE the stored ones now (the same transaction); unsent ⇒ the stored list is untouched
       if (attempt.sentZones && S.zones) { S.zones = { ...S.zones, zones: attempt.sentZones.map((z) => ({ id: z.id, name: z.name, points: z.points.map((pt) => ({ ...pt })) })) }; S.zonesDraft = S.zones.zones.map((z) => ({ ...z, points: z.points.map((pt) => ({ ...pt })) })); }
       S.loaded = { kind: 'policy', version, bands: attempt.sentBands.map((b) => ({ ...b })) };
-      S.rows = EL.rowsFromBands(S.loaded.bands);
+      S.rows = EL.rowsFromBands(S.loaded.bands); S.feesBase = S.loaded.bands;
       // ENVÍO v3: the sent limits ARE the stored ones now (the same transaction): fold them into the loaded rows, nothing left pending
       const sent = new Map(attempt.sentLimits.map((e) => [e.rid, e.km]));
       const landed = (rows) => rows.map((b) => (sent.has(b.rid) ? { ...b, max_km: sent.get(b.rid), limit_invalid: false } : b));
@@ -350,9 +354,6 @@ function settleEnvioOutcome(attempt, o, recoveryRes) {
       S.attempt = null; S.phase = null; S.banner = 'conflict';
       S.rows = EL.rowsFromBands(S.loaded && S.loaded.kind === 'policy' ? S.loaded.bands : []);
       render(); return;
-    case 'current_malformed':
-      S.attempt = null; S.phase = null; S.banner = null;
-      load(); return;   // Codex #180 (owner 11-19): re-read WITHOUT discard — the draft stays; only the admin discards
     case 'forbidden': revoke(); return;
     case 'refused': case 'unauthenticated':
       if (o === 'refused') console.warn('envio save: refused');

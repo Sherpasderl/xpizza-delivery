@@ -334,6 +334,31 @@ test('#180 a SAVE answered current_malformed: the conflict panel, and the zones 
   assert.ok(p.text().includes('Alguien más cambió las tarifas, recargá'), 'the conflict panel');
   assert.deepEqual((p.mods.envio._envioState.zonesDraft || []).map((z) => z.name), ['Sector Norte', 'Sector B'], '🔴 no automatic discard on the save path');
 });
+// Codex #184 (owner A, invariant 3 for FEES): the draft owns its fee base — a malformed read does not make an L45 edit «clean»
+test('#184 a fee draft survives TWO malformed reads (edit → malformed → malformed keeps L45)', async () => {
+  const srv = server({ policy: withZones(), world: world(CLOSED, CLOSED) });
+  const p = await open(srv);
+  p.type(0, 'fee', '45'); await settle(5);
+  const good = await srv.node();
+  await srv.db.ref('platform_config/delivery_pricing').set({ ...good, bands: 'broken' });
+  await away(p); await p.open(); await settle(60);
+  await away(p); await p.open(); await settle(60);
+  assert.equal(p.mods.envio._envioState.rows[0].fee, '45', '🔴 the L45 draft survives the second malformed read');
+});
+test('#184 edit → malformed → a good read with a MOVED version keeps L45 and «Guardar» conflicts', async () => {
+  const srv = server({ policy: withZones(), world: world(CLOSED, CLOSED) });
+  const p = await open(srv);
+  p.type(0, 'fee', '45'); await settle(5);
+  const good = await srv.node();
+  await srv.db.ref('platform_config/delivery_pricing').set({ ...good, bands: 'broken' });
+  await away(p); await p.open(); await settle(60);
+  await srv.db.ref('platform_config/delivery_pricing').set({ ...good, policy_version: 5, bands: [{ max_km: 5, cents: 7000 }] });   // repaired by someone else, newer
+  await away(p); await p.open(); await settle(60);
+  assert.equal(p.input(0, 'fee').value, '45', '🔴 the L45 draft survives malformed → good');
+  await saveAll(p);
+  assert.ok(p.text().includes('Alguien más cambió las tarifas, recargá'), '🔴 the moved version conflicts, never a silent overwrite');
+  assert.equal((await srv.node()).bands[0].cents, 7000, 'their repair stands');
+});
 test('#180 zone_out_of_range (the REAL validator, |lat| > 60) ⇒ the frame-F panel naming the zone, not the generic error', async () => {
   const srv = server({ policy: withZones(), world: world(CLOSED, CLOSED) });
   const p = await open(srv);
