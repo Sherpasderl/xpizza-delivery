@@ -109,8 +109,9 @@ try {
     // PLAN-3a-order-owner (advisor APPROVED 2026-11-18): + the two non_owner refusals — createOrder's (first, before the classifier)
     // and chargeOnlineOrder's (beside the restaurant guard) — both the constant neutral reason (order-owner.js NON_OWNER_REASON)
     const OWN = "require('./order-owner').NON_OWNER_REASON";
-    assert.deepStrictEqual(calls, [OWN, 'oe.reason', "'client_update_race'", "'binding_format_invalid'", "'conflict'", OWN, "'binding_format_invalid'", "acq.reason || 'conflict'", "'closed'"],
-      'exactly nine typed sites, in source order: createOrder non_owner, classifier, race, classify-binding, restaurant, hosted non_owner, degraded-binding, acquire-conflict, acquire-closed');
+    // r1 (Codex #172 P1-a): the hosted probe (restaurant guard + non_owner) is hoisted ABOVE classify — so it precedes classify-binding
+    assert.deepStrictEqual(calls, [OWN, 'oe.reason', "'client_update_race'", "'conflict'", OWN, "'binding_format_invalid'", "'binding_format_invalid'", "acq.reason || 'conflict'", "'closed'"],
+      'exactly nine typed sites, in source order: createOrder non_owner, classifier, race, restaurant, hosted non_owner, classify-binding, degraded-binding, acquire-conflict, acquire-closed');
     // no 409 anywhere in the runtime builds a literal whose error looks like an existing-order refusal
     for (const f of runtimeFiles()) {
       walk(ast(fs.readFileSync(f, 'utf8')), (nd) => {

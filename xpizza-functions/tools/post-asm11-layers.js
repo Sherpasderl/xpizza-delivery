@@ -30,9 +30,44 @@ const HUNKS = Object.freeze([
  },
  {
   "layer": "order-owner",
-  "label": "chargeOnlineOrder: ownerOf on the probe snapshot, non_owner ⇒ the constant 409 (before every reserve + acquire)",
+  "label": "chargeOnlineOrder r1 (Codex #172 P1-a): the ONE probe read + the cross-restaurant guard + ownerOf, hoisted to the first point the verified uid is known (before every admission + bookkeeping write)",
   "file": "index.js",
-  "now": "  if (probeOrder && require('./order-owner').ownerOf(probeOrder, customer_uid) === 'non_owner') return res.status(409).json(OE.orderExistsBody(require('./order-owner').NON_OWNER_REASON, orderId));   // PLAN-3a-order-owner: before every reserve / acquire\n",
+  "now": "  // Read-only reuse probe (#3): config is read ONLY when creating a fresh pending order, so a\n  // customer reusing a live hosted checkout during a config outage is NOT failed closed. The CAS\n  // in acquireHostedAttempt stays authoritative; on a probe-fresh/CAS-reuse race the only cost is\n  // one wasted config read.\n  // PLAN-3a-order-owner r1 (Codex #172 P1-a): the SAME single read, at the first point the verified uid is known — ownership is\n  // decided BEFORE every order-dependent admission (bound reuse, the redemption prepare, the delivery context, classify) and every\n  // bookkeeping write (content stamp / prune, rate limits, the audience stamp); acquireHostedAttempt re-applies it to the records it observes\n  let probeOrder;\n  try {\n    probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();\n  } catch (e) {\n    console.error(`chargeOnlineOrder: order probe failed for ${orderId}`, e.message);\n    return res.status(500).json({ error: 'Database error', detail: e.message });\n  }\n  // Cross-restaurant reuse guard (legacy-normalized): a charge must not attach to an existing\n  // order_id owned by a different restaurant. Runs before the CAS/fingerprint in acquireHostedAttempt.\n  if (probeOrder && !sameRestaurant(probeOrder.restaurant_id, restaurantId)) {\n    console.warn(`chargeOnlineOrder: ${orderId} exists for a different restaurant — conflict`);\n    return res.status(409).json(OE.orderExistsBody('conflict', orderId));   // D4-c5 P1: no disclosure of the other restaurant\n  }\n  if (probeOrder && require('./order-owner').ownerOf(probeOrder, customer_uid) === 'non_owner') return res.status(409).json(OE.orderExistsBody(require('./order-owner').NON_OWNER_REASON, orderId));   // PLAN-3a-order-owner: before every admission, bookkeeping write, reserve and acquire\n",
+  "was": ""
+ },
+ {
+  "layer": "order-owner",
+  "label": "chargeOnlineOrder r1: the probe block's former place (after the audience stamp) — a pointer comment",
+  "file": "index.js",
+  "now": "  // (probeOrder — the read-only order probe — is read ABOVE, where ownership is decided: PLAN-3a-order-owner r1, Codex #172 P1-a)\n",
+  "was": "  // Read-only reuse probe (#3): config is read ONLY when creating a fresh pending order, so a\n  // customer reusing a live hosted checkout during a config outage is NOT failed closed. The CAS\n  // in acquireHostedAttempt stays authoritative; on a probe-fresh/CAS-reuse race the only cost is\n  // one wasted config read.\n  let probeOrder;\n  try {\n    probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();\n  } catch (e) {\n    console.error(`chargeOnlineOrder: order probe failed for ${orderId}`, e.message);\n    return res.status(500).json({ error: 'Database error', detail: e.message });\n  }\n  // Cross-restaurant reuse guard (legacy-normalized): a charge must not attach to an existing\n  // order_id owned by a different restaurant. Runs before the CAS/fingerprint in acquireHostedAttempt.\n  if (probeOrder && !sameRestaurant(probeOrder.restaurant_id, restaurantId)) {\n    console.warn(`chargeOnlineOrder: ${orderId} exists for a different restaurant — conflict`);\n    return res.status(409).json(OE.orderExistsBody('conflict', orderId));   // D4-c5 P1: no disclosure of the other restaurant\n  }\n"
+ },
+ {
+  "layer": "order-owner",
+  "label": "acquire r1 (Codex #172 P1-b): memberForeign — the handler's ownerOf on every record the acquire observes",
+  "file": "pixelpay-hosted-charge.js",
+  "now": "/* PLAN-3a-order-owner r1 (Codex #172 P1-b): the handler's ONE ownership predicate, on EVERY order record this acquire observes — the\n   pre-read, inside the CAS, the authoritative record after it — so the probe→acquire race (B's probe saw no order; A created it) never\n   hands a different verified member A's checkout_url / poll_token, nor installs / recovers / rotates A's attempt. The request's verified\n   uid is the pending record's customer_uid (absent ⇒ unverifiable ⇒ every existing path unchanged). Answered as the handler's constant 409. */\nconst OWN = require('./order-owner');\nconst memberForeign = (order, pending) => OWN.ownerOf(order, pending && pending.customer_uid) === 'non_owner';\n",
+  "was": ""
+ },
+ {
+  "layer": "order-owner",
+  "label": "acquire r1: the pre-read refuses a foreign member before ANY answer",
+  "file": "pixelpay-hosted-charge.js",
+  "now": "    if (order && memberForeign(order, pendingOrderRecord)) return { outcome: 'conflict', reason: OWN.NON_OWNER_REASON };   // r1: before ANY answer about it\n",
+  "was": ""
+ },
+ {
+  "layer": "order-owner",
+  "label": "acquire r1: inside the CAS — a foreign member never mutates the order",
+  "file": "pixelpay-hosted-charge.js",
+  "now": "      if (memberForeign(c, pendingOrderRecord)) return c;                   // r1: nor a foreign member (the authoritative re-check below refuses)\n",
+  "was": ""
+ },
+ {
+  "layer": "order-owner",
+  "label": "acquire r1: the authoritative record after the CAS — refused before every claim / recovery write",
+  "file": "pixelpay-hosted-charge.js",
+  "now": "    if (memberForeign(committed, pendingOrderRecord)) return { outcome: 'conflict', reason: OWN.NON_OWNER_REASON };   // r1: before every claim / recovery write\n",
   "was": ""
  }
 ]);

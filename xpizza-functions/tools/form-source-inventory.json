@@ -7329,7 +7329,6 @@
     "xpizza-functions/platform-sync.guard.test.js",
     "xpizza-functions/portal/ops-helpers.guard.test.js",
     "xpizza-functions/portal/ops-split.test.js",
-    "xpizza-functions/post-asm11-layers.guard.test.js",
     "xpizza-functions/prod-ladder-wiring.test.js",
     "xpizza-functions/pselfupdate-client.test.js",
     "xpizza-functions/quote-order.test.js",

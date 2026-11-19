@@ -66,6 +66,12 @@ function genPollToken() {
    guest's attempt — the caller answers guest_ticket_invalid, nothing written. */
 const guestForeign = (order, pending) => !!(pending && pending.guest_verified)
   && !(order && order.guest_verified && order.guest_verified.phone_hash === pending.guest_verified.phone_hash);
+/* PLAN-3a-order-owner r1 (Codex #172 P1-b): the handler's ONE ownership predicate, on EVERY order record this acquire observes — the
+   pre-read, inside the CAS, the authoritative record after it — so the probe→acquire race (B's probe saw no order; A created it) never
+   hands a different verified member A's checkout_url / poll_token, nor installs / recovers / rotates A's attempt. The request's verified
+   uid is the pending record's customer_uid (absent ⇒ unverifiable ⇒ every existing path unchanged). Answered as the handler's constant 409. */
+const OWN = require('./order-owner');
+const memberForeign = (order, pending) => OWN.ownerOf(order, pending && pending.customer_uid) === 'non_owner';
 // D4 §A3 (PLAN-sdk-d4-r11): the deferred refusals of a FRESH issuance, in today's order — extracted VERBATIM from acquireHostedAttempt
 // so the hosted acquire and the SDK finish (B4) answer the same flags the same way. Returns the outcome or null.
 function freshIssueRefusal({ controlRefuseFresh = false, menuRefuseFresh = false, choiceRefuseFresh = false, extrasRefuseFresh = null, cartBlocked = [], refuseFresh = false, payerRefuseFresh = false } = {}) {
@@ -97,6 +103,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
     const order = (await orderRef.once('value')).val();
 
     // Order-level terminal reads.
+    if (order && memberForeign(order, pendingOrderRecord)) return { outcome: 'conflict', reason: OWN.NON_OWNER_REASON };   // r1: before ANY answer about it
     if (order) { if (require('./payments/sdk/flow').isSdkOrder(order)) return { outcome: 'closed', reason: 'sdk_flow' };
       if (guestForeign(order, pendingOrderRecord)) return { outcome: 'conflict', reason: 'guest_phone' };   // S2: before ANY answer about it
       if (order.payment_status === 'confirmed') return { outcome: 'already_paid' };
@@ -159,6 +166,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
       const c = cur || order; if (require('./payments/sdk/flow').isSdkOrder(c)) return;
       if (!c) return;
       if (guestForeign(c, pendingOrderRecord)) return c;                    // S2: a foreign guest phone never mutates the order (re-read refuses)
+      if (memberForeign(c, pendingOrderRecord)) return c;                   // r1: nor a foreign member (the authoritative re-check below refuses)
       if (c.payment_status === 'confirmed') return c;
       if (tipBindingConflict(c, incomingTip) || paymentBindingConflict(c, fingerprint, canon, a8)) return c;     // the CAS: (tip, format, fingerprint) on the record held
       if (decided.kind === 'install') {
@@ -183,6 +191,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
     // S2 (Codex r2 P1): the guarded CAS answers a foreign phone with the record UNCHANGED — still a committed transaction — so the
     // AUTHORITATIVE record is re-checked here, before every claim / recovery write: a foreign phone writes NO payment_attempts row
     if (guestForeign(committed, pendingOrderRecord)) return { outcome: 'conflict', reason: 'guest_phone' };
+    if (memberForeign(committed, pendingOrderRecord)) return { outcome: 'conflict', reason: OWN.NON_OWNER_REASON };   // r1: before every claim / recovery write
     if (committed.payment_status === 'confirmed') return { outcome: 'already_paid' };
     { const t = tipBindingConflict(committed, incomingTip); if (t) return conflictOutcome(t); }   // S2: post-txn tip
     { const d = paymentBindingConflict(committed, fingerprint, canon, a8); if (d) return conflictOutcome(d); }   // advisory post-txn

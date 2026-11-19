@@ -2,9 +2,9 @@
 // PLAN-3a-order-owner (advisor GO Option 1, rule 6c) — the post-asm11 layers hook's own pin. tools/post-asm11-layers.js holds the
 // exact-text hunks landed after the asm11 tip (BASE); ledgers1-module-inverse peels them FIRST, so every fold guard that peels ledgers1
 // peels them too. This guard pins:
-//   · index.js minus the hook's hunks === BASE:index.js byte-for-byte (and the layer is non-vacuous);
+//   · each owned file (index.js; r1: pixelpay-hosted-charge.js) minus the hook's hunks === BASE byte-for-byte (non-vacuous);
 //   · every hunk occurs EXACTLY once; a byte inside a hunk (tamper) or a second copy (duplicate) is refused;
-//   · the hunks are the CURRENT `git diff -U0 BASE -- index.js`, in diff order (a drifted hunk or a missed edit is refused);
+//   · the hunks are the CURRENT `git diff -U0 BASE -- <file>`, in diff order (a drifted hunk or a missed edit is refused);
 //   · the ORDER: HUNKS grouped by layer in the declared landing order, peeled newest-first;
 //   · ledgers1's unapply calls the hook first, and a file the hook does not own passes through.
 // Run: node post-asm11-layers.guard.test.js
@@ -16,14 +16,19 @@ const L = require('./tools/post-asm11-layers');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
-const disk = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
-const base = git(['show', `${L.BASE}:xpizza-functions/index.js`]);
+// r1 (Codex #172 P1-b): the hook owns index.js AND pixelpay-hosted-charge.js — each owned file is pinned the same way
+const diskOf = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 assert.ok(L.HUNKS.length >= 1 && L.FILES.length >= 1, 'POST-ASM11: non-vacuity — the hook owns hunks');
-assert.notStrictEqual(disk, base, 'POST-ASM11: non-vacuity — index.js carries the post-asm11 hunks');
-assert.strictEqual(L.stripPostAsm11('index.js', disk), base, `🔴 POST-ASM11: index.js minus the post-asm11 hunks is not ${L.BASE.slice(0, 9)}:index.js`);
-ok(`index.js minus the ${L.HUNKS.length} post-asm11 hunk(s) === ${L.BASE.slice(0, 9)} byte-for-byte`);
+assert.deepStrictEqual([...L.FILES].sort(), ['index.js', 'pixelpay-hosted-charge.js'], '🔴 POST-ASM11: the owned files (a new one is added here deliberately)');
+for (const f of L.FILES) {
+  const disk = diskOf(f), base = git(['show', `${L.BASE}:xpizza-functions/${f}`]);
+  assert.notStrictEqual(disk, base, `POST-ASM11: non-vacuity — ${f} carries the post-asm11 hunks`);
+  assert.strictEqual(L.stripPostAsm11(f, disk), base, `🔴 POST-ASM11: ${f} minus the post-asm11 hunks is not ${L.BASE.slice(0, 9)}:${f}`);
+}
+ok(`each owned file (${L.FILES.join(', ')}) minus its post-asm11 hunks (${L.HUNKS.length} in all) === ${L.BASE.slice(0, 9)} byte-for-byte`);
 
 for (const h of L.HUNKS) {
+  const disk = diskOf(h.file);
   assert.strictEqual(disk.split(h.now).length - 1, 1, `🔴 POST-ASM11: «${h.label}» occurs exactly once`);
   const k = h.now.search(/[A-Za-z]/);
   assert.throws(() => L.stripPostAsm11(h.file, disk.replace(h.now, h.now.slice(0, k) + '#' + h.now.slice(k + 1))), /occurs 0 times/, `🔴 POST-ASM11: a byte inside «${h.label}» is refused`);

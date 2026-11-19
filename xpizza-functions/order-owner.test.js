@@ -29,7 +29,7 @@ function realOrder(uid) {
   return updates[`orders/${ID}`];
 }
 
-(() => {
+(async () => {
   // ── 1. the predicate: ONLY a different VERIFIED identity is non_owner ──
   const member = realOrder(U1); const formGuest = realOrder(null);
   assert.strictEqual(member.customer_uid, U1, 'premise: the REAL attribution stamped the member');
@@ -71,5 +71,89 @@ function realOrder(uid) {
   assert.ok(/ownerOf\(probeOrder, customer_uid\) === 'non_owner'\) return res\.status\(409\)\.json\(OE\.orderExistsBody\(require\('\.\/order-owner'\)\.NON_OWNER_REASON, orderId\)\)/.test(SRC), '🔴 OWN-HOSTED: non_owner ⇒ the same constant 409');
   ok('call sites: createOrder (before every recompute + the classifier; the token for the owner only) and chargeOnlineOrder (on the probe\'s snapshot, before every reserve + acquire) — non_owner ⇒ the constant 409');
 
+  // ── 4. r1 (Codex #172 P1-a): the hosted ownership decision precedes EVERY order-dependent admission and bookkeeping write — the
+  // probe is the SAME single read, hoisted to the first point the verified uid is known (no read added) ──
+  const H0 = SRC.indexOf("chargeOnlineApp.all('*', async (req, res) => {"); const H1 = SRC.indexOf('exports.chargeOnlineOrder = onRequest(', H0);
+  const H = SRC.slice(H0, H1);
+  const PROBE = "probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();";
+  assert.strictEqual(H.split(PROBE).length - 1, 1, '🔴 OWN-HOSTED-ONE-READ: the probe read occurs exactly once in the handler (moved, never duplicated)');
+  const own = H.indexOf("require('./order-owner').ownerOf(probeOrder, customer_uid) === 'non_owner'");
+  assert.ok(own > H.indexOf('if (cappGuest && cappGuest.refuse)'), 'premise: after the verified uid (and the capp-guest gate) are resolved');
+  for (const [label, at] of [
+    ['the bound-reuse probe', 'BR.probeBoundReuse(db'], ['the redemption prepare', 'prepareRedemption(db, {'], ['the delivery context (order_context_changed)', 'DW.chargeContext(db, orderId'],
+    ['classify (binding_format_invalid)', 'classifyHostedAttempt(db, orderId, fingerprintG'], ['the pre-bookkeeping resume check', 'DW.preBookkeepingRefusal(db, orderId'],
+    ['the content stamp', 'await cbase.child(ck).set('], ['the rate limits', 'checkRateLimit(db, bucket, key, cfg)'], ['the audience stamp', "require('./marketing/audience-place').stampCard(db"],
+  ]) {
+    const i = H.indexOf(at);
+    assert.ok(i !== -1, `marker ${at}`);
+    assert.ok(own < i, `🔴 OWN-HOSTED-FIRST: ownership is decided before ${label}`);
+  }
+  ok('chargeOnlineOrder: the ONE probe read, hoisted — ownership decided before bound reuse, the redemption prepare, the delivery context, classify, the resume check, the content stamp, the rate limits and the audience stamp');
+
+  // ── 5. r1 (Codex #172 P1-b): acquireHostedAttempt applies the SAME ownerOf to every order record it observes — the pre-read, inside
+  // the CAS, and the authoritative record after it — so the probe→acquire race never hands a foreign member the owner's checkout.
+  // The REAL acquire over the honest RTDB model (rule 29). The pending record carries customer_uid exactly as the handler writes it
+  // (`...(customer_uid ? { customer_uid } : {})`, index.js: not require-safe) ──
+  const { makeHonestDb } = require('./_honest-rtdb-model');
+  const { acquireHostedAttempt } = require('./pixelpay-hosted-charge');
+  const T = 1.8e12, FPX = 'fp-own', OID = 'XPZ-OWN';
+  const pend = (uid) => ({ order_id: OID, status: 'pending_payment', payment_status: 'pending', total_cents: 1000, created_at: 1, ...(uid ? { customer_uid: uid } : {}) });
+  const FOREIGN = { outcome: 'conflict', reason: NON_OWNER_REASON };   // the handler maps it to the constant 409 (acquireRefusal)
+  const liveUp = async (db, aid) => db.ref(`payment_attempts/${aid}`).update({ hosted_state: 'created', hosted_checkout_url: 'https://pay.test/A', hosted_expires_at: T + 3600e3 });
+  // (a) Codex's race: B's probe saw NO order; A creates it (and its live checkout) while B is between its pre-read and its CAS
+  {
+    let inA = false, afterA = null, aRes = null;
+    const db = makeHonestDb({}, { beforeTx: async (p, api) => {
+      if (p !== `orders/${OID}` || inA || afterA) return;
+      inA = true; aRes = await acquireHostedAttempt(api, OID, pend(U1), FPX, T); await liveUp(api, aRes.attempt_id); inA = false;
+      afterA = JSON.stringify(api.root);
+    } });
+    const b = await acquireHostedAttempt(db, OID, pend(U2), FPX, T + 1);
+    assert.strictEqual(aRes && aRes.outcome, 'claimed', 'premise: A created the order inside B\'s window');
+    assert.deepStrictEqual(b, FOREIGN, '🔴 OWN-ACQ-RACE: B (another verified member) whose probe saw no order is refused at the re-read — never A\'s checkout_url / poll_token');
+    assert.strictEqual(JSON.stringify(db.root), afterA, '🔴 OWN-ACQ-RACE: B wrote nothing (A\'s order and attempt byte-identical)');
+  }
+  // (b) the pre-read: B learns nothing about A's order in ANY state, and touches nothing (no install / recover / rotate)
+  for (const [state, set] of [
+    ['a live checkout (reuse)', async () => {}], ['in flight', async (db, aid) => db.ref(`payment_attempts/${aid}/hosted_state`).set('creating')],
+    ['paid', async (db) => db.ref(`orders/${OID}/payment_status`).set('confirmed')], ['a failed attempt (rotate)', async (db, aid) => db.ref(`payment_attempts/${aid}/hosted_state`).set('failed_create')],
+    ['a missing attempt (recover)', async (db, aid) => db.ref(`payment_attempts/${aid}`).remove()], ['no attempt pointer (install)', async (db) => db.ref(`orders/${OID}/active_attempt_id`).remove()],
+  ]) {
+    const db = makeHonestDb({});
+    const a = await acquireHostedAttempt(db, OID, pend(U1), FPX, T); await liveUp(db, a.attempt_id); await set(db, a.attempt_id);
+    const before = JSON.stringify(db.root);
+    assert.deepStrictEqual(await acquireHostedAttempt(db, OID, pend(U2), FPX, T + 1), FOREIGN, `🔴 OWN-ACQ-PREREAD: ${state} — B is refused before any answer about A's order`);
+    assert.strictEqual(JSON.stringify(db.root), before, `🔴 OWN-ACQ-PREREAD: ${state} — B wrote nothing`);
+  }
+  // (c) INSIDE the CAS: B's pre-read showed B's own order (a failed attempt ⇒ rotate / a missing one ⇒ recover); the server record is
+  // A's when the transaction runs — the CAS is a no-op and the authoritative record refuses, no payment_attempts row written
+  for (const [kind, prep] of [['rotate', async (db, aid) => db.ref(`payment_attempts/${aid}/hosted_state`).set('failed_create')], ['recover', async (db, aid) => db.ref(`payment_attempts/${aid}`).remove()]]) {
+    let flipped = false, before = null;
+    const db = makeHonestDb({}, { beforeTx: async (p, api) => {
+      if (p !== `orders/${OID}` || flipped || !before) return;
+      flipped = true; await api.ref(`orders/${OID}/customer_uid`).set(U1); before = JSON.stringify(api.root);
+    } });
+    const a = await acquireHostedAttempt(db, OID, pend(U2), FPX, T); await prep(db, a.attempt_id); before = 'armed';
+    const got = await acquireHostedAttempt(db, OID, pend(U2), FPX, T + 1);
+    assert.ok(flipped, `premise (${kind}): the server record became A's between B's pre-read and its CAS`);
+    assert.deepStrictEqual(got, FOREIGN, `🔴 OWN-ACQ-CAS: ${kind} — the authoritative record refuses B`);
+    assert.strictEqual(JSON.stringify(db.root), before, `🔴 OWN-ACQ-CAS: ${kind} — nothing rotated, recovered or claimed inside the CAS`);
+  }
+  // (d) unchanged: the owner reuses; no identity / a form order ⇒ today's reuse (owner §5 = A); a member on a VERIFIED guest's order ⇒ refused
+  {
+    const db = makeHonestDb({});
+    const a = await acquireHostedAttempt(db, OID, pend(U1), FPX, T); await liveUp(db, a.attempt_id);
+    const r = await acquireHostedAttempt(db, OID, pend(U1), FPX, T + 1);
+    assert.deepStrictEqual([r.outcome, r.checkout_url], ['reuse', 'https://pay.test/A'], 'OWN-ACQ-OWNER: the owner reuses its live checkout');
+    assert.strictEqual((await acquireHostedAttempt(db, OID, pend(null), FPX, T + 2)).outcome, 'reuse', 'OWN-ACQ-NOIDENTITY: no identity presented ⇒ today\'s reuse (unverifiable)');
+    const f = makeHonestDb({});
+    const fa = await acquireHostedAttempt(f, OID, pend(null), FPX, T); await liveUp(f, fa.attempt_id);
+    assert.strictEqual((await acquireHostedAttempt(f, OID, pend(U2), FPX, T + 1)).outcome, 'reuse', 'OWN-ACQ-FORMGUEST: a form order (no identity ever verified) ⇒ unverifiable ⇒ today\'s reuse (owner §5 = A)');
+    const g = makeHonestDb({});
+    const ga = await acquireHostedAttempt(g, OID, { ...pend(null), guest_verified: { phone: '50499990000', phone_hash: 'ph' } }, FPX, T); await liveUp(g, ga.attempt_id);
+    assert.deepStrictEqual(await acquireHostedAttempt(g, OID, pend(U2), FPX, T + 1), FOREIGN, '🔴 OWN-ACQ-GUESTORDER: a member replaying a VERIFIED guest\'s order is refused');
+  }
+  ok('acquireHostedAttempt: ownerOf on every observed record — Codex\'s probe→acquire race, every state at the pre-read (reuse / in flight / paid / rotate / recover / install), inside the CAS (rotate / recover) — a foreign member gets the constant conflict, nothing written; owner and unverifiable unchanged');
+
   console.log(`\norder-owner: OK (${n})`);
-})();
+})().catch((e) => { console.error(e); process.exit(1); });
