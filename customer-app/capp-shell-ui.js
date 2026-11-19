@@ -738,7 +738,8 @@
         if (!hydrating) cancelRoute();   // any user navigation cancels a pending cold link
         reorderGen++;   // … and voids a «Volver a pedir» tap still awaiting its receipt (Codex backfill P2: a round trip to the same tab)
         if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; clearHandoff(); S.store.ui.openCart(); S.store.ui.resumeVerification(); } else if (S.reorderOpen === entry.rid && S.store) { S.reorderOpen = null; S.store.ui.openCart(); toast('Pedido cargado en tu carrito'); } reflect(); return; }
-        if (entry.name !== 'store') { S.reorder = null; S.held = null; S.carry = null; }   // the customer went elsewhere: a held tap / «Volver a pedir» is void (Codex VP r2 #3)
+        if (entry.name !== 'store') { S.reorder = null; S.held = null; S.carry = null; }
+        if (entry.name !== 'addresses' && S.addrErr === 'dir') S.addrErr = null;   // r3: the sand line leaves with its list   // the customer went elsewhere: a held tap / «Volver a pedir» is void (Codex VP r2 #3)
         if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
         if (entry.name === 'addresses') { if (!(S.member && S.book)) { T.setTimeout(() => nav.tab({ name: 'account' }), 0); return; } S.tab = 'addresses'; dirShown = CappHome.bookOrder(S.book.addresses, S.book.sel); renderNow(); return; }   // C-DIR-1: frozen per open, in use first
         if (entry.name === 'receipt') { if (!openReceipt(entry.oid)) { T.setTimeout(() => nav.tab({ name: 'orders' }), 0); return; } S.tab = 'receipt'; renderNow(); return; }
@@ -848,7 +849,7 @@
       return { updateLine: hidden !== dayOf(Number(nowMs())), updateRow: runtime.store.name };
     }
     // the top bar's two live facts — ONE source for Inicio's vm and the store page's bar (C-6c)
-    const addrVm = () => { const sv = savedInUse(); return sv ? { short: sv.label, line: `${sv.label} · ${sv.detected}` } : { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' }; };   // v6 :1507-1508
+    const addrVm = () => { const sv = savedInUse(), busy = !!S.addrPick; return sv ? { short: sv.label, line: `${sv.label} · ${sv.detected}`, busy } : { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección', busy }; };   // r3: busy = a pick in flight (the pill waits)   // v6 :1507-1508
     const memberInitial = () => (authNow() === 'member' && S.member && S.member.name ? String(S.member.name).trim().charAt(0).toUpperCase() || null : null);
     // C-6c (D-3 r3 frame 2a): the desktop store page carries the shell's top bar — no tab is current there
     const storeChrome = () => CappHome.desknavHtml({ tab: 'store', q: '', addr: addrVm(), memberInitial: memberInitial() });
@@ -895,7 +896,7 @@
       const v = vm();
       const layer = $('layer'), toastEl = $('toast');
       const scr = app.querySelector(':scope > .screen');
-      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'receipt' && S.receipt ? receiptScreenHtml(v) : S.tab === 'addresses' && S.book ? CappHome.addressesHtml({ ...v, tab: 'account', dir: { rows: dirShown || [], sel: savedSelId() } }) : S.tab === 'notifs' && notifsOk() ? CappHome.shellWrap(v, cappPush().screenHtml(notifsVm())) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
+      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'receipt' && S.receipt ? receiptScreenHtml(v) : S.tab === 'addresses' && S.book ? CappHome.addressesHtml({ ...v, tab: 'account', dir: { rows: dirShown || [], sel: savedSelId(), ...pickVm('dir') } }) : S.tab === 'notifs' && notifsOk() ? CappHome.shellWrap(v, cappPush().screenHtml(notifsVm())) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
@@ -1221,60 +1222,108 @@
     // the approved G7 line). The «Direcciones» screen and the sheet render a FROZEN copy per open (a read never inserts a row into a
     // visible list — rule 7). The location in use: the saved address while S.locPick is 'saved'; a pin / GPS fix chosen after it takes over
     const ADDR_KEY = (uid) => `capp:addr:${uid}`;
-    let bookGen = 0, bookPending = 0, dirShown = null;
-    S.book = null; S.locPick = null;
-    const bookSave = () => { if (S.book && S.book.who) writeJ(ADDR_KEY(S.book.who), { v: 1, addresses: S.book.addresses, default_address: S.book.sel }); };
+    const ADDR_ACTS = new Set(['addr', 'addr-use', 'addr-new', 'loc-use']);
+    // direcciones r3 (owner 11-18: the CONFIRM-FIRST prototype, APPROVED; PLAN-3a-addr-rev @805a5015): «en uso» = the SERVER's
+    // default_address and its revision. A pick sends { id, expected_rev, expected_default } (what this device last SAW from the server)
+    // and NOTHING switches until the 200. ONE pick in flight (S.addrPick): its row spins, every other address control is disabled. Every
+    // non-200 — offline, the 12 s transport cap, a refusal, a 409 (whose body is trusted for nothing but «stale») — ends in ONE owned
+    // re-read (idTokenOwned, its uid = the book's): the pick is the re-read's selection ⇒ success; else the sand line on the list where it
+    // was made (S.addrErr) and the re-read book is the device's. A pick the identity change overtook is void
+    let bookGen = 0, bookSeq = 0, dirShown = null, memberWho = null;
+    S.book = null; S.locPick = null; S.addrPick = null; S.addrErr = null;
+    const bookSave = () => { if (S.book && S.book.who) writeJ(ADDR_KEY(S.book.who), { v: 2, addresses: S.book.addresses, default_address: S.book.sel, default_address_rev: S.book.rev }); };
     const bookSel = () => (S.book && S.book.sel ? S.book.addresses.find((a) => a.id === S.book.sel) || null : null);
     const savedInUse = () => (S.member && S.locPick === 'saved' ? bookSel() : null);
     const savedSelId = () => { const a = savedInUse(); return a ? a.id : null; };
     const locNow = () => { const a = savedInUse(); return a ? { lat: a.lat, lng: a.lng, confirmed: true, source: 'saved' } : S.loc; };
     const dirVm = () => (S.member && S.book ? { labels: S.book.addresses.map((a) => a.label).join(' · ') } : null);   // v6 :2162
+    const pickVm = (surface) => ({ pend: S.addrPick ? S.addrPick.id : null, err: S.addrErr === surface });
     // C-DIR-1 seed (advisor ruling (A), 11-14): the store's checkout is seeded from the SAVED address in use (its pin confirmed, its label /
     // detected / details) so it agrees with the pill; otherwise from the device location, exactly as before (guests unchanged). Read LIVE
     // at checkout entry: after a sign-out / switch there is no book, so nothing of the previous member can seed
-    // C-DIR-1 (b) (advisor 11-14): the «Entregar en» sheet over a store's checkout — the member's book in its order (in use first), the ONE
-    // renderer (CappHome.addrSheetHtml, v6's exact rows), and the pick: selectAddr (persisted; «en uso» at once) then the seed of the
-    // address now in use, which the store re-seeds its open flow with. A guest has no rows (the store never offers «Cambiar» to one)
+    // C-DIR-1 (b) + r3: the «Entregar en» sheet over a store's checkout — the member's book in its order (in use first), the ONE renderer
+    // (CappHome.addrSheetHtml, v6's exact rows + the pick's state), and use(id), which only STARTS the pick: the store hears the outcome
+    // through ui.addrSettled (a 200 ⇒ the seed of the address now in use). A guest has no rows (the store never offers «Cambiar» to one)
     function addressPicker() {   // a function declaration: a store mounted during boot (a restored route) reaches it before this line runs
       return { rows: () => (S.member && S.book ? CappHome.bookOrder(S.book.addresses, S.book.sel) : []), sel: () => savedSelId(),
-        sheetHtml: (dir) => CappHome.addrSheetHtml(dir), use: (id) => { if (!(S.member && S.book && S.book.addresses.some((a) => a.id === id))) return null; selectAddr(id); return seedNow(); } };
+        sheetHtml: (dir) => CappHome.addrSheetHtml({ ...dir, ...pickVm('sheet') }), pending: () => !!S.addrPick,
+        use: (id) => { if (!(S.member && S.book && S.book.addresses.some((a) => a.id === id))) return false; selectAddr(id, 'sheet'); return true; },
+        dismiss: () => { if (S.addrErr === 'sheet') S.addrErr = null; } };
     }
     const seedNow = () => { const a = savedInUse(); return a ? { lat: a.lat, lng: a.lng, confirmed: true, saved: { label: a.label, detected: a.detected, details: a.details } } : S.loc; };
+    // direcciones r3 (c) (owner 11-18; Codex #153 #3): the PREVIOUS member left (a sign-out or a switch) — a hard reset of what she left on
+    // this device and screen: Inicio's «Entregar en» sheet, the location (S.loc and its persisted copy — her confirmed pin may be in it),
+    // and the open checkout's member-derived state (forgetMember). A guest signing in keeps the guest's own location
+    function memberLeft() {
+      if (S.layer === 'addr') closeLayer(false);
+      S.loc = null; S.locPick = null; try { storage && storage.removeItem(LOC_KEY); } catch (_) {}
+      const sending = !!(S.store && S.store.ui && S.store.ui.state && S.store.ui.state.screen === 'sending');
+      try { if (S.store && S.store.ui && typeof S.store.ui.forgetMember === 'function') S.store.ui.forgetMember(); } catch (_) {}
+      // advisor ruling 11-18: «Enviando» never outlives the identity — the mount goes (its late reply renders nothing) and Inicio shows
+      if (sending) { unmountStore(); nav.tab({ name: 'home' }); }
+    }
+    // a served book (getMyProfile's or the device copy's) with its revision — a book without a valid revision is no book (never guessed)
+    const bookFrom = (uid, b) => (b && Array.isArray(b.addresses) && Number.isSafeInteger(b.default_address_rev) && b.default_address_rev >= 0
+      ? { who: uid, addresses: b.addresses, sel: b.default_address, rev: b.default_address_rev } : null);
+    // the OWNED read: the token's SDK user must still be the book's member when it arrives — a switch landing mid-read never fetches (or
+    // stores) another member's book under hers (Codex #153 #1). A read that started before a pick settled never overrides that pick
+    async function readBook(gen, uid) {
+      const seq0 = bookSeq;
+      let own = null; try { own = await fbAuth.idTokenOwned(); } catch (_) { own = null; }
+      if (dead || gen !== bookGen || !own || own.uid !== uid || !own.token) return null;
+      const r = await suApi.getMyProfile({ idToken: own.token });
+      if (dead || gen !== bookGen || !S.book || S.book.who !== uid || !r || r.ok !== true) return null;
+      const b = bookFrom(uid, r.book); if (!b || seq0 !== bookSeq) return b;
+      S.book = b;
+      if (S.locPick !== 'device') S.locPick = S.book.sel ? 'saved' : null;
+      bookSave(); schedule(); return b;
+    }
     function bookIdentity() {
       const uid = S.member && S.member.uid ? S.member.uid : null;
+      const prev = memberWho; memberWho = uid;
+      if (prev && prev !== uid) memberLeft();
       if (S.book && S.book.who === uid) return;
       if (S.book && S.book.who) { try { storage && storage.removeItem(ADDR_KEY(S.book.who)); } catch (_) {} }
-      try { if (S.store && S.store.ui && typeof S.store.ui.forgetSaved === 'function') S.store.ui.forgetSaved(); } catch (_) {}   // a seeded checkout drops it
-      bookGen++; S.book = null; dirShown = null; S.locPick = null;
+      bookGen++; S.book = null; dirShown = null; S.locPick = null; S.addrPick = null; S.addrErr = null;
       if (!uid || !suApi || !fbAuth || !suMod || typeof suMod.bookOf !== 'function') return;
-      const c = readJ(ADDR_KEY(uid)), cb = c && c.v === 1 ? suMod.bookOf(c) : null;
-      S.book = { who: uid, addresses: cb ? cb.addresses : [], sel: cb ? cb.default_address : null };
+      const c = readJ(ADDR_KEY(uid)), cb = c && c.v === 2 ? bookFrom(uid, suMod.bookOf(c)) : null;   // a v1 copy (no revision) waits for the read
+      S.book = cb || { who: uid, addresses: [], sel: null, rev: null };
       if (S.book.sel) S.locPick = 'saved';
       const gen = bookGen;
-      T.setTimeout(async () => {   // after paint: never awaited by a render
-        if (dead || gen !== bookGen) return;
-        let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
-        if (!tok || dead || gen !== bookGen) return;
-        const r = await suApi.getMyProfile({ idToken: tok });
-        const cur = auth && auth.user ? auth.user() : null;
-        if (dead || gen !== bookGen || !r || r.ok !== true || !S.book || !cur || cur.uid !== uid) return;
-        S.book = { who: uid, addresses: r.book.addresses, sel: bookPending ? S.book.sel : r.book.default_address };   // a write in flight keeps its pick
-        if (S.locPick !== 'device') S.locPick = S.book.sel ? 'saved' : null;
-        bookSave(); schedule();
-      }, 0);
+      T.setTimeout(() => { if (!dead && gen === bookGen) readBook(gen, uid); }, 0);   // after paint: never awaited by a render
     }
-    async function selectAddr(id) {
-      if (!S.member || !S.book || !S.book.addresses.some((a) => a.id === id) || !suApi || !fbAuth) return;
-      const uid = S.book.who, gen = bookGen, before = { sel: S.book.sel, pick: S.locPick };
-      S.book.sel = id; S.locPick = 'saved'; bookSave();
-      if (S.layer === 'addr') closeLayer();
+    function selectAddr(id, surface) {
+      if (S.addrPick || !S.member || !S.book || !S.book.addresses.some((a) => a.id === id) || !suApi || !fbAuth) return;
+      if (id === S.book.sel) { if (surface === 'sheet' && S.store && S.store.ui && typeof S.store.ui.addrSettled === 'function') S.store.ui.addrSettled(null); else if (S.layer === 'addr') closeLayer(); return; }
+      if (!Number.isSafeInteger(S.book.rev)) return;   // the server's pair is not known yet (the first read has not landed)
+      const uid = S.book.who, gen = bookGen, body = { id, expected_rev: S.book.rev, expected_default: S.book.sel };
+      S.addrErr = null; S.addrPick = { id, surface }; bookSeq++; pickPaint();
+      (async () => {
+        let own = null; try { own = await fbAuth.idTokenOwned(); } catch (_) { own = null; }
+        const live = () => !dead && gen === bookGen && !!S.addrPick;   // an identity change voids it (bookGen); only ONE pick can be in flight
+        let r = { ok: false, reason: 'offline' };
+        if (live() && own && own.uid === uid && own.token) r = await suApi.useMyAddress({ idToken: own.token, ...body });
+        if (!live()) return;
+        let won = false;
+        if (r.ok === true && r.default_address === id && Number.isSafeInteger(r.default_address_rev)) {
+          S.book = { ...S.book, sel: id, rev: r.default_address_rev }; won = true;
+        } else {
+          const b = await readBook(gen, uid);
+          if (!live()) return;
+          won = !!(b && b.sel === id);
+        }
+        S.addrPick = null; bookSeq++;
+        if (won) { S.locPick = 'saved'; bookSave(); } else S.addrErr = surface;
+        if (S.layer === 'addr' && won) closeLayer();
+        pickPaint(won);
+      })();
+    }
+    // the pick's state reaches every surface: the shell's (Inicio, «Direcciones», its sheet) and an open store's (its sheet, «Cambiar»;
+    // a 200 re-seeds its checkout — never a dispatched flow, the store's own rule)
+    function pickPaint(settled) {
       schedule();
-      bookPending++;
-      let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
-      const r = tok ? await suApi.useMyAddress({ idToken: tok, id }) : { ok: false, reason: 'unauthenticated' };
-      bookPending--;
-      if (dead || gen !== bookGen || !S.book || S.book.who !== uid) return;   // another identity now: never applied to it
-      if (r.ok !== true && S.book.sel === id) { S.book.sel = before.sel; S.locPick = before.pick; bookSave(); toast('No se guardó el cambio. Intentá de nuevo.'); schedule(); }
+      const ui = S.store && S.store.ui;
+      if (ui && typeof ui.addrSettled === 'function') { try { ui.addrSettled(settled === true ? seedNow() : settled === false ? false : undefined); } catch (_) {} }
     }
     function identityChanged() {
       bookIdentity();   // C-DIR-1: the previous member's book leaves the device and every surface
@@ -1792,7 +1841,7 @@
     function renderLayer() {
       const L = $('layer'); if (!L) return;
       pinGen++; pinMap = null;   // any open pin map is obsolete
-      L.innerHTML = S.layer === 'payadj' ? paySheetHtml() : S.layer === 'help' && S.help ? CappOrder.helpSheetHtml(S.help) : S.layer === 'rate' && S.rate ? CappRate.sheetHtml(rateVm()) : S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml(S.member && S.book ? { rows: dirShown || S.book.addresses, sel: savedSelId() } : null) : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
+      L.innerHTML = S.layer === 'payadj' ? paySheetHtml() : S.layer === 'help' && S.help ? CappOrder.helpSheetHtml(S.help) : S.layer === 'rate' && S.rate ? CappRate.sheetHtml(rateVm()) : S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml(S.member && S.book ? { rows: dirShown || S.book.addresses, sel: savedSelId(), ...pickVm('inicio') } : null) : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
       if (S.layer !== 'pin') return;
       const firstHub = dir.view().rows.map((r) => r.entry).find((e) => Number.isFinite(e.hub_lat) && Number.isFinite(e.hub_lng));
       pinDraft = locNow() ? { lat: locNow().lat, lng: locNow().lng } : null;   // the editor's VIEW starts on the city when there is no location — never a pin
@@ -1830,7 +1879,7 @@
       if (MODAL.has(k) && !MODAL.has(S.layer)) { const ae = doc.activeElement; layerOpener = (ae && ae.dataset && ae.dataset.act ? { act: ae.dataset.act, oid: ae.dataset.oid || null } : null) || lastTap; }
       S.layer = k; renderLayer(); containLayer();
     }
-    function closeLayer(restore = true) { const was = S.layer; S.layer = null; renderLayer(); containLayer(); if (restore && MODAL.has(was)) restoreOpener(); if (was !== 'payadj') reconcilePay(); }
+    function closeLayer(restore = true) { const was = S.layer; S.layer = null; if (was === 'addr' && S.addrErr === 'inicio') S.addrErr = null; renderLayer(); containLayer(); if (restore && MODAL.has(was)) restoreOpener(); if (was !== 'payadj') reconcilePay(); }
     let pending = null;
     const raf = win && typeof win.requestAnimationFrame === 'function' ? (f) => win.requestAnimationFrame(f) : (f) => T.setTimeout(f, 16);
     function schedule() { if (pending || dead) return; pending = true; raf(() => { pending = null; renderNow(); }); }
@@ -1844,6 +1893,7 @@
       const a = t.dataset.act;
       if (!t.closest('#layer')) lastTap = { act: a, oid: t.dataset.oid || null };   // C-5 r2: where a sheet's focus returns
       if (a && a.startsWith('rate-') && rateAct(a, t)) return;   // C-2: the rating sheet and the Pedidos rows' entries
+      if (S.addrPick && ADDR_ACTS.has(a)) return;   // r3: ONE pick in flight — every address control waits for the server's answer
       if (a === 'addr' && S.store) { nav.tab({ name: 'home' }); if (!S.store && S.tab === 'home') openLayer('addr'); return; }   // the address is the shell's: Inicio, with its sheet up
       // the Cuenta tab: with the guest rules ON (runtime.guestCardOnly), a guest's (and an unresolved) is frame 5b; a member's is a
       // later slice. Flag absent ⇒ exactly the S7a-2 behaviour: a host event (Codex guest r1 #3)
@@ -1901,7 +1951,7 @@
       if (a === 'addr-new') return openLayer('pin');
       if (a === 'addresses') return void nav.go({ name: 'addresses' });   // C-DIR-1: the member's «Direcciones» (v6 :2170)
       if (a === 'addresses-back') return void nav.back();
-      if (a === 'addr-use') return void selectAddr(t.dataset.id);   // v6 :2264
+      if (a === 'addr-use') return void selectAddr(t.dataset.id, S.layer === 'addr' ? 'inicio' : 'dir');   // v6 :2264 — r3: confirm-first
       if (a === 'loc-use') { if (!readJ('capp:loc_asked')) return openLayer('softask'); closeLayer(); return geolocate('Usando tu ubicación actual'); }
       if (a === 'loc-allow') { writeJ('capp:loc_asked', true); closeLayer(); return geolocate('Ubicación activada'); }
       if (a === 'loc-deny') { writeJ('capp:loc_asked', true); S.locDenied = true; closeLayer(); return renderNow(); }

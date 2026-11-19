@@ -9,6 +9,7 @@
 //     signInWithCustomToken(token) → Promise<uid>    verifyOtp / redeemSignupGrant / Google all end in a custom token
 //     signOut() → Promise                            an ORDINARY sign-out (the device marker is kept, §4c)
 //     idToken(force?) → Promise<string|null>         the member token the transport sends (x-firebase-id-token)
+//     idTokenOwned(force?) → Promise<{ token, uid }|null>  the token + its SDK user, null if that user changed meanwhile
 //   loadSdk() → Promise<{ initializeApp, authMod }> is injectable (tests use a fake; production imports the SDK).
 (function (root, factory) {
   const api = factory();
@@ -56,6 +57,15 @@
       async idToken(force) {
         const { auth } = await ensure();
         return auth.currentUser ? auth.currentUser.getIdToken(force === true) : null;
+      },
+      // Codex #152 #2: the token WITH the SDK user it belongs to — and only if that user is STILL the SDK's current one when the token
+      // arrives (a sign-out / switch can land while getIdToken is in flight, BEFORE the auth listeners — and so the shell — hear of it)
+      async idTokenOwned(force) {
+        const { auth } = await ensure();
+        const u = auth.currentUser; if (!u || !u.uid) return null;
+        const token = await u.getIdToken(force === true);
+        const now = auth.currentUser;
+        return token && now && now.uid === u.uid ? { token, uid: u.uid } : null;
       },
     };
   }

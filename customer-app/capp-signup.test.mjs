@@ -369,7 +369,7 @@ test('runtime.signup endpoints: ENDPOINTS is the ONE source — every transport 
   await a.redeemSignupGrant({ grant: 'g', email: 'a@b.test', name: 'A', promos: false });
   await a.getMyOrders({ idToken: 't', limit: 20 });   // «Pedidos» (NOTE-getMyOrders): the member's history read
   await a.getMyRating({ idToken: 't', orderId: 'XPZ-1234' }); await a.rateOrder({ idToken: 't', orderId: 'XPZ-1234', fields: { store: 5 } });   // C-2
-  await a.getMyProfile({ idToken: 't' }); await a.useMyAddress({ idToken: 't', id: 'a_abcdef' });   // C-DIR-1 (3a S-ADDR-1 / S-ADDR-2)
+  await a.getMyProfile({ idToken: 't' }); await a.useMyAddress({ idToken: 't', id: 'a_abcdef', expected_rev: 0, expected_default: null });   // C-DIR-1 (3a S-ADDR-1 / S-ADDR-2; r3: the selection CAS)
   await a.getMyFavorites({ idToken: 't' }); await a.setFavorite({ idToken: 't', rid: 'x_pizza', on: true });   // C-1b
   await a.pushRegister({ idToken: 't', token: 'fcm_t', platform: 'ios', app_build: '1', install_id: 'install-census-0001', pedidos: true, promociones: false }); await a.pushUnregister({ idToken: 't', token: 'fcm_t' });   // PLAN-capp-push §6b
   await a.pushSetPrefs({ idToken: 't', pedidos: true, promociones: false, expected_rev: 0 }); await a.pushGetPrefs({ idToken: 't' });
@@ -486,8 +486,9 @@ test('VC-P2 the resend countdown follows the injected now(): «Reenviar en 0:29�
 });
 
 // ── C-DIR-1 (PLAN-capp-direcciones r0, advisor 11-13/11-14): the member's address book — 3a's S-ADDR-1 getMyProfile (GET ?context=platform,
-// the token in the header) and S-ADDR-2 useMyAddress (POST ?context=platform, body exactly { id }). The fixture is the REAL writer (the
-// frozen form's saveAddress) + 3a's REAL handlers (fixtures/addr/gen-addr.mjs at feat/addr-use-3a), their bodies served verbatim ──
+// the token in the header) and S-ADDR-2 useMyAddress (POST ?context=platform) — r3: the SELECTION CAS of PLAN-3a-addr-rev (body EXACTLY
+// { id, expected_rev, expected_default }, 409 stale_address). The fixture is the REAL writer (the frozen form's saveAddress / deleteAddress)
+// + 3a's REAL handlers (fixtures/addr/gen-addr.mjs at feat/addr-rev-3a @805a5015), their bodies served verbatim ──
 const ADX = JSON.parse(readFileSync(join(HERE, 'fixtures/addr/addr.json'), 'utf8'));
 const addrApi = (respond, sent = []) => require('./capp-signup-api.js').createSignupApi({ endpoints: { getMyProfile: 'https://ep.test/getMyProfile', useMyAddress: 'https://ep.test/useMyAddress' },
   fetch: async (u, i) => { sent.push({ u, i }); const r = respond(u, i); return { status: r.status, json: async () => JSON.parse(JSON.stringify(r.body)) }; } });
@@ -497,23 +498,30 @@ test('C-DIR-1 getMyProfile: the served book → { addresses: [{ id, label, detec
   assert.equal(r.ok, true, '🔴 DIR-API: the profile read');
   assert.deepEqual(r.book.addresses, served.body.addresses.map((a) => ({ id: a.id, label: a.label, detected: a.detected, details: a.details, lat: a.lat, lng: a.lng })), '🔴 DIR-API: the book, field by field, in the server\'s order');
   assert.equal(r.book.default_address, ADX.ids.casa, '🔴 DIR-API: «en uso» = default_address');
+  assert.equal(r.book.default_address_rev, 0, '🔴 DIR-API r3: the selection\'s revision, as served');
+  const nr = JSON.parse(JSON.stringify(served)); delete nr.body.default_address_rev;
+  assert.equal((await addrApi(() => nr).getMyProfile({ idToken: 'tok' })).book.default_address_rev, null, '🔴 DIR-API r3: no revision ⇒ null (the caller treats that book as no book — never guessed as 0)');
   assert.deepEqual([sent[0].u, sent[0].i.method, sent[0].i.headers['x-firebase-id-token'], sent[0].i.body], ['https://ep.test/getMyProfile?context=platform', 'GET', 'tok', undefined], 'GET, the token in its header, no body');
   const bad = JSON.parse(JSON.stringify(served)); bad.body.addresses[0].lat = 'x'; bad.body.addresses.push({ id: 'zz', label: 'X', detected: 'Y', details: '', lat: 1, lng: 1 });
   const rb = await addrApi(() => bad).getMyProfile({ idToken: 'tok' });
   assert.deepEqual(rb.book.addresses.map((a) => a.id), [served.body.addresses[1].id], '🔴 DIR-API: a malformed entry (a non-number lat, a bad id) is dropped, never repaired');
   const nd = JSON.parse(JSON.stringify(served)); nd.body.default_address = 'a_ffffffffff';
   assert.equal((await addrApi(() => nd).getMyProfile({ idToken: 'tok' })).book.default_address, null, '🔴 DIR-API: a default naming no served entry ⇒ null');
-  assert.deepEqual((await addrApi(() => ADX.scenarios.profile_empty).getMyProfile({ idToken: 'tok' })).book, { addresses: [], default_address: null }, 'an empty book');
+  assert.deepEqual((await addrApi(() => ADX.scenarios.profile_empty).getMyProfile({ idToken: 'tok' })).book, { addresses: [], default_address: null, default_address_rev: ADX.scenarios.profile_empty.body.default_address_rev }, 'an empty book');
   assert.deepEqual(await addrApi(() => ({ status: 403, body: { ok: false, reason: 'deleted' } })).getMyProfile({ idToken: 'tok' }), { ok: false, reason: 'deleted' }, 'a refusal is a failure, never a guessed book');
 });
-test('C-DIR-1 useMyAddress: POST ?context=platform with body EXACTLY { id }, the token in the header; 200 ⇒ { ok, default_address }; 404 ⇒ not_found', async () => {
-  const sent = [];
-  const ok = await addrApi(() => ADX.scenarios.use_trabajo, sent).useMyAddress({ idToken: 'tok', id: ADX.ids.trabajo });
-  assert.deepEqual(ok, { ok: true, default_address: ADX.ids.trabajo }, '🔴 DIR-API: the persisted «en uso»');
-  assert.deepEqual([sent[0].u, sent[0].i.method, sent[0].i.headers['x-firebase-id-token'], JSON.parse(sent[0].i.body)], ['https://ep.test/useMyAddress?context=platform', 'POST', 'tok', { id: ADX.ids.trabajo }], '🔴 DIR-API: the contract\'s request');
-  assert.deepEqual(await addrApi(() => ADX.scenarios.use_unknown).useMyAddress({ idToken: 'tok', id: 'a_000000000000' }), { ok: false, reason: 'not_found' }, '🔴 DIR-API: an id the book does not hold');
-  const none = []; assert.deepEqual(await addrApi(() => ADX.scenarios.use_trabajo, none).useMyAddress({ idToken: 'tok', id: 'not-an-id' }), { ok: false, reason: 'bad_request' }, 'a malformed id never leaves the device');
-  assert.equal(none.length, 0, 'no request for a malformed id');
+test('C-DIR-1 useMyAddress (r3 CAS): POST ?context=platform, body EXACTLY { id, expected_rev, expected_default }, the token in the header; 200 ⇒ the pick + its new rev; ANY 409 ⇒ stale (its body never trusted); 404 ⇒ not_found; a malformed body never leaves the device', async () => {
+  const sent = [], C = ADX.ids.casa, Tb = ADX.ids.trabajo;
+  const ok = await addrApi(() => ADX.scenarios.use_trabajo, sent).useMyAddress({ idToken: 'tok', id: Tb, expected_rev: 0, expected_default: C });
+  assert.deepEqual(ok, { ok: true, default_address: Tb, default_address_rev: 1 }, '🔴 DIR-API r3: the persisted «en uso» and its new revision');
+  assert.deepEqual([sent[0].u, sent[0].i.method, sent[0].i.headers['x-firebase-id-token'], JSON.parse(sent[0].i.body)], ['https://ep.test/useMyAddress?context=platform', 'POST', 'tok', ADX.scenarios.use_trabajo.req], '🔴 DIR-API r3: EXACTLY the request the real handler was recorded answering');
+  assert.deepEqual(await addrApi(() => ADX.scenarios.use_trabajo_again).useMyAddress({ idToken: 'tok', id: Tb, expected_rev: 0, expected_default: C }), { ok: false, reason: 'stale' }, '🔴 DIR-API r3: a 409 naming MY id at a higher rev is STILL stale — never success (owner 11-18)');
+  assert.deepEqual(await addrApi(() => ADX.scenarios.use_trabajo_late).useMyAddress({ idToken: 'tok', id: Tb, expected_rev: 0, expected_default: C }), { ok: false, reason: 'stale' }, 'any 409 ⇒ stale');
+  assert.deepEqual(await addrApi(() => ADX.scenarios.use_unknown).useMyAddress({ idToken: 'tok', id: 'a_000000000000', expected_rev: 2, expected_default: C }), { ok: false, reason: 'not_found' }, '🔴 DIR-API: an id the book does not hold');
+  const none = [];
+  for (const bad of [{ id: 'not-an-id', expected_rev: 0, expected_default: C }, { id: Tb, expected_rev: -1, expected_default: C }, { id: Tb, expected_rev: 1.5, expected_default: C }, { id: Tb, expected_rev: 0, expected_default: 'x' }, { id: Tb, expected_rev: 0 }])
+    assert.deepEqual(await addrApi(() => ADX.scenarios.use_trabajo, none).useMyAddress({ idToken: 'tok', ...bad }), { ok: false, reason: 'bad_request' }, `a malformed body never leaves the device: ${JSON.stringify(bad)}`);
+  assert.equal(none.length, 0, 'no request for a malformed body');
 });
 
 // ── C-1b (3a's getMyFavorites + setFavorite, my-favorites.js @990cf8c4): the member transport, against the REAL handler's bodies

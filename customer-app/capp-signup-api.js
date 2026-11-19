@@ -116,15 +116,18 @@
         if (r.status !== 200 || !j || j.ok !== true) return { ok: false, reason: r.status === 403 ? 'deleted' : reasonOf(r) };
         return { ok: true, book: bookOf(j) };
       },
-      // C-DIR-1 (3a S-ADDR-2): «en uso» persisted as default_address — POST ?context=platform, body EXACTLY { id } (an entry the member's
-      // own book holds; the server only SELECTS it); a malformed id never leaves the device
-      async useMyAddress({ idToken, id } = {}) {
-        if (!(typeof id === 'string' && ADDR_ID_RE.test(id))) return { ok: false, reason: 'bad_request' };
+      // C-DIR-1 (3a S-ADDR-2) + r3 (PLAN-3a-addr-rev @805a5015): «en uso» persisted as default_address through the SELECTION CAS —
+      // POST ?context=platform, body EXACTLY { id, expected_rev, expected_default } (the pair this device last SAW from the server: a read
+      // or its own 200, never a 409 body); a malformed body never leaves the device. 200 ⇒ the pick and its new revision; 409 ⇒ 'stale'
+      // and NOTHING else of its body is trusted (owner 11-18: the caller re-reads); anything else ⇒ its reason
+      async useMyAddress({ idToken, id, expected_rev, expected_default } = {}) {
+        if (!(typeof id === 'string' && ADDR_ID_RE.test(id)) || !(Number.isSafeInteger(expected_rev) && expected_rev >= 0)
+          || !(expected_default === null || (typeof expected_default === 'string' && ADDR_ID_RE.test(expected_default)))) return { ok: false, reason: 'bad_request' };
         if (!idToken) return { ok: false, reason: 'unauthenticated' };
-        const r = await call(E.useMyAddress, { method: 'POST', idToken, query: 'context=platform', body: { id } });
+        const r = await call(E.useMyAddress, { method: 'POST', idToken, query: 'context=platform', body: { id, expected_rev, expected_default } });
         const j = r.json;
-        if (r.status === 200 && j && j.ok === true && j.default_address === id) return { ok: true, default_address: id };
-        return { ok: false, reason: r.status === 404 ? 'not_found' : r.status === 403 ? 'deleted' : reasonOf(r) };
+        if (r.status === 200 && j && j.ok === true && j.default_address === id && Number.isSafeInteger(j.default_address_rev) && j.default_address_rev > expected_rev) return { ok: true, default_address: id, default_address_rev: j.default_address_rev };
+        return { ok: false, reason: r.status === 409 ? 'stale' : r.status === 404 ? 'not_found' : r.status === 403 ? 'deleted' : reasonOf(r) };
       },
       // the RECEIPT detail mode (NOTE-getMyOrders-receipt, 3a 75eed212, APPROVED): ONE order of the member's own, ?order_id alone with the
       // same header auth; a uniform 404 for anything not hers ⇒ 'not_found'. Only the contract's receipt whitelist survives (receiptOf)
@@ -236,7 +239,9 @@
       .filter((a) => a && typeof a === 'object' && typeof a.id === 'string' && ADDR_ID_RE.test(a.id) && strLen(a.label, 1, 40) && strLen(a.detected, 1, 200) && strLen(a.details, 0, 200) && inRange(a.lat, 90) && inRange(a.lng, 180))
       .slice(0, BOOK_MAX).map((a) => ({ id: a.id, label: a.label, detected: a.detected, details: a.details, lat: a.lat, lng: a.lng }));
     const d = j && typeof j.default_address === 'string' && addresses.some((a) => a.id === j.default_address) ? j.default_address : null;
-    return { addresses, default_address: d };
+    // r3 (PLAN-3a-addr-rev): the selection's revision — always served; absent / malformed ⇒ null (the caller treats that book as no book)
+    const rev = j && Number.isSafeInteger(j.default_address_rev) && j.default_address_rev >= 0 ? j.default_address_rev : null;
+    return { addresses, default_address: d, default_address_rev: rev };
   }
   // the contract's Row (NOTE-getMyOrders §3), field by field — nothing else survives
   const ORDER_ID_RE = /^[A-Za-z0-9_-]{4,64}$/, RID_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;

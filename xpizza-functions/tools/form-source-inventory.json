@@ -8873,7 +8873,7 @@
    "site": "customer-app/fixtures/addr/gen-addr.mjs",
    "module": "signup-platform.js",
    "status": "ok",
-   "sha": "1856188046a6afac53f05b20ccad27702ef4b376",
+   "sha": "805a5015411a63ecac62d1f54bac653b9ea1ddc0",
    "blob": "6a4912f9823ffabac5a12b3f8c85595178cc5c06",
    "consumer": "customer-app/capp-s7a2.test.mjs",
    "live_differs": true

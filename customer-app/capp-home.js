@@ -257,7 +257,7 @@
     const short = vm.addr && vm.addr.short ? vm.addr.short : 'Tu ubicación', line = vm.addr && vm.addr.line ? vm.addr.line : 'Agregá tu dirección';
     const q = vm.tab === 'search' && vm.q ? vm.q : '';
     return `<div class="desknav">${brandLockHtml()}`
-      + `<button class="dn-addr" data-act="addr" aria-label="Dirección de entrega: ${esc(line)}">${IC.pin}<span class="v"><span class="k">Entregar en</span> ${esc(short)}</span>${IC.down}</button>`
+      + `<button class="dn-addr" data-act="addr"${vm.addr && vm.addr.busy ? ' aria-disabled="true"' : ''} aria-label="Dirección de entrega: ${esc(line)}">${IC.pin}<span class="v"><span class="k">Entregar en</span> ${esc(short)}</span>${IC.down}</button>`
       + `<button class="dn-search${vm.tab === 'search' ? ' live' : ''}" data-act="tab" data-tab="search" aria-label="Buscar">${IC.search}${esc(q || 'Buscá restaurantes o platos')}</button>`
       + `<span class="right">${t('home', 'Inicio')}${ORDERS_SCREEN ? t('orders', 'Pedidos') : ''}<button class="nb acct" data-act="tab" data-tab="account" aria-current="${vm.tab === 'account'}">${vm.memberInitial ? `<span class="av">${esc(vm.memberInitial)}</span>` : IC.user}Cuenta</button></span></div>`;
   }
@@ -304,7 +304,7 @@
     const short = vm.addr && vm.addr.short ? vm.addr.short : 'Tu ubicación';
     const locrow = vm.locDenied ? `<div class="locrow">${IC.locoff}<span>Ubicación desactivada</span><button data-act="loc-on">Activar</button></div>` : '';
     return `<div class="home-head">
-      <button class="addr-btn" data-act="addr" aria-label="Dirección de entrega: ${esc(line)}"><span><span class="k">Entregar en</span><span class="v"><span>${esc(short)}</span>${IC.down}</span></span></button>
+      <button class="addr-btn" data-act="addr"${vm.addr && vm.addr.busy ? ' aria-disabled="true"' : ''} aria-label="Dirección de entrega: ${esc(line)}"><span><span class="k">Entregar en</span><span class="v"><span>${esc(short)}</span>${IC.down}</span></span></button>
       ${locrow}
     </div>`;
   }
@@ -437,8 +437,13 @@
   // first, then the most recently used (last_used_at descending; none ⇒ last); a tie keeps the server's order
   const lastUsed = (a) => (a && Number.isSafeInteger(a.last_used_at) ? a.last_used_at : 0);
   const bookOrder = (addresses, sel) => addresses.map((a, i) => ({ a, i })).sort((x, y) => ((y.a.id === sel) - (x.a.id === sel)) || (lastUsed(y.a) - lastUsed(x.a)) || (x.i - y.i)).map((e) => e.a);
+  // direcciones r3 (owner-APPROVED confirm-first prototype): while a pick is in flight its row spins in the right slot and every other
+  // address control is disabled; a failed pick leaves ONE calm sand line above the list where it was made
+  const SPIN = '<i class="addrspin" aria-hidden="true"></i>';
+  const SANDLINE = '<div class="sandline" role="status">No pudimos cambiar la dirección. Probá de nuevo.</div>';
+  const pickAttr = (d, id) => (!d || !d.pend ? '' : d.pend === id ? ' aria-busy="true"' : ' aria-disabled="true"');
   const addrSheetHtml = (dir) => `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Dirección de entrega"><div class="grab"></div><div class="sheethead"><div><h2>Entregar en</h2><small>La zona de cada restaurante se revisa con esta&nbsp;dirección.</small></div><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div>
-    <nav>${dir && dir.rows ? dir.rows.map((a) => `<button class="navrow${dir.sel === a.id ? ' on' : ''}" data-act="addr-use" data-id="${esc(a.id)}">${esc(a.label)}<span>${esc(a.detected)}</span></button>`).join('') : ''}<button class="navrow" data-act="loc-use">${IC.nav.replace('class="i"', 'class="i" style="margin-right:10px"')}Usar mi ubicación actual<span></span></button><button class="navrow" data-act="addr-new">${IC.plus.replace('class="i"', 'class="i" style="margin-right:10px"')}Agregar dirección<span></span></button></nav></div>`;
+    ${dir && dir.err ? SANDLINE : ''}<nav>${dir && dir.rows ? dir.rows.map((a) => `<button class="navrow${dir.sel === a.id ? ' on' : ''}" data-act="addr-use" data-id="${esc(a.id)}"${pickAttr(dir, a.id)}>${esc(a.label)}<span>${dir.pend === a.id ? SPIN : esc(a.detected)}</span></button>`).join('') : ''}<button class="navrow" data-act="loc-use"${pickAttr(dir)}>${IC.nav.replace('class="i"', 'class="i" style="margin-right:10px"')}Usar mi ubicación actual<span></span></button><button class="navrow" data-act="addr-new"${pickAttr(dir)}>${IC.plus.replace('class="i"', 'class="i" style="margin-right:10px"')}Agregar dirección<span></span></button></nav></div>`;
   const softaskHtml = () => `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Ubicación"><div class="grab"></div><div class="softask"><div class="ill">${IC.pin}</div><h2>Encontrá restaurantes cerca de vos</h2><p>Usamos tu ubicación solo para mostrarte quién te entrega y poner el pin donde estás.</p><div class="acts"><button class="primary" data-act="loc-allow">Usar mi ubicación</button><button class="btn2 wide" data-act="loc-deny">Escribir mi dirección</button></div></div></div>`;
   const pinEditorHtml = (mapSvg, live) => `<div class="pinstep" role="dialog" aria-label="Confirmá dónde entregamos"><div class="mapwrap">${mapSvg || ''}${live ? '<div class="gmap" data-gmap="pin" style="position:absolute;inset:0"></div>' : ''}<div class="store-nav" style="position:absolute"><button class="iconbtn" data-act="lclose" aria-label="Cancelar">${IC.close}</button><span></span></div><div class="hint">Mové el mapa hasta que el pin quede en tu puerta</div><span class="pin">${IC.pinfill}</span></div>
     <div class="foot"><b>Confirmá dónde entregamos</b><span class="sub">Las direcciones aquí se describen con referencias: el pin es la dirección, los detalles son la referencia.</span><button class="primary" data-act="pin-done">Listo</button></div></div>`;
@@ -519,9 +524,9 @@
   // dirección» (v6's pin-only step). dir: { rows, sel } — the shell's per-open frozen book (no row inserted while it shows)
   function addressesHtml(vm) {
     const d = vm.dir || { rows: [], sel: null };
-    const rows = d.rows.map((a) => `<button class="rowbtn" data-act="addr-use" data-id="${esc(a.id)}">${IC.pin}<span class="t"><b>${esc(a.label)}${d.sel === a.id ? ' · en uso' : ''}</b><span>${esc(a.details ? `${a.detected} · ${a.details}` : a.detected)}</span></span>${IC.edit.replace('class="i"', 'class="i chev"')}</button>`).join('');
+    const rows = d.rows.map((a) => `<button class="rowbtn" data-act="addr-use" data-id="${esc(a.id)}"${pickAttr(d, a.id)}>${IC.pin}<span class="t"><b>${esc(a.label)}${d.sel === a.id ? ' · en uso' : ''}</b><span>${esc(a.details ? `${a.detected} · ${a.details}` : a.detected)}</span></span>${d.pend === a.id ? SPIN : IC.edit.replace('class="i"', 'class="i chev"')}</button>`).join('');
     return shellWrap(vm, `<div class="flow"><div class="topbar"><button class="iconbtn" data-act="addresses-back" aria-label="Volver">${IC.back}</button><h1>Direcciones</h1><span class="sp"></span></div>
-    <div class="rows addrlist">${rows}<button class="rowbtn" data-act="addr-new">${IC.plus}<span class="t">Agregar dirección<span>Poné el pin en tu puerta y describí la referencia</span></span></button></div></div>`);
+    ${d.err ? SANDLINE : ''}<div class="rows addrlist">${rows}<button class="rowbtn" data-act="addr-new"${pickAttr(d)}>${IC.plus}<span class="t">Agregar dirección<span>Poné el pin en tu puerta y describí la referencia</span></span></button></div></div>`);
   }
   // G7 frame 2: «Olvidar este teléfono» — the shell's .errsheet, the calm icon, two exits
   const forgetSheetHtml = () => `<div class="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Olvidar este teléfono"><div class="grab"></div>

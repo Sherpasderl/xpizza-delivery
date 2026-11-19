@@ -701,7 +701,9 @@ const TOK = (uid, expMs = T0 + 3600e3) => `${b64u({ alg: 'RS256', typ: 'JWT' })}
 const WARNINGS = []; process.on('warning', (w) => WARNINGS.push(w));   // Codex promo r4 #5: no TimeoutOverflowWarning (asserted last)
 // failToken: the next N getIdToken() calls REJECT; failFrom: every call from index N on rejects; tokExp: the issued tokens' exp (ms)
 // rotate: each getIdToken() issues a NEW token (exp + n s) — a fresh token that really changes ⇒ the setter's notifier fires
-function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0, failFrom = Infinity, tokExp, rotate = false, authGate = null } = {}) {
+// notifyGate: { on, q } — while on, a sign-out / sign-in changes currentUser AT ONCE but its listeners wait for the test (production's order:
+// the SDK's user moves before onAuthStateChanged fires — Codex #152 #2 / #153 #1: the fake must never be laxer, on BOTH transitions)
+function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0, failFrom = Infinity, tokExp, rotate = false, authGate = null, notifyGate = null } = {}) {
   const calls = { load: 0, ct: [], out: 0 }; let listeners = [], user = persisted;
   // hold: { on, q } — while on, every token read waits for the test to release it (a slow SDK)
   let tokN = 0; const rot = (n) => (rotate ? (tokExp ?? T0 + 3600e3) + n * 1000 : tokExp);
@@ -711,8 +713,8 @@ function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToke
   const authMod = { browserLocalPersistence: 'LOCAL', getAuth: () => auth, setPersistence: async () => {},
     // authGate: { q } — the first auth state waits until the test releases it (a slow SDK: auth still unresolved at startup)
     onAuthStateChanged: (a, next) => { listeners.push(next); const first = () => next(user ? { uid: user } : null); if (authGate) authGate.q.push(first); else Promise.resolve().then(first); return () => { listeners = listeners.filter((x) => x !== next); }; },
-    signInWithCustomToken: async (a, t) => { calls.ct.push(t); user = t.replace(/^ct:/, ''); emitU(); return { user: { uid: user } }; },
-    signOut: async () => { calls.out++; if (failSignOut > 0) { failSignOut--; throw new Error('network'); } user = null; emitU(); } };
+    signInWithCustomToken: async (a, t) => { calls.ct.push(t); user = t.replace(/^ct:/, ''); if (notifyGate && notifyGate.on) notifyGate.q.push(emitU); else emitU(); return { user: { uid: user } }; },
+    signOut: async () => { calls.out++; if (failSignOut > 0) { failSignOut--; throw new Error('network'); } user = null; if (notifyGate && notifyGate.on) notifyGate.q.push(emitU); else emitU(); } };
   return { calls, loadSdk: async () => { calls.load++; return { initializeApp: () => ({}), authMod }; } };
 }
 const SU_EP = Object.fromEntries(require('./capp-signup-api.js').ENDPOINTS.map((k) => [k, `https://fn.test/${k}`]));   // the ONE source of the set
@@ -5035,10 +5037,11 @@ test('VC-L no shell window outlives the cell that booted it (late responses neve
 // ── C-DIR-1 (PLAN-capp-direcciones r0 + rulings; v6 P:2170 / :2179-2184 / :2162 / :1507 / :2264): the member's address book — 3a's getMyProfile
 // (S-ADDR-1) read once after paint, cached per member; «en uso» = default_address, persisted through useMyAddress (S-ADDR-2). The pencil
 // is INERT, «Agregar dirección» is v6's pin-only step. The served bodies are the REAL writer + 3a's REAL handlers (fixtures/addr) ──
-// ADDR_REF = feat/addr-3a-fwd: 3a's S-ADDR-1 + S-ADDR-2 merged onto main 31f05c8a4 (Codex #146 HIGH APPROVED) — the ONE server ref
+// ADDR_REF = feat/addr-rev-3a @805a5015 (PLAN-3a-addr-rev, APPROVED 11-18): S-ADDR-1 + S-ADDR-2 on main 31f05c8a4 + the selection CAS
+// (expected_rev + expected_default, 409 stale_address — the client trusts only «stale» and re-reads) — the ONE server ref
 // PROVENANCE-PIN:BEGIN addr
 const ADX = JSON.parse(readFileSync(join(HERE, 'fixtures/addr/addr.json'), 'utf8'));
-const ADDR_REF = '1856188046a6afac53f05b20ccad27702ef4b376';
+const ADDR_REF = '805a5015411a63ecac62d1f54bac653b9ea1ddc0';
 test('C-DIR-1 ADDR-PIN: the address fixture was produced by 3a\'s REAL handlers at the ONE approved server ref — every recorded blob is that ref\'s', () => {
   assert.equal(ADX.source.commit, ADDR_REF, '🔴 ADDR-PIN: the fixture was generated at the approved 3a ref');
   const files = Object.keys(ADX.source.blobs);
@@ -5047,21 +5050,50 @@ test('C-DIR-1 ADDR-PIN: the address fixture was produced by 3a\'s REAL handlers 
 });
 // PROVENANCE-PIN:END addr
 const AID = ADX.ids;
-function addrServer({ profile = 'profile_default_casa', use = 'use_trabajo', pgate = null } = {}) {
-  const calls = []; let prof = profile;
+// THE ADDRESS SERVER STUB (r3; PLAN-3a-addr-rev @805a5015) — never laxer than 3a's handler:
+//   · getMyProfile answers the CALLER's own book (the token's uid): u_ana ⇒ the next scenario of `reads` (the last one sticks; default
+//     [profile]), anyone else ⇒ the empty book;
+//   · useMyAddress enforces the handler's exact body rule (EXACTLY { id, expected_rev, expected_default }, the 400 otherwise — its REAL
+//     recorded body), then answers the next scenario of `uses` — consumed when the server ANSWERS (after `ugate`), so a held write lands
+//     late in its real order — and ONLY when the client sent that scenario's recorded request byte for byte (else `problems` records it;
+//     every cell asserts `problems` empty);
+//   · ugate(body, n) ⇒ a promise the n-th write waits on, or 'OFFLINE' (the transport fails: status 0); pgate holds every read.
+const ADDR_RE = /^a_[a-f0-9]{6,32}$/;
+const addrBodyOk = (b) => !!b && typeof b === 'object' && !Array.isArray(b) && Object.keys(b).length === 3 && typeof b.id === 'string' && ADDR_RE.test(b.id)
+  && Number.isSafeInteger(b.expected_rev) && b.expected_rev >= 0 && 'expected_default' in b && (b.expected_default === null || (typeof b.expected_default === 'string' && ADDR_RE.test(b.expected_default)));
+function addrServer({ profile = 'profile_default_casa', reads = null, uses = ['use_trabajo'], pgate = null, ugate = null } = {}) {
+  const calls = [], problems = []; let prof = profile; const rq = reads ? [...reads] : null, uq = [...uses]; let wn = 0;
+  const whoOf = (i) => { const tk = (i.headers || {})['x-firebase-id-token'] || ''; try { return JSON.parse(Buffer.from(tk.split('.')[1], 'base64url').toString()).sub; } catch (_) { return null; } };
+  const reply = (sc) => ({ status: sc.status, json: async () => J(sc.body) });
   const handler = async (u, i = {}) => {
-    const ep = u.split('?')[0].split('/').pop(); calls.push({ ep, u, method: i.method || 'GET', body: i.body ? JSON.parse(i.body) : null, headers: i.headers || {} });
-    if (ep === 'getMyProfile' && pgate) await pgate;
-    const sc = ADX.scenarios[ep === 'getMyProfile' ? prof : (typeof use === 'function' ? use(JSON.parse(i.body)) : use)];
-    return { status: sc.status, json: async () => J(sc.body) };
+    const ep = u.split('?')[0].split('/').pop(), body = i.body ? JSON.parse(i.body) : null, who = whoOf(i);
+    calls.push({ ep, u, method: i.method || 'GET', body, headers: i.headers || {}, who });
+    if (ep === 'getMyProfile') {
+      if (pgate) await pgate;
+      if (who && who !== 'u_ana') return reply(ADX.scenarios.profile_empty);
+      return reply(ADX.scenarios[rq ? (rq.length > 1 ? rq.shift() : rq[0]) : prof]);
+    }
+    const n = wn++;
+    if (!addrBodyOk(body)) return reply(ADX.scenarios.use_bad_shape);
+    const g = ugate ? ugate(body, n) : null;
+    if (g === 'OFFLINE') throw new Error('offline');
+    if (g) await g;
+    const name = uq.shift();
+    if (!name) { problems.push(`write ${n} ${JSON.stringify(body)}: no scenario left`); return reply(ADX.scenarios.use_bad_shape); }
+    const sc = ADX.scenarios[name];
+    if (JSON.stringify(sc.req) !== JSON.stringify(body)) problems.push(`write ${n}: sent ${JSON.stringify(body)}, ${name} was recorded for ${JSON.stringify(sc.req)}`);
+    return reply(sc);
   };
-  return { handler, calls, profile: (p) => { prof = p; } };
+  return { handler, calls, problems, profile: (p) => { prof = p; } };
 }
+const addrWrites = (addr) => addr.calls.filter((c) => c.ep === 'useMyAddress').map((c) => c.body);
+const addrReads = (addr) => addr.calls.filter((c) => c.ep === 'getMyProfile');
+const addrStored = (st) => { const v = st.getItem('capp:addr:u_ana'); return v ? JSON.parse(v) : null; };
 const dirRows = (S) => S.qa('.addrlist .rowbtn').map((b) => [b.dataset.act, b.dataset.id || null, txt(b.querySelector('.t b')) || txt(b.querySelector('.t')), txt(b.querySelector('.t > span'))]);
 async function dirBoot(o = {}) {
   const addr = addrServer(o);
   const st = o.storage || g7Store(G7_PROFILE({ promos: true }));
-  const b = await pedidosBoot({}, { storage: st, addr, ...(o.fbOpts ? { fbOpts: o.fbOpts } : {}) });
+  const b = await pedidosBoot({}, { storage: st, addr, ...(o.fbOpts ? { fbOpts: o.fbOpts } : {}), ...(o.apiFetch ? { apiFetch: o.apiFetch } : {}) });
   await flush(); await flush();
   return { ...b, addr, st };
 }
@@ -5093,19 +5125,6 @@ test('C-DIR-1 (v6 :2170): «Direcciones» — one row per address «{label}» (+
     assert.ok(S.q('.rows [data-act="addresses"]'), 'back ⇒ Cuenta');
   } finally { S.w.close(); }
 });
-test('C-DIR-1 (v6 :2264): tapping a row makes it «en uso» AT ONCE, persists it through useMyAddress (POST body exactly { id }), and the «Entregar en» pill reads its label', async () => {
-  const { S, addr, st } = await dirBoot();
-  try {
-    await toDirecciones(S);
-    S.click(`.addrlist [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush(); await flush();
-    assert.deepEqual(dirRows(S).slice(0, 2).map((r) => r[2]), ['Casa', 'Trabajo · en uso'], '🔴 DIR-3: «en uso» moved — the rows stay where they were (frozen per open, rule 7)');
-    const uses = addr.calls.filter((c) => c.ep === 'useMyAddress');
-    assert.deepEqual(uses.map((c) => [c.method, c.body]), [['POST', { id: AID.trabajo }]], '🔴 DIR-3: persisted (S-ADDR-2)');
-    assert.equal(JSON.parse(st.getItem('capp:addr:u_ana')).default_address, AID.trabajo, 'the device copy follows (cached-first)');
-    S.click('.tabbar [data-tab="home"]'); await flush();
-    assert.equal(txt(S.q('.addr-btn .v > span')), 'Trabajo', '🔴 DIR-3: the pill reads the selected label (v6 :1507)');
-  } finally { S.w.close(); }
-});
 test('C-DIR-1 (v6 :2179-2184): the «Entregar en» sheet lists the saved addresses (label / detected; the one in use .on) ABOVE «Usar mi ubicación actual» and «Agregar dirección»; a tap selects and closes', async () => {
   const { S } = await dirBoot();
   try {
@@ -5125,16 +5144,6 @@ test('C-DIR-1 (16b, owed SBS 11-14): the «Entregar en» note never leaves «dir
     S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush();
     const note = S.q('#layer .sheethead small');
     assert.equal(note.textContent, 'La zona de cada restaurante se revisa con esta dirección.', '🔴 DIR-NOTE: «esta» and «dirección.» held together (no-break space)');
-  } finally { S.w.close(); }
-});
-test('C-DIR-1: a REFUSED «en uso» write (404) reverts the selection, with the approved calm toast; nothing else changes', async () => {
-  const { S, st } = await dirBoot({ use: 'use_unknown' });
-  try {
-    await toDirecciones(S);
-    S.click(`.addrlist [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush(); await flush(); await flush();
-    assert.deepEqual(dirRows(S).slice(0, 2).map((r) => r[2]), ['Casa · en uso', 'Trabajo'], '🔴 DIR-5: reverted to the server\'s default (rows frozen in the open\'s order: in use first)');
-    assert.equal(S.q('#toast') && S.q('#toast').textContent, 'No se guardó el cambio. Intentá de nuevo.', '🔴 DIR-5: the approved G7 failure line');
-    assert.equal(JSON.parse(st.getItem('capp:addr:u_ana')).default_address, AID.casa, 'the device copy reverted too');
   } finally { S.w.close(); }
 });
 test('C-DIR-1 (rule 7): «Direcciones» opened BEFORE the read lands inserts nothing when it lands; the next open shows the book', async () => {
@@ -5251,7 +5260,7 @@ test('C-DIR-1 SEED: «Ajustar pin» to another point OVERRIDES the saved address
   } finally { S.w.close(); }
 });
 test('C-DIR-1 SEED: a saved address OUTSIDE every zone (Trabajo, ~180 km away) in use ⇒ the zone runs on ITS coordinates — Inicio\'s honest «Ningún restaurante entrega en esta dirección», never a fallback to another pin', async () => {
-  const b = await dirBoot({ use: (q) => (q.id === AID.casa ? 'use_casa' : 'use_trabajo') });
+  const b = await dirBoot({ uses: ['use_trabajo', 'use_casa'] });
   try {
     await toDirecciones(b.S); b.S.click(`.addrlist [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush(); await flush();
     b.S.click('.tabbar [data-tab="home"]'); await flush();
@@ -6199,5 +6208,355 @@ test('PUSH-SHELL-15 (Codex r1 P2-8): a tapped push for a past order NOT in «Ped
     assert.ok(txt(S.q('.mk-num')).startsWith('Orden #52'), 'its number');
     S.click('[data-act="order-close"]'); await flush();
     f.tap({ order_id: 'XP-NONE1' }); await until(() => S.q('.pagehead h1') && txt(S.q('.pagehead h1')) === 'Pedidos', 6000);
+  } finally { S.w.close(); }
+});
+
+// ── direcciones r3 (owner 11-18: the CONFIRM-FIRST prototype, APPROVED — PROTO-capp-direcciones-confirm-first.html; Codex #153 →
+// rule 36): (c) a sign-out OR an account switch is a HARD RESET of everything derived from the previous member — the book, the
+// selection, an open sheet, the pin editor + its draft, the checkout's details (no exemption for typed text), the location copies
+// (S.loc, capp:guest_loc) and the device book. Codex #153 #3 / #4 map here ──
+const signOutNow = async (fb) => { const { authMod } = await fb.loadSdk(); await authMod.signOut(); await flush(); await flush(); };
+const pinOnCasa = async (S, ui) => { S.click('.map[data-act="pin"]'); await flush(); ui.state.pinDraft = { lat: casaOf().lat, lng: casaOf().lng }; };
+for (const [how, go] of [['a SIGN-OUT', (fb) => signOutNow(fb)], ['an ACCOUNT SWITCH', (fb, S, st) => switchTo(S, fb, st, 'u_bob')]]) {
+  test(`r3 (c) RESET-SHEET: ${how} with Inicio's «Entregar en» open closes it — none of her rows stay on screen`, async () => {
+    const { S, fb, st } = await dirBoot();
+    try {
+      S.click('.tabbar [data-tab="home"]'); await flush(); S.click('[data-act="addr"]'); await flush();
+      assert.equal(S.qa('#layer [data-act="addr-use"]').length, 2, 'premise: her two saved rows in the open sheet');
+      await go(fb, S, st);
+      assert.equal(S.qa('#layer [data-act="addr-use"]').length, 0, '🔴 R3-RESET-SHEET: no saved row of hers in any open sheet');
+      assert.ok(!/Trabajo|Col\. Trejo/.test(S.q('#layer').textContent), '🔴 R3-RESET-SHEET: nothing of her book in the layer');
+    } finally { S.w.close(); }
+  });
+  test(`r3 (c) RESET-PICK: ${how} with the checkout's «Entregar en» open closes it and drops its frozen rows`, async () => {
+    const { S, ui, fb, st } = await seedCheckout();
+    try {
+      S.click('[data-act="co-addr"]'); await flush();
+      assert.equal(S.qa('#layer [data-act="addr-use"]').length, 2, 'premise: the checkout sheet shows her rows');
+      await go(fb, S, st);
+      assert.notEqual(ui.state.layerKind, 'addrpick', '🔴 R3-RESET-PICK: the checkout sheet is closed (not merely re-filled from the next book)');
+      assert.equal(S.qa('#layer [data-act="addr-use"]').length, 0, '🔴 R3-RESET-PICK: none of her rows remain');
+      assert.equal(ui.state.pickDir == null, true, '🔴 R3-RESET-PICK: its frozen snapshot is cleared');
+    } finally { S.w.close(); }
+  });
+  test(`r3 (c) Codex #153 #3a (P1): ${how} with the pin editor open on her saved address tears it down — no editor, no draft, «Listo» cannot land her coordinates`, async () => {
+    const { S, ui, fb, st } = await seedCheckout();
+    try {
+      await pinOnCasa(S, ui);
+      assert.ok(S.q('.pinstep'), 'premise: the pin editor is open on Casa');
+      await go(fb, S, st);
+      assert.equal(S.q('.pinstep'), null, '🔴 C153-3a: the pin editor is gone');
+      assert.equal(ui.state.pinDraft, null, '🔴 C153-3a: its draft (her coordinates) is dropped');
+      const lc = st.getItem('capp:guest_loc');
+      assert.ok(!lc || JSON.parse(lc).lat !== casaOf().lat, '🔴 C153-3a: her coordinates never become the device location');
+    } finally { S.w.close(); }
+  });
+  test(`r3 (c) Codex #153 #3b (P1): ${how} after she CONFIRMED the pin on her saved address clears every location copy (S.loc and capp:guest_loc)`, async () => {
+    const { S, ui, fb, st } = await seedCheckout();
+    try {
+      await pinOnCasa(S, ui); S.click('[data-act="pin-done"]'); await flush(); await flush();
+      const lc0 = st.getItem('capp:guest_loc'); assert.ok(lc0 && JSON.parse(lc0).lat === casaOf().lat, 'premise: «Listo» reported her pin to the shell (persisted)');
+      await go(fb, S, st);
+      assert.equal(st.getItem('capp:guest_loc'), null, '🔴 C153-3b: the persisted location copy is removed');
+      assert.equal(S.ui.state.loc, null, '🔴 C153-3b: the shell\'s location (S.loc) is cleared');
+      S.ui.nav.tab({ name: 'home' }); await flush();
+      assert.equal(S.q('.addr-btn').getAttribute('aria-label'), 'Dirección de entrega: Agregá tu dirección', '🔴 C153-3b: Inicio holds no location of hers (the pill asks for one)');
+      assert.equal(ui.state.pinStepOk, false, '🔴 C153-3b: the pin-step flag is reset with it');
+      const fl = S.q('.flow'); assert.ok(!fl || !/Pin confirmado/.test(fl.textContent), '🔴 C153-3b: the checkout row never reads «Pin confirmado»');
+    } finally { S.w.close(); }
+  });
+  test(`r3 (c) Codex #153 #4 (P1): ${how} clears the checkout's details whatever she typed — retyped saved text AND new text (no touched-field exemption)`, async () => {
+    for (const typed of ['Casa azul, portón negro', 'Portón verde, segundo piso']) {
+      const { S, ui, fb, st } = await seedCheckout();
+      try {
+        S.click('[data-act="editdetails"]'); await flush();
+        const d = S.q('[data-field="details"]'); assert.ok(d, 'premise: the details field');
+        d.value = ''; d.dispatchEvent(new S.w.Event('input', { bubbles: true }));
+        d.value = typed; d.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+        assert.equal(ui.state.flow.details, typed, 'premise: typed');
+        await go(fb, S, st);
+        assert.equal(ui.state.flow.details, '', `🔴 C153-4: «${typed}» is cleared from the flow`);
+        const v = S.q('[data-field="details"]'); assert.ok(!v || v.value === '', `🔴 C153-4: and from the visible field`);
+        assert.ok(!S.w.document.body.textContent.includes(typed), `🔴 C153-4: nothing on screen still reads «${typed}»`);
+      } finally { S.w.close(); }
+    }
+  });
+  // advisor ruling 11-18: a member sign-out / switch DURING «Enviando» — the order goes on server-side, but the SCREEN never outlives
+  // the identity: «Enviando» is left for the signed-out Inicio, the dispatch snapshot leaves memory, the DOM and the device, and the
+  // order's late reply renders nothing (she finds the order under «Pedidos» once signed in again)
+  test(`r3 (c) SEND-RESET: ${how} during «Enviando» leaves it for Inicio — no address, details, item or snapshot anywhere; the late reply renders nothing`, async () => {
+    let release = null; const co = [], api = [];
+    const apiFetch = (u, i) => (api.push(u.split('?')[0]), u.startsWith('/x/q') ? quoteOk(u, i) : u.startsWith('/x/c') ? new Promise((r) => { co.push(JSON.parse(i.body)); release = () => r({ status: 200, ok: true, json: async () => ({ ok: true, order_id: JSON.parse(i.body).order_id, tracking_token: 'tok_abcdefgh12' }) }); }) : new Promise(() => {}));
+    const { S, ui, fb, st } = await seedCheckout({ apiFetch });
+    try {
+      await flush(); await flush();
+      if (S.q('[data-act="pay"][data-val="cash"]')) { S.click('[data-act="pay"][data-val="cash"]'); await flush(); }
+      S.click('#cta'); await flush(); S.click('#layer [data-act="placing-go"]'); await flush(); await flush(); await flush(700);
+      assert.equal(ui.state.screen, 'sending', 'premise: «Enviando» is showing');
+      assert.equal(co.length, 1, 'premise: ONE createOrder in flight, held');
+      const item = txt(S.q('.sndcard .prow:nth-child(3) .t > span')) || '';
+      assert.ok(/Casa · Col\. Trejo/.test(S.w.document.body.textContent) && item, 'premise: her address and item on «Enviando»');
+      await go(fb, S, st);
+      assert.equal(S.ui.store(), null, '🔴 R3-SEND-RESET: the store mount (and its «Enviando») is gone');
+      assert.equal(S.ui.state.tab, 'home', '🔴 R3-SEND-RESET: the signed-out Inicio');
+      assert.equal(ui.state.sentOrder, null, '🔴 R3-SEND-RESET: the dispatch snapshot leaves memory');
+      const body = () => S.w.document.body.textContent;
+      for (const t of ['Enviando tu pedido', 'Casa · Col. Trejo', 'Casa azul, portón negro', item]) assert.ok(!body().includes(t), `🔴 R3-SEND-RESET: «${t}» is nowhere in the DOM`);
+      const vals = [...st._m.values()].join('\n');
+      for (const t of ['Casa azul, portón negro', 'Col. Trejo', item]) assert.ok(!vals.includes(t), `🔴 R3-SEND-RESET: «${t}» is nowhere on the device`);
+      release(); await flush(); await flush(); await flush(700);
+      for (const t of ['Enviando tu pedido', 'Pedido recibido', 'Casa · Col. Trejo', item]) assert.ok(!body().includes(t), `🔴 R3-SEND-RESET: the late reply renders nothing («${t}»)`);
+      assert.equal(S.ui.state.tab, 'home', 'still Inicio');
+      assert.deepEqual(api.filter((u) => /^\/x\/(c|p|s)/.test(u)), ['/x/c'], '🔴 R3-SEND-RESET: ONE createOrder, then no retry, charge or payment poll after the reset (rule 17)');
+    } finally { S.w.close(); }
+  });
+}
+
+// ── direcciones r3 BATCH 2 — CONFIRM-FIRST (owner-APPROVED prototype; PLAN-3a-addr-rev @805a5015; Codex #153). A tap never switches
+// anything: the tapped row carries the spinner in its right slot, every other address control is disabled until the server answers,
+// and «en uso» moves ONLY on a 200. Every non-200 (offline, a timeout, a refusal, a 409) ends in the OWNED profile re-read: the pick is
+// the re-read's selection ⇒ success; otherwise the calm sand line «No pudimos cambiar la dirección. Probá de nuevo.» and the book is the
+// server's. A 409 body is trusted for NOTHING but «stale» (owner 11-18) ──
+const SAND = 'No pudimos cambiar la dirección. Probá de nuevo.';
+const held = () => { const q = []; return { q, gate: () => new Promise((r) => q.push(r)), release: () => { for (const r of q.splice(0)) r(); } }; };
+const dirRow = (S, id) => S.q(`.addrlist [data-act="addr-use"][data-id="${id}"]`);
+const sheetRow = (S, id) => S.q(`#layer [data-act="addr-use"][data-id="${id}"]`);
+const off = (el) => !!el && el.getAttribute('aria-disabled') === 'true';
+const sandOf = (S, root) => { const x = S.q(`${root} .sandline[role="status"]`); return x ? txt(x) : null; };
+const enUso = (S) => dirRows(S).filter((r) => / · en uso$/.test(r[2])).map((r) => r[2].replace(/ · en uso$/, ''));
+const noProblems = (addr) => assert.deepEqual(addr.problems, [], 'every write is a request the real handler was recorded answering');
+test('r3 (a) Codex #153 DIR-CONFIRM: a tap in «Direcciones» keeps «Casa · en uso», spins in Trabajo\'s right slot, disables every other control; «en uso» moves only on the 200', async () => {
+  const h = held();
+  const { S, addr, st } = await dirBoot({ ugate: () => h.gate() });
+  try {
+    await toDirecciones(S);
+    S.click(dirRow(S, AID.trabajo)); await flush();
+    assert.ok(addrWrites(addr).length >= 1, '🔴 R3-CONFIRM: the tap sends the pick to the server');
+    assert.deepEqual(enUso(S), ['Casa'], '🔴 R3-CONFIRM: nothing switches on the tap');
+    const t = dirRow(S, AID.trabajo);
+    assert.ok(t.querySelector('.addrspin') && t.getAttribute('aria-busy') === 'true', '🔴 R3-CONFIRM: the tapped row spins in its right slot');
+    assert.ok(off(dirRow(S, AID.casa)) && off(S.q('.addrlist [data-act="addr-new"]')), '🔴 R3-CONFIRM: every other control is disabled');
+    S.click(dirRow(S, AID.casa)); S.click(S.q('.addrlist [data-act="addr-new"]')); await flush();
+    assert.deepEqual(addrWrites(addr), [{ id: AID.trabajo, expected_rev: 0, expected_default: AID.casa }], '🔴 R3-CONFIRM: ONE write in flight, the exact CAS body');
+    assert.ok(dirRow(S, AID.casa), 'a disabled tap navigates nowhere');
+    h.release(); await flush(); await flush();
+    assert.deepEqual(enUso(S), ['Trabajo'], '🔴 R3-CONFIRM: the 200 moves «en uso»');
+    assert.ok(!S.q('.addrlist .addrspin') && !S.qa('.addrlist [aria-disabled="true"]').length, 'the rows are live again');
+    assert.deepEqual([addrStored(st).default_address, addrStored(st).default_address_rev], [AID.trabajo, 1], 'the device copy follows the 200 (its new rev)');
+    S.click('.tabbar [data-tab="home"]'); await flush();
+    assert.equal(txt(S.q('.addr-btn .v > span')), 'Trabajo', 'the pill reads the confirmed label');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 (a) SHEET-CONFIRM: the checkout\'s «Entregar en» spins on the tapped row (the rest disabled, «Cambiar» too once closed); the checkout keeps Casa until the 200', async () => {
+  const h = held();
+  const { S, ui, addr } = await seedCheckout({ ugate: () => h.gate() });
+  try {
+    S.click('[data-act="co-addr"]'); await flush();
+    S.click(sheetRow(S, AID.trabajo)); await flush();
+    assert.ok(S.q('#layer [data-act="addr-use"]'), '🔴 R3-SHEET: the sheet stays open while the server answers');
+    assert.ok(sheetRow(S, AID.trabajo).querySelector('.addrspin'), '🔴 R3-SHEET: the tapped row spins');
+    assert.ok(off(sheetRow(S, AID.casa)) && off(S.q('#layer [data-act="loc-use"]')) && off(S.q('#layer [data-act="addr-new"]')), '🔴 R3-SHEET: every other row is disabled');
+    assert.equal(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', '🔴 R3-SHEET: the checkout still names Casa');
+    assert.deepEqual([ui.state.flow.pin.lat, ui.state.flow.pin.lng], [casaOf().lat, casaOf().lng], '🔴 R3-SHEET: and still prices / routes Casa');
+    S.click('#layer [data-act="lclose"]'); await flush();
+    assert.ok(off(S.q('[data-act="co-addr"]')), '🔴 R3-SHEET: «Cambiar» is disabled while the pick is in flight');
+    S.click('[data-act="co-addr"]'); await flush();
+    assert.equal(S.q('#layer [data-act="addr-use"]'), null, 'a disabled «Cambiar» opens nothing');
+    h.release(); await flush(); await flush();
+    assert.equal(addrBold(S), 'Trabajo · Blvd. Morazán, Tegucigalpa', '🔴 R3-SHEET: the 200 re-seeds the checkout (the sheet closed meanwhile)');
+    assert.ok(!off(S.q('[data-act="co-addr"]')), '«Cambiar» is live again');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 (a) INICIO-LOCK: while a pick is in flight Inicio\'s «Entregar en» is disabled and opens nothing', async () => {
+  const h = held();
+  const { S, addr } = await dirBoot({ ugate: () => h.gate() });
+  try {
+    await toDirecciones(S); S.click(dirRow(S, AID.trabajo)); await flush();
+    S.click('.tabbar [data-tab="home"]'); await flush();
+    assert.ok(off(S.q('.addr-btn')), '🔴 R3-INICIO: the pill is disabled');
+    S.click('.addr-btn'); await flush();
+    assert.equal(S.q('#layer [data-act="addr-use"]'), null, '🔴 R3-INICIO: no sheet opens');
+    h.release(); await flush(); await flush();
+    assert.ok(!off(S.q('.addr-btn')) && txt(S.q('.addr-btn .v > span')) === 'Trabajo', 'live again, on the confirmed pick');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 (b) REFUSED: a 404 (the form deleted Casa meanwhile) ⇒ the sand line, «en uso» unchanged, the re-read book adopted, the rows live, no toast', async () => {
+  const { S, addr, st } = await dirBoot({ reads: ['m3_profile_trabajo', 'm3_profile_nocasa'], uses: ['m3_use_casa_gone'] });
+  try {
+    await toDirecciones(S);
+    assert.deepEqual(enUso(S), ['Trabajo'], 'premise: Trabajo in use (rev 3)');
+    S.click(dirRow(S, AID.casa)); await flush(); await flush();
+    assert.deepEqual(addrWrites(addr), [{ id: AID.casa, expected_rev: 3, expected_default: AID.trabajo }], 'premise: the CAS body');
+    assert.equal(sandOf(S, '.flow'), SAND, '🔴 R3-REFUSED: the calm sand line');
+    assert.deepEqual(enUso(S), ['Trabajo'], '🔴 R3-REFUSED: nothing switched');
+    assert.equal(addrReads(addr).length, 2, '🔴 R3-REFUSED: ONE re-read after the refusal');
+    assert.ok(!addrStored(st).addresses.some((a) => a.id === AID.casa), '🔴 R3-REFUSED: the book is the server\'s (Casa gone on the device)');
+    assert.ok(!S.qa('.addrlist [aria-disabled="true"]').length && !S.q('.toast.show'), 'the rows are live; no toast');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 (b) OFFLINE: no answer ⇒ the sand line + ONE owned re-read; the rows live; the next pick (online) succeeds and clears the line', async () => {
+  let net = 'OFFLINE';
+  const { S, addr } = await dirBoot({ ugate: () => net, reads: ['profile_default_casa'], uses: ['use_trabajo'] });
+  try {
+    await toDirecciones(S);
+    S.click(dirRow(S, AID.trabajo)); await flush(); await flush();
+    assert.equal(sandOf(S, '.flow'), SAND, '🔴 R3-OFFLINE: the sand line');
+    assert.deepEqual(enUso(S), ['Casa'], '🔴 R3-OFFLINE: «en uso» never moved');
+    assert.equal(addrReads(addr).length, 2, '🔴 R3-OFFLINE: the owned re-read');
+    net = null; S.click(dirRow(S, AID.trabajo)); await flush();
+    assert.equal(sandOf(S, '.flow'), null, '🔴 R3-OFFLINE: the line clears the moment the next pick starts');
+    await flush();
+    assert.deepEqual(enUso(S), ['Trabajo'], 'the next pick lands');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 (owner 409) SPECULATIVE: a 409 naming MY id at expected_rev + 1 while the server does NOT have it ⇒ the sand line and the server\'s state — the body is never trusted', async () => {
+  const { S, addr, st } = await dirBoot({ reads: ['profile_default_casa', 'profile_after_back'], uses: ['use_trabajo_again'] });
+  try {
+    await toDirecciones(S); S.click(dirRow(S, AID.trabajo)); await flush(); await flush();
+    assert.equal(sandOf(S, '.flow'), SAND, '🔴 R3-409-BODY: a 409 is never success by its body');
+    assert.deepEqual(enUso(S), ['Casa'], '🔴 R3-409-BODY: the re-read\'s selection');
+    assert.deepEqual([addrStored(st).default_address, addrStored(st).default_address_rev], [AID.casa, 2], '🔴 R3-409-BODY: the re-read\'s pair (never the body\'s)');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 (owner 409) LANDED: a 409 when the server REALLY has my pick (the re-read shows it) ⇒ success, no sand line', async () => {
+  const { S, addr, st } = await dirBoot({ reads: ['profile_default_casa', 'profile_after_use'], uses: ['use_trabajo_again'] });
+  try {
+    await toDirecciones(S); S.click(dirRow(S, AID.trabajo)); await flush(); await flush();
+    assert.equal(sandOf(S, '.flow'), null, '🔴 R3-409-LANDED: no sand line');
+    assert.deepEqual(enUso(S), ['Trabajo'], '🔴 R3-409-LANDED: the pick holds');
+    assert.deepEqual([addrStored(st).default_address, addrStored(st).default_address_rev], [AID.trabajo, 1], 'the re-read pair');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 FORM-CHANGE: the form moved the selection between the read and the pick ⇒ 409 ⇒ the sand line + the re-read (Mamá) ⇒ the next pick, sent with the re-read pair, succeeds', async () => {
+  const { S, addr } = await dirBoot({ reads: ['m3_profile_casa', 'm3_profile_mama'], uses: ['m3_use_trabajo_stale', 'm3_use_trabajo_ok'] });
+  try {
+    await toDirecciones(S); S.click(dirRow(S, AID.trabajo)); await flush(); await flush();
+    assert.equal(sandOf(S, '.flow'), SAND, '🔴 R3-FORM: the sand line');
+    assert.deepEqual(enUso(S), ['Mamá'], '🔴 R3-FORM: the server\'s selection now shows');
+    S.click(dirRow(S, AID.trabajo)); await flush(); await flush();
+    assert.deepEqual(addrWrites(addr)[1], { id: AID.trabajo, expected_rev: 2, expected_default: AID.mama }, '🔴 R3-FORM: the retry carries the RE-READ pair');
+    assert.deepEqual([sandOf(S, '.flow'), enUso(S)], [null, ['Trabajo']], 'it lands');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 (e) Codex #153 #7 TIMEOUT: the 12 s cap ⇒ UNKNOWN (sand line, re-read, rows live) ⇒ a new pick lands ⇒ the OLD write lands late, gets the 409 and changes nothing — final = the server\'s state', async () => {
+  const h = held(); let n0 = true;
+  const { S, addr, st } = await dirBoot({ ugate: () => (n0 ? (n0 = false, h.gate()) : null), reads: ['profile_default_casa'], uses: ['use_trabajo', 'use_trabajo_again'] });
+  try {
+    await toDirecciones(S); S.click(dirRow(S, AID.trabajo)); await flush();
+    await flush(12500);
+    assert.equal(sandOf(S, '.flow'), SAND, '🔴 C153-7: the cap ends the wait as UNKNOWN');
+    assert.ok(!S.qa('.addrlist [aria-disabled="true"]').length, '🔴 C153-7: the rows are live again (never stuck on a hung socket)');
+    S.click(dirRow(S, AID.trabajo)); await flush(); await flush();
+    assert.deepEqual(enUso(S), ['Trabajo'], 'the new pick lands (200, rev 1)');
+    h.release(); await flush(); await flush();
+    assert.equal(addrWrites(addr).length, 2, 'premise: the old write reached the server late');
+    assert.deepEqual(enUso(S), ['Trabajo'], '🔴 C153-7: the late reply changes nothing');
+    assert.equal(sandOf(S, '.flow'), null, '🔴 C153-7: and draws no sand line');
+    assert.deepEqual([addrStored(st).default_address, addrStored(st).default_address_rev], [AID.trabajo, 1], '🔴 C153-7: client = server (Trabajo, rev 1)');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 Codex #153 #1 (P1): a switch landing while the pick waits on its token ⇒ nothing is sent or read with the next member\'s token, and her device copy keeps her book', async () => {
+  const hold = { on: false, q: [] }, gate = { on: false, q: [] };
+  const { S, fb, addr, st } = await dirBoot({ fbOpts: { hold, notifyGate: gate } });
+  try {
+    await toDirecciones(S);
+    const before = JSON.stringify(addrStored(st));
+    hold.on = true; S.click(dirRow(S, AID.trabajo)); await flush();
+    assert.ok(hold.q.length >= 1, 'premise: the pick waits on its token');
+    hold.on = false; gate.on = true;
+    const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush();   // the SDK is Bob's; the shell not told yet
+    for (const r of hold.q.splice(0)) r(); await flush(); await flush(); await flush();
+    assert.deepEqual(addrWrites(addr), [], '🔴 C153-1: the pick is never sent once the SDK is no longer hers (owned token)');
+    assert.deepEqual(addr.calls.filter((c) => c.who === 'u_bob').map((c) => c.ep), [], '🔴 C153-1: no write and no read under Bob\'s token while the book is Ana\'s');
+    assert.equal(JSON.stringify(addrStored(st)), before, '🔴 C153-1: her device copy is never overwritten from another account');
+    gate.on = false; for (const e of gate.q.splice(0)) e(); await flush(); await flush();
+  } finally { S.w.close(); }
+});
+test('r3 Codex #153 #1 (P1): a switch that landed in the SDK BEFORE the pick (the shell not told yet) ⇒ the token is the next member\'s, so nothing is sent with it', async () => {
+  const gate = { on: false, q: [] };
+  const { S, fb, addr, st } = await dirBoot({ fbOpts: { notifyGate: gate } });
+  try {
+    await toDirecciones(S);
+    const before = JSON.stringify(addrStored(st));
+    gate.on = true;
+    const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush();   // the SDK is Bob's; the shell still shows Ana's book
+    assert.ok(dirRow(S, AID.trabajo), 'premise: Ana\'s «Direcciones» is still on screen');
+    S.click(dirRow(S, AID.trabajo)); await flush(); await flush(); await flush();
+    assert.deepEqual(addrWrites(addr), [], '🔴 C153-1: a token owned by another member never carries her pick');
+    assert.deepEqual(addr.calls.filter((c) => c.who === 'u_bob').map((c) => c.ep), [], '🔴 C153-1: no write and no read under Bob\'s token while the book is Ana\'s');
+    assert.equal(JSON.stringify(addrStored(st)), before, '🔴 C153-1: her device copy is never overwritten from another account');
+    gate.on = false; for (const e of gate.q.splice(0)) e(); await flush(); await flush();
+  } finally { S.w.close(); }
+});
+test('r3 Codex #153 #5 (P2): an UNKNOWN pick made in the checkout leaves the checkout exactly where the shell is (Casa) — row, pin and price', async () => {
+  const { S, ui, addr } = await seedCheckout({ ugate: () => 'OFFLINE', reads: ['profile_default_casa'], uses: [] });
+  try {
+    S.click('[data-act="co-addr"]'); await flush(); S.click(sheetRow(S, AID.trabajo)); await flush(); await flush();
+    assert.equal(sandOf(S, '#layer'), SAND, 'premise: the sheet shows the sand line');
+    assert.equal(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', '🔴 C153-5: the row is the shell\'s selection');
+    assert.deepEqual([ui.state.flow.pin.lat, ui.state.flow.pin.lng], [casaOf().lat, casaOf().lng], '🔴 C153-5: and the pin that prices the order');
+    assert.ok(sheetRow(S, AID.casa).classList.contains('on'), 'the sheet marks Casa in use');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #153 #6 (P2): a checkout entered while a Direcciones pick is in flight is seeded from the CONFIRMED address; the 200 re-seeds it, a failure leaves it', async () => {
+  for (const ok of [true, false]) {
+    const h = held();
+    const { S, ui, addr } = await dirBoot({ ugate: () => (ok ? h.gate() : h.gate().then(() => { throw new Error('offline'); })), reads: ['profile_default_casa'], uses: ok ? ['use_trabajo'] : [] });
+    try {
+      await toDirecciones(S); S.click(dirRow(S, AID.trabajo)); await flush();
+      S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+      const u = S.ui.store().ui; u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render();
+      S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush(); await flush();
+      assert.equal(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', `🔴 C153-6: seeded from the CONFIRMED Casa (${ok ? 'ok' : 'fail'})`);
+      h.release(); await flush(); await flush();
+      assert.equal(addrBold(S), ok ? 'Trabajo · Blvd. Morazán, Tegucigalpa' : 'Casa · Col. Trejo, San Pedro Sula', `🔴 C153-6: ${ok ? 'the 200 re-seeds it' : 'a failure leaves it'}`);
+      noProblems(addr);
+    } finally { S.w.close(); }
+  }
+});
+test('r3 Codex #153 #2 (P1): «Enviando» shows the address the order was SENT with — a pick landing during the send never changes it', async () => {
+  const h = held(); let release = null; const co = [];
+  const apiFetch = (u, i) => (u.startsWith('/x/q') ? quoteOk(u, i) : u.startsWith('/x/c') ? new Promise((r) => { co.push(JSON.parse(i.body)); release = () => r({ status: 200, ok: true, json: async () => ({ ok: true, order_id: JSON.parse(i.body).order_id, tracking_token: 'tok_abcdefgh12' }) }); }) : new Promise(() => {}));
+  const { S, ui, addr } = await dirBoot({ ugate: () => h.gate(), apiFetch });
+  try {
+    await toDirecciones(S); S.click(dirRow(S, AID.trabajo)); await flush();
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    const u = S.ui.store().ui; u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render();
+    S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush(); await flush();
+    if (S.q('[data-act="pay"][data-val="cash"]')) { S.click('[data-act="pay"][data-val="cash"]'); await flush(); }
+    S.click('#cta'); await flush(); S.click('#layer [data-act="placing-go"]'); await flush(); await flush(); await flush(700);
+    assert.equal(u.state.screen, 'sending', 'premise: «Enviando»');
+    const sent = co[0] && co[0].delivery ? co[0].delivery : co[0];
+    h.release(); await flush(); await flush();
+    assert.ok(/Casa · Col\. Trejo/.test(txt(S.q('.sndcard'))), '🔴 C153-2: «Enviando» still names Casa — the address SENT');
+    assert.ok(!/Trabajo/.test(txt(S.q('.sndcard'))), '🔴 C153-2: never the pick that landed after');
+    assert.ok(JSON.stringify(co[0]).includes(String(casaOf().lat)), 'premise: the order body carried Casa');
+    if (release) release();
+  } finally { S.w.close(); }
+});
+test('r3 STALE-READ: a profile read that STARTED before a pick landed never overrides that pick (the device copy carries the revision)', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true }));
+  const first = await dirBoot({ storage: st }); first.S.w.close();
+  assert.deepEqual([addrStored(st).default_address, addrStored(st).default_address_rev], [AID.casa, 0], 'premise: the v2 device copy (Casa, rev 0)');
+  let open = null; const pgate = new Promise((r) => { open = r; });
+  const { S, addr } = await dirBoot({ storage: st, pgate, uses: ['use_trabajo'] });
+  try {
+    await toDirecciones(S);
+    assert.equal(addrReads(addr).length, 1, 'premise: the read after paint is in flight (held)');
+    S.click(dirRow(S, AID.trabajo)); await flush(); await flush();
+    assert.deepEqual(enUso(S), ['Trabajo'], 'premise: the pick landed (200, rev 1)');
+    open(); await flush(); await flush();
+    assert.deepEqual(enUso(S), ['Trabajo'], '🔴 R3-STALE-READ: the older read (Casa, rev 0) never overrides the newer pick');
+    assert.deepEqual([addrStored(st).default_address, addrStored(st).default_address_rev], [AID.trabajo, 1], '🔴 R3-STALE-READ: nor the device copy');
+    noProblems(addr);
   } finally { S.w.close(); }
 });

@@ -41320,35 +41320,35 @@
  {
   "id": "dir-02",
   "slice": "c-dir-1",
-  "label": "the selection never persisted (no useMyAddress)",
+  "label": "r3: the pick is never sent (no useMyAddress)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "const r = tok ? await suApi.useMyAddress({ idToken: tok, id }) : { ok: false, reason: 'unauthenticated' };",
-  "to": "const r = { ok: true };",
+  "from": "if (live() && own && own.uid === uid && own.token) r = await suApi.useMyAddress({ idToken: own.token, ...body });",
+  "to": "if (false) r = await suApi.useMyAddress({ idToken: own.token, ...body });",
   "command": [
    "node",
    "--test",
-   "--test-name-pattern=^C-DIR-1",
+   "--test-name-pattern=DIR-CONFIRM",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "DIR-3"
+   "R3-CONFIRM: the tap sends the pick"
   ]
  },
  {
   "id": "dir-03",
   "slice": "c-dir-1",
-  "label": "a refused «en uso» write is not reverted (the screen lies about the server)",
+  "label": "r3: a failed pick is counted as success (the screen lies about the server)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "if (r.ok !== true && S.book.sel === id) {",
-  "to": "if (false && r.ok !== true && S.book.sel === id) {",
+  "from": "won = !!(b && b.sel === id);",
+  "to": "won = true;",
   "command": [
    "node",
    "--test",
-   "--test-name-pattern=^C-DIR-1",
+   "--test-name-pattern=REFUSED",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "DIR-5"
+   "R3-REFUSED: the calm sand line"
   ]
  },
  {
@@ -41373,8 +41373,8 @@
   "slice": "c-dir-1",
   "label": "the visible «Direcciones» list re-renders LIVE (a row inserted when the read lands — pop-in)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "dir: { rows: dirShown || [], sel: savedSelId() } }) :",
-  "to": "dir: { rows: S.book.addresses, sel: savedSelId() } }) :",
+  "from": "dir: { rows: dirShown || [], sel: savedSelId(), ...pickVm('dir') } }) :",
+  "to": "dir: { rows: S.book.addresses, sel: savedSelId(), ...pickVm('dir') } }) :",
   "command": [
    "node",
    "--test",
@@ -41390,8 +41390,8 @@
   "slice": "c-dir-1",
   "label": "the pencil gets an action of its own (v6 draws it inert)",
   "file": "../customer-app/capp-home.js",
-  "from": "${IC.edit.replace('class=\"i\"', 'class=\"i chev\"')}</button>`).join('');",
-  "to": "${IC.edit.replace('class=\"i\"', 'class=\"i chev\" data-act=\"addr-edit\"')}</button>`).join('');",
+  "from": "${d.pend === a.id ? SPIN : IC.edit.replace('class=\"i\"', 'class=\"i chev\"')}</button>`).join('');",
+  "to": "${d.pend === a.id ? SPIN : IC.edit.replace('class=\"i\"', 'class=\"i chev\" data-act=\"addr-edit\"')}</button>`).join('');",
   "command": [
    "node",
    "--test",
@@ -41407,7 +41407,7 @@
   "slice": "c-dir-1",
   "label": "the «Entregar en» sheet never lists the member's saved addresses",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "CappHome.addrSheetHtml(S.member && S.book ? { rows: dirShown || S.book.addresses, sel: savedSelId() } : null)",
+  "from": "CappHome.addrSheetHtml(S.member && S.book ? { rows: dirShown || S.book.addresses, sel: savedSelId(), ...pickVm('inicio') } : null)",
   "to": "CappHome.addrSheetHtml(null)",
   "command": [
    "node",
@@ -41456,10 +41456,10 @@
  {
   "id": "dir-pin",
   "slice": "c-dir-1",
-  "label": "the address fixture is trusted at another 3a ref (the pre-merge addr-use-3a tip) — merge-forward 11-18",
+  "label": "the address fixture is trusted at another 3a ref (the pre-CAS addr-3a-fwd tip)",
   "file": "../customer-app/capp-s7a2.test.mjs",
-  "from": "const ADDR_REF = '1856188046a6afac53f05b20ccad27702ef4b376';",
-  "to": "const ADDR_REF = 'd1f45ff39b4f3bd161203ab8d88feff1cb474773';",
+  "from": "const ADDR_REF = '805a5015411a63ecac62d1f54bac653b9ea1ddc0';",
+  "to": "const ADDR_REF = '1856188046a6afac53f05b20ccad27702ef4b376';",
   "command": [
    "node",
    "--test",
@@ -41524,10 +41524,10 @@
  {
   "id": "seed-03",
   "slice": "c-dir-1-seed",
-  "label": "forgetSaved does nothing (a signed-out checkout keeps her address)",
+  "label": "forgetMember does nothing (a signed-out checkout keeps her address)",
   "file": "../customer-app/capp-ui.js",
-  "from": "const f = S.flow; if (dead || !f || !f.saved) return;\n        if (f.saved.pinV === f.pinV)",
-  "to": "const f = S.flow; return;\n        if (f.saved.pinV === f.pinV)",
+  "from": "forgetMember() {\n        if (dead) return;",
+  "to": "forgetMember() {\n        return;",
   "command": [
    "node",
    "--test",
@@ -41541,10 +41541,10 @@
  {
   "id": "seed-04",
   "slice": "c-dir-1-seed",
-  "label": "an identity change never tells the open checkout to drop the seed",
+  "label": "an identity change never tells the open checkout to forget the member",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "try { if (S.store && S.store.ui && typeof S.store.ui.forgetSaved === 'function') S.store.ui.forgetSaved(); } catch (_) {}",
-  "to": "",
+  "from": "try { if (S.store && S.store.ui && typeof S.store.ui.forgetMember === 'function') S.store.ui.forgetMember(); } catch (_) {}",
+  "to": "/* (no forgetMember) */",
   "command": [
    "node",
    "--test",
@@ -41658,12 +41658,165 @@
   ]
  },
  {
+  "id": "r3-c-01",
+  "slice": "r3-c",
+  "label": "the previous member leaving runs no reset at all",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (prev && prev !== uid) memberLeft();",
+  "to": "if (false) memberLeft();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^r3 \\(c\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-RESET-SHEET"
+  ]
+ },
+ {
+  "id": "r3-c-02",
+  "slice": "r3-c",
+  "label": "Inicio's «Entregar en» stays open over the next identity",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (S.layer === 'addr') closeLayer(false);\n      S.loc = null;",
+  "to": "      S.loc = null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^r3 \\(c\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-RESET-SHEET"
+  ]
+ },
+ {
+  "id": "r3-c-03",
+  "slice": "r3-c",
+  "label": "the location copies (S.loc, capp:guest_loc) survive the member",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "S.loc = null; S.locPick = null; try { storage && storage.removeItem(LOC_KEY); } catch (_) {}",
+  "to": "S.locPick = null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^r3 \\(c\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C153-3b: the persisted location copy"
+  ]
+ },
+ {
+  "id": "r3-c-04",
+  "slice": "r3-c",
+  "label": "the checkout's «Entregar en» stays open over the next identity",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (S.layerKind === 'addrpick' || S.layerKind === 'pin') closeLayer();",
+  "to": "if (S.layerKind === 'pin') closeLayer();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^r3 \\(c\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-RESET-PICK"
+  ]
+ },
+ {
+  "id": "r3-c-05",
+  "slice": "r3-c",
+  "label": "the pin editor on her address stays open",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (S.layerKind === 'addrpick' || S.layerKind === 'pin') closeLayer();",
+  "to": "if (S.layerKind === 'addrpick') closeLayer();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^r3 \\(c\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C153-3a: the pin editor is gone"
+  ]
+ },
+ {
+  "id": "r3-c-06",
+  "slice": "r3-c",
+  "label": "typed details are exempt from the reset (the touched-field exemption back)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "f.geo = null; f.details = ''; f.saved = null; }",
+  "to": "f.geo = null; if (f.saved && f.details === f.saved.details) f.details = ''; f.saved = null; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^r3 \\(c\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C153-4"
+  ]
+ },
+ {
+  "id": "r3-c-07",
+  "slice": "r3-c",
+  "label": "«Pin confirmado» outlives the member",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        S.pinStepOk = false; S.outZone = false;\n        if (sending)",
+  "to": "        S.outZone = false;\n        if (sending)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^r3 \\(c\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C153-3b: the pin-step flag"
+  ]
+ },
+ {
+  "id": "r3-c-08",
+  "slice": "r3-c",
+  "label": "the dispatch snapshot stays in memory after the member left mid-send",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (sending) { S.sentOrder = null; S.sendTotals = null;",
+  "to": "if (sending) { S.sendTotals = null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^r3 \\(c\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-SEND-RESET: the dispatch snapshot leaves memory"
+  ]
+ },
+ {
+  "id": "r3-c-10",
+  "slice": "r3-c",
+  "label": "«Enviando» outlives the member (the store is not unmounted)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (sending) { unmountStore(); nav.tab({ name: 'home' }); }",
+  "to": "if (false) { unmountStore(); nav.tab({ name: 'home' }); }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^r3 \\(c\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-SEND-RESET: the store mount"
+  ]
+ },
+ {
   "id": "loc-sand-01",
   "slice": "loc-sand",
   "label": "the location-off row keeps the amber fill and text",
   "file": "../customer-app/capp.css",
-  "from": "border-radius:12px;background:var(--sand-bg);color:var(--sand);box-shadow",
-  "to": "border-radius:12px;background:var(--warn-bg);color:var(--warn);box-shadow",
+  "from": "gap:10px;padding:10px 14px;border-radius:12px;background:var(--sand-bg);color:var(--sand);box-shadow",
+  "to": "gap:10px;padding:10px 14px;border-radius:12px;background:var(--warn-bg);color:var(--warn);box-shadow",
   "command": [
    "node",
    "--test",
@@ -41679,8 +41832,8 @@
   "slice": "loc-sand",
   "label": "the sand hairline is dropped (the row loses its edge on white)",
   "file": "../customer-app/capp.css",
-  "from": "color:var(--sand);box-shadow:inset 0 0 0 1px var(--sand-line);font-size:13.5px",
-  "to": "color:var(--sand);font-size:13.5px",
+  "from": "box-shadow:inset 0 0 0 1px var(--sand-line);font-size:13.5px;font-weight:500}",
+  "to": "font-size:13.5px;font-weight:500}",
   "command": [
    "node",
    "--test",
@@ -41808,6 +41961,194 @@
   ],
   "kills_with": [
    "GUARD-BITES"
+  ]
+ },
+ {
+  "id": "r3-b-01",
+  "slice": "r3-b",
+  "label": "r3: the other address controls stay live while a pick is in flight",
+  "file": "../customer-app/capp-home.js",
+  "from": "d.pend === id ? ' aria-busy=\"true\"' : ' aria-disabled=\"true\"'",
+  "to": "d.pend === id ? ' aria-busy=\"true\"' : ''",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=DIR-CONFIRM",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-CONFIRM: every other control is disabled"
+  ]
+ },
+ {
+  "id": "r3-b-02",
+  "slice": "r3-b",
+  "label": "r3: the shell's click gate is gone (Inicio's «Entregar en» opens mid-pick)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (S.addrPick && ADDR_ACTS.has(a)) return;",
+  "to": "      if (false) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=INICIO-LOCK",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-INICIO: no sheet opens"
+  ]
+ },
+ {
+  "id": "r3-b-03",
+  "slice": "r3-b",
+  "label": "r3: the tap switches «en uso» at once (optimistic)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      S.addrErr = null; S.addrPick = { id, surface }; bookSeq++; pickPaint();",
+  "to": "      S.addrErr = null; S.addrPick = { id, surface }; S.book = { ...S.book, sel: id }; bookSeq++; pickPaint();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=DIR-CONFIRM",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-CONFIRM: nothing switches on the tap"
+  ]
+ },
+ {
+  "id": "r3-b-04",
+  "slice": "r3-b",
+  "label": "r3: the re-read is NOT owned (any token — another member's after a switch)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      let own = null; try { own = await fbAuth.idTokenOwned(); } catch (_) { own = null; }\n      if (dead || gen !== bookGen || !own || own.uid !== uid || !own.token) return null;",
+  "to": "      let own = null; try { own = { token: await fbAuth.idToken(), uid }; } catch (_) { own = null; }\n      if (dead || gen !== bookGen || !own || own.uid !== uid || !own.token) return null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#153 #1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C153-1: no write and no read under"
+  ]
+ },
+ {
+  "id": "r3-b-05",
+  "slice": "r3-b",
+  "label": "r3: the write skips the owner check (a token of whoever the SDK holds)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (live() && own && own.uid === uid && own.token) r = await",
+  "to": "if (live() && own && own.token) r = await",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#153 #1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C153-1"
+  ]
+ },
+ {
+  "id": "r3-b-06",
+  "slice": "r3-b",
+  "label": "r3: a pick landing during the send re-seeds the DISPATCHED flow",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const flowEditable = () => !!S.flow && (S.screen === 'checkout' || S.screen === 'store') && !frozenNow() && !lockedHere();",
+  "to": "const flowEditable = () => !!S.flow;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#153 #2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C153-2: «Enviando» still names Casa"
+  ]
+ },
+ {
+  "id": "r3-b-07",
+  "slice": "r3-b",
+  "label": "r3: a 409 naming my id at a higher rev is TRUSTED as success (owner 11-18: never)",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "if (r.status === 200 && j && j.ok === true && j.default_address === id && Number.isSafeInteger(j.default_address_rev)",
+  "to": "if ((r.status === 200 && j && j.ok === true || r.status === 409) && j && j.default_address === id && Number.isSafeInteger(j.default_address_rev)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SPECULATIVE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-409-BODY: a 409 is never success by its body"
+  ]
+ },
+ {
+  "id": "r3-b-08",
+  "slice": "r3-b",
+  "label": "r3: a failed pick draws no sand line",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (won) { S.locPick = 'saved'; bookSave(); } else S.addrErr = surface;",
+  "to": "if (won) { S.locPick = 'saved'; bookSave(); } else S.addrErr = null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=REFUSED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-REFUSED: the calm sand line"
+  ]
+ },
+ {
+  "id": "r3-b-09",
+  "slice": "r3-b",
+  "label": "r3: a read that started before a pick landed overrides it",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const b = bookFrom(uid, r.book); if (!b || seq0 !== bookSeq) return b;",
+  "to": "const b = bookFrom(uid, r.book); if (!b) return b;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=STALE-READ",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-STALE-READ: the older read"
+  ]
+ },
+ {
+  "id": "r3-b-10",
+  "slice": "r3-b",
+  "label": "r3: the checkout's «Cambiar» stays live mid-pick",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (!p || frozenNow() || pickBusy()) return true;",
+  "to": "if (!p || frozenNow()) return true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SHEET-CONFIRM",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-SHEET: «Cambiar» is disabled",
+   "a disabled «Cambiar» opens nothing"
+  ]
+ },
+ {
+  "id": "r3-b-11",
+  "slice": "r3-b",
+  "label": "r3: a 200 never moves «en uso» (the device stays on the old pick)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "          S.book = { ...S.book, sel: id, rev: r.default_address_rev }; won = true;",
+  "to": "          won = false;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=DIR-CONFIRM",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-CONFIRM: the 200 moves «en uso»"
   ]
  }
 ]
