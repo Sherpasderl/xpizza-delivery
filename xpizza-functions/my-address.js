@@ -25,6 +25,13 @@
 //   · the entry missing, or off the RULES' shape (address-book.isValidEntry — never repaired) ⇒ abort ⇒ 404;
 //   · else default_address = id, default_address_rev = rev + 1 and addresses[id].last_used_at = now — nothing else; every other
 //     byte of the profile is kept.
+// Codex #163 P1 — NO DECISION ON A PENDING WRITE. One Functions instance shares one SDK, whose transactions hand an overlapping
+// updater the OTHER transaction's PENDING local write, and an `undefined` abort is decided on that local view. Same-uid writes are
+// therefore SERIALIZED within the instance (a per-uid queue): each runs after the previous one for that uid settled (committed or
+// rolled back). This function is its own Cloud Run service (v2), so no other writer's transaction shares the SDK; with no listener
+// left on the path a transaction's first run is cold (null ⇒ the server's node). So every 409 pair is a COMMITTED state, and a 409
+// «own id at expected + 1» names a committed write (the lost-reply rule stands: at worst the attribution of a committed identical
+// pick is ambiguous — harmless — never a phantom success).
 // Owner-only PII: nothing here logs an address field.
 const MA = require('./member-auth');
 const AB = require('./address-book');
@@ -53,6 +60,20 @@ function useUpdater({ id, expectedRev, expectedDefault, now }, out) {
 }
 
 function makeMyAddress({ getDatabase, getAuth, checkRateLimit, now = () => Date.now() }) {
+  // the per-uid queue of THIS instance (one SDK): each write runs after the previous one for the same uid settled, success or not
+  const tails = new Map();
+  const serialized = (uid, fn) => {
+    const run = (tails.get(uid) || Promise.resolve()).then(fn, fn);
+    const tail = run.then(() => {}, () => {});
+    tails.set(uid, tail);
+    tail.then(() => { if (tails.get(uid) === tail) tails.delete(uid); });
+    return run;
+  };
+  async function decide(db, uid, args) {
+    const out = {};
+    await db.ref(`user_profiles/${uid}`).transaction(useUpdater({ ...args, now: now() }, out));
+    return out;
+  }
   async function useMyAddress(req, res) {
     res.set('Cache-Control', 'no-store');
     try {
@@ -69,8 +90,7 @@ function makeMyAddress({ getDatabase, getAuth, checkRateLimit, now = () => Date.
       const rl = await checkRateLimit(db, 'use_address', uid, RATE);
       if (!rl || rl.allowed !== true) { res.set('Retry-After', String((rl && rl.retryAfterSec) || 60)); return res.status(429).json({ ok: false, reason: 'rate_limited' }); }
       if (await MA.isMemberTombstoned(db, uid)) return res.status(403).json({ ok: false, reason: 'deleted' });
-      const out = {};
-      await db.ref(`user_profiles/${uid}`).transaction(useUpdater({ id: b.id, expectedRev: b.expected_rev, expectedDefault: b.expected_default, now: now() }, out));
+      const out = await serialized(uid, () => decide(db, uid, { id: b.id, expectedRev: b.expected_rev, expectedDefault: b.expected_default }));
       if (out.outcome === 'fenced') return res.status(403).json({ ok: false, reason: 'deleted' });
       if (out.outcome === 'stale') return res.status(409).json({ ok: false, reason: 'stale_address', ...out.current });
       if (out.outcome !== 'used') return res.status(404).json({ ok: false, reason: 'not_found' });

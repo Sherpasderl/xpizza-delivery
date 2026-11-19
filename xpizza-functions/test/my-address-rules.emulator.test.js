@@ -5,8 +5,8 @@
  *   under the rules; the selection: the REAL useMyAddress handler on the Admin (rules-off) database, as in production;
  *   then, as the member: the profile reads back, the server's exact diff re-validates as the member's own update, and the
  *   form's next saveAddress still succeeds on it. Synthetic uid only; no address field is logged.
- * PLAN-3a-addr-rev r1: the server-only default_address_rev is refused to the member's client (the rules' $other:false — no rules
- *   change); the form's saveAddress still writes a node that carries it; and a selection the form changes UNDER THE RULES makes the
+ * PLAN-3a-addr-rev r1 (+ Codex #163 P2): the server-only default_address_rev is refused to the member's client — a value by $other's
+ *   .validate:false, a DELETION (where .validate is skipped) by the parent .write's «rev unchanged» clause; the form's saveAddress still writes a node that carries it; and a selection the form changes UNDER THE RULES makes the
  *   handler's next write on the old pair a 409, while the re-read pair is accepted.
  */
 require('./_emulator-required')('database');
@@ -75,6 +75,14 @@ const formSaveAddress = (db, uid) => new Function('ensureFirebase', 'heal', 'MAX
     // r1: the rev is SERVER-ONLY — the existing $other:false refuses it to the member's client (no rules change)
     await no('a client write of default_address_rev is DENIED (update)', member.ref(`user_profiles/${A}`).update({ default_address_rev: 99 }));
     await no('a client write of default_address_rev is DENIED (set)', member.ref(`user_profiles/${A}/default_address_rev`).set(99));
+    // Codex #163 P2: .validate is skipped on a deletion — the PARENT .write pins the rev (newData === data), so the owner can never
+    // DELETE it either (a deleted rev would read as 0 and let an old (A, 0) request overwrite the newer pick)
+    await no('a client remove() of default_address_rev is DENIED', member.ref(`user_profiles/${A}/default_address_rev`).remove());
+    await no('a client set(null) of default_address_rev is DENIED', member.ref(`user_profiles/${A}/default_address_rev`).set(null));
+    await no('a client multipath null of default_address_rev is DENIED', member.ref(`user_profiles/${A}`).update({ default_address_rev: null }));
+    await no('a client multipath null of the rev beside a legal field is DENIED', member.ref(`user_profiles/${A}`).update({ default_address_rev: null, name: 'Ana B' }));
+    assert.strictEqual(await read(`user_profiles/${A}/default_address_rev`), 1, 'the rev survived every client attempt');
+    console.log(`  ✓ ${++n} the rev survived every client attempt`);
     await ok('the resulting entry passes the entry schema on its own', member.ref(`user_profiles/${A}/addresses/${trab.addrId}`).set(after.addresses[trab.addrId]));
     assert.deepStrictEqual(res.body, { ok: true, default_address: trab.addrId, default_address_rev: 1 }, 'the 200 carries the minted rev');
     assert.deepStrictEqual(after, { ...before, default_address: trab.addrId, default_address_rev: 1, addresses: { ...before.addresses, [trab.addrId]: { ...before.addresses[trab.addrId], last_used_at: NOW } } },

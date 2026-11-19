@@ -55,7 +55,10 @@ function fakeDb() {
     return api;
   };
   const T = { cold: new Set(), pause: new Map(), txs: [] };   // txs: every transaction ATTEMPT (path), committed or not   // cold: a path whose NEXT transaction first sees null; pause: path → async fn run before the commit
-  const ref = (p = '') => ({
+  // Codex #163 P1 — the shared SDK of ONE instance: a transaction's proposal is a PENDING LOCAL write that an overlapping transaction
+  // on the same path (same instance) is handed as its input; an `undefined` abort is local (never server-confirmed); a proposal the
+  // server refuses is ROLLED BACK. `get()` / `once()` read the server (repoGetValue never returns a pending local write).
+  const mkRef = (local) => (p = '') => ({
     get: async () => { reads.push({ kind: 'get', path: p }); return snapOf(get(p)); },
     once: async () => { reads.push({ kind: 'get', path: p }); return snapOf(get(p)); },
     set: async (v) => { writes.push(p); set(p, v); }, remove: async () => { writes.push(p); set(p, null); },
@@ -63,19 +66,23 @@ function fakeDb() {
     orderByChild: (c) => query(p, c),
     transaction: async (fn) => {
       T.txs.push(p);
-      let seen = T.cold.has(p) ? null : (clone(get(p)) ?? null); T.cold.delete(p);
+      let seen = local.has(p) ? clone(local.get(p)) : T.cold.has(p) ? null : (clone(get(p)) ?? null); T.cold.delete(p);
       for (let i = 0; i < 25; i++) {
         const next = fn(clone(seen));
-        if (next === undefined) return { committed: false, snapshot: snapOf(get(p)) };
+        if (next === undefined) return { committed: false, snapshot: snapOf(get(p)) };   // a LOCAL abort: never checked against the server
+        local.set(p, clone(next));   // pending: visible to an overlapping transaction of THIS instance
         if (T.pause.has(p)) { const f = T.pause.get(p); T.pause.delete(p); await f(); }
         const server = clone(get(p)) ?? null;
-        if (!same(server, seen)) { seen = server; continue; }   // the server moved (or the cache was cold): RE-RUN with the real node
-        writes.push(p); set(p, next); return { committed: true, snapshot: snapOf(get(p)) };
+        if (!same(server, seen)) { local.delete(p); seen = server; continue; }   // rolled back; RE-RUN with the real node
+        local.delete(p); writes.push(p); set(p, next); return { committed: true, snapshot: snapOf(get(p)) };
       }
       throw new Error('transaction: too many retries');
     },
   });
-  return { tree, reads, writes, get, set, ref, T };
+  const ref = mkRef(new Map());
+  // another Functions instance: its own SDK (its own pending writes), the SAME server
+  const instance = () => ({ tree, reads, writes, get, set, ref: mkRef(new Map()), T });
+  return { tree, reads, writes, get, set, ref, T, instance };
 }
 
 const A = 'u_' + 'a'.repeat(24), B = 'u_' + 'b'.repeat(24);
@@ -242,8 +249,8 @@ const expectUsed = (before, id, now, rev) => ({ ...before, default_address: id, 
     // request is current on its first run; between its read and its commit a REAL concurrent capp write moves the rev AND the REAL
     // sweep claims ⇒ the re-run is both fenced and stale ⇒ the fence wins ⇒ 403
     db.T.pause.set(`user_profiles/${A}`, async () => {
-      assert.strictEqual((await use(`tok-${A}`, { id: casa, expected_rev: 4, expected_default: casa })).code, 200, 'premise: the concurrent write moved the rev');
-      assert.strictEqual(await sweepClaim(db, A, CLOCK, 77), 'claimed', 'premise: the REAL sweep claimed mid-transaction');
+      assert.strictEqual((await harness(db.instance()).use(`tok-${A}`, { id: casa, expected_rev: 4, expected_default: casa })).code, 200, 'premise: the concurrent write (another instance) moved the rev');
+      assert.strictEqual(await sweepClaim(db.instance(), A, CLOCK, 77), 'claimed', 'premise: the REAL sweep (another instance) claimed mid-transaction');
     });
     const fx = await use(`tok-${A}`, { id: trab, expected_rev: 4, expected_default: casa });
     assert.strictEqual(fx.code, 403, `🔴 REV-PRECEDENCE: fenced + stale (inside the transaction) ⇒ 403 (${fx.code})`);
@@ -253,7 +260,7 @@ const expectUsed = (before, id, now, rev) => ({ ...before, default_address: id, 
     // the first re-runs on the moved node and is refused: exactly one 200, one 409, the winner's selection kept
     const db = fakeDb(); const { casa, trab } = await bookOf(db); const { use } = harness(db);
     let second = null;
-    db.T.pause.set(`user_profiles/${A}`, async () => { second = await use(`tok-${A}`, { id: casa, expected_rev: 0, expected_default: casa }); });
+    db.T.pause.set(`user_profiles/${A}`, async () => { second = await harness(db.instance()).use(`tok-${A}`, { id: casa, expected_rev: 0, expected_default: casa }); });   // another instance
     const first = await use(`tok-${A}`, { id: trab, expected_rev: 0, expected_default: casa });
     assert.deepStrictEqual([second.code, second.body.default_address_rev], [200, 1], 'premise: the interleaved write won');
     assert.deepStrictEqual([first.code, first.body], [409, { ok: false, reason: 'stale_address', default_address: casa, default_address_rev: 1 }], '🔴 REV-RACE: the loser is refused with the winner\'s selection');
@@ -312,7 +319,51 @@ const expectUsed = (before, id, now, rev) => ({ ...before, default_address: id, 
     const ab = await use(`tok-${A}`, { id: trab, expected_rev: 0, expected_default: casa });
     assert.deepStrictEqual([ab.code, ab.body.default_address_rev], [200, 1], '🔴 FORM-ABA: back to the client\'s view ⇒ accepted');
   }
-  ok('FORM (Option B, the REAL form writers): a form-changed selection ⇒ 409 with the form\'s pick, nothing written; the re-read pair converges; a content edit of the selected entry is accepted (scope: the selection); a form delete of the selection ⇒ 409 (null) then converges; the no-rev window is covered; A → B → A back to the client\'s view is accepted');
+  {
+    // FORM-MID-SAVE (Codex #163 P3): the request is CURRENT on its first run; between its read and its commit the form's OWN
+    // saveAddress(makeDefault) picks a third address — the rev does not move, so only the selection half, re-checked on the RE-RUN,
+    // refuses it: 409 with the form's pick, and the handler writes nothing
+    const db = fakeDb(); const { casa, trab } = await bookOf(db); const { use } = harness(db); const save = formSaveAddress(db, A);
+    CLOCK += 1000;
+    assert.strictEqual((await use(`tok-${A}`, { id: trab, expected_rev: 0, expected_default: casa })).code, 200, 'premise: (trab, 1)');
+    let gym = null; let afterForm = null;
+    db.T.pause.set(`user_profiles/${A}`, async () => {
+      const g = await save({ ...CONTENT('Gym', 'Portón 3'), makeDefault: true }); assert.ok(g.ok, 'premise: the form picked Gym mid-transaction');
+      gym = g.addrId; afterForm = clone(db.get(`user_profiles/${A}`));
+    });
+    const mid = await use(`tok-${A}`, { id: casa, expected_rev: 1, expected_default: trab });
+    assert.deepStrictEqual([mid.code, mid.body], [409, { ok: false, reason: 'stale_address', default_address: gym, default_address_rev: 1 }], '🔴 FORM-MID-SAVE: a form pick between read and commit ⇒ 409 with the form\'s pick');
+    assert.deepStrictEqual(db.get(`user_profiles/${A}`), afterForm, '🔴 FORM-MID-SAVE: the handler wrote nothing over the form\'s pick');
+  }
+  {
+    // FORM-MID-DELETE (P3): the form's OWN deleteAddress removes the selected entry between read and commit ⇒ 409 (null), nothing written
+    const db = fakeDb(); const { casa, trab } = await bookOf(db); const { use } = harness(db); const del = formDeleteAddress(db, A);
+    let afterForm = null;
+    db.T.pause.set(`user_profiles/${A}`, async () => { assert.ok((await del(casa)).ok, 'premise: the form deleted the selected Casa mid-transaction'); afterForm = clone(db.get(`user_profiles/${A}`)); });
+    const md = await use(`tok-${A}`, { id: trab, expected_rev: 0, expected_default: casa });
+    assert.deepStrictEqual([md.code, md.body], [409, { ok: false, reason: 'stale_address', default_address: null, default_address_rev: 0 }], '🔴 FORM-MID-DELETE: the selection deleted between read and commit ⇒ 409 (null)');
+    assert.deepStrictEqual(db.get(`user_profiles/${A}`), afterForm, '🔴 FORM-MID-DELETE: the handler wrote nothing');
+  }
+  {
+    // SERIAL-LOSTREPLY (Codex #163 P1): ONE instance. W1 proposes (trab, 1) — a PENDING local write — and, before it commits, the
+    // client's resend W2 (the same body) arrives on the same instance while the form picks Gym on the server. W1's proposal is rolled
+    // back (409, Gym). W2 must never be handed W1's uncommitted pair as «own id at expected + 1» (the client would count it as a
+    // success that never happened): same-uid writes are serialized in the instance and every 409 pair is a SERVER read
+    const db = fakeDb(); const { casa, trab } = await bookOf(db); const { use } = harness(db); const save = formSaveAddress(db, A);
+    let w2 = null; let gym = null;
+    db.T.pause.set(`user_profiles/${A}`, async () => {
+      w2 = use(`tok-${A}`, { id: trab, expected_rev: 0, expected_default: casa });   // the resend, NOT awaited (it queues behind W1)
+      await new Promise((r) => setImmediate(r));
+      const g = await save({ ...CONTENT('Gym', 'Portón 3'), makeDefault: true }); assert.ok(g.ok, 'premise: the form picked Gym'); gym = g.addrId;
+    });
+    const w1 = await use(`tok-${A}`, { id: trab, expected_rev: 0, expected_default: casa });
+    const r2 = await w2;
+    assert.deepStrictEqual([w1.code, w1.body.default_address, w1.body.default_address_rev], [409, gym, 0], 'premise: W1 was rolled back to the form\'s pick');
+    assert.ok(!(r2.code === 409 && r2.body.default_address === trab && r2.body.default_address_rev === 1), `🔴 SERIAL-LOSTREPLY: the resend is never told «own id at expected + 1» for a pair that never committed (${JSON.stringify(r2.body)})`);
+    assert.deepStrictEqual([r2.code, r2.body], [409, { ok: false, reason: 'stale_address', default_address: gym, default_address_rev: 0 }], '🔴 SERIAL-LOSTREPLY: the resend sees the COMMITTED pair');
+    assert.deepStrictEqual([db.get(`user_profiles/${A}/default_address`), db.get(`user_profiles/${A}/default_address_rev`)], [gym, undefined], '🔴 SERIAL-LOSTREPLY: trab was never committed');
+  }
+  ok('FORM (Option B, the REAL form writers): a form-changed selection — before the request or BETWEEN its read and commit (save or delete) — ⇒ 409 with the form\'s pick, nothing written; a same-instance resend never sees an uncommitted pair; the re-read pair converges; a content edit of the selected entry is accepted (scope: the selection); a form delete of the selection ⇒ 409 (null) then converges; the no-rev window is covered; A → B → A back to the client\'s view is accepted');
 
   // ── 3. the happy path: exactly default_address + that entry's last_used_at change; the profile is otherwise byte-equal ──
   {
@@ -377,7 +428,7 @@ const expectUsed = (before, id, now, rev) => ({ ...before, default_address: id, 
   {
     // the sweep's claim (REAL sweepClaim) between the read and the commit ⇒ the fence is observed ⇒ abort ⇒ 403
     const db = fakeDb(); const { casa, trab } = await bookOf(db);
-    db.T.pause.set(`user_profiles/${A}`, async () => { assert.strictEqual(await sweepClaim(db, A, CLOCK, 99), 'claimed', 'premise: the sweep claimed mid-transaction'); });
+    db.T.pause.set(`user_profiles/${A}`, async () => { assert.strictEqual(await sweepClaim(db.instance(), A, CLOCK, 99), 'claimed', 'premise: the sweep (another instance) claimed mid-transaction'); });
     const mid = clone(db.get(`user_profiles/${A}`));
     const r = await harness(db).use(`tok-${A}`, { id: trab, expected_rev: 0, expected_default: casa });
     assert.strictEqual(r.code, 403, `🔴 deleting_at observed inside the transaction ⇒ 403 (${r.code})`);
