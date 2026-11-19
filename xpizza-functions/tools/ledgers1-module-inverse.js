@@ -53,6 +53,9 @@ const HUNKS = Object.freeze([
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);
 function unapplyLedgerS1Module(file, src) {
+  // PLAN-3a-order-owner (advisor GO Option 1, rule 6c): the post-asm11 layers hook peels FIRST — innermost of every chain that peels
+  // ledgers1 — so a lane landing after the asm11 tip never adds a per-site layer to the ~83 fold guards (tools/post-asm11-layers.js)
+  src = require('./post-asm11-layers').stripPostAsm11(file, src);
   if (!FILES.includes(file)) return src;
   let out = src;
   for (const h of HUNKS) {

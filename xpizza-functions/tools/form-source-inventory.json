@@ -3041,6 +3041,7 @@
   "my-last-tip.js",
   "my-orders.js",
   "order-exists.js",
+  "order-owner.js",
   "otp-lib.js",
   "pay-rate.js",
   "payer-email.js",
@@ -7431,6 +7432,7 @@
     "xpizza-functions/n2-paid-strand-decision.test.js",
     "xpizza-functions/order-creators.guard.test.js",
     "xpizza-functions/order-exists-census.guard.test.js",
+    "xpizza-functions/order-owner.test.js",
     "xpizza-functions/pixelpay-hosted-extra-payment.test.js",
     "xpizza-functions/platform-sync.guard.test.js",
     "xpizza-functions/portal/ops-helpers.guard.test.js",
@@ -7781,6 +7783,10 @@
      ]
     }
    ],
+   "lifts": []
+  },
+  "order-owner.js": {
+   "pins": [],
    "lifts": []
   },
   "otp-lib.js": {

@@ -7,6 +7,9 @@
 //                      tip_cents; the card asks PixelPay for the same amount and the pending order (what capture charges)
 //                      carries it; tip_invalid / tip_pickup / tip_reward_unsupported refuse before any write
 //   IDEMPOTENCY      → same id + same tip = idempotent 200 / reuse; a changed tip = 409 order_exists reason 'tip' (cash + card)
+//   ORDER-OWNER      → (PLAN-3a-order-owner) a different verified member ⇒ the constant 409 on both paths; no identity / a form
+//                      guest's order ⇒ today's answer without createOrder's token; the owner unchanged
+//                      r1 (Codex #172): card refusals observed over the whole database; a reward hold; the probe→acquire race
 //   RECOVERY         → a live checkout issued WITH a tip still resumes after the restaurant goes dark (fresh dark refusals
 //                      never touch already-issued economics)
 //   P-C              → no payer email (env unset, none from the customer) → 503 before any gateway call / attempt / order;
@@ -271,6 +274,87 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
     assert.deepStrictEqual([cardChanged.status, cardChanged.json.error, cardChanged.json.reason, cardChanged.charged.length], [409, 'order_exists', 'tip', 0], `card: changed tip → order_exists/tip, never reuse (${cardChanged.text.slice(0, 160)})`);
   }
   ok('idempotency: same id + same tip = idempotent 200 (cash) / reuse (card); a changed or dropped tip = 409 order_exists reason tip on both paths');
+
+  // ── 4b. PLAN-3a-order-owner (advisor APPROVED; owner §5 = A): a replayed order_id never hands a DIFFERENT verified identity the
+  // order's capabilities. The orders are made by the REAL handlers; the auth stub maps a token to that uid ──
+  {
+    const OWN = { 'x-firebase-id-token': 'm_owner' }; const OTHER = { 'x-firebase-id-token': 'm_other' };
+    const snap = async (oid) => JSON.stringify(await Promise.all([rtdb.ref(`orders/${oid}`).get(), rtdb.ref(`user_orders/m_owner/${oid}`).get(), rtdb.ref(`user_orders/m_other/${oid}`).get()].map(async (p) => (await p).val())));
+    // CASH (createOrder)
+    const first = await cash({}, OWN);
+    assert.ok(first.status === 200 && typeof first.json.tracking_token === 'string', `premise: a member's cash order (${first.text.slice(0, 160)})`);
+    const before = await snap(first.b.order_id);
+    const own = await cash({ body: first.b }, OWN);
+    assert.deepStrictEqual([own.status, own.json.idempotent, own.json.tracking_token], [200, true, first.json.tracking_token], '🔴 OWN-EMU-CASH-OWNER: the owner\'s replay ⇒ idempotent 200 WITH its token');
+    const none = await cash({ body: first.b });
+    assert.deepStrictEqual([none.status, none.json.idempotent, none.json.tracking_token], [200, true, null], '🔴 OWN-EMU-CASH-NOIDENTITY: a member order replayed with NO identity (the forms\' token timeout) ⇒ 200, token null');
+    const foreign = await cash({ body: first.b }, OTHER);
+    const CONST = { error: 'order_exists', reason: 'conflict', detail: foreign.json.detail, order_id: first.b.order_id };
+    assert.deepStrictEqual([foreign.status, foreign.json], [409, CONST], '🔴 OWN-EMU-CASH-FOREIGN: another verified member ⇒ the constant 409 (no token, no state)');
+    const foreignChanged = await cash({ body: { ...first.b, items_text: '2x Margherita', items: [{ ...LINE, qty: 2 }] } }, OTHER);
+    assert.strictEqual(foreignChanged.text, foreign.text, '🔴 OWN-EMU-CASH-CONST: the SAME bytes whatever the cart (no classifier reason reaches a non-owner)');
+    assert.strictEqual(await snap(first.b.order_id), before, '🔴 OWN-EMU-CASH: no replay wrote anything');
+    // a FORM guest's order (no identity ever verified): a member's replay is unverifiable ⇒ 200 without the token (owner §5 = A)
+    const fg = await cash({ extra: FORM });
+    assert.ok(fg.status === 200 && typeof fg.json.tracking_token === 'string', `premise: a form guest's cash order (${fg.text.slice(0, 160)})`);
+    const fgByMember = await cash({ body: fg.b }, OWN);
+    assert.deepStrictEqual([fgByMember.status, fgByMember.json.tracking_token], [200, null], '🔴 OWN-EMU-FORMGUEST: a form guest\'s order replayed by anyone ⇒ 200, token null');
+    // CARD (chargeOnlineOrder) — r1 (Codex #172 P1-a / P2): ownership is decided BEFORE every order-dependent admission and every
+    // bookkeeping write. Each foreign refusal is observed over the WHOLE database with NO cleanup between the snapshots (the content
+    // stamp, the rate limits, the audience stamp, an order / attempt / hold write would each show), and the body is the REAL writer's
+    // constant (order-exists orderExistsBody), byte-identical whatever the order's state or the request's cart / context
+    const rootNow = async () => JSON.stringify((await rtdb.ref().get()).val());
+    const raw = async (b, hdr) => { CHARGED.length = 0; const r = await post(app.chargeOnlineOrder, b, hdr); return { ...r, charged: [...CHARGED] }; };
+    const CONSTANT = (oid) => require('../order-exists').orderExistsBody('conflict', oid);
+    const foreignRefused = async (b, label) => {
+      const before = await rootNow();
+      const r = await raw(b, OTHER);
+      assert.deepStrictEqual([r.status, r.json, r.charged.length], [409, CONSTANT(b.order_id), 0], `🔴 OWN-EMU-HOSTED-FOREIGN (${label}): another verified member ⇒ the full constant 409, no checkout URL, no poll token (${r.text.slice(0, 160)})`);
+      assert.strictEqual(await rootNow(), before, `🔴 OWN-EMU-HOSTED-NOWRITE (${label}): the refusal wrote NOTHING anywhere (no content stamp, rate token, audience stamp, order, attempt or hold)`);
+      return r.text;
+    };
+    const k = await card({}, OWN);
+    assert.deepStrictEqual([k.status, k.attempts], [200, 1], `premise: a member's live hosted checkout (${k.text.slice(0, 160)})`);
+    const tLive = await foreignRefused(k.b, 'a live checkout, the same cart');
+    const tCart = await foreignRefused({ ...k.b, items_text: '2x Margherita', items: [{ ...LINE, qty: 2 }] }, 'a live checkout, another cart');
+    const ko = await card({ body: k.b }, OWN);
+    assert.deepStrictEqual([ko.status, ko.charged.length, ko.attempts, typeof ko.json.poll_token], [200, 0, 1, 'string'], '🔴 OWN-EMU-HOSTED-OWNER: the owner\'s replay reuses the live checkout (unchanged)');
+    const kn = await card({ body: k.b });
+    assert.deepStrictEqual([kn.status, kn.charged.length, kn.attempts], [200, 0, 1], 'OWN-EMU-HOSTED-NOIDENTITY: no identity ⇒ today\'s reuse (the owner-accepted §5 = A residual)');
+    // the checkout EXPIRED and the request moves the pin: an owner's retry would meet the delivery context (order_context_changed) —
+    // a foreign member meets ownership first: the same bytes
+    await rtdb.ref(`payment_attempts/${(await rtdb.ref(`orders/${k.b.order_id}/active_attempt_id`).get()).val()}/hosted_expires_at`).set(1);
+    const tCtx = await foreignRefused({ ...k.b, ...north(6) }, 'an expired checkout, another pin');
+    assert.ok(tLive === tCart && tCart === tCtx, '🔴 OWN-EMU-HOSTED-CONST: the SAME bytes whatever the state, cart or context (no admission reason reaches a non-owner)');
+    // a REWARD-backed live checkout: the owner's hold (user_rewards reservation) is part of the whole-database snapshot — byte-unchanged
+    {
+      const enabled = (await rtdb.ref('config/redemption_enabled').get()).val();
+      await rtdb.ref('config/redemption_enabled').set(true);
+      await rtdb.ref(`user_rewards/m_owner/${RID}`).set({ balance: 8, reserved: 0 });
+      await rtdb.ref(`user_rewards/m_other/${RID}`).set({ balance: 8, reserved: 0 });   // B COULD reserve its own — it never gets that far
+      const rw = await card({ extra: { redeem: { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' } } }, OWN);
+      const hold = (await rtdb.ref(`user_rewards/m_owner/${RID}`).get()).val();
+      assert.ok(rw.status === 200 && rw.attempts === 1 && hold.reserved > 0 && hold.reservations && hold.reservations[rw.b.order_id], `premise: a member's reward-backed live checkout holds the reward (${rw.text.slice(0, 200)})`);
+      await foreignRefused(rw.b, 'a reward-backed live checkout');
+      assert.deepStrictEqual((await rtdb.ref(`user_rewards/m_owner/${RID}`).get()).val(), hold, '🔴 OWN-EMU-HOSTED-HOLD: the owner\'s hold is byte-identical');
+      await rtdb.ref('config/redemption_enabled').set(enabled);
+    }
+    // Codex #172 P1-b, the probe→acquire race over HTTP: B's probe sees NO order; A (the owner) places the same id while B is between its
+    // probe and its acquire; B's acquire meets A's order ⇒ the constant 409 — never A's checkout_url / poll_token; A's order and attempt
+    // untouched (B's own bookkeeping as a fresh request is today's)
+    {
+      const rb = body('online');
+      let afterA = null, aRes = null;
+      EXPIRE_BEFORE_ACQUIRE = async () => { aRes = await raw(rb, OWN); afterA = JSON.stringify([(await rtdb.ref(`orders/${rb.order_id}`).get()).val(), await attemptsOf(rb.order_id)]); };
+      await clean(); CHARGED.length = 0;
+      const b = await post(app.chargeOnlineOrder, rb, OTHER);
+      assert.ok(aRes && aRes.status === 200 && aRes.charged.length === 1, `premise: A placed the order inside B's window (${aRes && aRes.text.slice(0, 160)})`);
+      assert.deepStrictEqual([b.status, b.json], [409, CONSTANT(rb.order_id)], `🔴 OWN-EMU-HOSTED-RACE: B (another verified member, probe saw nothing) ⇒ the full constant 409 at the acquire (${b.text.slice(0, 160)})`);
+      assert.strictEqual(CHARGED.length, 1, '🔴 OWN-EMU-HOSTED-RACE: no checkout created for B (A\'s only)');
+      assert.strictEqual(JSON.stringify([(await rtdb.ref(`orders/${rb.order_id}`).get()).val(), await attemptsOf(rb.order_id)]), afterA, '🔴 OWN-EMU-HOSTED-RACE: A\'s order and attempt byte-identical');
+    }
+  }
+  ok('order-owner: cash — owner ⇒ 200 + token; no identity ⇒ 200, token null; another member ⇒ the constant 409 (same bytes whatever the cart), nothing written; a form guest\'s order ⇒ 200 without the token. Card — another member ⇒ the full constant 409, the SAME bytes across state / cart / context, writing NOTHING anywhere (whole-database snapshot, no cleanup between), the owner\'s reward hold unchanged, and the probe→acquire race refused at the acquire; owner reuse unchanged');
 
   // ── 5. recovery: a live checkout issued WITH a tip still resumes after the table is removed ──
   {

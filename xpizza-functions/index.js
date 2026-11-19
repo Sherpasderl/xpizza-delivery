@@ -896,6 +896,7 @@ createOrderApp.all('*', async (req, res) => {
     const existing = await db.ref(`orders/${orderId}`).once('value');
     if (existing.exists()) {
       const ev = existing.val();
+      const own = require('./order-owner').ownerOf(ev, customer_uid); if (own === 'non_owner') return res.status(409).json(OE.orderExistsBody(require('./order-owner').NON_OWNER_REASON, orderId));   // PLAN-3a-order-owner: a DIFFERENT verified identity learns nothing (owner §5 = A)
       // 1D D4-b: ONLY a record tagged canonical costs a canonical recompute (from the same snapshot `ev`);
       // an untagged record takes today's path with no extra work (call-sequence golden).
       const canonicalIncoming = (ev && ev.fp_format !== undefined && ev.fp_format === 'canonical')
@@ -927,7 +928,7 @@ createOrderApp.all('*', async (req, res) => {
         return res.status(409).json(OE.orderExistsBody(oe.reason, orderId));
       }
       console.log(`createOrder: order ${orderId} already exists, returning idempotent`);
-      return res.status(200).json({ ok: true, idempotent: true, order_id: orderId, tracking_token: ev.tracking_token || null });
+      return res.status(200).json({ ok: true, idempotent: true, order_id: orderId, tracking_token: own === 'owner' ? (ev.tracking_token || null) : null });
     }
   } catch (e) {
     console.error('createOrder: existence check failed', e);
@@ -1669,8 +1670,29 @@ chargeOnlineApp.all('*', async (req, res) => {
       || (await SDKI.admit(sdkDeps, { restaurantId, scheduledFor: Number.isFinite(sf) ? sf : null }));
     if (b2) return res.status(b2.status).json(b2.body);
   }
+  // Read-only reuse probe (#3): config is read ONLY when creating a fresh pending order, so a
+  // customer reusing a live hosted checkout during a config outage is NOT failed closed. The CAS
+  // in acquireHostedAttempt stays authoritative; on a probe-fresh/CAS-reuse race the only cost is
+  // one wasted config read.
+  // PLAN-3a-order-owner r1 (Codex #172 P1-a): the SAME single read, at the first point the verified uid is known — ownership is
+  // decided BEFORE every order-dependent admission (bound reuse, the redemption prepare, the delivery context, classify) and every
+  // bookkeeping write (content stamp / prune, rate limits, the audience stamp); acquireHostedAttempt re-applies it to the records it observes
+  let probeOrder;
+  try {
+    probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();
+  } catch (e) {
+    console.error(`chargeOnlineOrder: order probe failed for ${orderId}`, e.message);
+    return res.status(500).json({ error: 'Database error', detail: e.message });
+  }
+  // Cross-restaurant reuse guard (legacy-normalized): a charge must not attach to an existing
+  // order_id owned by a different restaurant. Runs before the CAS/fingerprint in acquireHostedAttempt.
+  if (probeOrder && !sameRestaurant(probeOrder.restaurant_id, restaurantId)) {
+    console.warn(`chargeOnlineOrder: ${orderId} exists for a different restaurant — conflict`);
+    return res.status(409).json(OE.orderExistsBody('conflict', orderId));   // D4-c5 P1: no disclosure of the other restaurant
+  }
+  if (probeOrder && require('./order-owner').ownerOf(probeOrder, customer_uid) === 'non_owner') return res.status(409).json(OE.orderExistsBody(require('./order-owner').NON_OWNER_REASON, orderId));   // PLAN-3a-order-owner: before every admission, bookkeeping write, reserve and acquire
   if (body.redeem != null && customer_uid && groupCapabilities().render) {
-    const boundAcq = await BR.probeBoundReuse(db, { orderId, uid: customer_uid, rid: restaurantId, body, now: Date.now() });
+    const boundAcq = await BR.probeBoundReuse(db, { orderId, uid: customer_uid, rid: restaurantId, body, now: Date.now(), probed: { order: probeOrder } });   // r2: the hoisted probe's snapshot (no second read)
     if (boundAcq) { const zr = await DW.deliveryResumeRefusal(db, boundAcq.order, dpP); if (zr) return res.status(zr.httpStatus).json({ error: zr.refusal, ...(zr.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId });   // envío step 2 (F1): a stored app delivery in a zone is not resumed
       const never = () => { throw new Error('bound reuse never gates, releases or retires'); };
       const flow = await resolveBoundReuse({ acq: boundAcq, orderId, totalCents: null, releaseHold: never, retireAttempt: never, runGate: never, log: console });
@@ -2052,23 +2074,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   if (cappGuest && cappGuest.guest) pendingOrderRecord.guest_verified = { phone: cappGuest.guest.phone, phone_hash: cappGuest.guest.phone_hash };   // §2.3: in the SAME CAS write, capp guests only
   /* checkout:end gate-verified */
   await require('./marketing/audience-place').stampCard(db, pendingOrderRecord, orderId, dq, Date.now());   // offer-audience: the deadline index FIRST, then the signed codes on the record
-  // Read-only reuse probe (#3): config is read ONLY when creating a fresh pending order, so a
-  // customer reusing a live hosted checkout during a config outage is NOT failed closed. The CAS
-  // in acquireHostedAttempt stays authoritative; on a probe-fresh/CAS-reuse race the only cost is
-  // one wasted config read.
-  let probeOrder;
-  try {
-    probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();
-  } catch (e) {
-    console.error(`chargeOnlineOrder: order probe failed for ${orderId}`, e.message);
-    return res.status(500).json({ error: 'Database error', detail: e.message });
-  }
-  // Cross-restaurant reuse guard (legacy-normalized): a charge must not attach to an existing
-  // order_id owned by a different restaurant. Runs before the CAS/fingerprint in acquireHostedAttempt.
-  if (probeOrder && !sameRestaurant(probeOrder.restaurant_id, restaurantId)) {
-    console.warn(`chargeOnlineOrder: ${orderId} exists for a different restaurant — conflict`);
-    return res.status(409).json(OE.orderExistsBody('conflict', orderId));   // D4-c5 P1: no disclosure of the other restaurant
-  }
+  // (probeOrder — the read-only order probe — is read ABOVE, where ownership is decided: PLAN-3a-order-owner r1, Codex #172 P1-a)
   /* 1D D4-b B1-c(1)/(3) — the DEGRADED path: classify threw, so THIS snapshot decides the order's binding format. A legacy
      (or absent) order continues exactly as today's fail-open. A malformed tag refuses. A canonical order is checked here,
      before any reserve: an uncomputable canonical fingerprint refuses (the earlier bookkeeping writes already happened —
