@@ -256,7 +256,7 @@ export function postClaim(res) {
   if (res.status === 400 && plain(b) && b.field === 'limits' && b.reason === 'directory_changed') return 'directory_changed';
   // ENVÍO step 2 (5f zones-lock / zones.js): the closed-only lock, a refused zone list, and the two 503s
   if (res.status === 409 && plain(b) && b.error === 'zones_locked_while_open') return 'zones_locked';
-  if (res.status === 400 && plain(b) && b.error === 'bad_request' && (b.field === 'zones' || b.field === 'zone_caps')) return 'zones_refused';
+  if (res.status === 400 && plain(b) && b.error === 'bad_request' && (b.field === 'zones' || b.field === 'zone_caps' || b.field === 'zone_out_of_range')) return 'zones_refused';   // #181 P2-7: out of range is a zones refusal (frame F)
   if (res.status === 503 && plain(b) && (b.error === 'hours_unavailable' || b.error === 'unavailable')) return b.error;
   return { 400: 'refused', 401: 'unauthenticated', 403: 'forbidden' }[res.status] || null;
 }
@@ -366,7 +366,7 @@ export function limitChanges(restaurants, pending, loadedTop) {
 
 // ── ENVÍO step 2 — the NO-DELIVERY ZONES, non-drawing half (advisor 11-13; 5f PLAN-envio-zones-step2-r2 + zones_lock) ───────────────────
 // The copy is NOT here yet: every refusal maps to a PLACEHOLDER key; the owner approves the strings with the zones addendum.
-export const ZONES_COPY_KEYS = Object.freeze({ not_authorized: 'zones.not_authorized', zones: 'zones.invalid', zone_caps: 'zones.caps',
+export const ZONES_COPY_KEYS = Object.freeze({ not_authorized: 'zones.not_authorized', zones: 'zones.invalid', zone_out_of_range: 'zones.invalid', zone_caps: 'zones.caps',
   superseded: 'zones.superseded', current_malformed: 'zones.current_malformed', zones_locked_while_open: 'zones.locked',
   hours_unavailable: 'zones.hours_unavailable', unavailable: 'zones.unavailable' });
 const ZONE_CAPS = ['zones_max', 'points_max', 'points_min', 'name_max', 'bbox_max_km'];
@@ -396,7 +396,7 @@ export function zonesRefusalKey(res) {
   if (!res || res.transport || !plain(res.body)) return null;
   const b = res.body;
   if (res.status === 403) return ZONES_COPY_KEYS.not_authorized;
-  if (res.status === 400 && b.error === 'bad_request' && (b.field === 'zones' || b.field === 'zone_caps')) return ZONES_COPY_KEYS[b.field];
+  if (res.status === 400 && b.error === 'bad_request' && (b.field === 'zones' || b.field === 'zone_caps' || b.field === 'zone_out_of_range')) return ZONES_COPY_KEYS[b.field];
   if ((res.status === 409 || res.status === 503) && Object.prototype.hasOwnProperty.call(ZONES_COPY_KEYS, b.error)) return ZONES_COPY_KEYS[b.error];
   return null;
 }

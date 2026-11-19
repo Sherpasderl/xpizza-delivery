@@ -95,6 +95,7 @@ const S = {
   map: null,               // { frame, mount, deadline, listening, ready, failed, onMsg }
   zones: null,             // ENVÍO step 2: envio-logic zonesFromBody(the read) — { zones | null, editable, lock, caps }; fail closed
   zonesDraft: null,        // Z1b: the zones as edited (a copy of the read's list), compared with the server's sameZones
+  zonesLastGood: null,     // #180: the last READABLE stored list — a kept draft's comparison while a read is unreadable
   zoneEdit: null,          // Z1b: { id, value, line } — the row being renamed in place
   zoneRemove: null,        // Z1b: the zone id whose «Quitar zona» confirm is open
   zonesFail: null,         // Z1b: a save outcome about the zones — { kind: 'locked' | 'hours' | 'refused', branches, key, zoneId }
@@ -126,6 +127,8 @@ function clearSession({ dropCache }) {
   S.loaded = null; S.rows = null; S.note = null; S.entries = []; S.branchesUnavailable = false; S.pick = null;
   S.restaurants = []; S.branchesRaw = []; S.limitEdits = {};   // Codex HIGH r1 P2: ALL v3 state ends with the session
   S.banner = null; S.attempt = null; S.phase = null; S.confirm = null; S.picker = null; S.status = 'idle'; S.floor = 0;
+  // ENVÍO step 2 (found fixing #180): the zones state ends with the session too — another admin never inherits an unsent zones draft
+  S.zones = null; S.zonesDraft = null; S.zonesLastGood = null; S.zoneEdit = null; S.zoneRemove = null; S.zonesFail = null;
   closeEnvioLayer();
 }
 function revoke() {
@@ -152,6 +155,7 @@ const raiseFloor = (v) => { if (Number.isSafeInteger(v) && v > S.floor) S.floor 
 function adoptBody(b) {
   S.loaded = EL.loadedState(b);
   S.zones = EL.zonesFromBody(b);
+  if (S.zones.zones !== null) S.zonesLastGood = S.zones.zones;
   S.zonesDraft = S.zones.zones === null ? null : S.zones.zones.map((z) => ({ id: z.id, name: z.name, points: z.points.map((pt) => ({ lat: pt.lat, lng: pt.lng })) }));
   S.zoneEdit = null; S.zoneRemove = null; S.zonesFail = null;
   raiseFloor(bodyVersion(b));
@@ -170,7 +174,10 @@ function curTop() { const ok = EL.mapBands(S.rows || []).filter((b) => b.ok); re
 const pendingNow = () => EL.pendingLimits(S.restaurants, S.limitEdits, curTop());
 const limitDirty = () => Object.keys(pendingNow()).length > 0;
 // ENVÍO step 2, Z1b: the zones draft differs from the read (the server's own logical equality)
-const zonesDirty = () => !!(S.zonesDraft && S.zones && S.zones.zones && !EL.sameZones(S.zonesDraft, S.zones.zones));
+// the stored list a zones draft is judged against: the read's, else the LAST READABLE one (#180: while the server node is unreadable the
+// kept draft is still dirty against what it was edited on)
+const zonesBaseList = () => (S.zones && S.zones.zones) || S.zonesLastGood || null;
+const zonesDirty = () => !!(S.zonesDraft && zonesBaseList() && !EL.sameZones(S.zonesDraft, zonesBaseList()));
 // an edited field with a line holds Guardar (the field shows the line; no other text)
 const limitInvalid = () => S.restaurants.some((r) => Object.prototype.hasOwnProperty.call(S.limitEdits, r.key) && !!EL.limitProblem(S.limitEdits[r.key], curTop()));
 function refreshEntries() {
@@ -185,18 +192,27 @@ const feesDirty = () => !!(S.rows && S.loaded && S.loaded.kind === 'policy' && E
 // Unsent fee / limit edits keep their base version (S.loaded): the CAS still catches a newer server write at save. `cached` = the
 // session cache's body, which never carries the zones or their lock (cacheable): it says nothing about them, so their state stays.
 function applyRead(b, { discard = false, landed = null, cached = false } = {}) {
+  // Codex #180 (owner 11-19, A) — THREE invariants: (1) any dirty draft (fees, limits OR zones) keeps its own CAS base (S.loaded) —
+  // a newer read never moves it, so «Guardar» against a newer server conflicts; (2) the read floor ALWAYS advances on a read the screen
+  // accepts, independent of the draft (a delayed older read can never unlock a live lock); (3) only `discard` clears a draft — an
+  // unreadable read (current_malformed) keeps it, separately from the server state.
   const zonesState = cached && !discard && S.zones ? { zones: S.zones, draft: S.zonesDraft } : null;
-  const keepZones = !discard && zonesDirty() && !(landed && landed.sentZones) ? S.zonesDraft.map((z) => ({ id: z.id, name: z.name, points: z.points.map((pt) => ({ ...pt })) })) : null;
-  const keepFees = !discard && !landed && !!(S.attempt || limitDirty() || limitInvalid() || feesDirty());
-  if (keepFees) {
-    // the draft wins on screen; the directory and the zones lock follow the server
+  if (!cached) raiseFloor(bodyVersion(b));
+  if (discard) { adoptBody(b); return; }
+  const keepZones = zonesDirty() && !(landed && landed.sentZones) ? S.zonesDraft.map((z) => ({ id: z.id, name: z.name, points: z.points.map((pt) => ({ ...pt })) })) : null;
+  const keepDraft = !landed && !!(S.attempt || limitDirty() || limitInvalid() || feesDirty() || keepZones);
+  if (keepDraft) {
+    // the draft wins on screen on its own base; the directory and the zones lock follow the server
     S.branchesUnavailable = !Array.isArray(b.branches);
     S.branchesRaw = Array.isArray(b.branches) ? b.branches : S.branchesRaw;
     S.zones = EL.zonesFromBody(b);
+    if (S.zones.zones !== null) S.zonesLastGood = S.zones.zones;
+    // an unreadable server node becomes the base the draft replaces (the v3 malformed path: «Guardá una tabla nueva…»), never a wipe
+    if (b.current_malformed === true) S.loaded = EL.loadedState(b);
     refreshEntries();
   } else adoptBody(b);
   if (zonesState) { S.zones = zonesState.zones; S.zonesDraft = zonesState.draft; return; }
-  if (keepZones && S.zones && S.zones.zones !== null) S.zonesDraft = keepZones;
+  if (keepZones) S.zonesDraft = keepZones;   // kept even when this read's zones are unreadable (shown again by the next good read)
 }
 async function load({ discard = false } = {}) {
   const g = snap();
@@ -336,7 +352,7 @@ function settleEnvioOutcome(attempt, o, recoveryRes) {
       render(); return;
     case 'current_malformed':
       S.attempt = null; S.phase = null; S.banner = null;
-      load({ discard: true }); return;
+      load(); return;   // Codex #180 (owner 11-19): re-read WITHOUT discard — the draft stays; only the admin discards
     case 'forbidden': revoke(); return;
     case 'refused': case 'unauthenticated':
       if (o === 'refused') console.warn('envio save: refused');

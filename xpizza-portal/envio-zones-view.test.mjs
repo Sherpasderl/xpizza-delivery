@@ -267,6 +267,86 @@ test('#179 P3: the client judges names as the server does — 16 emoji (32 UTF-1
   assert.ok(zrow(p, 'Séctor B'), '🔴 «Séctor B» ≠ «Sector B» (the server lowercases only)');
 });
 
+// Codex #180 (owner 11-19: (A), three invariants in applyRead) — Codex's own repros, through the REAL cores
+const asInput = (zs) => zs.map((z) => ({ id: z.id, name: z.name, points: z.points.map(([lat, lng]) => ({ lat, lng })) }));
+const away = async (p) => { p.d.getElementById('navprod').click(); await settle(20); };
+test('#180 P2-1: a ZONES-ONLY draft keeps its base version — another admin saves other zones while away ⇒ «Guardar» conflicts, their zones stand', async () => {
+  const srv = server({ policy: withZones(), world: world(CLOSED, CLOSED) });
+  const p = await open(srv);
+  await rename(p, 'Sector A', 'Sector Norte');
+  await away(p);
+  const other = await srv.handle('setDeliveryPricing', { expected_policy_version: 3, bands: B3, no_delivery_zones: asInput([{ ...STORED[0], name: 'Remota' }, STORED[1]]) });
+  assert.equal(other.status, 200, 'premise: the other admin\'s save landed (v4)');
+  await p.open(); await settle(60);
+  assert.ok(zrow(p, 'Sector Norte'), 'premise: the draft came back');
+  await saveAll(p);
+  assert.ok(p.text().includes('Alguien más cambió las tarifas, recargá'), '🔴 the CAS conflict, never a silent overwrite');
+  assert.deepEqual((await srv.node()).no_delivery_zones.map((z) => z.name), ['Remota', 'Sector B'], 'their zones stand');
+});
+test('#180 P2-2: the read floor always advances — with fees dirty, a delayed OLDER editable read after a NEWER locked one does not unlock', async () => {
+  const srv = server({ policy: withZones(), world: world(undefined, CLOSED) });   // hours unknown ⇒ locked, «Volver a comprobar» shown
+  const p = await open(srv);
+  p.type(0, 'fee', '45'); await settle(5);
+  await srv.db.ref('restaurants/r_uno/identity/hours').set(CLOSED); srv.forgetIdentities();
+  await srv.db.ref('platform_config/delivery_pricing/policy_version').set(4);   // v4: every restaurant closed ⇒ editable
+  let release; srv.hold.getAfter = new Promise((r) => { release = r; });        // the v4 read is HELD after the server read it
+  card(p).querySelector('.ecallout button').click(); await settle(10);
+  await srv.db.ref('restaurants/r_uno/identity/hours').set(OPEN); srv.forgetIdentities();
+  await srv.db.ref('platform_config/delivery_pricing/policy_version').set(5);   // v5: a restaurant open ⇒ locked
+  card(p).querySelector('.ecallout button').click(); await settle(30);          // the NEWER v5 read lands first
+  release(); await settle(30);                                                   // then the OLDER v4 read arrives
+  assert.equal(p.mods.envio._envioState.zones.editable, false, '🔴 the older read did not unlock the zones');
+  assert.ok(card(p).querySelector('.ecallout'), 'still the lock callout');
+});
+test('#180 P2-3: only an explicit discard clears a draft — a read reporting current_malformed keeps the zones draft; a good read shows it again', async () => {
+  const srv = server({ policy: withZones(), world: world(CLOSED, CLOSED) });
+  const p = await open(srv);
+  await rename(p, 'Sector A', 'Sector Norte');
+  await away(p);
+  const good = await srv.node();
+  await srv.db.ref('platform_config/delivery_pricing').set({ ...good, bands: 'broken' });   // the stored node is unreadable
+  await p.open(); await settle(60);
+  assert.deepEqual((p.mods.envio._envioState.zonesDraft || []).map((z) => z.name), ['Sector Norte', 'Sector B'], '🔴 the closed draft survives the malformed read');
+  await srv.db.ref('platform_config/delivery_pricing').set(good);
+  await away(p); await p.open(); await settle(60);
+  assert.ok(zrow(p, 'Sector Norte'), 'a good read shows the kept draft again');
+});
+test('#180 a zones draft ENDS with the session: sign out, another admin signs in ⇒ the stored zones, never the previous admin\'s draft', async () => {
+  const srv = server({ policy: withZones(), world: world(CLOSED, CLOSED), admins: { uAdmin: true, uAdmin2: true } });
+  const p = await open(srv);
+  await rename(p, 'Sector A', 'Sector Norte');
+  p.d.dispatchEvent(new p.w.CustomEvent('portal:auth', { detail: { uid: null } })); await settle(20);
+  await p.signIn('uAdmin2'); await p.open(); await settle(60);
+  assert.equal(zrow(p, 'Sector Norte'), undefined, '🔴 the previous admin\'s unsent draft is gone');
+  assert.ok(zrow(p, 'Sector A'), 'the stored zones');
+});
+// the real path: a non-saved POST is settled by the recovery read; a malformed read classifies as «conflict» (classifyRecovery) — the
+// conflict panel, the zones draft kept until the admin presses «Recargar» (an explicit discard)
+test('#180 a SAVE answered current_malformed: the conflict panel, and the zones draft stays until the admin discards', async () => {
+  const srv = server({ policy: withZones(), world: world(CLOSED, CLOSED) });
+  const p = await open(srv);
+  await rename(p, 'Sector A', 'Sector Norte');
+  const good = await srv.node();
+  await srv.db.ref('platform_config/delivery_pricing').set({ ...good, no_delivery_zones: 'broken' });   // the stored zones went unreadable before the save (the write path judges stored zones, pricing-admin-core.js:261)
+  await saveAll(p);
+  const out = srv.answers[srv.answers.length - 1];
+  assert.equal(out.status, 409); assert.equal(out.body.error, 'current_malformed', 'premise: the REAL core refused current_malformed');
+  assert.ok(p.text().includes('Alguien más cambió las tarifas, recargá'), 'the conflict panel');
+  assert.deepEqual((p.mods.envio._envioState.zonesDraft || []).map((z) => z.name), ['Sector Norte', 'Sector B'], '🔴 no automatic discard on the save path');
+});
+test('#180 zone_out_of_range (the REAL validator, |lat| > 60) ⇒ the frame-F panel naming the zone, not the generic error', async () => {
+  const srv = server({ policy: withZones(), world: world(CLOSED, CLOSED) });
+  const p = await open(srv);
+  await rename(p, 'Sector A', 'Sector Norte');
+  srv.rewrite = (b) => ({ ...b, no_delivery_zones: b.no_delivery_zones.map((z) => (z.id === 'z_aaaaaaaa' ? { ...z, points: z.points.map((pt) => ({ lat: pt.lat + 46, lng: pt.lng })) } : z)) });
+  await saveAll(p);
+  const out = srv.answers[srv.answers.length - 1];
+  assert.equal(out.status, 400); assert.equal(out.body.field, 'zone_out_of_range', 'premise: the real core refused out of range');
+  const box = p.d.querySelector('.envzfail');
+  assert.ok(box, '🔴 the frame-F panel');
+  assert.equal(box.querySelector('b').textContent, P('refusedTitle', { nombre: 'Sector Norte' }), 'the zone named');
+});
+
 test('E — the hours cannot be read at the save (503 hours_unavailable): the panel, the draft kept, «Reintentar» resends the SAME attempt', async () => {
   const reg = { fresh: true };
   const W = world(CLOSED, CLOSED);
