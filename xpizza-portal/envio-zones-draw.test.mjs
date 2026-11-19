@@ -474,7 +474,7 @@ test('#204-P2 starting a drawing turns rename / remove off; «Cancelar» on the 
   const { session } = await drawing(p);
   assert.ok(zbtns(p).length && zbtns(p).every((b) => b.disabled), '🔴 drawing: rename / remove off');
   finish(p, session, 3, GOOD); await settle();
-  [...nameRow(p).querySelectorAll('button')].find((b) => b.textContent === 'Cancelar').click(); await settle();
+  const nc = [...nameRow(p).querySelectorAll('button')].find((b) => b.textContent === 'Cancelar'); nc.focus(); nc.click(); await settle();   // a press focuses its button
   assert.equal(nameRow(p), null, '🔴 the naming row is gone');
   assert.equal(p.d.querySelector('section.envzones .zlist + p.efnote'), null, 'its note too');
   assert.ok(zbtns(p).every((b) => !b.disabled), '🔴 rename / remove are back');
@@ -486,7 +486,7 @@ test('#204-P2b cancelling an EDITING session turns rename / remove back on and f
   await live(p);
   editReq(p, 'z_aaaaaaaa'); await settle();
   assert.ok(zbtns(p).every((b) => b.disabled), 'premise: off while editing');
-  [...mapSec(p).querySelectorAll('.mtool button')].find((b) => b.textContent === 'Cancelar').click(); await settle();
+  const tc = [...mapSec(p).querySelectorAll('.mtool button')].find((b) => b.textContent === 'Cancelar'); tc.focus(); tc.click(); await settle();
   assert.equal(last(out).drawing, null);
   assert.ok(zbtns(p).every((b) => !b.disabled), '🔴 back on');
   assert.equal(p.d.activeElement && p.d.activeElement.title, 'Renombrar', 'the edited zone\'s rename');
@@ -516,4 +516,28 @@ test('#204-P3b a shape above 60° latitude ⇒ the frame-F refusal panel; no inl
   assert.equal(box.querySelector('b').textContent, P('refusedTitleBare')); assert.equal(box.querySelector('p').textContent, P('refusedBody'));
   assert.equal(toolLine(p), null, 'no inline line for it');
   assert.deepEqual(last(out).zones, AS_SENT);
+});
+
+// Codex #206: ONE focus rule for every session transition — if the focused control is hidden or removed by it, the focus moves to the
+// transition's target (never left on a hidden button)
+test('#206 «Terminar» pressed, the map\'s finish accepted ⇒ the focus moves from the hidden «Terminar» to the naming input', async () => {
+  const p = await open();
+  const { session } = await drawing(p);
+  drawPts(p, session, 1, GOOD); await settle(60);
+  terminar(p).focus(); terminar(p).click(); await settle();
+  finish(p, session, 2, GOOD); await settle();
+  assert.equal(p.d.activeElement, nameRow(p).querySelector('input'), '🔴 the naming input has the focus');
+});
+test('#206b an adoption ends the session with the focus on the tool line\'s «Cancelar» ⇒ the focus goes to «Dibujar zona»', async () => {
+  const p = await open();
+  p.d.getElementById('navprod').click(); await settle(20);
+  let release; p.srv.hold.get = new Promise((r) => { release = r; });
+  await p.open(); await settle(30);
+  await live(p);
+  drawBtn(p).focus(); drawBtn(p).click(); await settle();   // a press focuses «Dibujar zona»; it hides, so the tool line takes the focus
+  const cancel = [...mapSec(p).querySelectorAll('.mtool button')].find((b) => b.textContent === 'Cancelar');
+  assert.equal(p.d.activeElement, cancel, 'premise: the focus is on the tool line');
+  p.srv.hold.get = null; release(); await settle(80);
+  assert.equal(p.mods.envio._envioState.drawing, null, 'premise: the adoption ended the session');
+  assert.equal(p.d.activeElement, drawBtn(p), '🔴 the focus is on a visible control');
 });
