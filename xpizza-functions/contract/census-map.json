@@ -663,6 +663,7 @@
   "pixelpay-hosted-charge.js#acquireHostedAttempt": "payment",
   "pixelpay-hosted-charge.js#acquireHostedAttempt>anon": "payment",
   "pixelpay-hosted-charge.js#classifyFromOrder": "payment",
+  "pixelpay-hosted-charge.js#malformedBindingOf": "payment",
   "pixelpay-hosted-webhook.js#handleHostedCallback": "payment",
   "pixelpay-hosted.js#createHostedCharge": "payment",
   "pixelpay-webhook.js#classifySweepCandidate": "payment",

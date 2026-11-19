@@ -164,5 +164,28 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     ok('reuse of a live URL proceeds despite a non-empty cartBlocked (§7 accepted post-issue race)');
   }
 
+  // PLAN-3a-order-owner r1b — MALFORMED-PARITY: malformedBindingOf(order snapshot, tip) — the charge handler's early refusal on
+  // the hoisted probe — is TRUE exactly when classifyHostedAttempt answers conflict/binding_format_invalid for that order, over
+  // every precedence-relevant state (paid / refunded / cancelled, the fp_format tag, the text-version marker, the stored tip vs
+  // the incoming one, a fingerprint or none, an attempt or none)
+  {
+    const { malformedBindingOf } = require('./pixelpay-hosted-charge');
+    let n = 0, malformed = 0;
+    for (const payment_status of ['pending', 'confirmed', 'refunded']) for (const status of ['pending_payment', 'cancelled'])
+    for (const fp_format of [undefined, 'canonical', 'bogus']) for (const tv of [undefined, 'a8', 'bogus'])
+    for (const tip_cents of [undefined, 500]) for (const incoming of [0, 500]) for (const payment_fingerprint of [undefined, FP]) {
+      const order = { ...PENDING, payment_status, status, ...(fp_format !== undefined ? { fp_format } : {}), ...(tv !== undefined ? { payment_fingerprint_text_version: tv } : {}),
+        ...(tip_cents !== undefined ? { tip_cents } : {}), ...(payment_fingerprint ? { payment_fingerprint } : {}) };
+      const db = makeDb({ orders: { O1: order } });
+      const cls = await classifyHostedAttempt(db, 'O1', FP, NOW, () => ({ ok: true, fp: FP }), () => FP, incoming);
+      const want = cls.outcome === 'conflict' && cls.reason === 'binding_format_invalid';
+      assert.strictEqual(malformedBindingOf(order, incoming), want, `🔴 MALFORMED-PARITY ${JSON.stringify({ payment_status, status, fp_format, tv, tip_cents, incoming, payment_fingerprint: !!payment_fingerprint })}: classify ${JSON.stringify(cls)}`);
+      n += 1; if (want) malformed += 1;
+    }
+    assert.strictEqual(malformedBindingOf(null, 0), false, 'no order → no malformed refusal (classify: create)');
+    assert.ok(malformed > 0 && malformed < n, `non-vacuity: both answers occur (${malformed}/${n})`);
+    ok(`MALFORMED-PARITY: malformedBindingOf == classify's binding_format_invalid over ${n} states (${malformed} malformed)`);
+  }
+
   console.log(`\nAll ${pass} classify/acquire parity checks passed.`);
 })().catch((e) => { console.error('FAIL:', e && e.stack || e); process.exit(1); });
