@@ -43,7 +43,7 @@
       "details": "Torre 2, piso 5",
       "lat": 14.1003,
       "lng": -87.1901,
-      "last_used_at": 1795049932086
+      "last_used_at": 1795097425192
      },
      {
       "id": "a_b51af1ac8585",
@@ -52,7 +52,7 @@
       "details": "Casa azul, portón negro",
       "lat": 15.52,
       "lng": -88.03,
-      "last_used_at": 1795049932080
+      "last_used_at": 1795097425185
      }
     ],
     "default_address": "a_b51af1ac8585",
@@ -103,7 +103,7 @@
       "details": "Casa azul, portón negro",
       "lat": 15.52,
       "lng": -88.03,
-      "last_used_at": 1795049932080
+      "last_used_at": 1795097425185
      }
     ],
     "default_address": "a_67588898c418",
@@ -252,7 +252,7 @@
       "details": "Casa verde, portón blanco",
       "lat": 15.525,
       "lng": -88.035,
-      "last_used_at": 1795049932087
+      "last_used_at": 1795097425194
      }
     ],
     "default_address": "a_b51af1ac8585",
@@ -299,7 +299,7 @@
       "details": "Casa verde, portón blanco",
       "lat": 15.525,
       "lng": -88.035,
-      "last_used_at": 1795049932087
+      "last_used_at": 1795097425194
      }
     ],
     "default_address": "a_5f63349213b0",
@@ -373,7 +373,7 @@
       "details": "Casa verde, portón blanco",
       "lat": 15.525,
       "lng": -88.035,
-      "last_used_at": 1795049932087
+      "last_used_at": 1795097425194
      }
     ],
     "default_address": "a_67588898c418",
@@ -411,7 +411,7 @@
       "details": "Casa verde, portón blanco",
       "lat": 15.525,
       "lng": -88.035,
-      "last_used_at": 1795049932087
+      "last_used_at": 1795097425194
      }
     ],
     "default_address": "a_67588898c418",
@@ -448,7 +448,20 @@
     "default_address": null,
     "default_address_rev": 3
    }
+  },
+  "use_casa_same": {
+   "req": {
+    "id": "a_b51af1ac8585",
+    "expected_rev": 0,
+    "expected_default": "a_b51af1ac8585"
+   },
+   "status": 200,
+   "body": {
+    "ok": true,
+    "default_address": "a_b51af1ac8585",
+    "default_address_rev": 1
+   }
   }
  },
- "scenarios_sha256": "cad3fa4f93df543adb3dd8aea70308c2dc35fb3de4b463cf78cab04f45207445"
+ "scenarios_sha256": "e7deeb237139f9bf733c238af32af1d9cf67293223e2d47d13af456f7b8f0953"
 }

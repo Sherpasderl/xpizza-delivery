@@ -13,7 +13,7 @@
 // an always-allowed rate limiter. Every served body is recorded VERBATIM.
 import { createRequire } from 'node:module';
 import { writeFileSync, readFileSync } from 'node:fs';
-import { createHash, webcrypto } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,8 +39,13 @@ const db = { ref: (p = '') => ({
 const ACC = readFileSync(join(ROOTX, 'xpizza-orders/account.js'), 'utf8');
 const liftFn = (head) => { const i = ACC.indexOf(head); if (i <= 0) throw new Error('premise: account.js defines ' + head); return ACC.slice(i, ACC.indexOf('\n  }\n', i) + 4); };
 const UID = 'u_ana';
+// the form's newAddrId draws 6 random bytes per NEW address (window.crypto.getRandomValues). The generator replays the bytes the FIRST
+// run drew (Casa, Trabajo, Mamá — the ids every cell and the SBS scenes already use), so a re-run records new scenarios without
+// re-keying the book. Generator-only: the form's code runs unchanged (r3, owner 11-19 / advisor: fixture regen for Codex #173 #8)
+const DRAWN = ['b51af1ac8585', '67588898c418', '5f63349213b0']; let drawn = 0;
+const replayCrypto = { getRandomValues: (a) => { const h = DRAWN[drawn++]; if (!h || a.length !== 6) throw new Error('premise: one 6-byte draw per new address, three in all'); for (let i = 0; i < 6; i++) a[i] = parseInt(h.slice(2 * i, 2 * i + 2), 16); return a; } };
 const FORM = new Function('ensureFirebase', 'heal', 'MAX_ADDRESSES', 'window', `${liftFn('function newAddrId()')}\n${liftFn('async function saveAddress(')}\n${liftFn('async function deleteAddress(')}\nreturn { saveAddress, deleteAddress };`)(
-  async () => ({ auth: { authStateReady: async () => {}, currentUser: { uid: UID } }, db: null, dbMod: { ref: (_d, p) => p, get: async (p) => db.ref(p).get(), update: async (_r, u) => db.ref().update(u) } }), () => {}, 10, { crypto: webcrypto });
+  async () => ({ auth: { authStateReady: async () => {}, currentUser: { uid: UID } }, db: null, dbMod: { ref: (_d, p) => p, get: async (p) => db.ref(p).get(), update: async (_r, u) => db.ref().update(u) } }), () => {}, 10, { crypto: replayCrypto });
 const formSaveAddress = FORM.saveAddress, formDeleteAddress = FORM.deleteAddress;   // the frozen form's OWN writers (r3: deleteAddress too)
 put(`user_profiles/${UID}`, { phone: '50499990000', created_at: 5, name: 'Ana' });
 // «Casa» INSIDE x_pizza's zone (San Pedro Sula, ~1.7 km from its hub), «Trabajo» far OUTSIDE it (Tegucigalpa) — the checkout seed's two cases
@@ -68,6 +73,7 @@ const S = {};
 const use = async (body) => ({ req: clone(body), ...(await call(MY.useMyAddress, { method: 'POST', query: { context: 'platform' }, body })) });
 const C = casa.addrId, Tb = trabajo.addrId;
 S.profile_default_casa = await profile();                                   // Casa, rev 0
+const world0 = clone(at(`user_profiles/${UID}`));                           // the book as the real writer left it (Casa, rev 0) — replayed below
 clock += 60e3;
 S.use_trabajo = await use({ id: Tb, expected_rev: 0, expected_default: C });            // 200, rev 1
 S.profile_after_use = await profile();                                      // Trabajo, rev 1
@@ -97,13 +103,17 @@ S.m3_profile_nocasa = await profile();                                      // T
 S.m3_use_casa_gone = await use({ id: C, expected_rev: 3, expected_default: Tb });       // 404 — a refusal of a row she could see
 put(`user_profiles/${UID}/addresses`, null); put(`user_profiles/${UID}/default_address`, null);
 S.profile_empty = await profile();
+// Codex #173 #8: the address ALREADY in use, picked again — through the same CAS (the fence a late older write meets). Recorded on the
+// book the real writer left at the start (Casa, rev 0): 200, rev 1
+put(`user_profiles/${UID}`, world0);
+S.use_casa_same = await use({ id: C, expected_rev: 0, expected_default: C });
 const WANT = { profile_default_casa: 200, use_trabajo: 200, profile_after_use: 200, use_trabajo_again: 409, use_casa: 200, profile_after_back: 200, use_trabajo_late: 409,
-  use_unknown: 404, use_bad_shape: 400, m3_profile_casa: 200, m3_profile_mama: 200, m3_use_trabajo_stale: 409, m3_use_trabajo_ok: 200, m3_profile_trabajo: 200, m3_profile_nocasa: 200, m3_use_casa_gone: 404, profile_empty: 200 };
+  use_unknown: 404, use_bad_shape: 400, m3_profile_casa: 200, m3_profile_mama: 200, m3_use_trabajo_stale: 409, m3_use_trabajo_ok: 200, m3_profile_trabajo: 200, m3_profile_nocasa: 200, m3_use_casa_gone: 404, profile_empty: 200, use_casa_same: 200 };
 for (const [k, v] of Object.entries(S)) if (v.status !== WANT[k]) throw new Error(`premise: ${k} answered ${v.status} (want ${WANT[k]}) ${JSON.stringify(v.body).slice(0, 160)}`);
 const pair = (k) => [S[k].body.default_address, S[k].body.default_address_rev];
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 if (!eq(pair('profile_default_casa'), [C, 0]) || !eq(pair('profile_after_use'), [Tb, 1]) || !eq(pair('use_trabajo_again'), [Tb, 1]) || !eq(pair('profile_after_back'), [C, 2])
-  || !eq(pair('use_trabajo_late'), [C, 2]) || !eq(pair('m3_profile_mama'), [mama.addrId, 2]) || !eq(pair('m3_use_trabajo_stale'), [mama.addrId, 2]) || !eq(pair('m3_profile_trabajo'), [Tb, 3]))
+  || !eq(pair('use_trabajo_late'), [C, 2]) || !eq(pair('m3_profile_mama'), [mama.addrId, 2]) || !eq(pair('m3_use_trabajo_stale'), [mama.addrId, 2]) || !eq(pair('m3_profile_trabajo'), [Tb, 3]) || !eq(pair('use_casa_same'), [C, 1]))
   throw new Error('premise: the selection CAS moved as the plan says');
 
 const out = { source: { commit: SHA, blobs: Object.fromEntries(['xpizza-orders/account.js', 'xpizza-functions/signup-platform.js', 'xpizza-functions/address-book.js', 'xpizza-functions/my-address.js', 'xpizza-functions/member-auth.js'].map((f) => [f, blob(f)])),
