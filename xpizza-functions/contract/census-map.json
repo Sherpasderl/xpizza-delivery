@@ -340,8 +340,6 @@
   "assign-hub.js#hubOf": "dispatch",
   "availability-reset.js#resetRestaurant": "infra",
   "availability-reset.js#resetRestaurant>anon": "infra",
-  "cancel-order-core.js#parkable": "payment",
-  "cancel-order-core.js#parkCancelForPerson": "payment",
   "cancel-order-core.js#cancelOrderCore": "payment",
   "cancel-order-core.js#cleanupTasksAndDriver": "payment",
   "cancel-order-core.js#finalize": "payment",

@@ -74,11 +74,13 @@ async function releaseCancelClaim(orderRef, claimId) {
 // (the cancel flow's own human state: the B.2 gate refuses any retry, never a re-void) + blocked_reason + cancel_parked_at — so the refusal
 // is durable even if its alert is lost; reconcilePayments re-raises it daily (aged_manual_review). WITH a claim: ONE transaction that
 // releases OUR claim and parks (replaces releaseCancelClaim on these paths). WITHOUT one (an already-cancelled order): ONE CAS.
-// Codex #211: PARKABLE is the ONE rule for both: the order still holds EXACTLY the payment_status cancel judged, and the cancel claim is
-// as cancel left it (ours / none). Any outcome that landed after the read — a void (refunded / refund_pending), a confirmation, a queued
-// manual_reconciliation, a resolver's claim (resolving_*) — changed payment_status, so it is never overwritten. (The judged state itself
-// is never manual_* / resolving_* / refunded / refund_pending: the B.2 gate and cancelledDecision answer those before any park.)
-const parkable = (cur, judged, claimId) => cur.payment_status === judged && (claimId ? cur.cancel_claim_id === claimId : !cur.cancel_claim_id);
+// Owner 11-19 (structural, after Codex #212): park ONLY if NOTHING changed since cancel judged — the order is IDENTICAL to cancel's first
+// read, ignoring only the 4 claim fields cancel itself wrote in between (claimed path; the no-claim path wrote none, so it ignores none).
+// No field list to keep in step with the order's writers: a refund, a confirmation, a queued reconciliation, a resolver's claim or its
+// finished resolution — or any other write — means the judgement is stale ⇒ no park (our claim released, the 409 + alert stand).
+const CLAIM_FIELDS = ['cancel_claim_id', 'resolving_action', 'resolving_phase', 'resolving_claimed_at'];
+const sameAsJudged = (cur, judged, claimId) => [...new Set([...Object.keys(cur), ...Object.keys(judged)])]
+  .every((k) => (claimId && CLAIM_FIELDS.includes(k)) || require('util').isDeepStrictEqual(cur[k], judged[k]));
 async function parkCancelForPerson(orderRef, { claimId, judged, blockedReason, now }) {
   await orderRef.transaction((cur) => {
     if (cur === null) return null;                                     // null-first-safe
@@ -86,7 +88,7 @@ async function parkCancelForPerson(orderRef, { claimId, judged, blockedReason, n
     if (claimId && cur.cancel_claim_id !== claimId) return;            // not our claim → leave it
     const base = !claimId ? cur : { ...cur, cancel_claim_id: null,     // release ONLY our claim: a resolver's resolving_* fields stay
       ...(cur.resolving_action === 'cancel' ? { resolving_action: null, resolving_phase: null, resolving_claimed_at: null } : {}) };
-    if (!parkable(cur, judged, claimId)) return claimId ? base : undefined;   // a concurrent outcome stands
+    if (!sameAsJudged(cur, judged, claimId)) return claimId ? base : undefined;   // the order moved since cancel judged it ⇒ it stands
     return { ...base, payment_status: 'manual_review', blocked_reason: blockedReason, cancel_parked_at: now };
   });
 }
@@ -115,7 +117,7 @@ async function cancelOrderCore(deps, { orderId, actor, reason, now, claimId }) {
   if (order.status === 'cancelled') {
     const d = C.cancelledDecision(order, attempt);
     if (!d.heal) {
-      if (d.alert) { await parkCancelForPerson(orderRef, { claimId: null, judged: order.payment_status, blockedReason: 'cancel_no_uuid_cancelled', now }); await alert('cancel_manual_review', { orderId, payment_status: order.payment_status }); }   // park first: durable even if the alert is lost
+      if (d.alert) { await parkCancelForPerson(orderRef, { claimId: null, judged: order, blockedReason: 'cancel_no_uuid_cancelled', now }); await alert('cancel_manual_review', { orderId, payment_status: order.payment_status }); }   // park first: durable even if the alert is lost
       return { status: d.code, body: { ok: d.code === 200, outcome: d.outcome, order_id: orderId } };
     }
     // heal → proceed to claim + void
@@ -124,6 +126,11 @@ async function cancelOrderCore(deps, { orderId, actor, reason, now, claimId }) {
   // B.5 claim — null-first-safe unique cancel_claim_id; verify OUR claim landed.
   const claimTx = await orderRef.transaction((cur) => C.claimDecision(cur, claimId, now));
   if (!claimTx.committed || !C.claimLanded(claimTx.snapshot.val(), claimId)) {
+    const g2 = claimTx.snapshot.val() ? C.gate(claimTx.snapshot.val()) : { ok: true };   // the claim re-applied the gate: answer ITS refusal
+    if (g2.reject) {
+      if (g2.reject.alert) await alert('cancel_manual_review', { orderId, payment_status: claimTx.snapshot.val().payment_status });
+      return { status: g2.reject.code, body: { ok: false, outcome: g2.reject.outcome, error: g2.reject.error, order_id: orderId } };
+    }
     return { status: 409, body: { ok: false, outcome: 'claim_lost', error: 'Cancelación en proceso por otro', order_id: orderId } };
   }
   const claimed = claimTx.snapshot.val();
@@ -161,7 +168,7 @@ async function cancelOrderCore(deps, { orderId, actor, reason, now, claimId }) {
     const uuid = attempt && attempt.payment_uuid;
     if (!uuid) {
       // Captured money but NO resolvable uuid (F8-r1) → never cancel-and-strand: release the claim + alert.
-      await parkCancelForPerson(orderRef, { claimId, judged: claimed.payment_status, blockedReason: 'cancel_captured_no_uuid', now });   // release our claim AND park, one transaction
+      await parkCancelForPerson(orderRef, { claimId, judged: order, blockedReason: 'cancel_captured_no_uuid', now });   // release our claim AND park, one transaction
       await audit('manual_review', { reason: 'captured_no_uuid' });
       await alert('cancel_manual_review', { orderId, reason: 'captured_no_uuid' });
       return { status: 409, body: { ok: false, outcome: 'manual_review', order_id: orderId } };
@@ -183,7 +190,7 @@ async function cancelOrderCore(deps, { orderId, actor, reason, now, claimId }) {
     // [B.3/F7] AMBIGUOUS: a UUID exists but NO captured-money evidence (a declined auth carries a UUID; or an
     // unconfirmed capture) AND the money isn't already reversed. Never auto-void (might not be a real charge),
     // never clean-cancel-and-strand (might be). Release the claim + manual_review + alert → dispatcher verifies.
-    await parkCancelForPerson(orderRef, { claimId, judged: claimed.payment_status, blockedReason: 'cancel_ambiguous_paid_evidence', now });   // release our claim AND park, one transaction
+    await parkCancelForPerson(orderRef, { claimId, judged: order, blockedReason: 'cancel_ambiguous_paid_evidence', now });   // release our claim AND park, one transaction
     await audit('manual_review', { reason: 'ambiguous_paid_evidence' });
     await alert('cancel_manual_review', { orderId, reason: 'ambiguous_paid_evidence' });
     return { status: 409, body: { ok: false, outcome: 'manual_review', order_id: orderId } };

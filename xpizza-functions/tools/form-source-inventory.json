@@ -2853,6 +2853,7 @@
   "brands/brand-store.js",
   "brands/brands-admin-core.js",
   "cancel-order-core.js",
+  "cancel-order.js",
   "cart-sig.js",
   "catalog/_hosted-claim-delta.js",
   "catalog/add-product-io.js",
@@ -3372,6 +3373,12 @@
     "xpizza-functions/a1-wiring.guard.test.js",
     "xpizza-functions/cpark-wiring.guard.test.js",
     "xpizza-functions/rewards-reversal-placement.test.js"
+   ]
+  },
+  "cancel-order.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/cpark-wiring.guard.test.js"
    ]
   },
   "cart-sig.js": {

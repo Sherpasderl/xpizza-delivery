@@ -61,6 +61,7 @@ function cancelledDecision(order, attempt) {
 function claimDecision(cur, claimId, now) {
   if (cur === null) return null;                                       // null-first-safe (a679797): force server round-trip
   if (!cur) return undefined;                                          // abort
+  if (gate(cur).reject) return undefined;                              // owner 11-19: re-apply the B.2 gate to the CURRENT order (a state queued since the gate's read)
   if (cur.resolving_action === 'cancel' && cur.cancel_claim_id && cur.cancel_claim_id !== claimId) return undefined; // another cancel owns it
   if (MR.isResolving(cur.payment_status)) return undefined;            // recon claim owns it
   return {

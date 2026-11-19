@@ -13,6 +13,10 @@
 //   CP-RACE     Codex #211: a REAL writer changes the order AFTER cancel's read, right before the park transaction (a void → refunded /
 //               refund_pending, a verify-failing callback → manual_reconciliation, the real resolver's claim, a real cancel claim) ⇒ the park
 //               never overwrites it; with our claim, ONLY our claim is released (a resolver's fields stay)
+//   CP-FP       owner 11-19 (structural, after Codex #212): park ONLY if the order is IDENTICAL to cancel's first read (minus cancel's own
+//               4 claim fields): a resolver's close_fulfilled landing in between (A and B) stands, isSale stays true; an unrelated write
+//               in the window ⇒ not parked, still alerted
+//   CP-REGATE   the claim re-applies the allowed-state gate: a reconciliation queued BEFORE the claim ⇒ the gate's own refusal, intact
 // Through the REAL cancelOrderCore on the honest RTDB model. Run: node payments/cancel-park.test.js
 const assert = require('assert');
 const { cancelOrderCore } = require('../cancel-order-core');
@@ -26,6 +30,8 @@ const { paymentHash } = require('../pixelpay');
 const { resolvePixelPayConfig } = require('../pixelpay-config');
 const MR = require('../manual-resolve');
 const C = require('../cancel-order');
+const { resolveManualReconciliationCore } = require('../resolve-manual');
+const { isSale } = require('../stats/stats-classify');
 process.env.PIXELPAY_MODE = 'sandbox';
 let voidOk = true;   // the provider's answer to a void (the stubbed PixelPay; the REAL client / voidOrRefund run)
 globalThis.fetch = async (url) => {
@@ -102,8 +108,9 @@ const PARKED = (reason) => ['manual_review', reason, NOW, null, null, null];
       db = makeDb({ orders: { [OID]: ORDER({ active_attempt_id: AID, ...ord }) }, payment_attempts: { [AID]: { order_id: OID, hosted_order_id: HOID, ...att } } }, {
         beforeTx: async (p) => { if (fired || p !== `orders/${OID}`) return; seen += 1; if (seen === nth) { fired = true; await quiet(() => inject(db)); } },
       });
-      await cancel(db);
+      const r = await cancel(db);
       assert.ok(fired, `${label} premise: the real writer ran right before the park transaction`);
+      assert.deepStrictEqual([r.status, r.body.outcome, alerts(db).length], [409, 'manual_review', 1], `${label}: still the 409 manual_review + ONE cancel alert`);
       const o = db.getAt(`orders/${OID}`);
       want(o, label);
       assert.ok(o.blocked_reason === undefined && o.cancel_parked_at === undefined, `🔴 ${label}: NOT parked over the concurrent outcome (${o.payment_status}, ${o.blocked_reason})`);
@@ -123,8 +130,41 @@ const PARKED = (reason) => ['manual_review', reason, NOW, null, null, null];
     // A (no claim, an already-cancelled order): a verify-failing callback / a real cancel claim lands first
     await race('CP-RACE-A-RECON', { ord: A_ORD, att: B_ATT, nth: 1, inject: badHash, want: (o, L) => assert.strictEqual(o.payment_status, 'manual_reconciliation', `🔴 ${L}: the queued manual_reconciliation stands (P2-3)`) });
     await race('CP-RACE-A-CLAIM', { ord: A_ORD, att: B_ATT, nth: 1, inject: otherCancelClaim, want: (o, L) => assert.deepStrictEqual([o.payment_status, o.cancel_claim_id, o.resolving_action], ['confirmed', 'CL-OTHER', 'cancel'], `🔴 ${L}: another cancel's claim is left alone`) });
+    // CP-FP (Codex #212 P1, its exact repro): a verify-failing callback, then the REAL resolver closes it as fulfilled — the order
+    // lands back on payment_status 'confirmed'; the park must still see that it changed (a La Musa order: no platform factura)
+    const closeFulfilled = async (db) => { await badHash(db); const r = await resolveManualReconciliationCore({ ...cbDeps(db), sanitizeText: (t) => String(t), serverTimestamp: 0 }, { orderId: OID, action: 'close_fulfilled', actor: 'disp@tb', note: '', now: NOW + 3, claimId: 'RCL' }); assert.strictEqual(r.body.outcome, 'closed_fulfilled_offline', `premise: the resolver closed it (${JSON.stringify(r.body)})`); };
+    const resolvedStands = (o, L) => {
+      assert.deepStrictEqual([o.status, o.payment_status, o.resolution, o.cancel_claim_id || null], ['completed', 'confirmed', 'offline_fulfilled', null], `🔴 ${L}: the resolver's completed / confirmed / offline_fulfilled stands`);
+      assert.strictEqual(isSale(o), true, `🔴 ${L}: the real isSale() still counts the sale`);
+    };
+    await race('CP-FP-A-RESOLVED', { ord: { ...A_ORD, restaurant_id: 'la_musa' }, att: B_ATT, nth: 1, inject: closeFulfilled, want: resolvedStands });
+    await race('CP-FP-B-RESOLVED', { ord: { restaurant_id: 'la_musa' }, att: B_ATT, nth: 2, inject: closeFulfilled, want: resolvedStands });
+    // CP-FP-UNRELATED: a write that touches no money field still changes the order ⇒ no park (only the alert, as before the park existed)
+    {
+      await race('CP-FP-UNRELATED', { ord: {}, att: B_ATT, nth: 2, inject: (db) => db.ref(`orders/${OID}/dispatcher_note`).set('llamar al llegar'),
+        want: (o, L) => assert.deepStrictEqual([o.payment_status, o.dispatcher_note, ...released(o)], ['confirmed', 'llamar al llegar', null, null, null], `🔴 ${L}: not parked, the write kept, our claim released`) });
+    }
     assert.strictEqual(voids, 0, 'CP-RACE: cancel itself never voided');
     ok('CP-RACE: a refund / void / queued reconciliation / resolver claim / cancel claim landing after the read is never overwritten; only OUR claim is released');
+  }
+  {
+    // CP-REGATE (Codex #212 P2, its exact repro): pending_payment / confirmed, captured, no uuid. A verify-failing callback lands AFTER the
+    // gate's read and BEFORE the claim transaction (the order's 1st transaction) ⇒ the claim re-applies the gate: its own refusal, no
+    // claim, no park, no void, the queued reconciliation intact (the resolver can still claim it).
+    const HOID = `${OID}-${AID}`;
+    const cbDeps = (db) => ({ db, restaurant: { lat: 15.5, lng: -88, name: 'TB', phone: 'p' }, buildMaterializeUpdates, alert: (k, d) => paymentAlert(db, k, d), genToken: () => 'TOK', client: realClient, voidOrRefund: realVoid });
+    voids = 0; let db; let fired = false;
+    db = makeDb({ orders: { [OID]: ORDER({ status: 'pending_payment', payment_status: 'confirmed' }) }, payment_attempts: { [AID]: { order_id: OID, hosted_order_id: HOID, hosted_state: 'paid', hosted_callback_verified: true } } }, {
+      beforeTx: async (p) => { if (fired || p !== `orders/${OID}`) return; fired = true; await quiet(() => handleHostedCallback(cbDeps(db), { order: HOID, status: 'paid', amount: 299, uuid: 'PAY-9', transaction_id: 'T9', payment_hash: 'f'.repeat(32) }, NOW + 1)); },
+    });
+    const r = await cancel(db);
+    const o = db.getAt(`orders/${OID}`);
+    assert.ok(fired && o.payment_status === 'manual_reconciliation', 'CP-REGATE premise: the real callback queued manual_reconciliation before the claim');
+    assert.deepStrictEqual([r.status, r.body.outcome], [409, 'in_recon_surface'], `🔴 CP-REGATE: the claim re-applies the gate ⇒ ITS refusal, not claim_lost (${JSON.stringify(r.body)})`);
+    assert.deepStrictEqual([o.payment_status, o.cancel_claim_id || null, o.resolving_action || null, o.blocked_reason, voids], ['manual_reconciliation', null, null, undefined, 0], '🔴 CP-REGATE: the reconciliation intact — no claim, no park, no void');
+    const rc = await db.ref(`orders/${OID}`).transaction((cur) => MR.claimDecision(cur, 'refund', 'RCL2', NOW + 4));
+    assert.ok(rc.committed && MR.claimLanded(rc.snapshot.val(), 'refund', 'RCL2'), 'CP-REGATE: the real resolver can still claim it');
+    ok('CP-REGATE: a reconciliation queued before the claim ⇒ the gate\'s own refusal; the reconciliation stays claimable');
   }
   console.log(`cancel-park: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });
