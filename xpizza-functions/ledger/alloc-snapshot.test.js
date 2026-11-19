@@ -62,8 +62,20 @@ cell('S1-COPY: the snapshot copies the money components of the record it rides w
     created_at: 1763300000000, payment_method: 'cash', order_type: 'pickup', total_cents: 29000,
     food: { subtotal_cents: 20000, tax_cents: 3000, desc_rebaja_cents: 4000 },
     envio: { delivery_cents: 5000, promo_discount_cents: 1000, delivery_discount_funder: 'sherpa' }, tip_cents: 2000,
-    offer: { offer_id: 'of_1', rev: 2, type: 'pct', name: 'Martes 20 %', discount_cents: 4000, waived_envio_cents: 0, funded_by: 'restaurant' },
+    offer: { offer_id: 'of_1', rev: 2, type: 'pct', name: 'Martes 20 %', discount_cents: 4000, waived_envio_cents: 0 },
     reward_discount_cents: 0 });
+});
+
+// chore/drop-funded-by-5f (BACKLOG B; the PRE-REQ for the audience switch ON): WHO funds a discount is answered ONLY by marketing/offer-price
+// offerFunder (offer_reconcile decides an audience-'new' grant), so the frozen snapshot never carries the order's funded_by — a ledger reader
+// can't pay a mis-granted «nuevo» from the restaurant off it. The record DOES carry it (the real writer's frozen offer); the snapshot drops it.
+cell('S1-NO-FUNDER: the snapshot never copies the offer\'s funded_by (offerFunder is the one funder reader)', () => {
+  for (const funded_by of ['restaurant', 'sherpa']) {
+    const s = LA.snapshotOf(recordOf({ offer: { offer_id: 'of_1', rev: 2, type: 'pct', name: 'x', discount_cents: 4000, waived_envio_cents: 0, funded_by, audience: 'new', audience_kind: 'new' } }), LA.modeOf({ body: {}, clientHdr: HDR_FORM }));
+    assert.ok(s.offer && s.offer.offer_id === 'of_1', 'premise: the offer is snapshotted');
+    assert.ok(!('funded_by' in s.offer), `🔴 S1-NO-FUNDER: the snapshot copied funded_by=${funded_by}`);
+    assert.ok(!JSON.stringify(s).includes('funded_by'), '🔴 S1-NO-FUNDER: no funded_by anywhere in the snapshot');
+  }
 });
 
 cell('S1-FORMS-ABSENT: a plain FORM order (no envío, no tip, no offer, no reward, no rebaja) ⇒ every optional is null, the whole snapshot is Firebase-valid', () => {
