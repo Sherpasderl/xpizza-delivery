@@ -7,10 +7,12 @@
 //          | 400 bad_request | 401 unauthenticated | 403 deleted | 404 not_found | 405 | 429 | 503
 // PLAN-3a-addr-rev r0 (advisor GO 2026-11-18): a REVISION CAS — default_address_rev (address-book.revOf: absent/malformed ⇒ 0) must
 // equal expected_rev, else 409 stale_address with the PROJECTED current selection + rev and NOTHING written; an accepted write mints
-// rev + 1. So an older write landing late never overwrites its successor. Refusal order: 401 → 429 → 403 → 409 → 404. A lost-reply
-// resend sees 409 with its own id at expected_rev + 1 (the client counts that as success).
+// rev + 1. So an older write landing late never overwrites its successor. Refusal order: 401 → 429 → 403 → 409 → 404.
+// THE CLIENT CONTRACT ON A 409 (owner, after Codex #164/#165): trust ONLY «stale». The body's pair may be SPECULATIVE (see below) —
+// never success, never the observed selection. The client MUST re-read through the authenticated getMyProfile: success ⇔ that re-read
+// shows its pick; otherwise it adopts the RE-READ pair (default_address + default_address_rev) for any further write.
 // r1 (advisor GO, Option B — rule 6b: no known gap accepted): the CAS ALSO compares the selection — expected_default (what the client
-// last saw: getMyProfile, a 200 or a 409) must equal the PROJECTED current default_address (address-book.projectBook: the value
+// last saw: getMyProfile's re-read or its own 200 — never a 409 body) must equal the PROJECTED current default_address (address-book.projectBook: the value
 // getMyProfile serves, so a malformed stored default never locks a client out). The frozen forms' saveAddress / deleteAddress change
 // default_address without the rev; this half refuses an older write over such a change, the no-rev window included. A → B → A back to
 // the client's own view is accepted (nothing newer is lost); a content edit of the selected entry is not a selection change.

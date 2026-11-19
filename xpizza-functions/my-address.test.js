@@ -54,30 +54,42 @@ function fakeDb() {
     };
     return api;
   };
-  const T = { cold: new Set(), pause: new Map(), txs: [] };   // txs: every transaction ATTEMPT (path), committed or not   // cold: a path whose NEXT transaction first sees null; pause: path → async fn run before the commit
+  const T = { cold: new Set(), pause: new Map(), txs: [], events: [] };   // txs: every transaction ATTEMPT (path), committed or not   // cold: a path whose NEXT transaction first sees null; pause: path → async fn run before the commit
   // Codex #163 P1 — the shared SDK of ONE instance: a transaction's proposal is a PENDING LOCAL write that an overlapping transaction
   // on the same path (same instance) is handed as its input; an `undefined` abort is local (never server-confirmed); a proposal the
   // server refuses is ROLLED BACK. `get()` / `once()` read the server (repoGetValue never returns a pending local write).
-  const mkRef = (local) => (p = '') => ({
+  // Codex #165 P2 (rule 29: never laxer than the SDK): the SDK QUEUES transactions per path — a dependent that PROPOSED on a pending
+  // base is held until its predecessor settles, and only then checked against the server (re-run on a mismatch). T.events records
+  // { tid, kind, … } so a cell can assert that ordering.
+  const mkRef = (local, inflight = new Map()) => (p = '') => ({
     get: async () => { reads.push({ kind: 'get', path: p }); return snapOf(get(p)); },
     once: async () => { reads.push({ kind: 'get', path: p }); return snapOf(get(p)); },
     set: async (v) => { writes.push(p); set(p, v); }, remove: async () => { writes.push(p); set(p, null); },
     update: async (m) => { for (const [k, v] of Object.entries(m)) { writes.push(p ? `${p}/${k}` : k); set(p ? `${p}/${k}` : k, v); } },
     orderByChild: (c) => query(p, c),
     transaction: async (fn) => {
-      T.txs.push(p);
-      const basePending = local.has(p);   // the first base is another transaction's PENDING write (the real SDK still checks it at commit)
-      let seen = basePending ? clone(local.get(p)) : T.cold.has(p) ? null : (clone(get(p)) ?? null); T.cold.delete(p);
-      for (let i = 0; i < 25; i++) {
-        const next = fn(clone(seen));
-        if (next === undefined) return { committed: false, snapshot: snapOf(get(p)) };   // a LOCAL abort: never checked against the server
-        local.set(p, clone(next));   // pending: visible to an overlapping transaction of THIS instance
-        if (T.pause.has(p)) { const f = T.pause.get(p); T.pause.delete(p); await f(); }
-        const server = clone(get(p)) ?? null;
-        if (!same(server, seen)) { local.delete(p); seen = server; continue; }   // rolled back; RE-RUN with the real node
-        local.delete(p); writes.push(p); set(p, next); return { committed: true, snapshot: snapOf(get(p)) };
+      T.txs.push(p); const tid = T.txs.length;
+      const prior = inflight.get(p) || null;   // this instance's earlier, still outstanding transaction on the same path
+      let settle; const mine = new Promise((r) => { settle = r; }); inflight.set(p, mine);
+      try {
+        const basePending = local.has(p);   // the first base is another transaction's PENDING write (the real SDK still checks it at commit)
+        let seen = basePending ? clone(local.get(p)) : T.cold.has(p) ? null : (clone(get(p)) ?? null); T.cold.delete(p);
+        for (let i = 0; i < 25; i++) {
+          const next = fn(clone(seen));
+          if (next === undefined) { T.events.push({ tid, kind: 'abort', base: seen }); return { committed: false, snapshot: snapOf(get(p)) }; }   // a LOCAL abort
+          local.set(p, clone(next));   // pending: visible to an overlapping transaction of THIS instance
+          const speculative = i === 0 && basePending;
+          T.events.push({ tid, kind: speculative ? 'propose-speculative' : 'propose', base: seen });
+          if (speculative && prior) await prior;   // HELD (the SDK's per-path queue) until the predecessor settles
+          if (T.pause.has(p)) { const f = T.pause.get(p); T.pause.delete(p); await f(); }
+          const server = clone(get(p)) ?? null;
+          if (!same(server, seen)) { local.delete(p); seen = server; T.events.push({ tid, kind: 'rerun', base: server }); continue; }   // rolled back; RE-RUN with the real node
+          local.delete(p); writes.push(p); set(p, next); T.events.push({ tid, kind: 'commit' }); return { committed: true, snapshot: snapOf(get(p)) };
+        }
+        throw new Error('transaction: too many retries');
+      } finally {
+        settle(); if (inflight.get(p) === mine) inflight.delete(p);
       }
-      throw new Error('transaction: too many retries');
     },
   });
   const ref = mkRef(new Map());
@@ -286,8 +298,10 @@ const expectUsed = (before, id, now, rev) => ({ ...before, default_address: id, 
     const st = await use(`tok-${A}`, { id: trab, expected_rev: 1, expected_default: trab });
     assert.deepStrictEqual([st.code, st.body], [409, { ok: false, reason: 'stale_address', default_address: casa, default_address_rev: 1 }], '🔴 FORM-STALE: a form-changed selection ⇒ 409 with the form\'s selection');
     assert.deepStrictEqual(db.get(`user_profiles/${A}`), before, '🔴 FORM-STALE: nothing written'); assert.strictEqual(db.writes.length, w, '🔴 FORM-STALE: no write');
-    // FORM-CONVERGE: the client adopts the 409's pair and retries ⇒ accepted
-    const cv = await use(`tok-${A}`, { id: trab, expected_rev: st.body.default_address_rev, expected_default: st.body.default_address });
+    // FORM-CONVERGE: on the 409 the client RE-READS (the authenticated getMyProfile — its projection, address-book.projectBook) and
+    // retries with the RE-READ pair ⇒ accepted (never the 409 body's pair: a hint only)
+    const reread = AB.projectBook(db.get(`user_profiles/${A}`));
+    const cv = await use(`tok-${A}`, { id: trab, expected_rev: reread.default_address_rev, expected_default: reread.default_address });
     assert.deepStrictEqual([cv.code, cv.body.default_address_rev], [200, 2], '🔴 FORM-CONVERGE: the re-read pair is accepted');
     // FORM-CONTENT (scope pinned): the form edits the CONTENT of the selected entry (no makeDefault) — the selection is unchanged, so the
     // capp write on its current pair is ACCEPTED (the CAS guards the selection, not the entries' content)
@@ -347,21 +361,30 @@ const expectUsed = (before, id, now, rev) => ({ ...before, default_address: id, 
     assert.deepStrictEqual(db.get(`user_profiles/${A}`), afterForm, '🔴 FORM-MID-DELETE: the handler wrote nothing');
   }
   {
-    // NO-WRONG-STATE (Codex #163 P1 → owner's simpler option): ONE instance. W1 proposes (trab, 1) — a PENDING local write — and,
-    // before it commits, W2 arrives on the same instance holding W1's speculative pair (trab, 1) and asks for Casa, while the form picks
-    // Gym on the server. W2's updater is handed W1's pending write (it may answer a SPECULATIVE 409 — a hint only), but nothing is ever
-    // COMMITTED on a speculative base: W1 rolls back, W2's proposal re-runs on the server's real node and is refused. The server ends on
-    // the form's pick; neither trab nor casa is committed; both answers are 409 stale_address
+    // NO-WRONG-STATE (Codex #163 P1 → owner's simpler option; #165 P2: the SDK's per-path queue modelled). ONE instance. W1 proposes
+    // (trab, 1) — a PENDING local write — and pauses before its commit. W2 arrives on the same instance holding W1's speculative pair
+    // and asks for Casa: it PROPOSES (casa, 2) on that pending base and is HELD (barrier 1). Only then does the form pick Gym on the
+    // server (barrier 2), and W1 resumes: its proposal is rolled back (re-run on Gym) and refused. W2 is released only after W1 settled,
+    // re-runs on the server's real node (Gym) and is refused. The server ends EXACTLY on the form's pick; nothing committed, no rev.
     const db = fakeDb(); const { casa, trab } = await bookOf(db); const { use } = harness(db); const save = formSaveAddress(db, A);
     let w2 = null; let gym = null; let afterForm = null;
+    const tidOf = (kind) => { const e = db.T.events.find((x) => x.kind === kind); return e ? e.tid : null; };
     db.T.pause.set(`user_profiles/${A}`, async () => {
       w2 = use(`tok-${A}`, { id: casa, expected_rev: 1, expected_default: trab });   // acts on W1's uncommitted pair; NOT awaited here
-      await new Promise((r) => setImmediate(r));
+      for (let k = 0; k < 50 && tidOf('propose-speculative') === null; k++) await new Promise((r) => setImmediate(r));   // barrier 1
+      assert.ok(tidOf('propose-speculative') !== null, 'premise: W2 proposed on W1\'s PENDING pair before the form pick');
       const g = await save({ ...CONTENT('Gym', 'Portón 3'), makeDefault: true }); assert.ok(g.ok, 'premise: the form picked Gym'); gym = g.addrId;
-      afterForm = clone(db.get(`user_profiles/${A}`));
+      afterForm = clone(db.get(`user_profiles/${A}`)); db.T.events.push({ tid: 0, kind: 'form-gym' });   // barrier 2: then W1 resumes
     });
     const w1 = await use(`tok-${A}`, { id: trab, expected_rev: 0, expected_default: casa });
     const r2 = await w2;
+    const E = db.T.events; const t1 = tidOf('propose'); const t2 = tidOf('propose-speculative');
+    const at = (tid, kind, from = 0) => E.findIndex((e, k) => k >= from && e.tid === tid && e.kind === kind);
+    const w2Prop = at(t2, 'propose-speculative'); const form = at(0, 'form-gym'); const w1Settle = at(t1, 'abort', form); const w2Rerun = at(t2, 'rerun', w2Prop);
+    assert.ok(t1 !== t2 && w2Prop >= 0 && w2Prop < form, '🔴 NO-WRONG-STATE (order): W2 proposed on the pending base BEFORE the form pick');
+    assert.ok(form < w1Settle, '🔴 NO-WRONG-STATE (order): W1 rolled back and settled AFTER the form pick');
+    assert.ok(w1Settle < w2Rerun, `🔴 NO-WRONG-STATE (order): W2 was HELD until W1 settled, then re-ran (${JSON.stringify(E.map((e) => [e.tid, e.kind]))})`);
+    assert.strictEqual(E[w2Rerun].base && E[w2Rerun].base.default_address, gym, '🔴 NO-WRONG-STATE: W2\'s re-run saw the SERVER\'s node — the form\'s Gym');
     assert.deepStrictEqual([w1.code, w1.body.reason, r2.code, r2.body.reason], [409, 'stale_address', 409, 'stale_address'], '🔴 NO-WRONG-STATE: both writes are refused');
     assert.deepStrictEqual(db.get(`user_profiles/${A}`), afterForm, '🔴 NO-WRONG-STATE: the server ends EXACTLY on the form\'s pick — nothing was committed on a speculative base');
     assert.deepStrictEqual([db.get(`user_profiles/${A}/default_address`), db.get(`user_profiles/${A}/default_address_rev`)], [gym, undefined], '🔴 NO-WRONG-STATE: neither trab nor casa committed, no rev minted');
