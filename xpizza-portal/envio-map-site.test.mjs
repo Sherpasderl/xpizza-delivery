@@ -163,7 +163,7 @@ test('C2 child: the key refused AFTER the Map was built → `failed`, and tiles 
   E.fromParent(render(B)); await tick();
   E.win.gm_authFailure();
   E.maps.made[0].fire('tilesloaded');
-  assert.deepEqual(E.parent.posted.slice(1).map(([m]) => m.kind), ['failed']);
+  assert.deepEqual(E.parent.posted.slice(2).map(([m]) => m.kind), ['failed']);   // after listening + hello (Z2)
 });
 
 test('C2 child failures, each sent once with its cause: script load error, import rejection, the key refused (gm_authFailure)', async () => {
@@ -273,4 +273,186 @@ test('map labels: every .rings .rl … text fill clears 4.5:1 on the label box (
   const texts = [...css.matchAll(/([^{}]*\.rl[^{}]*text)\{[^}]*fill:(#[0-9A-Fa-f]{6})/g)].map((m) => [m[1].trim(), m[2]]);
   assert.ok(texts.length >= 3, `premise: the label text rules (${texts.length})`);
   for (const [sel, fill] of texts) assert.ok(ratio(fill, box[1]) >= 4.5, `${sel}: ${fill} on ${box[1]} = ${ratio(fill, box[1]).toFixed(2)}:1 ≥ 4.5`);
+});
+
+// ── Z2 — the map CHILD's drawing (PLAN-portal-zones-protocol-v3 r1 §2, r2 P2-3/P2-6, r3 #181-6, r4 #185): hello after listening; the child
+// only PROPOSES points (whole lists, a per-session seq) and finishes; the parent decides. drawController is the pure state machine.
+const { drawController } = await import('../xpizza-portal-map/map.js');
+const S1 = 'b'.repeat(32), S2 = 'c'.repeat(32);
+const P = (i) => ({ lat: 15.5 + i * 0.001, lng: -88.03 + (i % 2) * 0.001 });
+const DRAW = (o = {}) => ({ session: S1, zone: null, points: [], seq: 0, ack: null, request: null, ...o });
+function ctl() {
+  const sent = [], timers = [];
+  const c = drawController({ send: (kind, body) => sent.push({ kind, ...body }), schedule: (f, ms) => { timers.push({ f, ms }); return timers.length; }, cancel: (h) => { if (timers[h - 1]) timers[h - 1].f = null; } });
+  const runTimers = () => { const t = timers.splice(0); for (const x of t) if (x.f) x.f(); };
+  return { c, sent, runTimers };
+}
+
+test('Z2 child: `hello{proto:3}` right after `listening` (the old portal drops it; the new one renders v3 only after it)', async () => {
+  const E = fakeEnv();
+  boot({ win: E.win, doc: E.doc, loadMaps: E.loadMaps });
+  assert.deepEqual(E.parent.posted.slice(0, 2).map(([m, o]) => [m.kind, m.v, o]), [['listening', 1, MP.PORTAL_ORIGIN], ['hello', 2, MP.PORTAL_ORIGIN]], '🔴 hello after listening');
+  assert.deepEqual(E.parent.posted[1][0], { v: 2, mount: M, kind: 'hello', proto: 3 });
+});
+
+test('Z2 child: taps add points ONLY while a session is open — each a WHOLE list with a higher seq; a repeated tap and a 25th point are ignored', () => {
+  const { c, sent } = ctl();
+  c.tap(P(0));
+  assert.equal(sent.length, 0, 'no session: nothing');
+  c.onRender(DRAW());
+  c.tap(P(0)); c.tap(P(1)); c.tap(P(1));
+  assert.deepEqual(sent.map((m) => [m.kind, m.seq, m.points.length]), [['draft_points', 1, 1], ['draft_points', 2, 2]], '🔴 whole lists, seq 1, 2; the repeat ignored');
+  assert.equal(sent[1].session, S1);
+  for (let i = 2; i < 30; i++) c.tap(P(i));
+  assert.equal(sent[sent.length - 1].points.length, 24, '🔴 never more than 24');
+});
+
+test('Z2 child: an older echo never replaces newer local points; a newer parent list is adopted', () => {
+  const { c, sent } = ctl();
+  c.onRender(DRAW());
+  c.tap(P(0)); c.tap(P(1)); c.tap(P(2));
+  c.onRender(DRAW({ points: [P(0)], seq: 1 }));
+  c.tap(P(3));
+  assert.equal(sent[sent.length - 1].points.length, 4, '🔴 the older echo (seq 1) did not replace the local list');
+  assert.equal(sent[sent.length - 1].seq, 4);
+});
+
+test('Z2 child: tapping vertex 1 sends finish (the whole list, a new seq); another vertex is ignored (owner 11-19: no removal by tapping)', () => {
+  const { c, sent } = ctl();
+  c.onRender(DRAW());
+  for (let i = 0; i < 4; i++) c.tap(P(i));
+  c.tapVertex(2);
+  assert.equal(sent.filter((m) => m.kind === 'finish').length, 0, '🔴 vertex 3: nothing');
+  c.tapVertex(0);
+  const f = sent[sent.length - 1];
+  assert.deepEqual([f.kind, f.seq, f.points.length], ['finish', 5, 4], '🔴 finish, seq 5, the final list (vertex 1 not repeated)');
+});
+
+test('Z2 child (r3): the finish retries with the SAME seq every 500 ms until an ack names it; accepted ⇒ inert (no more taps)', () => {
+  const { c, sent, runTimers } = ctl();
+  c.onRender(DRAW());
+  for (let i = 0; i < 3; i++) c.tap(P(i));
+  c.tapVertex(0);
+  runTimers(); runTimers();
+  assert.deepEqual(sent.filter((m) => m.kind === 'finish').map((m) => m.seq), [4, 4, 4], '🔴 retries carry the same seq');
+  c.onRender(DRAW({ points: [P(0), P(1), P(2)], seq: 4, ack: { session: S1, seq: 4, outcome: 'accepted' } }));
+  const n = sent.length;
+  runTimers(); c.tap(P(9)); c.tapVertex(0);
+  assert.equal(sent.length, n, '🔴 settled: no retry, the closed shape takes no taps');
+});
+
+test('Z2 child (r3): rejected ⇒ the retry stops and the session stays editable; the next finish has a higher seq', () => {
+  const { c, sent, runTimers } = ctl();
+  c.onRender(DRAW());
+  for (let i = 0; i < 3; i++) c.tap(P(i));
+  c.tapVertex(0);
+  c.onRender(DRAW({ points: [P(0), P(1), P(2)], seq: 4, ack: { session: S1, seq: 4, outcome: 'rejected', line: 'self_cross' } }));
+  runTimers();
+  assert.equal(sent.filter((m) => m.kind === 'finish').length, 1, 'no retry after the verdict');
+  c.tap(P(5));
+  assert.equal(sent[sent.length - 1].kind, 'draft_points', '🔴 still editable');
+  c.tapVertex(0);
+  assert.equal(sent[sent.length - 1].seq, 6, 'a higher seq');
+});
+
+test('Z2 child (r4): every ack lost through the WHOLE budget ⇒ UNCONFIRMED — never a new seq, never a new finish of its own, inert', () => {
+  const { c, sent, runTimers } = ctl();
+  c.onRender(DRAW());
+  for (let i = 0; i < 3; i++) c.tap(P(i));
+  c.tapVertex(0);
+  for (let i = 0; i < 15; i++) runTimers();
+  const fins = sent.filter((m) => m.kind === 'finish');
+  assert.equal(fins.length, 10, '🔴 the budget: 10 tries');
+  assert.ok(fins.every((m) => m.seq === 4), 'all the same (session, seq)');
+  c.tap(P(7)); c.tapVertex(0);
+  assert.equal(sent.filter((m) => m.kind === 'finish').length, 10, '🔴 inert: no taps, no new finish');
+});
+
+test('Z2 child (r4): UNCONFIRMED reconciles from the parent\'s renders — same session without the ack ⇒ ONE resend (same seq); the ack settles; null settles as ended', () => {
+  const { c, sent, runTimers } = ctl();
+  c.onRender(DRAW());
+  for (let i = 0; i < 3; i++) c.tap(P(i));
+  c.tapVertex(0);
+  for (let i = 0; i < 15; i++) runTimers();
+  const n = sent.length;
+  c.onRender(DRAW({ points: [P(0), P(1), P(2)], seq: 3 }));
+  assert.equal(sent.length, n + 1, '🔴 the parent never got it: one more, same seq');
+  assert.deepEqual([sent[n].kind, sent[n].seq], ['finish', 4]);
+  c.onRender(DRAW({ points: [P(0), P(1), P(2)], seq: 4, ack: { session: S1, seq: 4, outcome: 'accepted' } }));
+  for (let i = 0; i < 3; i++) runTimers();
+  assert.equal(sent.length, n + 1, 'settled: nothing more');
+  const k = ctl();
+  k.c.onRender(DRAW()); for (let i = 0; i < 3; i++) k.c.tap(P(i)); k.c.tapVertex(0);
+  for (let i = 0; i < 15; i++) k.runTimers();
+  k.c.onRender(null);
+  assert.equal(k.c.view(), null, '🔴 settled as ended: nothing left to paint');
+  const m = k.sent.length; k.runTimers(); k.c.tap(P(1));
+  assert.equal(k.sent.length, m, '🔴 the parent moved on (no session): settled as ended, nothing sent');
+});
+
+test('Z2 child: the parent\'s «Terminar» (request: finish) ⇒ ONE finish with the local list', () => {
+  const { c, sent } = ctl();
+  c.onRender(DRAW());
+  for (let i = 0; i < 3; i++) c.tap(P(i));
+  c.onRender(DRAW({ points: [P(0), P(1), P(2)], seq: 3, request: 'finish' }));
+  c.onRender(DRAW({ points: [P(0), P(1), P(2)], seq: 3, request: 'finish' }));
+  assert.deepEqual(sent.filter((m) => m.kind === 'finish').map((m) => [m.seq, m.points.length]), [[4, 3]], '🔴 one finish for the request');
+});
+
+test('Z2 child: EDITING — a handle drag sends ONLY at its end, as a finish (the parent commits on it); a tap inside a drawn zone asks to edit it', () => {
+  const { c, sent } = ctl();
+  c.tapZone('z_aaaaaaaa');
+  assert.deepEqual(sent, [{ kind: 'edit_request', zone: 'z_aaaaaaaa' }], '🔴 no session: the tap asks');
+  c.onRender(DRAW({ zone: 'z_aaaaaaaa', points: [P(0), P(1), P(2), P(3)] }));
+  c.tapZone('z_bbbbbbbb');
+  assert.equal(sent.length, 1, 'a session open: no other request');
+  c.tap(P(9));
+  assert.equal(sent.length, 1, 'an EDITING session takes no new points by tapping');
+  c.dragEnd(2, P(7));
+  const f = sent[sent.length - 1];
+  assert.deepEqual([f.kind, f.seq, f.points[2]], ['finish', 1, P(7)], '🔴 the drag end is the finish, with the moved vertex');
+});
+
+test('Z2 child: a DRAWING handle drag sends draft_points at its end (never on every move)', () => {
+  const { c, sent } = ctl();
+  c.onRender(DRAW());
+  for (let i = 0; i < 3; i++) c.tap(P(i));
+  c.dragEnd(1, P(8));
+  const d = sent[sent.length - 1];
+  assert.deepEqual([d.kind, d.seq, d.points[1]], ['draft_points', 4, P(8)], '🔴 one whole list at the drag end');
+});
+
+test('Z2 child: a new session (or none) drops the old one\'s retry — never a finish for an ended session', () => {
+  const { c, sent, runTimers } = ctl();
+  c.onRender(DRAW());
+  for (let i = 0; i < 3; i++) c.tap(P(i));
+  c.tapVertex(0);
+  c.onRender(DRAW({ session: S2 }));
+  const n = sent.length; runTimers();
+  assert.equal(sent.length, n, '🔴 the old session\'s retry stopped');
+});
+
+test('Z2 child: a v3 render is v2 + zones + drawing — the limit ring and the map type are kept (never read as v1)', async () => {
+  const z = [{ id: 'z_aaaaaaaa', name: 'Sector A', points: [P(0), P(1), { lat: 15.503, lng: -88.031 }] }];
+  const v3 = MP.renderMessage({ mount: M, view: 'reset', theme: 'light', hub: HUB, name: 'La Musa', others: [], bands: [{ km: 3, fee: 4000, ok: true, out: false }],
+    mapType: 'hybrid', limit: { km: 3, capped: false, name: 'La Musa' }, zones: z, drawing: null });
+  const m = overlayModel(v3, flat(640), 1);
+  assert.ok(m.rings.some((r) => r.cls === 'ring rlim'), '🔴 the limit ring stays');
+  assert.equal(m.zones.length, 1, 'the zone is drawn'); assert.equal(m.zones[0].label.text, 'Sector A'); assert.ok(m.zones[0].d.endsWith('Z'));
+  assert.equal(m.draw, null, 'no session');
+  const E = fakeEnv();
+  boot({ win: E.win, doc: E.doc, loadMaps: E.loadMaps }); await tick();
+  E.fromParent(v3); await tick();
+  assert.equal(E.maps.made[0].opts.mapTypeId, 'hybrid', '🔴 the map type of a v3 render');
+});
+
+test('Z2 child: the session is painted from the child\'s own list — open: the dashed edges + the dotted close preview + numbered handles (1 in green); the edited zone is drawn as the session', () => {
+  const z = [{ id: 'z_aaaaaaaa', name: 'Sector A', points: [P(0), P(1), { lat: 15.503, lng: -88.031 }] }];
+  const v3 = MP.renderMessage({ mount: M, view: 'keep', theme: 'light', hub: HUB, name: 'La Musa', others: [], bands: [], mapType: 'roadmap', limit: null, zones: z, drawing: null });
+  const open = overlayModel(v3, flat(640), 1, { session: S1, zone: null, points: [P(0), P(1), P(2)], closed: false, editable: true });
+  assert.ok(open.draw && !open.draw.d.endsWith('Z') && open.draw.closing, '🔴 open: a polyline and the close preview');
+  assert.deepEqual(open.draw.vtx.map((v) => [v.n, v.first]), [[1, true], [2, false], [3, false]]);
+  const editing = overlayModel(v3, flat(640), 1, { session: S1, zone: 'z_aaaaaaaa', points: z[0].points, closed: false, editable: true });
+  assert.equal(editing.zones.length, 0, 'the edited zone is drawn once — as the session');
+  assert.ok(editing.draw.d.endsWith('Z') && editing.draw.closing === null, 'a zone being edited is closed');
 });
