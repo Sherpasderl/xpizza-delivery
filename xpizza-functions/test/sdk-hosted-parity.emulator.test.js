@@ -187,6 +187,22 @@ const LINE = { x_pizza: { name: 'Margherita', qty: 1, price: 0 }, la_musa: { id:
 const body = (rid, oid, extra = {}) => ({ restaurant_id: rid, order_id: oid, customer_name: 'Ana Pérez', customer_phone: '99770001', customer_email: 'ana.perez@gmail.com',
   items_text: `1x ${LINE[rid].name}`, order_type: 'pickup', payment_method: 'online', items: [LINE[rid]], ...extra });
 const BEARER = { Authorization: `Bearer ${process.env.MAKE_SECRET}` };
+// PLAN-3a-order-owner (07a23b7f7; DECISIONS 2026-11-18 RULING: no identity presented on a member/guest replay ⇒ ownerOf is
+// 'unverifiable' ⇒ the idempotent 200 carries tracking_token null): the ONE reviewed delta against the base — the identity-less
+// cash retry. Expected tip = the base with that 200's tracking_token null and its content-length recomputed for that body;
+// premises: the base retry was the idempotent 200 WITH a token, and neither request presented an identity. Counted.
+const OWNER_DELTA = { n: 0 };
+function declaredTip(name, steps, base) {
+  if (name !== 'cash: fresh + its retry') return base;
+  assert.ok(steps.every((st) => Array.isArray(st) && !st[2]['x-firebase-id-token']), `${name}: premise — no step presents an identity`);
+  const want = JSON.parse(JSON.stringify(base));
+  const r = want.out[1];
+  assert.ok(r && r.status === 200 && r.body && r.body.idempotent === true && typeof r.body.tracking_token === 'string', `${name}: premise — the base retry is the idempotent 200 with a token (${JSON.stringify(r && r.body)})`);
+  r.body.tracking_token = null;
+  r.headers['content-length'] = String(Buffer.byteLength(JSON.stringify(r.body)));
+  OWNER_DELTA.n += 1;
+  return want;
+}
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -270,9 +286,11 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('sdk-hoste
       assert.deepStrictEqual(b.out.map((x) => x.status), intended, `${name}: the BASE reaches its INTENDED outcome (${JSON.stringify(b.out.map((x) => [x.status, x.body]))})`);
       const t = await runOn('tip');
       if (intended[0] === 200) assert.ok(TIP_DECL > 0, `🔴 ${name}: the tip's placement writes S1's declared snapshot (non-vacuity)`);
-      assert.deepStrictEqual(t, b, `🔴 ${name}: the TIP's status / headers / body / ORDERED writes differ from the BASE`);
+      const want = declaredTip(name, steps, b);   // PLAN-3a-order-owner: the reviewed, named deltas (else the base itself)
+      assert.deepStrictEqual(t, want, `🔴 ${name}: the TIP's status / headers / body / ORDERED writes differ from the BASE`);
       ok(`${name}: base ≡ tip (${intended.join(', ')})`);
     }
+    assert.strictEqual(OWNER_DELTA.n, 1, `🔴 the declared order-owner delta was applied exactly once (${OWNER_DELTA.n})`);
     FINISHED = true;
     console.log(`\nsdk-hosted-parity (emulator): OK (${n})`);
     process.exit(0);
