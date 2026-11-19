@@ -30,9 +30,18 @@ const E1 = () => ({ brands: [{ brand_id: RID, name: 'La Musa' }], membership_wri
   branches: [{ rid: RID, brand_id: RID, role: 'owner', state: 'member', caps: OWNER_CAPS, name: 'Centro', identity_version: 2, editable: { prep_default_min: 20 },
     readonly: { active: true, radius_km: 4, hours: null, phone: '+50400000000' }, control: { state: 'open', paused_until: null, pause_reason: null, pause_since: null }, devices: 0, last_order_today: null }] });
 // the S2 §1.1 read: today's body + textEditEnabled (always present) + reservedNames / pendingTexts when served
-const editable = (over = {}) => ({ source: JSON.parse(JSON.stringify(SRC)), sourceUpdateTime: '1700000000.000000001', activeVersionId: 'v-live', usesPlatformFactura: false,
-  renderedCategories: [...rendererContract(RID).renderedCategories], restaurantName: 'La Musa', publish_via_request: false, groupAuthoring: false, choiceBadges: [],
-  textEditEnabled: true, reservedNames: [], ...over });
+// 5f getEditableCatalog rewardGroups (catalog/portal-reads): STATED whenever the reward-group guard is on (choice-compare
+// rewardGroupGuardOn on the Extras switch), its value the REAL derivation (choice-compare rewardGroupsOf) over the menu the read serves as
+// published — never a literal, so this read is never laxer than the server's (rule 29). A cell may pass rewardGroups: undefined = an
+// OLDER server that does not state it.
+const servedRewardGroups = (src) => new Set(req('./catalog/choice-compare').rewardGroupsOf({ extras: src.extras, structure: src.structure }));
+const editable = (over = {}) => {
+  const r = { source: JSON.parse(JSON.stringify(SRC)), sourceUpdateTime: '1700000000.000000001', activeVersionId: 'v-live', usesPlatformFactura: false,
+    renderedCategories: [...rendererContract(RID).renderedCategories], restaurantName: 'La Musa', publish_via_request: false, groupAuthoring: false, choiceBadges: [],
+    textEditEnabled: true, reservedNames: [], ...over };
+  if (!('rewardGroups' in over) && req('./catalog/choice-compare').rewardGroupGuardOn(r.extrasCatalog === true)) r.rewardGroups = [...servedRewardGroups(r.source)];
+  return r;
+};
 const settle = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
 async function loadAll() {
@@ -965,9 +974,12 @@ test('S1 — a checklist edit counts as unsaved: closing asks first, «Cancelar�
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
 { const pe = req.resolve('./catalog/platform-extras'); if (!req.cache[pe]) req.cache[pe] = { id: pe, filename: pe, loaded: true, exports: { extrasCapabilities: () => ({ authoring: true }) } }; }
 // the server's S2 switch (5f catalog/platform-structure), OFF unless a cell turns it on — the P-6 cells run 5f's REAL handler with it on
-const S2_SERVER = { on: false };
+// legacy: the REAL legacy-form reward-picker switch (choice-compare rewardGroupGuardOn reads it), unless a cell retires it
+const S2_SERVER = { on: false, legacy: null };
 { const ps = req.resolve('./catalog/platform-structure'); const real = req('./catalog/platform-structure');
-  req.cache[ps] = { id: ps, filename: ps, loaded: true, exports: { structureCapabilities: () => ({ ...real.structureCapabilities(), extrasCatalog: S2_SERVER.on }) } }; }
+  S2_SERVER.legacy = real.legacyFormRewardPickers;
+  req.cache[ps] = { id: ps, filename: ps, loaded: true, exports: { structureCapabilities: () => ({ ...real.structureCapabilities(), extrasCatalog: S2_SERVER.on }),
+    legacyFormRewardPickers: () => S2_SERVER.legacy() } }; }
 // the published menu realSave saves against: the seed, unless a cell serves another one (built by the portal's own writer)
 const REAL_LIVE = { src: null, pointer: null };   // pointer: the live active_version {version, generation} (an activation moves it)
 // OWNER-ONLY (Codex S2 UI r2 P2-11): every page that uses it signs in as the owner (E1). A manager path uses realBackend (5f's real
@@ -1165,6 +1177,8 @@ test('S2 X — switch ON: «Menú» selected; «Extras» shows the rail (the ONE
   const head = xpage(p).querySelector('.dhead');
   assert.equal(head.querySelector('.dtitle').textContent, groups[0]);
   assert.equal(head.querySelector('.dtitle').getAttribute('contenteditable'), null, 'S2-core: the group name is TEXT (no rename)');
+  assert.ok(servedRewardGroups(src).has(groups[0]), 'premise: the seed\u2019s first group feeds a reward picker (else RG-STUB proves nothing)');
+  assert.equal(addBtn(p), null, 'RG-STUB: the read states rewardGroups as the server does — no «Agregar extra» in the reward group');
   assert.match(head.querySelector('.dcount').textContent, /^\d+ extras? · en \d+ productos?$/, '«{n} extras · en {N} productos»');
   const warn = xpage(p).querySelector('.mk-xwarn');
   assert.ok(warn && /^Este grupo se usa en \d+ productos — los cambios aplican a todos\.$/.test(warn.textContent.trim()), 'the shared warning (frame X)');
@@ -1345,9 +1359,20 @@ test('S2 X3 — dismissing a DIRTY sheet asks «¿Descartar los cambios?»: «Se
 const addBtn = (p) => xpage(p).querySelector('.detail .dhead .dright button.btn');
 const newRow = (p) => xpage(p).querySelector('.detail .irow.mk-xnew');
 const key = (p, target, k) => target.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: k, bubbles: true }));
+// the nth rail group a NEW extra may join — not one the read serves as a reward group (there «Agregar extra» is not offered, R1) —
+// selected; its name returned
+async function selectAddable(p, nth = 0) {
+  const rg = servedRewardGroups(p.src());
+  const rows = railRows(p).filter((r) => !rg.has(r.dataset.group));
+  assert.ok(rows[nth], `premise: group #${nth + 1} a new extra may join (reward groups: ${JSON.stringify([...rg])})`);
+  if (!rows[nth].classList.contains('on')) { rows[nth].click(); await settle(10); }
+  return rows[nth].dataset.group;
+}
+const selectedGroup = (p) => railRows(p).find((r) => r.classList.contains('on')).dataset.group;
 async function openAdd(p) {
   await p.signIn();
   tabBtn(p, 'Extras').click(); await settle(10);
+  await selectAddable(p);
   assert.equal(addBtn(p).textContent, 'Agregar extra');
   addBtn(p).click(); await settle(5);
   return newRow(p);
@@ -1372,7 +1397,7 @@ test('S2 X+ — «Agregar extra» appends ONE inline row at the list’s foot: f
 test('S2 X+ — Enter in a COMPLETE row commits ONE extra.add: the extra is «Nuevo» in the list and the draft; the bar counts it; focus on «Agregar extra»', async () => {
   const p = await page({ read: XON });
   const r = await openAdd(p);
-  const g = p.src().structure.extra_categories[0];
+  const g = selectedGroup(p);
   const n0 = extrasIn(p.src(), g).length;
   p.type(r.querySelector('input[aria-label="Nombre del extra"]'), 'Arroz frito'); await settle(5);
   const pr = newRow(p).querySelector('.price input'); pr.focus();
@@ -1390,7 +1415,7 @@ test('S2 X+ — Enter in a COMPLETE row commits ONE extra.add: the extra is «Nu
 test('S2 X+ — a started row shows X3’s lines and Enter does not commit it; focus LEAVING a complete row commits it, an incomplete one stays', async () => {
   const p = await page({ read: XON });
   const r = await openAdd(p);
-  const g = p.src().structure.extra_categories[0];
+  const g = selectedGroup(p);
   const n0 = extrasIn(p.src(), g).length;
   p.type(r.querySelector('input[aria-label="Nombre del extra"]'), 'Maní'); await settle(5);
   const pr = newRow(p).querySelector('.price input'); pr.focus();
@@ -1410,7 +1435,7 @@ test('S2 X+ — a started row shows X3’s lines and Enter does not commit it; f
 test('S2 X+ — Escape in the row, or its trash, drops it: nothing written, focus back on «Agregar extra»', async () => {
   const p = await page({ read: XON });
   let r = await openAdd(p);
-  const g = p.src().structure.extra_categories[0];
+  const g = selectedGroup(p);
   const n0 = extrasIn(p.src(), g).length;
   p.type(r.querySelector('input[aria-label="Nombre del extra"]'), 'Maní'); await settle(5);
   key(p, newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'Escape'); await settle(5);
@@ -1427,21 +1452,21 @@ test('S2 X+ — Escape in the row, or its trash, drops it: nothing written, focu
 test('S2 X+ — leaving with a DIRTY row (another group, «Menú») asks «¿Descartar los cambios?»: «Seguir editando» keeps it; «Descartar» drops it and leaves; a clean row just goes', async () => {
   const p = await page({ read: XON });
   let r = await openAdd(p);
-  const groups = p.src().structure.extra_categories;
-  railRows(p)[1].click(); await settle(10);
+  const g1 = selectedGroup(p);
+  const gB = await selectAddable(p, 1);   // another group a new extra may join
   assert.equal(newRow(p), null, 'a clean row just goes');
-  assert.equal(xpage(p).querySelector('.dhead .dtitle').textContent, groups[1]);
+  assert.equal(xpage(p).querySelector('.dhead .dtitle').textContent, gB);
   addBtn(p).click(); await settle(5);
   r = newRow(p);
   p.type(r.querySelector('input[aria-label="Nombre del extra"]'), 'Maní'); await settle(5);
-  railRows(p)[0].click(); await settle(10);
+  railRows(p).find((x) => x.dataset.group === g1).click(); await settle(10);
   let cf = p.d.querySelector('#xscrim.show .modal');
   assert.ok(cf && cf.querySelector('.mt').textContent === '¿Descartar los cambios?', 'the portal’s discard confirm');
   const [, keep] = [...cf.querySelectorAll('.mf button')];
   keep.click(); await settle(5);
   assert.equal(newRow(p).querySelector('input[aria-label="Nombre del extra"]').value, 'Maní', '«Seguir editando» keeps the input');
   assert.equal(p.d.activeElement, newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'focus back on the last edited field');
-  assert.equal(xpage(p).querySelector('.dhead .dtitle').textContent, groups[1], 'still on the same group');
+  assert.equal(xpage(p).querySelector('.dhead .dtitle').textContent, gB, 'still on the same group');
   tabBtn(p, 'Menú').click(); await settle(10);
   cf = p.d.querySelector('#xscrim.show .modal');
   assert.ok(cf, 'the «Menú» tab asks too');
@@ -1449,7 +1474,7 @@ test('S2 X+ — leaving with a DIRTY row (another group, «Menú») asks «¿Des
   assert.ok(xpage(p).classList.contains('hidden'), '«Descartar» leaves');
   tabBtn(p, 'Extras').click(); await settle(10);
   assert.equal(newRow(p), null, 'the row is gone');
-  assert.ok(!extrasIn(p.src(), groups[1]).some((e) => e.display.name === 'Maní'), 'nothing written');
+  assert.ok(!extrasIn(p.src(), gB).some((e) => e.display.name === 'Maní'), 'nothing written');
 });
 
 // ── STRUCTURE S2 — X4 / X4b, the ONE group order on the Extras rail (plan r3 §2 item 8; MOCKUP x4 / x4b) ─────────────────────
@@ -1736,7 +1761,7 @@ test('S2 X — a «Nuevo» row’s name is the inline row’s field (typing rena
   const nm = added.querySelector('input[aria-label="Nombre del extra"]');
   assert.ok(nm && nm.value === 'Arroz frito', 'the «Nuevo» row carries the name field');
   nm.focus(); p.type(nm, 'Arroz con huevo'); await settle(10);
-  const g = p.src().structure.extra_categories[0];
+  const g = selectedGroup(p);
   assert.ok(extrasIn(p.src(), g).some((x) => typeof x.key !== 'string' && x.display.name === 'Arroz con huevo'), 'the rename is in the draft');
   assert.equal(p.d.activeElement && p.d.activeElement.getAttribute('aria-label'), 'Nombre del extra', 'focus stays in the field while typing');
   assert.equal(xrows(p)[0].querySelector('input[aria-label="Nombre del extra"]'), null, 'a published row’s name is text');
@@ -1849,9 +1874,18 @@ test('S2 §5.2 — REVIEW-DELETIONS: «Cancelar» keeps the draft and sends noth
 });
 
 // ── STRUCTURE S2 P-6 — extraRefs: after a save, a NEW extra's view state follows it to its allocated key (5f's REAL handler) ──────────
-async function probeOnPage(p, price) {
+// Since 3ceb801f3 (Codex #119 P2, catalog/choice-compare rewardGroupGuard) a NEW extra in a group that feeds a legacy form's reward
+// picker is refused by the real save (reward_group_add_blocked). The probe's group is DERIVED from the published menu's OWN
+// structure.redeem_eligible_extras (never a group name): the first rail group NOT fed by a reward picker, or — for the guard's own cell —
+// the first one that is.
+const rewardGroupsOf = (src) => servedRewardGroups(src);   // the REAL derivation (choice-compare rewardGroupsOf), the read's own
+async function probeOnPage(p, price, { reward = false } = {}) {
   await p.signIn();
   tabBtn(p, 'Extras').click(); await settle(10);
+  const rg = rewardGroupsOf(REAL_LIVE.src || SRC);
+  const g = railRows(p).find((r) => rg.has(r.dataset.group) === reward);
+  assert.ok(g, `premise: a rail group ${reward ? '' : 'NOT '}fed by a reward picker (reward groups: ${JSON.stringify([...rg])})`);
+  g.click(); await settle(10);
   addBtn(p).click(); await settle(5);
   p.type(newRow(p).querySelector('input[aria-label="Nombre del extra"]'), '  Probe   extra  '); await settle(5);
   const pr = newRow(p).querySelector('.price input'); pr.focus(); p.type(pr, String(price)); await settle(5);
@@ -1875,6 +1909,25 @@ test('S2 P-6 — the owner\u2019s save adopts the server\u2019s keys: the SAME r
     assert.ok(typeof k.key === 'string' && ext && ext.display.name === 'Probe extra', `adopted through extraRefs (Probe extra) — ${JSON.stringify(k)}`);
   } finally { S2_SERVER.on = false; }
 });
+test('S2 Codex #119 P2 end to end — a NEW extra in a group that feeds a reward picker: 5f\u2019s REAL save refuses it (reward_group_add_blocked), the review shows the panel, and the row stays «Nuevo», unkeyed', async () => {
+  S2_SERVER.on = true;
+  try {
+    assert.ok(rewardGroupsOf(SRC).size > 0, 'premise: the seed has a group fed by a reward picker (else this cell proves nothing)');
+    // an OLDER server that does not state rewardGroups: «Agregar extra» is still offered there, and the save's refusal is the safety net
+    const p = await page({ read: () => editable({ extrasAuthoring: true, extrasCatalog: true, deletionBase: { version: 'v-live', generation: 1 }, rewardGroups: undefined }), on: { editCatalog: realSave } });
+    const row = await probeOnPage(p, 36, { reward: true });
+    assert.ok(row, 'premise: the new row, in the reward group');
+    const n = realSave.statuses.length;
+    p.d.getElementById('review').click(); await settle(80);
+    assert.deepEqual(realSave.statuses.slice(n), [400], 'the real save refused it');
+    assert.equal(panel(p) && panel(p).title, 'No se pueden agregar extras a este grupo', 'the reward-group panel (d46717502)');
+    p.d.getElementById('pubback').click(); await settle(20);
+    const after = xrows(p).find((r) => r.querySelector('.price input') && r.querySelector('.price input').value === '36');
+    assert.ok(after && after.querySelector('.tag.new'), 'the row is kept, still «Nuevo»');
+    assert.match(after.querySelector('.price input').dataset.k, /"ref":"tmp:/, 'and unkeyed: nothing was allocated');
+  } finally { S2_SERVER.on = false; }
+});
+
 test('S2 P-6 — the manager\u2019s send: focus stays in the SAME row\u2019s price across the adoption (its restore key re-keyed by extraRefs); without the map the view state is dropped, nothing mis-keyed', async () => {
   S2_SERVER.on = true;
   try {
@@ -1906,10 +1959,92 @@ test('S2 P-6 — the manager\u2019s send: focus stays in the SAME row\u2019s pri
   } finally { S2_SERVER.on = false; }
 });
 
+// ── «Agregar extra» in a reward group (MOCKUP-portal-extras-reward-group R1, owner-approved 11-18): 5f's REAL getEditableCatalog serves
+// rewardGroups (choice-compare rewardGroupsOf over the live menu, while the Extras switch and the legacy-form reward pickers hold). In such a
+// group «Agregar extra» is not offered and ONE neutral line under the shared-group line says why; the save's refusal stays the safety net.
+const RG_LINE = 'Este grupo se usa para recompensas, así que por ahora no podés agregarle extras nuevos. Podés cambiar sus precios o quitar un extra.';
+const rgLine = (p) => xpage(p).querySelector('.detail .mk-xwarn[data-note="reward"]');
+async function rgPage() {
+  const B = realBackend({ rid: RID, live: SRC, pointer: { version: 'v1', generation: 1 } }); B.who = 'owner';
+  const p = await page({ on: B.on });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  return p;
+}
+const REWARD_G = 'Acompañamientos';   // the seed's redeem_eligible_extras sit in it (premise asserted from the real derivation below)
+test('RG R1 — a reward group (5f\u2019s REAL read): no «Agregar extra»; the ONE line under the shared line; prices and «Quitar» still work', async () => {
+  S2_SERVER.on = true;
+  try {
+    const CC = req('./catalog/choice-compare');
+    const { buildSourceCandidate } = req('./catalog/candidate-validate');
+    assert.deepEqual(CC.rewardGroupsOf({ extras: buildSourceCandidate(RID, SRC).built.extras, structure: SRC.structure }), [REWARD_G], 'premise: the seed\u2019s one reward group');
+    const p = await rgPage();
+    assert.equal(xpage(p).querySelector('.dhead .dtitle').textContent, REWARD_G, 'premise: the reward group is the selected one');
+    assert.equal(addBtn(p), null, 'RG-HIDE: «Agregar extra» is not offered in a reward group');
+    const warns = [...xpage(p).querySelectorAll('.detail .mk-xwarn')];
+    assert.equal(warns.length, 2, 'the shared line, then the reward line');
+    assert.ok(/^Este grupo se usa en \d+ productos — los cambios aplican a todos\.$/.test(warns[0].textContent.trim()), 'the shared line first');
+    assert.equal(warns[1], rgLine(p), 'RG-LINE: the reward line is the second note');
+    assert.equal(rgLine(p).textContent, RG_LINE, 'RG-LINE: the approved words');
+    const box = rgLine(p).querySelector('.mgshared.mk-sand');
+    assert.ok(box && box.querySelector('svg circle'), 'the neutral note, the mockup\u2019s info mark');
+    assert.equal(box.querySelector('.nb').textContent, 'un extra.', 'the last words kept together (mockup)');
+    const r0 = xrows(p)[0];
+    assert.equal(r0.querySelector('.price input').disabled, false, 'a price can still change');
+    assert.equal(r0.querySelector('button.del').disabled, false, 'an extra can still be removed');
+  } finally { S2_SERVER.on = false; }
+});
+test('RG R1 — another group on the same read keeps «Agregar extra» and has no reward line', async () => {
+  S2_SERVER.on = true;
+  try {
+    const p = await rgPage();
+    const other = railRows(p).find((r) => r.querySelector('.rtext b').textContent !== REWARD_G);
+    other.click(); await settle(10);
+    assert.notEqual(xpage(p).querySelector('.dhead .dtitle').textContent, REWARD_G, 'premise: another group');
+    assert.ok(addBtn(p), 'RG-OTHER: «Agregar extra» is offered');
+    assert.equal(rgLine(p), null, 'RG-OTHER: no reward line');
+  } finally { S2_SERVER.on = false; }
+});
+test('RG R1 — the legacy-form reward pickers retired: rewardGroups is absent and «Agregar extra» returns by itself (no line)', async () => {
+  S2_SERVER.on = true; const legacy = S2_SERVER.legacy; S2_SERVER.legacy = () => false;
+  try {
+    const p = await rgPage();
+    assert.equal(xpage(p).querySelector('.dhead .dtitle').textContent, REWARD_G, 'premise: the same group');
+    assert.ok(addBtn(p), 'RG-RETIRED: «Agregar extra» is offered again');
+    assert.equal(rgLine(p), null, 'RG-RETIRED: no reward line');
+  } finally { S2_SERVER.on = false; S2_SERVER.legacy = legacy; }
+});
+
+test('RG R1 — a tenant switch: A\u2019s reward groups end with A\u2019s world (empty while B loads); B\u2019s Extras page follows B\u2019s OWN read', async () => {
+  S2_SERVER.on = true;
+  try {
+    const A = realBackend({ rid: RID, live: SRC, pointer: { version: 'v1', generation: 1 } }); A.who = 'owner';
+    const Bk = realBackend({ rid: 'x_pizza', live: buildSourceFromCode('x_pizza'), pointer: { version: 'v1', generation: 1 } }); Bk.who = 'owner';
+    let cur = A, release = null;
+    const held = (call) => new Promise((res) => { release = () => res(Bk.on.getEditableCatalog(call)); });
+    const p = await page({ on: { ...A.on, getEditableCatalog: (call) => (cur === 'held' ? held(call) : cur.on.getEditableCatalog(call)) } });
+    await p.signIn();
+    tabBtn(p, 'Extras').click(); await settle(10);
+    assert.deepEqual([...p.mods.app.state.rewardGroups], [REWARD_G], 'premise: A\u2019s served reward group');
+    assert.equal(addBtn(p), null, 'premise: A\u2019s reward group hides «Agregar extra»');
+    cur = 'held';
+    p.d.dispatchEvent(new p.w.CustomEvent('portal:restaurant', { detail: { rid: 'x_pizza' } })); await settle(20);
+    assert.ok(release, 'premise: B\u2019s read is on the wire');
+    assert.equal(p.mods.app.state.rewardGroups.size, 0, 'RG-RESET: A\u2019s reward groups end with A\u2019s world');
+    cur = Bk; release(); await settle(80);
+    tabBtn(p, 'Extras').click(); await settle(10);
+    assert.equal(xpage(p).querySelector('.dhead .dtitle').textContent, buildSourceFromCode('x_pizza').structure.extra_categories[0], 'premise: B\u2019s Extras page');
+    assert.equal(p.mods.app.state.rewardGroups.size, 0, 'B serves no reward group');
+    assert.ok(addBtn(p), 'B\u2019s group offers «Agregar extra»');
+    assert.equal(rgLine(p), null, 'and no reward line');
+  } finally { S2_SERVER.on = false; }
+});
+
 // ── STRUCTURE S2 §3.5 — the remaining leave paths consult localDirty() first: the review, the tenant switch, the reload ──────────────
 async function dirtyRow(p) {
   await p.signIn();
   tabBtn(p, 'Extras').click(); await settle(10);
+  await selectAddable(p);
   addBtn(p).click(); await settle(5);
   p.type(newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'Maní'); await settle(5);   // started, not complete
 }
@@ -1967,6 +2102,7 @@ test('S2 Codex r1 P1-2 — the auth / restaurant boundary: A\u2019s half-typed i
     const p = await page({ read: XON });
     await p.signIn();
     tabBtn(p, 'Extras').click(); await settle(10);
+    await selectAddable(p);
     addBtn(p).click(); await settle(5);
     p.type(newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'De A'); await settle(5);
     await openX3(p);
@@ -2094,6 +2230,7 @@ test('S2 Codex r1 P2-13 — a row’s line is named by its field (aria-described
   const p = await page({ read: XON });
   await p.signIn();
   tabBtn(p, 'Extras').click(); await settle(10);
+  await selectAddable(p);   // the cell ends with «Agregar extra»
   const priceOf = () => xrows(p)[0].querySelector('.price input');
   const lineEl = (r) => (r.nextElementSibling && r.nextElementSibling.classList.contains('mk-xrowline') ? r.nextElementSibling : null);
   p.type(priceOf(), '12.5'); await settle(5);
@@ -2120,6 +2257,7 @@ test('S2 Codex r1 P2-9 — the published menu unreadable (deletionBase null): an
   const p = await page({ read: () => editable({ extrasAuthoring: true, extrasCatalog: true, deletionBase: null }) });
   await p.signIn();
   tabBtn(p, 'Extras').click(); await settle(10);
+  await selectAddable(p);   // the cell adds a new row below
   const trash = (r) => r.querySelector('button.del');
   const existing = xrows(p).filter((r) => !r.querySelector('.tag.new'));
   assert.ok(existing.length > 1, 'premise: existing rows (not the last one)');

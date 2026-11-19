@@ -5,6 +5,7 @@
 //           eligibility projection, the portal's byte copies)
 //   detail  the selected group's rows — a published extra by { key }, a new (keyless) one by { ref } with «Nuevo», a changed price
 //           marked, an extra removed in this draft still listed (greyed, «Se quita al publicar») — its count, reach and shared warning
+//           — and `reward` (the server's rewardGroups: no «Agregar extra», one line why; MOCKUP-portal-extras-reward-group R1)
 // Names are TEXT in S2-core (renames come with S2b).
 import { draftSource, attachRefusal } from './editor.js';
 
@@ -26,7 +27,7 @@ function reachOf(src) {
   } catch (_) { return null; }
 }
 
-export function extrasPageModel(draft, { group = null } = {}) {
+export function extrasPageModel(draft, { group = null, isReward = null } = {}) {
   const src = draftSource(draft), orig = draft && draft.orig;
   const groups = groupsOf(src);
   const reach = reachOf(src);
@@ -48,7 +49,8 @@ export function extrasPageModel(draft, { group = null } = {}) {
       rows.push({ id: { key: e.key }, name: e.display.name, price: e.price, isNew: false, priceChanged: false, removed: true });
     }
     const n = reach ? (reach.get(selected) || 0) : null;
-    detail = { group: selected, rows, count: rows.filter((r) => !r.removed).length, reach: n, shared: n !== null && n > 1 };
+    // reward: the SERVER names the group as one a new extra cannot join (getEditableCatalog rewardGroups) — never derived here
+    detail = { group: selected, rows, count: rows.filter((r) => !r.removed).length, reach: n, shared: n !== null && n > 1, reward: !!(isReward && isReward(selected)) };
   }
   return { rail, selected, detail };
 }

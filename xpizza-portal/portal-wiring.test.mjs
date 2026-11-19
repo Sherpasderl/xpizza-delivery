@@ -1084,6 +1084,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.liveOrder':           [2, 'guarded', 'P-R9 — the ORIGINAL live item / reward orders the server serves while the switch is on; null ⇒ the action disabled (never a guessed order)'],
     'state.pendingRemovals':     [2, 'guarded', 'P-R1 — the SAVED draft\u2019s removals (the live row, photo and refs) for the pending rows and «Deshacer» after a reload; presentational + the undo snapshot'],
     'state.rewardKeys':          [2, 'guarded', 'P-R2 — the reward dishes (the server\u2019s gateFlagsOf), for R5\u2019s line only; presentational'],
+    'state.rewardGroups':        [2, 'guarded', '«Agregar extra» R1 — the groups a new extra cannot join (the server\u2019s getEditableCatalog rewardGroups): declared, replaced on the load path behind the generation check; read only through .has() for the Extras page; presentational'],
     'state.removalStash':        [5, 'guarded', 'D-2 — this session\u2019s «Deshacer» snapshots: replaced with every new draft (applyAddProductFacts) and with the edit facts, set by a confirmed removal, deleted by its undo, cleared by «Descartar»'],
     'state.textEditEnabled':     [2, 'guarded', 'S4 — whether an existing product\u2019s drawer is the text-edit working copy (getEditableCatalog textEditEnabled); fail closed (today\u2019s drawer) until a load sets it'],
     'state.reservedNames':       [2, 'guarded', 'S4 — the names a rename may not take (server-normalized), for the live C5 line only; advisory — the save and the publish re-judge'],

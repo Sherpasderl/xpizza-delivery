@@ -17,6 +17,8 @@
 //   • (S0/S1a) getEditableCatalog's source echoes the restaurant's server-owned key_mode: asserted equal to its stored mode, then dropped;
 //   • (PLAN 4 GATED G1) getEditableCatalog's source records + structure carry the REVIEWED data file's rows (reward_icon /
 //     extras_policy / badge_priority): each value asserted equal to its row, then dropped;
+//   • (reward-groups) getEditableCatalog states `rewardGroups` while the save guard is ON (extrasCatalog + legacy reward pickers):
+//     asserted EQUAL to the guard's own derivation over the restaurant's live active build at the call, then dropped; absent when OFF;
 //   Anything else — a status, a body field, a write, a missing or extra read of another kind — fails.
 require('./_emulator-required')('firestore', 'database');
 
@@ -28,6 +30,7 @@ const admin = require('firebase-admin');
 admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT || 'demo-xpizza', databaseURL: `http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}?ns=demo-xpizza` });
 const realDb = admin.firestore();
 const RESERVED_AT = {};   // S2-5 with the switch ON: each brand's reserved names at its getEditableCatalog call (read from the stored docs right after it)
+const REWARD_GROUPS_AT = {};   // reward-groups: rewardGroupsOf(the live active build) at each brand's getEditableCatalog call, or ABSENT when the guard is OFF
 const SEEDED_MODE = {};   // S0/S1a: the pricing_key_mode each restaurant's profile was seeded with (the declared key_mode drop asserts it)
 const rtdb = admin.database();
 const CAPTURE = process.env.AP_GOLDEN_CAPTURE === '1';
@@ -140,6 +143,12 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
       const src = (await sourceRefOf(realDb, rid).get()).data() || {};
       const frozen = src.frozen_keys && typeof src.frozen_keys === 'object' ? Object.values(src.frozen_keys) : [];
       return [...new Set([...RK.reservedKeySet((await RK.reservedRefOf(realDb, rid).get()).data()).keys(), ...frozen].filter((k) => typeof k === 'string').map(normalizeName))].sort();
+    })();
+    REWARD_GROUPS_AT[rid] = await (async () => {   // the save guard's own derivation (catalog/choice-compare.js) over the same live read the handler makes
+      const CC = require('../catalog/choice-compare');
+      if (!CC.rewardGroupGuardOn(require('../catalog/platform-structure').structureCapabilities().extrasCatalog)) return undefined;
+      const live = await readActiveBuilt(rid)();
+      return CC.rewardGroupsOf({ extras: live.extraRecords, structure: live.built.structure });
     })();
     const s1 = await save(rid, priced(await draftOf(rid), 5), 'owner', await rev(rid));
     out.push({ ...(await scenario(`${rid}: owner price save (replayed for the record)`, async () => save(rid, priced(await draftOf(rid), 1), 'owner', await rev(rid)))) });
@@ -261,6 +270,16 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
       assert.ok(Array.isArray(RESERVED_AT[rid]) && RESERVED_AT[rid].length > 0, `premise: ${rid}'s seed reserved names`);
       assert.deepStrictEqual(body.reservedNames, RESERVED_AT[rid], `${c.name}: reservedNames = the stored reserved keys ∪ frozen values, normalized (S2, switch ON)`);
       delete body.reservedNames; declared.body.add(`${c.name}: reservedNames (S2)`);
+    }
+    // reward-groups (declared): the save guard's reward groups — present exactly while the guard is ON, its VALUE asserted, then dropped
+    if (/getEditableCatalog/.test(c.name) && c.status === 200 && body && !(g.body && Object.prototype.hasOwnProperty.call(g.body, 'rewardGroups'))) {
+      const rid = c.name.split(':')[0];
+      if (REWARD_GROUPS_AT[rid] === undefined) assert.ok(!Object.prototype.hasOwnProperty.call(body, 'rewardGroups'), `🔴 RG-GOLDEN: ${c.name}: rewardGroups stated while the save guard is OFF`);
+      else {
+        assert.ok(Object.prototype.hasOwnProperty.call(body, 'rewardGroups'), `🔴 RG-GOLDEN: ${c.name}: rewardGroups missing while the save guard is ON`);
+        assert.deepStrictEqual(body.rewardGroups, REWARD_GROUPS_AT[rid], `🔴 RG-GOLDEN: ${c.name}: rewardGroups = the save guard's derivation over the live active build`);
+        delete body.rewardGroups; declared.body.add(`${c.name}: rewardGroups (reward-groups)`);
+      }
     }
     assert.deepStrictEqual(body, g.body, `${c.name}: body (beyond the declared fields)`);
     // calls: golden ⊆ candidate (as a multiset), and every EXTRA call is a declared read

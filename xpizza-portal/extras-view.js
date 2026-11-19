@@ -10,6 +10,9 @@ const svg = (paths) => { const s = document.createElementNS(NS, 'svg'); s.setAtt
 const TRASH = ['M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6'];
 const PLUS = ['M12 5v14M5 12h14'];
 const WARN = ['M12 3l9 16H3z', 'M12 10v4', 'M12 17.5v.01'];
+const RG_LINE = 'Este grupo se usa para recompensas, así que por ahora no podés agregarle extras nuevos. Podés cambiar sus precios o quitar';
+// the mockup's info mark (R1): a circle and the «i»
+const info = () => { const s = svg(['M12 11v5M12 8h.01']); const c = document.createElementNS(NS, 'circle'); c.setAttribute('cx', '12'); c.setAttribute('cy', '12'); c.setAttribute('r', '9'); s.prepend(c); return s; };
 const fieldLine = (id, text) => { const p = el('div', 'ferr mk-ferr', text); p.id = id; p.setAttribute('role', 'alert'); return p; };
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 export const enProductos = (n) => `en ${plural(n, 'producto', 'productos')}`;
@@ -70,7 +73,7 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
   const head = el('div', 'dhead');
   const countLine = `${plural(d.count, 'extra', 'extras')}${d.reach === null ? '' : ` · ${enProductos(d.reach)}`}`;
   head.append(el('div', 'dtitle', d.group), el('span', 'dcount', countLine));
-  if (on.addOpen) {   // «Agregar extra» (frame X: .dright > .btn)
+  if (on.addOpen && !d.reward) {   // «Agregar extra» (frame X: .dright > .btn); not offered in a reward group (R1)
     const right = el('span', 'dright'); const addEx = el('button', 'btn'); addEx.type = 'button'; addEx.disabled = !canEdit;
     addEx.append(svg(PLUS), document.createTextNode('Agregar extra'));
     addEx.addEventListener('click', () => on.addOpen());
@@ -81,6 +84,11 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
     const w = el('div', 'mk-xwarn'); const s = el('div', 'mgshared mk-sand');
     s.append(svg(WARN), el('span', null, `Este grupo se usa en ${plural(d.reach, 'producto', 'productos')} — los cambios aplican a todos.`));
     w.append(s); detailHost.append(w);
+  }
+  if (d.reward) {   // MOCKUP-portal-extras-reward-group R1: the ONE neutral line under the shared line (owner-approved words)
+    const w = el('div', 'mk-xwarn'); w.dataset.note = 'reward'; const s = el('div', 'mgshared mk-sand'); const t = el('span', null, `${RG_LINE} `);
+    t.append(el('span', 'nb', 'un extra.'));
+    s.append(info(), t); w.append(s); detailHost.append(w);
   }
   const lastOne = d.rows.filter((x) => !x.removed).length === 1;   // the writer refuses a group's last extra (extras_group_empty)
   // plan §3.4 (Codex S2 UI r1 P2-9): no published baseline read (deletionBase null) → an EXISTING extra cannot be removed (its removal

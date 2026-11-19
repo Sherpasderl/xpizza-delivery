@@ -24,7 +24,7 @@ const $ = (id) => document.getElementById(id);
 const REMEMBERED = 'sherpa.portal.rid';
 
 export const state = { restaurants: [], currentRid: null, groups: [], extras: {}, selectedCat: null, renderedCategories: [], additionKeys: new Set(), settle: null, savedRenames: [], savedOther: false,
-  productRemoval: false, liveOrder: null, pendingRemovals: [], rewardKeys: new Set(), removalStash: new Map() };
+  productRemoval: false, liveOrder: null, pendingRemovals: [], rewardKeys: new Set(), removalStash: new Map(), rewardGroups: new Set() };
 
 // ── DISH PHOTOS B — per-load photo facts (getEditableCatalog E-P3) and the upload controller ─────────────────────────────
 //   enabled   photosEnabled === true (the server's PHOTOS_UPLOADS): the uploader is drawn only then (no control without effect)
@@ -569,6 +569,9 @@ function applyAddProductFacts(data) {
   state.extrasAuthoring = !!(data && data.extrasAuthoring === true);
   // advisor Q8 (11-11): whether the server serves the Extras page (getEditableCatalog extrasCatalog); absent ⇒ OFF — S1's «Opciones» line
   state.extrasCatalog = !!(data && data.extrasCatalog === true);
+  // «Agregar extra» R1 (MOCKUP-portal-extras-reward-group, 5f getEditableCatalog rewardGroups): the groups whose NEW extra the save refuses
+  // (reward_group_add_blocked) — strictly the server's; absent ⇒ none (an older server: the button stays and the save's refusal decides)
+  state.rewardGroups = new Set(data && Array.isArray(data.rewardGroups) ? data.rewardGroups.filter((g) => typeof g === 'string') : []);
   // STRUCTURE S2 (§3.4, P-1): the deletion baseline the save checks a removal claim against — served verbatim, null when unreadable
   const db0 = data && data.deletionBase;
   state.deletionBase = db0 && typeof db0 === 'object' && typeof db0.version === 'string' && Number.isInteger(db0.generation) ? { version: db0.version, generation: db0.generation } : null;
@@ -1431,7 +1434,7 @@ function paintProductTabs() {
   menuSplit.classList.toggle('hidden', onXpage);
   $('xsplit').classList.toggle('hidden', !onXpage);
   if (!onXpage) return;
-  const model = extrasPageModel(state.draft, { group: extrasGroup });
+  const model = extrasPageModel(state.draft, { group: extrasGroup, isReward: (g) => state.rewardGroups.has(g) });
   extrasGroup = model.selected;
   if (extraAdd && extraAdd.group !== extrasGroup) extraAdd = null;
   model.open = railOpen && model.rail.some((r) => r.group === railOpen) ? railOpen : null;
@@ -1924,6 +1927,7 @@ function resetEditFacts() {
   state.liveOrder = null;
   state.pendingRemovals = [];
   state.rewardKeys = new Set();
+  state.rewardGroups = new Set();
   state.removalStash = new Map();
   undoRefused = null;   // a refused «Deshacer» line ends with the world
   resetExtrasLocal();

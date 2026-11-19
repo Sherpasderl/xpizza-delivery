@@ -3547,7 +3547,14 @@
    "lifts": []
   },
   "catalog/choice-compare.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/rewardgroups-wiring.guard.test.js",
+     "inverses": [
+      "tools/rewardgroups-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": []
   },
   "catalog/choice-rollback.js": {
