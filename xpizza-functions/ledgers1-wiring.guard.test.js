@@ -12,7 +12,10 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 assert.ok(FILES.length >= 1 && HUNKS.length >= 1, 'LEDGER-S1: non-vacuity — the layer owns files');
 for (const F of FILES) {
-  const disk = require('./tools/privacy-module-inverse').unapplyPrivacyModule(F, fs.readFileSync(path.join(__dirname, F), 'utf8'));   // fix/privacy-gaps-5f: the newest layer peels first, on the raw read
+  // S-ADDR-2 (3a, merged forward onto 31f05c8a4, after this pin): the member-reads hunks marked after 099c280e4 (the useMyAddress export,
+  // a pure insertion disjoint from every D4 hunk) are peeled on the raw read — the dirwire shape
+  const raw = require('./tools/privacy-module-inverse').unapplyPrivacyModule(F, fs.readFileSync(path.join(__dirname, F), 'utf8'));   // fix/privacy-gaps-5f innermost on the raw read (asm12 06, NOTES §H2)
+  const disk = require('./tools/memberreads-module-inverse').unapplyAfter(F, raw, '099c280e4');
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
   assert.notStrictEqual(disk, base, `LEDGER-S1: non-vacuity — ${F} carries the ledger S1 hunks`);
   assert.strictEqual(unapplyLedgerS1Module(F, disk), base, `LEDGER-S1: 🔴 ${F} minus the ledger S1 hunks is not ${BASE}:${F}`);

@@ -1,6 +1,6 @@
 'use strict';
 // PLAN-3a-capp-member-reads (1)+(2) — the test-only INVERSE of 3a's index.js additions on train asm9 (base 604e96ab5; rebuilt there from asm8 b6f6b82b1, where index.js is byte-identical): the
-// getMyFavorites / setFavorite exports (5a84271f3; asm8 ccdec7d6) and the getMyLastTip export (32a4ce6e2; asm8 7e708d3a), and the portal «Marketing» offer exports (78e241bed) + the Anuncio exports (5ea3340e9), all pure insertions inside checkout's
+// getMyFavorites / setFavorite exports (5a84271f3; asm8 ccdec7d6) the getMyLastTip export (32a4ce6e2; asm8 7e708d3a), PLAN-3a-addr's useMyAddress export (b08f3c30e), and the portal «Marketing» offer exports (78e241bed) + the Anuncio exports (5ea3340e9), all pure insertions inside checkout's
 // endpoints block; + reviews v2 S3 (feat/merchant-reviews-v2-3a): the getMerchantReviews + setMyName exports and the
 // stampRatingFulfilment event-time line (owner-approved r6.2 build, advisor 11-15); + the 4 customer-push exports (PLAN-3a-capp-push-tokens r0 §2, advisor GO 11-16). Generated from each commit's own `git show -U0 <commit> -- index.js` (added lines only); unapplying both returns
 // index.js to 604e96ab5 byte-for-byte (memberreads-wiring.guard). Composed into the index.js fold chains of the wiring guards that pin
@@ -23,6 +23,14 @@ const HUNKS = Object.freeze([
   "label": "(2) last tip: getMyLastTip export",
   "file": "index.js",
   "now": "// PLAN-3a-capp-member-reads (2): the member's last tip with the token in the x-firebase-id-token HEADER — replaces the capp's RTDB REST\n// `?auth=<ID token>` read (rule 20); member-only through member-auth; ONE leaf read; the capp's lastTip() swaps to it in the same release\nexports.getMyLastTip = onRequest(\n  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },\n  require('./my-last-tip').makeMyLastTip({ getDatabase, getAuth, checkRateLimit }).getMyLastTip,\n);\n",
+  "was": ""
+ },
+ {
+  "commit": "b08f3c30e",
+  "after": ["aaeb8f277", "099c280e4"],
+  "label": "(S-ADDR-2) address selection: useMyAddress export",
+  "file": "index.js",
+  "now": "// PLAN-3a-addr S-ADDR-2: the «en uso» address selection, persisted as default_address — member-only through member-auth, the token in\n// the x-firebase-id-token header; body exactly { id }; ONE parent transaction on user_profiles/{uid} (the sweep fence, never resurrects a purge)\nexports.useMyAddress = onRequest(\n  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },\n  require('./my-address').makeMyAddress({ getDatabase, getAuth, checkRateLimit }).useMyAddress,\n);\n",
   "was": ""
  },
  {
@@ -109,12 +117,13 @@ function unapplyMemberReadsModule(file, src) {
   }
   return out;
 }
-// ONLY the hunks landed AFTER `base` (marked `after: base`) — for a guard pinned to a later train revision than BASE (mktprice-wiring
-// pins aaeb8f277, asm10 chain step 10): it peels exactly the member-reads insertions that revision lacks; every other byte stays strict
+// ONLY the hunks landed AFTER `base` (marked `after: base`, or a list naming base) — for a guard pinned to a later train revision than BASE
+// (mktprice-wiring pins aaeb8f277, asm10 chain step 10; ledgers1-wiring pins 099c280e4, asm11 17): it peels exactly the member-reads
+// insertions that revision lacks; every other byte stays strict. S-ADDR-2 (merged forward onto 31f05c8a4) postdates both pins.
 function unapplyAfter(file, src, base) {
   let out = src;
   for (const h of HUNKS) {
-    if (h.file !== file || h.after !== base) continue;
+    if (h.file !== file || ![].concat(h.after || []).includes(base)) continue;
     const n = out.split(h.now).length - 1;
     if (n !== 1) throw new Error(`memberreads-module-inverse: ${file}: a hunk occurs ${n} times (expected exactly 1)`);
     out = out.replace(h.now, () => h.was);

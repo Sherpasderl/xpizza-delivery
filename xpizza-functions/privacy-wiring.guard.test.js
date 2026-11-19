@@ -12,11 +12,15 @@ const { BASE, FILE_BASES, baseOf, HUNKS, FILES, unapplyPrivacyModule } = require
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 assert.ok(FILES.length >= 1 && HUNKS.length >= 1, 'PRIVACY: non-vacuity — the layer owns files');
+// asm12 step 06 (advisor A′, 11-19): the per-site layers that landed on the train AFTER this layer's base are peeled AFTER privacy (privacy
+// stays innermost on the raw read) before the comparison — addr-rev's memberreads insertion (unapplyAfter 099c280e4, the ledgers1-wiring
+// shape). The privacy hunks, MANIFEST and inverse are unchanged; a planted privacy-hunk change still goes RED (proof in the merge message).
+const laterLayers = (F, src) => require('./tools/memberreads-module-inverse').unapplyAfter(F, src, '099c280e4');
 for (const F of FILES) {
   const disk = fs.readFileSync(path.join(__dirname, F), 'utf8');
   const base = git(['show', `${baseOf(F)}:xpizza-functions/${F}`]);   // asm12 step 04 (RULING A): cards.js = BASE + cardclean (c41b29ce6)
   assert.notStrictEqual(disk, base, `PRIVACY: non-vacuity — ${F} carries the privacy hunks`);
-  assert.strictEqual(unapplyPrivacyModule(F, disk), base, `PRIVACY: 🔴 ${F} minus the privacy hunks is not ${baseOf(F)}:${F}`);
+  assert.strictEqual(laterLayers(F, unapplyPrivacyModule(F, disk)), base, `PRIVACY: 🔴 ${F} minus the privacy hunks (and the later train layers) is not ${baseOf(F)}:${F}`);
   for (const h of HUNKS.filter((x) => x.file === F)) {
     const k = Math.floor(h.now.length / 2);
     assert.throws(() => unapplyPrivacyModule(F, disk.replace(h.now, h.now.slice(0, k) + '\u0000' + h.now.slice(k + 1))), /occurs 0 times/, `PRIVACY: ${F}: a byte inside a hunk`);

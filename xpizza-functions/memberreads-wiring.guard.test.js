@@ -1,7 +1,7 @@
 'use strict';
-// PLAN-3a-capp-member-reads (1)+(2) — index.js wiring guard for 3a's member-reads exports (advisor ruling 2026-11-13, option 2).
-// PROOF: tools/memberreads-module-inverse.js removes EXACTLY 3a's two index.js insertions (5a84271f3: getMyFavorites + setFavorite;
-// 32a4ce6e2: getMyLastTip), so index.js minus them === 604e96ab5:index.js byte-for-byte. Sensitivity: a byte inside a hunk, a duplicated
+// PLAN-3a-capp-member-reads (1)+(2) + PLAN-3a-addr S-ADDR-2 — index.js wiring guard for 3a's member exports (advisor ruling 2026-11-13, option 2).
+// PROOF: tools/memberreads-module-inverse.js removes EXACTLY 3a's index.js insertions (5a84271f3: getMyFavorites + setFavorite;
+// 32a4ce6e2: getMyLastTip; S-ADDR-2: useMyAddress), so index.js minus them === 604e96ab5:index.js byte-for-byte. Sensitivity: a byte inside a hunk, a duplicated
 // hunk and a byte outside every hunk are each detected; a one-byte change to an export breaks the proof (and every fold guard that
 // composes this layer). Registration: every fold guard that pins index.js to a fixed train revision composes this layer.
 // Run: node memberreads-wiring.guard.test.js
@@ -50,12 +50,12 @@ assert.strictEqual(unapplyMemberReadsModule('tb-unowned.js', 'x\n'), 'x\n', 'an 
 }
 ok('a byte inside a hunk, a duplicated hunk, a byte outside, an unowned file and a ONE-BYTE export change are each detected');
 
-// wired: the three exports exist where the hunks say, through the member-auth modules
-for (const [name, mod] of [['getMyFavorites', 'my-favorites'], ['setFavorite', 'my-favorites'], ['getMyLastTip', 'my-last-tip']]) {
+// wired: the four exports exist where the hunks say, through the member-auth modules
+for (const [name, mod] of [['getMyFavorites', 'my-favorites'], ['setFavorite', 'my-favorites'], ['getMyLastTip', 'my-last-tip'], ['useMyAddress', 'my-address']]) {
   assert.ok(new RegExp(`exports\\.${name} = onRequest\\(`).test(src), `🔴 ${name} onRequest missing`);
   assert.ok(src.includes(`require('./${mod}')`), `🔴 ${mod} require missing`);
 }
-ok('wired: getMyFavorites, setFavorite and getMyLastTip are onRequest exports over my-favorites / my-last-tip');
+ok('wired: getMyFavorites, setFavorite, getMyLastTip and useMyAddress are onRequest exports over my-favorites / my-last-tip / my-address');
 // PLAN-3a-capp-push-tokens r0 §2 (advisor GO 11-16): the 4 customer-push endpoints the capp's api calls by name, each an onRequest over the
 // ONE makeCustomerPush factory with the account origins (the over-HTTP behaviour: test/customer-push-wiring.emulator.test.js)
 {
@@ -69,15 +69,21 @@ ok('wired: getMyFavorites, setFavorite and getMyLastTip are onRequest exports ov
   ok('wired: the 4 customer-push endpoints are onRequest exports (account origins) over ONE makeCustomerPush');
 }
 // unapplyAfter (the later-pinned guards, mktprice @aaeb8f277): peels EXACTLY the hunks marked after that revision — the push block — and
-// nothing else; an unknown revision peels nothing
+// nothing else; an unknown revision peels nothing. S-ADDR-2 (merged forward onto 31f05c8a4): the useMyAddress export postdates BOTH
+// later pins — aaeb8f277 (mktprice / audience / dirwire) and 099c280e4 (ledgers1) — so it is marked after each; the push block only after aaeb8f277
 {
   const { HUNKS: H, unapplyAfter } = require('./tools/memberreads-module-inverse');
-  const after = H.filter((h) => h.after === 'aaeb8f277');
-  assert.deepStrictEqual(after.map((h) => h.commit), ['capp-push-wiring'], 'premise: only the push block is marked after aaeb8f277');
-  assert.strictEqual(unapplyAfter('index.js', src, 'aaeb8f277'), src.replace(after[0].now, ''), '🔴 PW-AFTER: unapplyAfter peels exactly the push block');
+  const marked = (rev) => H.filter((h) => [].concat(h.after || []).includes(rev));
+  const after = marked('aaeb8f277');
+  assert.deepStrictEqual(after.map((h) => h.commit), ['b08f3c30e', 'capp-push-wiring'], 'premise: the address export + the push block are marked after aaeb8f277');
+  assert.deepStrictEqual(marked('099c280e4').map((h) => h.commit), ['b08f3c30e'], 'premise: only the address export is marked after 099c280e4');
+  const peel = (s, hs) => hs.reduce((o, h) => o.replace(h.now, ''), s);
+  assert.strictEqual(unapplyAfter('index.js', src, 'aaeb8f277'), peel(src, after), '🔴 PW-AFTER: unapplyAfter(aaeb8f277) peels exactly the address export + the push block');
+  assert.strictEqual(unapplyAfter('index.js', src, '099c280e4'), peel(src, marked('099c280e4')), '🔴 ADDR-AFTER: unapplyAfter(099c280e4) peels exactly the address export');
+  assert.ok(unapplyAfter('index.js', src, '099c280e4').includes(after[1].now), '🔴 ADDR-AFTER: the push block (in 099c280e4) is NOT peeled at that pin');
   assert.strictEqual(unapplyAfter('index.js', src, 'f00ba4'), src, '🔴 PW-AFTER: an unknown revision peels nothing');
-  assert.throws(() => unapplyAfter('index.js', src + after[0].now, 'aaeb8f277'), /occurs 2 times/, '🔴 PW-AFTER: a duplicated push block is detected');
-  ok('unapplyAfter(index.js, aaeb8f277) peels exactly the push block; an unknown revision peels nothing; a duplicate is detected');
+  for (const h of after) assert.throws(() => unapplyAfter('index.js', src + h.now, 'aaeb8f277'), /occurs 2 times/, `🔴 PW-AFTER: a duplicated ${h.commit} hunk is detected`);
+  ok('unapplyAfter peels exactly the hunks a pin lacks (aaeb8f277: address + push; 099c280e4: address only); an unknown revision peels nothing; a duplicate is detected');
 }
 
 // registration: the fold guards that pin index.js to a fixed train revision compose this layer (the s2bext / s1srv pattern)

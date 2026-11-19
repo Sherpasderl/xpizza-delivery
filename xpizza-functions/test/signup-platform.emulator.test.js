@@ -179,6 +179,14 @@ const reset = async () => { await rtdb.ref('otp_ip').remove(); await rtdb.ref('r
     assert.ok(!('promos' in r.json), 'promos omitted when unset');
     await rtdb.ref(`deleted_uids/${B}`).set(1);
     assert.strictEqual((await call(app.getMyProfile, { method: 'GET', query: '?context=platform', headers: { 'x-firebase-id-token': `cust:${B}` } })).status, 403);
+    // PLAN-3a-addr S-ADDR-1 through the REAL export on the emulator: the book served (whitelisted, never created_at), the default kept;
+    // the 3rd tombstone (user_profiles/deleting_at) ⇒ 403
+    await rtdb.ref(`user_profiles/${A}/addresses/a_0123ab`).set({ label: 'Casa', detected: 'Col. Palmira', details: 'portón negro', lat: 14.09, lng: -87.18, created_at: 1, last_used_at: 2 });
+    await rtdb.ref(`user_profiles/${A}/default_address`).set('a_0123ab');
+    r = await call(app.getMyProfile, { method: 'GET', query: '?context=platform', headers: { 'x-firebase-id-token': `cust:${A}` } });
+    assert.deepStrictEqual([r.json.addresses, r.json.default_address], [[{ id: 'a_0123ab', label: 'Casa', detected: 'Col. Palmira', details: 'portón negro', lat: 14.09, lng: -87.18, last_used_at: 2 }], 'a_0123ab'], '🔴 S-ADDR-1: the book through the real export');
+    await rtdb.ref(`user_profiles/${A}/deleting_at`).set(9);
+    assert.strictEqual((await call(app.getMyProfile, { method: 'GET', query: '?context=platform', headers: { 'x-firebase-id-token': `cust:${A}` } })).status, 403, '🔴 user_profiles/deleting_at ⇒ 403');
   }
   ok('M getMyProfile through the REAL export: own data only (a foreign uid param ⇒ 400), non-customer ⇒ 401, deleted ⇒ 403, promos present / omitted, no-store');
 

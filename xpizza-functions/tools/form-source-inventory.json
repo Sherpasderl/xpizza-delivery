@@ -300,6 +300,7 @@
     "xpizza-functions/menu-warm-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
     "xpizza-functions/mirrorkeys-wiring.guard.test.js",
+    "xpizza-functions/my-address.test.js",
     "xpizza-functions/n3-weekend-message.test.js",
     "xpizza-functions/n4-cancel-verify.test.js",
     "xpizza-functions/o1b-wiring.guard.test.js",
@@ -358,6 +359,7 @@
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
     "xpizza-functions/serial3-wiring.guard.test.js",
+    "xpizza-functions/signup-platform.test.js",
     "xpizza-functions/signup-wiring.guard.test.js",
     "xpizza-functions/stacked-tracker-wiring.guard.test.js",
     "xpizza-functions/stackseq-wiring.guard.test.js",
@@ -440,6 +442,7 @@
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
     "xpizza-functions/test/merchant-push.emulator.test.js",
     "xpizza-functions/test/mirror-keys.emulator.test.js",
+    "xpizza-functions/test/my-address-rules.emulator.test.js",
     "xpizza-functions/test/offer-audience.emulator.test.js",
     "xpizza-functions/test/orch-o1b.emulator.test.js",
     "xpizza-functions/test/order-control.emulator.test.js",
@@ -2840,6 +2843,7 @@
   "access/writes-flag.js",
   "account-lib.js",
   "address-area.js",
+  "address-book.js",
   "alert-prune.js",
   "arrived-notify.js",
   "assign-hub.js",
@@ -3032,6 +3036,7 @@
   "merchant/merchant-transitions.js",
   "merchant/merchant-validate.js",
   "merchant/merchant-wiring.js",
+  "my-address.js",
   "my-favorites.js",
   "my-last-tip.js",
   "my-orders.js",
@@ -3267,6 +3272,10 @@
    "lifts": []
   },
   "address-area.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "address-book.js": {
    "pins": [],
    "lifts": []
   },
@@ -7738,6 +7747,10 @@
    "lifts": []
   },
   "merchant/merchant-wiring.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "my-address.js": {
    "pins": [],
    "lifts": []
   },
