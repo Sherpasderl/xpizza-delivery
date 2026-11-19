@@ -327,7 +327,8 @@
         // Codex #178 #2 (P1): the token's OWN SDK user must be the member it is for — another user (the SDK switched before the host heard)
         // ⇒ no token at all, the member is marked moved (post refuses to send) and the host is told; never the token of whoever the SDK holds
         const o = await Promise.race([Promise.resolve().then(() => m.getIdTokenOwned()).then((x) => x || null, () => null), timeout(TOKEN_WAIT_MS).then(() => null)]);
-        if (o && o.uid && o.uid !== m.uid) { m.moved = true; if (typeof m.onMoved === 'function') { try { m.onMoved(o.uid); } catch (_) {} } return null; }
+        // Codex #189 #1: an ANSWER naming another user — or none (signed out) — is the same refusal; only a failed read (null) keeps the cache
+        if (o && (o.uid || null) !== m.uid) { m.moved = true; if (typeof m.onMoved === 'function') { try { m.onMoved(o.uid || null); } catch (_) {} } return null; }
         if (!current()) return null;
         if (o && typeof o.token === 'string' && o.token) acceptToken(m, o.token, now());
       } else if (typeof m.getIdToken === 'function') {

@@ -387,7 +387,8 @@
     }
     // Codex #178 #2 (P1): the SDK's user is not the admitted member (it switched before the listener ran) — that IS the switch
     const switchPre = (nu) => { const c = runtime.push === true ? pushCore() : null, h = c && c.available() ? c.held() : null; return h && h.live && h.owner !== nu ? pushForget() : null; };
-    function identityMoved(nu) { if (!leaving && seenUid && nu && nu !== seenUid) leave('switch', nu, () => switchPre(nu)); }
+    // Codex #189 #1: no user at all (the SDK signed out first) is the sign-out, as the 'guest' callback would be
+    function identityMoved(nu) { if (leaving || !seenUid) return; if (!nu) leave('signout', null, () => pushAuthExit()); else if (nu !== seenUid) leave('switch', nu, () => switchPre(nu)); }
     // the overlay (MOCKUP-capp-identity-restart): the whole screen in the app's background, a small ring and one line; every tap blocked
     function swap(kind) {
       let el = $('swap');

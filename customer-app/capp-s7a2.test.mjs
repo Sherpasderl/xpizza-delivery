@@ -6909,6 +6909,34 @@ test('r3 Codex #178 #2 (P1): the SDK switched to Bob BEFORE the shell heard (the
     assert.ok(S.q('#swap'), '🔴 C178-2: the app leaves (the overlay)');
   } finally { S.w.close(); }
 });
+// Codex #189 #1 (P1): the SDK's answer that its user CHANGED (switched, or signed out) is a refusal — never Ana's cached token; a token
+// that merely failed (network / timeout) keeps today's path. Codex's two repros: the switch lands while her token is in flight, and the
+// SDK signs out before the token is asked
+for (const [how, flip, line] of [
+  ['the SDK switches to Bob while her token is IN FLIGHT', async (authMod) => authMod.signInWithCustomToken(null, 'ct:u_bob'), 'Cambiando de cuenta…'],
+  ['the SDK signs out BEFORE her token is asked', null, 'Cerrando sesión…'],
+]) {
+  test(`r3 Codex #189 #1 (P1): ${how} (the listener held) — her order is never dispatched with her cached token, and the app leaves`, async () => {
+    const notifyGate = { on: false, q: [] }, hold = { on: false, q: [] }, co = [];
+    const apiFetch = (u, i) => { if (u.startsWith('/x/c')) co.push((i.headers || {})['x-firebase-id-token'] || null);
+      return u.startsWith('/x/q') ? quoteOk(u, i) : u.startsWith('/x/c') ? Promise.resolve({ status: 200, ok: true, json: async () => ({ ok: true, order_id: JSON.parse(i.body).order_id, tracking_token: 'tok_abcdefgh12' }) }) : new Promise(() => {}); };
+    const { S, fb } = await seedCheckout({ apiFetch, fbOpts: { notifyGate, hold } });
+    try {
+      await flush(); await flush();
+      if (S.q('[data-act="pay"][data-val="cash"]')) { S.click('[data-act="pay"][data-val="cash"]'); await flush(); }
+      assert.ok(S.ui.state.member && S.ui.state.member.idToken, 'premise: her token is cached (the fallback a transient failure keeps)');
+      const { authMod } = await fb.loadSdk(); notifyGate.on = true;
+      const held = () => assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: the SDK moved, the shell still holds Ana (the listener is held)');
+      if (!flip) { await authMod.signOut(null); held(); }
+      else hold.on = true;
+      S.click('#cta'); await flush(); if (S.q('#layer [data-act="placing-go"]')) S.click('#layer [data-act="placing-go"]'); await flush();
+      if (flip) { assert.ok(hold.q.length > 0, 'premise: her token read is in flight'); await flip(authMod); held(); hold.on = false; for (const r of hold.q.splice(0)) r(); }
+      await flush(); await flush(); await flush();
+      assert.deepEqual(co, [], '🔴 C189-1: her order is not dispatched (never with her cached token)');
+      assert.equal(txt(S.q('#swap p')), line, '🔴 C189-1: the app leaves (the overlay)');
+    } finally { S.w.close(); }
+  });
+}
 test('r3 Codex #178 #3 (P2): a REFUSED sign-out keeps her device book byte for byte and the address in use — even when her profile can no longer be re-read', async () => {
   const { S, st, addr } = await dirBoot({ fbOpts: { failSignOut: 1 } });
   try {

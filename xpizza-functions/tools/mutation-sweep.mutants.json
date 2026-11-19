@@ -42386,5 +42386,22 @@
   "kills_with": [
    "C178-5: the checkout names Mamá (same pin as Casa)"
   ]
+ },
+ {
+  "id": "r3-rs-27",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #189 #1): a changed SDK user (switched or signed out) answers a bare null — the transport keeps her cached token",
+  "file": "../customer-app/capp-auth-firebase.js",
+  "from": "        return token && nu === u.uid ? { token, uid: u.uid } : { token: null, uid: nu };",
+  "to": "        return token && nu === u.uid ? { token, uid: u.uid } : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#189 #1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C189-1: her order is not dispatched (never with her cached token)"
+  ]
  }
 ]
