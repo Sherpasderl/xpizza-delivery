@@ -1098,14 +1098,17 @@
       C.setPin(f, sp.lat, sp.lng, sp.confirmed === true); S.pinStepOk = false; S.outZone = false;
       const det = unedited && typeof sp.saved.details === 'string' && sp.saved.details ? sp.saved.details : null;
       if (unedited) f.details = det || '';
-      f.saved = { label: sp.saved.label, detected: String(sp.saved.detected || ''), pinV: f.pinV, details: det };
+      f.saved = { id: typeof sp.saved.id === 'string' ? sp.saved.id : null, label: sp.saved.label, detected: String(sp.saved.detected || ''), pinV: f.pinV, details: det };
       render();   // the checkout asks ONE quote per state (the new pin is a new state key); totalsNow refuses the old pin's quote — never a stale Total
     }
     // Codex #173 #5: the checkout follows the server's book after a recovery — only a flow seeded from a saved address (a pin the customer
     // moved herself is hers); the address now in use re-seeds it; none ⇒ the seed (pin, line, unedited details) is cleared
     function reconcileSaved(now) {
       const f = S.flow; if (dead || !f || !f.saved || !flowEditable()) return;
-      if (now && finitePin(now) && finitePin(f.pin) && f.pin.lat === now.lat && f.pin.lng === now.lng) return;   // already the address in use
+      // already the address in use: the SAME saved address (its id) with the same content — never coordinates alone (Codex #178 #5: two
+      // addresses can share a door; an address's instructions can change without moving it)
+      if (now && now.saved && f.saved.id && f.saved.id === now.saved.id && f.saved.label === now.saved.label && f.saved.detected === String(now.saved.detected || '')
+        && (f.saved.details || null) === (now.saved.details || null) && finitePin(now) && finitePin(f.pin) && f.pin.lat === now.lat && f.pin.lng === now.lng) return;
       if (now) { reseedSaved(now); return; }
       const unedited = !(f.details || '').trim() || (f.saved.details && f.details === f.saved.details);
       f.pin = { lat: null, lng: null, confirmed: false }; f.pinV = (Number(f.pinV) || 0) + 1; f.geo = null; f.saved = null; if (unedited) f.details = '';
@@ -1912,7 +1915,7 @@
           if (sv && typeof sv.label === 'string' && typeof sv.detected === 'string') {
             const seeded = !(S.flow.details || '').trim() && typeof sv.details === 'string' && sv.details ? sv.details : null;
             if (seeded) S.flow.details = seeded;
-            S.flow.saved = { label: sv.label, detected: sv.detected, pinV: S.flow.pinV, details: seeded };
+            S.flow.saved = { id: typeof sv.id === 'string' ? sv.id : null, label: sv.label, detected: sv.detected, pinV: S.flow.pinV, details: seeded };
           }
         }
       }

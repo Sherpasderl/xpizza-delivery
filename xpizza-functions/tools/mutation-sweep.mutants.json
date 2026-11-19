@@ -31042,8 +31042,8 @@
   "slice": "g7",
   "label": "a rejected sign-out leaves the overlay up (the member can't use the app)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "        leaving = false; swap(null);\n",
-  "to": "        leaving = false;\n",
+  "from": "if (!ok) { leaving = false; swap(null); return false; }",
+  "to": "if (!ok) { leaving = false; return false; }",
   "command": [
    "node",
    "--test",
@@ -41967,8 +41967,8 @@
   "slice": "r3-rs",
   "label": "r3 restart: the app never restarts (her in-memory state survives)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "      try { go(win.location.origin + '/'); } catch (_) {}\n",
-  "to": "",
+  "from": "      try { go(win.location.origin + '/'); } catch (_) {}\n      return true;",
+  "to": "      return true;",
   "command": [
    "node",
    "--test",
@@ -42137,8 +42137,8 @@
   "slice": "r3-rs",
   "label": "r3 gate: a GUEST's device is gated too (its boot no longer as today)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "    if (rawGet(OWNER_KEY) !== 'guest' && unkeyedHeld()) gate = 'held';",
-  "to": "    if (unkeyedHeld()) gate = 'held';",
+  "from": "      if (own !== 'guest' && (unkeyedHeld() || /^u:/.test(own || ''))) gate = 'held';",
+  "to": "      if (unkeyedHeld() || /^u:/.test(own || '')) gate = 'held';",
   "command": [
    "node",
    "--test",
@@ -42171,8 +42171,8 @@
   "slice": "r3-rs",
   "label": "r3 restart: a write AFTER the push exit still lands (the store not sealed)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "      setItem: (k, v) => { if (!(gate === 'sealed' && memberKey(String(k))) && !hidden(k)) rawStorage.setItem(k, v); },",
-  "to": "      setItem: (k, v) => { if (!hidden(k)) rawStorage.setItem(k, v); },",
+  "from": "      setItem: (k, v) => { k = String(k); if ((gate === 'sealed' && memberKey(k)) || hidden(k)) return;",
+  "to": "      setItem: (k, v) => { k = String(k); if (hidden(k)) return;",
   "command": [
    "node",
    "--test",
@@ -42205,8 +42205,8 @@
   "slice": "r3-rs",
   "label": "r3 restart: it reloads the CURRENT url (a ?pay= return re-fires)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "go(win.location.origin + '/');",
-  "to": "go(win.location.href);",
+  "from": "      try { go(win.location.origin + '/'); } catch (_) {}\n      return true;",
+  "to": "      try { go(win.location.href); } catch (_) {}\n      return true;",
   "command": [
    "node",
    "--test",
@@ -42290,8 +42290,8 @@
   "slice": "r3-rs",
   "label": "r3 restart: leave() skips dropMember (her in-flight reads run on until navigation, under the next session's token)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "      if (S.member) dropMember();\n",
-  "to": "",
+  "from": "      if (S.member) dropMember();\n      gate = 'sealed'; wipeIdentity(keep);",
+  "to": "      gate = 'sealed'; wipeIdentity(keep);",
   "command": [
    "node",
    "--test",
@@ -42300,6 +42300,91 @@
   ],
   "kills_with": [
    "RC-14: no receipt of Ana's requested after the switch"
+  ]
+ },
+ {
+  "id": "r3-rs-22",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #178 #1): the façade never checks the device's stamp (a stale tab writes her payment record back after another tab's wipe)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const stale = (k) => memberKey(k) && rawGet(OWNER_KEY) !== myStamp;",
+  "to": "const stale = (k) => false;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#178 #1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C178-1: the stale tab writes no payment record back"
+  ]
+ },
+ {
+  "id": "r3-rs-23",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #178 #2): the token's SDK user is not checked against the member (Bob's token carries Ana's order)",
+  "file": "../customer-app/capp-api.js",
+  "from": "if (o && o.uid && o.uid !== m.uid) { m.moved = true;",
+  "to": "if (false) { m.moved = true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#178 #2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C178-2: Bob's token never carries her order"
+  ]
+ },
+ {
+  "id": "r3-rs-24",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #178 #3): dropMember runs BEFORE the exit is confirmed (a refused sign-out loses her caches)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      leaving = true; swap(kind);\n      let ok = true;",
+  "to": "      leaving = true; swap(kind); if (S.member) dropMember();\n      let ok = true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#178 #3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C178-3: her book is kept byte for byte"
+  ]
+ },
+ {
+  "id": "r3-rs-25",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #178 #4): a member-stamped device with no records boots OPEN (a cart built before the settle is wiped)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (own !== 'guest' && (unkeyedHeld() || /^u:/.test(own || ''))) gate = 'held';",
+  "to": "      if (own !== 'guest' && unkeyedHeld()) gate = 'held';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#178 #4",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C178-4: the store tap is held before the session settles"
+  ]
+ },
+ {
+  "id": "r3-rs-26",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #178 #5): recovery keeps the checkout when the COORDINATES match (another address at the same door)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (now && now.saved && f.saved.id && f.saved.id === now.saved.id && ",
+  "to": "      if (now && finitePin(now) && finitePin(f.pin) && f.pin.lat === now.lat && f.pin.lng === now.lng) return;\n      if (now && now.saved && f.saved.id && f.saved.id === now.saved.id && ",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#178 #5",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C178-5: the checkout names Mamá (same pin as Casa)"
   ]
  }
 ]

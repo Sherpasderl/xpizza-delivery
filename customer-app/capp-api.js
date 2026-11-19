@@ -323,17 +323,25 @@
     async function memberToken(m) {
       if (!m) return null;
       const current = () => memberOf() === m;   // Codex promo r4 #1: the identity, revalidated after EVERY await
-      if (typeof m.getIdToken === 'function') {
+      if (typeof m.getIdTokenOwned === 'function') {
+        // Codex #178 #2 (P1): the token's OWN SDK user must be the member it is for — another user (the SDK switched before the host heard)
+        // ⇒ no token at all, the member is marked moved (post refuses to send) and the host is told; never the token of whoever the SDK holds
+        const o = await Promise.race([Promise.resolve().then(() => m.getIdTokenOwned()).then((x) => x || null, () => null), timeout(TOKEN_WAIT_MS).then(() => null)]);
+        if (o && o.uid && o.uid !== m.uid) { m.moved = true; if (typeof m.onMoved === 'function') { try { m.onMoved(o.uid); } catch (_) {} } return null; }
+        if (!current()) return null;
+        if (o && typeof o.token === 'string' && o.token) acceptToken(m, o.token, now());
+      } else if (typeof m.getIdToken === 'function') {
         const fresh = await Promise.race([Promise.resolve().then(() => m.getIdToken()).then((t) => (typeof t === 'string' && t ? t : null), () => null), timeout(TOKEN_WAIT_MS).then(() => null)]);
         if (!current()) return null;   // signed out / switched during the await ⇒ no token is accepted or sent
         if (fresh) acceptToken(m, fresh, now());   // the ONE setter: stored only if usable, and the screen is told
       }
-      if (!current()) return null;
+      if (!current() || m.moved) return null;
       return tokenUsable(m, now());   // never an expired token (Codex promo r3): usable, or no header at all
     }
     const headersFor = (extra, token) => { const h = { 'Content-Type': 'application/json', ...(extra || {}) }; if (token) h['x-firebase-id-token'] = token; return h; };
     async function post(url, body, extraHeaders) {
       const m = memberOf(), tok = await memberToken(m);
+      if (m && m.moved) throw new Error('capp-api: the SDK user is not this member — not sent');   // Codex #178 #2: refused, never dispatched
       const token = memberOf() === m ? tok : null;   // Codex promo r5: the identity AGAIN after the await, nothing awaited before the dispatch
       const r = await sfetch(url, { method: 'POST', headers: headersFor(extraHeaders, token), body: JSON.stringify(body) });
       let j = null; try { j = await r.json(); } catch (_) { j = null; }

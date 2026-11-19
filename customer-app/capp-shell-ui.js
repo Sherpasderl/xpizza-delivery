@@ -68,13 +68,17 @@
     // r3: THE device store everything in the app goes through (the store, capp-api, push, the directory). A GATED boot (its unkeyed
     // records stamped to a member, or not stamped at all) neither reads nor writes them until its identity settles; a LEAVING app
     // writes no member record at all (the wipe below goes to the raw store). Device records (menus, push's own queue) are untouched
-    let gate = 'open';   // 'held' | 'open' | 'sealed'
+    let gate = 'open', myStamp = null;   // gate: 'held' | 'open' | 'sealed' · myStamp: the stamp THIS mount owns (set by the boot / settle / admission)
     const hidden = (k) => gate === 'held' && MEMBER_REC.test(String(k));
     const memberKey = (k) => MEMBER_REC.test(k) || UID_REC.test(k) || k === 'capp:member_profile' || k === COMPLETE_KEY || k === OWNER_KEY;
+    // Codex #178 #1 (P1, the cross-tab stale writer): a member record is written / removed ONLY while the device's stamp is still THIS
+    // mount's — another tab left (its wipe removed the stamp) or another identity owns the device now ⇒ refused, and this tab seals itself
+    // and restarts (staleLeave). ONE check, here
+    const stale = (k) => memberKey(k) && rawGet(OWNER_KEY) !== myStamp;
     const storage = rawStorage ? {
       getItem: (k) => (hidden(k) ? null : rawStorage.getItem(k)),
-      setItem: (k, v) => { if (!(gate === 'sealed' && memberKey(String(k))) && !hidden(k)) rawStorage.setItem(k, v); },
-      removeItem: (k) => { if (!hidden(k)) rawStorage.removeItem(k); },
+      setItem: (k, v) => { k = String(k); if ((gate === 'sealed' && memberKey(k)) || hidden(k)) return; if (stale(k)) { staleLeave(); return; } rawStorage.setItem(k, v); },
+      removeItem: (k) => { k = String(k); if ((gate === 'sealed' && memberKey(k)) || hidden(k)) return; if (stale(k)) { staleLeave(); return; } rawStorage.removeItem(k); },
       key: (i) => rawStorage.key(i),
       get length() { return rawStorage.length; },
     } : null;
@@ -132,8 +136,10 @@
     // r3: the boot's GATE — whose are the unkeyed records? A guest's ('guest') paint at once; a member's, or nobody's (no stamp), wait for
     // the first settled identity (settleOwner). Nothing on the device yet ⇒ a guest's device. Without sign-up the only identity is a guest
     let settled = false, bootDone = false;
-    if (rawGet(OWNER_KEY) !== 'guest' && unkeyedHeld()) gate = 'held';
-    else if (rawGet(OWNER_KEY) === null) { try { rawStorage.setItem(OWNER_KEY, 'guest'); } catch (_) {} }
+    { const own = rawGet(OWNER_KEY); myStamp = own;
+      // Codex #178 #4: a MEMBER's stamp gates the boot even with no records yet (whatever is built before the settle would be hers)
+      if (own !== 'guest' && (unkeyedHeld() || /^u:/.test(own || ''))) gate = 'held';
+      else if (own === null) stampAs('guest'); }
     if (!SU) settleOwner(null);
     const authNow = () => { try { return auth ? auth.state() : 'unresolved'; } catch (_) { return 'unresolved'; } };
     // PLAN-capp-store-promo-feeinfo r0: a MOUNTED store reads the same tri-state (its header's promo pill / «Envío gratis») and is
@@ -356,7 +362,7 @@
       const id = uid ? 'u:' + uid : 'guest', own = rawGet(OWNER_KEY);
       const mismatch = own !== 'guest' && own !== id && unkeyedHeld();
       if (mismatch) wipeIdentity(uid); else dropUidKeyed(uid);
-      try { rawStorage.setItem(OWNER_KEY, id); } catch (_) {}   // stamped only AFTER the check (or the wipe)
+      stampAs(id);   // stamped only AFTER the check (or the wipe)
       if (gate !== 'held') return;
       gate = 'open'; if (!bootDone) return;   // settled before the boot ran: its steps run as on any open boot
       // the gated boot's held steps: on a MATCH, what the boot deferred (the location, the searches, a payment return, the active order,
@@ -367,7 +373,21 @@
       loadLoc(); if (!mismatch) bootReturnNow(); bootSteps(); checkHeld(); renderNow();
     }
     // a member admitted here: the stamp names her (her session settled first — a 'guest' stamp is adopted, as a guest's sign-in keeps)
-    function ownBy(uid) { seenUid = uid; if (!settled) settleOwner(uid); else { try { rawStorage.setItem(OWNER_KEY, 'u:' + uid); } catch (_) {} } }
+    function ownBy(uid) { seenUid = uid; if (!settled) settleOwner(uid); else stampAs('u:' + uid); }
+    function stampAs(id) { try { rawStorage.setItem(OWNER_KEY, id); } catch (_) {} myStamp = id; }
+    // Codex #178 #1: the device's stamp moved under this tab (another tab left, or another identity owns it): this tab writes no member
+    // record from here on and starts again at the root — NO wipe (what is on the device now is not this tab's to delete)
+    function staleLeave() {
+      if (leaving) return;
+      leaving = true; gate = 'sealed';
+      const own = rawGet(OWNER_KEY); swap(own && own.startsWith('u:') ? 'switch' : 'signout');
+      if (S.member) dropMember();
+      const go = o.replace || ((u) => win.location.replace(u));
+      try { go(win.location.origin + '/'); } catch (_) {}
+    }
+    // Codex #178 #2 (P1): the SDK's user is not the admitted member (it switched before the listener ran) — that IS the switch
+    const switchPre = (nu) => { const c = runtime.push === true ? pushCore() : null, h = c && c.available() ? c.held() : null; return h && h.live && h.owner !== nu ? pushForget() : null; };
+    function identityMoved(nu) { if (!leaving && seenUid && nu && nu !== seenUid) leave('switch', nu, () => switchPre(nu)); }
     // the overlay (MOCKUP-capp-identity-restart): the whole screen in the app's background, a small ring and one line; every tap blocked
     function swap(kind) {
       let el = $('swap');
@@ -382,15 +402,11 @@
     async function leave(kind, keep, pre) {
       if (leaving) return true;
       leaving = true; swap(kind);
-      // her identity ends NOW in memory too (the one hook, dropMember): every in-flight read, token and timer of hers is void for the
-      // seconds until the page is replaced — nothing is sent as her, or under the next session's token for her
-      if (S.member) dropMember();
       let ok = true; try { if (pre) ok = (await pre()) !== false; } catch (_) { ok = false; }
-      if (!ok) {   // the sign-out was refused: she is still the member — re-admitted, the overlay gone
-        leaving = false; swap(null);
-        const u = auth && auth.user ? auth.user() : null; if (u && u.uid) applyMember(CappDeviceAccount.readProfile(storage, u.uid) || { uid: u.uid });
-        return false;
-      }
+      if (!ok) { leaving = false; swap(null); return false; }   // the sign-out was refused: nothing changed (she is still the member, every cache kept)
+      // the exit is confirmed: her identity ends in memory (the one hook, dropMember — every in-flight read, token and timer of hers is
+      // void) BEFORE the seal and the wipe (Codex #178 #3: never before the exit is confirmed)
+      if (S.member) dropMember();
       gate = 'sealed'; wipeIdentity(keep);
       const go = o.replace || ((u) => win.location.replace(u));
       try { go(win.location.origin + '/'); } catch (_) {}
@@ -417,7 +433,7 @@
       if (!u || u.uid !== uid) return;
       // getIdToken: the transport asks the SDK at send time (cached while valid, refreshed once expired); idToken = the fallback
       // S-picker: with the runtime intlPhone the member's number stays E.164 (its own country); off ⇒ the local 8 digits, as before
-      S.member = { uid: p.uid, name: p.name || '', phone: runtime.intlPhone === true ? String(p.phone || '') : String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', ...(typeof p.promos === 'boolean' ? { promos: p.promos } : {}), idToken: null, getIdToken: () => fbAuth.idToken(), onTokenChange: onMemberToken };
+      S.member = { uid: p.uid, name: p.name || '', phone: runtime.intlPhone === true ? String(p.phone || '') : String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', ...(typeof p.promos === 'boolean' ? { promos: p.promos } : {}), idToken: null, getIdToken: () => fbAuth.idToken(), getIdTokenOwned: () => fbAuth.idTokenOwned(), onMoved: (nu) => identityMoved(nu), onTokenChange: onMemberToken };
       { const A = apiMod(); if (A && typeof A.acceptToken === 'function') A.acceptToken(S.member, idToken, nowMs()); }   // the ONE setter (an unusable token is refused)
       if (S.store) S.store.ui.setMember(S.member);   // §4c: back on the SAME checkout step, filled in
       identityChanged();
@@ -682,7 +698,7 @@
         // in-place reset (the push exit first: the device forgets her token while a session still can)
         const u0 = st === 'member' && auth.user ? auth.user() : null;
         if (seenUid && st === 'guest') { leave('signout', null, () => pushAuthExit()); return; }
-        if (seenUid && u0 && u0.uid && u0.uid !== seenUid) { const nu = u0.uid; leave('switch', nu, () => { const c = runtime.push === true ? pushCore() : null, h = c && c.available() ? c.held() : null; return h && h.live && h.owner !== nu ? pushForget() : null; }); return; }
+        if (seenUid && u0 && u0.uid && u0.uid !== seenUid) { const nu = u0.uid; leave('switch', nu, () => switchPre(nu)); return; }
         if (st === 'guest') settleOwner(null);
         if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearComplete(); pushAuthExit(); pushSettleSoon(); }   // a CONFIRMED sign-out: no personal data stays on show
         if (st !== 'member') { dropMember(); schedule(); return; }
@@ -1349,7 +1365,7 @@
         use: (id) => selectAddr(id, 'sheet'),   // Codex #173 #12 (6c): ONE validation — selectAddr's
         dismiss: () => { if (S.addrErr === 'sheet') S.addrErr = null; } };
     }
-    const savedSeed = () => { const a = savedInUse(); return a ? { lat: a.lat, lng: a.lng, confirmed: true, saved: { label: a.label, detected: a.detected, details: a.details } } : null; };
+    const savedSeed = () => { const a = savedInUse(); return a ? { lat: a.lat, lng: a.lng, confirmed: true, saved: { id: a.id, label: a.label, detected: a.detected, details: a.details } } : null; };
     const seedNow = () => savedSeed() || S.loc;
     // a served book (getMyProfile's or the device copy's) with its revision — a book without a valid revision is no book (never guessed)
     const bookFrom = (uid, b) => (b && Array.isArray(b.addresses) && Number.isSafeInteger(b.default_address_rev) && b.default_address_rev >= 0
@@ -2089,6 +2105,10 @@
     };
     doc.addEventListener('keydown', onKey);
     doc.addEventListener('visibilitychange', onVisible);
+    // Codex #178 #1: another tab moved the device's stamp (it left, or another identity was admitted there) ⇒ this tab restarts at once
+    // (a storage event never fires for this tab's own writes)
+    const onStorage = (e) => { if (dead || leaving || !e || (e.key !== OWNER_KEY && e.key !== null)) return; if (rawGet(OWNER_KEY) !== myStamp) staleLeave(); };
+    if (win && typeof win.addEventListener === 'function') win.addEventListener('storage', onStorage);
     const dirTimer = T.setInterval(() => { if (!S.store && doc.visibilityState !== 'hidden') dir.revalidate(); }, DIR_EVERY_MS);
     const unAuth = auth && typeof auth.onChange === 'function' ? auth.onChange(() => { storeAuth(); schedule(); }) : null;
 
@@ -2156,7 +2176,7 @@
       // §4c for the sign-in flow (G6): set the marker at sign-in; ONLY «Cerrar sesión y olvidar este teléfono» / deletion forgets it
       rememberAccount: (e164) => CappDeviceAccount.remember(storage, e164), forgetAccount: () => CappDeviceAccount.forget(storage),
       destroy() {
-        dead = true; clearTokenTimers(); stopOrder(); if (typeof logoOff === 'function') logoOff(); if (typeof unTheme === 'function') { try { unTheme(); } catch (_) {} } unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
+        dead = true; clearTokenTimers(); stopOrder(); if (typeof logoOff === 'function') logoOff(); if (typeof unTheme === 'function') { try { unTheme(); } catch (_) {} } unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (win && typeof win.removeEventListener === 'function') win.removeEventListener('storage', onStorage); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
         doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); doc.removeEventListener('visibilitychange', onVisible); if (app && typeof app.removeEventListener === 'function') app.removeEventListener('scroll', onRowScroll, true); nav.destroy();
       },
     };
