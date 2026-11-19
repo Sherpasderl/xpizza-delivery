@@ -7,18 +7,23 @@ const BASE = '2c8967b1a';
 const HUNKS = Object.freeze([
  {
   "file": "index.js",
-  "now": "      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' }); if (o.payment_status === 'manual_review' && !o.manual_review_closed && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_review' });   // + cancel-park option A: a parked (manual_review) order is re-raised daily\n",
+  "now": "      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' }); if (o.payment_status === 'manual_review' && !require('./alert-prune').reviewClosed(o) && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_review' }); if (o.manual_review_closed && o.manual_review_closed.audited === false) { try { await require('./payments/review-attest').completeAudit(db, orderId); } catch (e) { console.warn('reconcilePayments: review audit', orderId.slice(0, 4)); } }   // + cancel-park option A: a parked (manual_review) order is re-raised daily\n",
   "was": "      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' }); if (o.payment_status === 'manual_review' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_review' });   // + cancel-park option A: a parked (manual_review) order is re-raised daily\n"
  },
  {
   "file": "index.js",
-  "now": ");   exports.attestManualReview = require('./payments/review-attest').endpoint({ onRequest, authorize: authorizeDispatcherAction, getDatabase, sanitizeText });   // «Marcar como revisado» (owner 11-19, option B): a recorded attestation only\n",
+  "now": ");   exports.attestManualReview = require('./payments/review-attest').endpoint({ onRequest, authorize: authorizeDispatcherActionWithUid, getDatabase, sanitizeText }); exports.markReviewEpisodeOnPaymentStatus = onValueWritten({ ref: '/orders/{orderId}/payment_status', region: 'us-central1', retry: true, timeoutSeconds: 60 }, (event) => require('./payments/review-attest').onPaymentStatus(getDatabase(), { orderId: event.params.orderId, before: event.data.before.val(), after: event.data.after.val(), eventTime: Date.parse(event.time) }));   // «Marcar como revisado» (owner 11-19, option B): a recorded attestation only\n",
   "was": ");\n"
  },
  {
   "file": "alert-prune.js",
-  "now": "const unresolvedMoney = (order) => !!order && !(order.payment_status === 'manual_review' && order.manual_review_closed)   // «Marcar como revisado»: a person closed it (owner 11-19, option B)\n  && (UNRESOLVED_MONEY.has(order.payment_status) || (typeof order.payment_status === 'string' && order.payment_status.startsWith('resolving_')));\n",
+  "now": "// «Marcar como revisado» (owner 11-19, option B; Codex #217 P1): a manual_review a person CLOSED in its CURRENT episode — the closure's episode\n// still equals the order's manual_review_since (the episode trigger stamps every entry into review). The one predicate the daily rule, this\n// prune and the attestation's refusal share.\nconst reviewClosed = (o) => !!o && o.payment_status === 'manual_review' && !!o.manual_review_closed\n  && (o.manual_review_closed.episode == null ? null : o.manual_review_closed.episode) === (o.manual_review_since == null ? null : o.manual_review_since);\nconst unresolvedMoney = (order) => !!order && !reviewClosed(order)\n  && (UNRESOLVED_MONEY.has(order.payment_status) || (typeof order.payment_status === 'string' && order.payment_status.startsWith('resolving_')));\n",
   "was": "const unresolvedMoney = (order) => !!order && (UNRESOLVED_MONEY.has(order.payment_status) || (typeof order.payment_status === 'string' && order.payment_status.startsWith('resolving_')));\n"
+ },
+ {
+  "file": "alert-prune.js",
+  "now": "module.exports = { alertOrderIds, orderStillFlagged, alertsToPrune, unresolvedMoney, reviewClosed };\n",
+  "was": "module.exports = { alertOrderIds, orderStillFlagged, alertsToPrune, unresolvedMoney };\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

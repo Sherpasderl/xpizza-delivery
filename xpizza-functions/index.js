@@ -3139,7 +3139,7 @@ exports.reconcilePayments = onSchedule(
       }
       // Aged operator-queue states.
       const age = now - (Number(o.charged_at || o.created_at) || now);
-      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' }); if (o.payment_status === 'manual_review' && !o.manual_review_closed && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_review' });   // + cancel-park option A: a parked (manual_review) order is re-raised daily
+      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' }); if (o.payment_status === 'manual_review' && !require('./alert-prune').reviewClosed(o) && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_review' }); if (o.manual_review_closed && o.manual_review_closed.audited === false) { try { await require('./payments/review-attest').completeAudit(db, orderId); } catch (e) { console.warn('reconcilePayments: review audit', orderId.slice(0, 4)); } }   // + cancel-park option A: a parked (manual_review) order is re-raised daily
       if (o.payment_status === 'refund_pending' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_refund_pending' });
       if (MR.isResolving(o.payment_status) && (now - (Number(o.resolving_claimed_at) || 0)) > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_resolving' }); // [D] sweep-recovery backstop
 
@@ -3298,7 +3298,7 @@ exports.resolveManualReconciliation = onRequest(
     });
     return res.status(result.status).json(result.body);
   }
-);   exports.attestManualReview = require('./payments/review-attest').endpoint({ onRequest, authorize: authorizeDispatcherAction, getDatabase, sanitizeText });   // «Marcar como revisado» (owner 11-19, option B): a recorded attestation only
+);   exports.attestManualReview = require('./payments/review-attest').endpoint({ onRequest, authorize: authorizeDispatcherActionWithUid, getDatabase, sanitizeText }); exports.markReviewEpisodeOnPaymentStatus = onValueWritten({ ref: '/orders/{orderId}/payment_status', region: 'us-central1', retry: true, timeoutSeconds: 60 }, (event) => require('./payments/review-attest').onPaymentStatus(getDatabase(), { orderId: event.params.orderId, before: event.data.before.val(), after: event.data.after.val(), eventTime: Date.parse(event.time) }));   // «Marcar como revisado» (owner 11-19, option B): a recorded attestation only
 
 // ============================================================
 // materializeOnConfirm — recovery trigger (crash between confirm-claim + materialize)

@@ -29,7 +29,12 @@ function alertOrderIds(alert) {
 // Codex #211 P1-2 (cancel-park): an UNRESOLVED MONEY state (manual_review / manual_reconciliation / refund_pending / resolving_*) still
 // needs a person WHATEVER the order's fulfilment status — kept, never pruned. (It subsumes H1a A-R1's handheld-reject refund_pending keep.)
 const UNRESOLVED_MONEY = new Set(['manual_review', 'manual_reconciliation', 'refund_pending']);
-const unresolvedMoney = (order) => !!order && !(order.payment_status === 'manual_review' && order.manual_review_closed)   // «Marcar como revisado»: a person closed it (owner 11-19, option B)
+// «Marcar como revisado» (owner 11-19, option B; Codex #217 P1): a manual_review a person CLOSED in its CURRENT episode — the closure's episode
+// still equals the order's manual_review_since (the episode trigger stamps every entry into review). The one predicate the daily rule, this
+// prune and the attestation's refusal share.
+const reviewClosed = (o) => !!o && o.payment_status === 'manual_review' && !!o.manual_review_closed
+  && (o.manual_review_closed.episode == null ? null : o.manual_review_closed.episode) === (o.manual_review_since == null ? null : o.manual_review_since);
+const unresolvedMoney = (order) => !!order && !reviewClosed(order)
   && (UNRESOLVED_MONEY.has(order.payment_status) || (typeof order.payment_status === 'string' && order.payment_status.startsWith('resolving_')));
 function orderStillFlagged(order, alert) {   // `alert` is kept in the signature: callers pass it
   if (!order) return false;
@@ -58,4 +63,4 @@ function alertsToPrune(alerts, orders) {
   return prune;
 }
 
-module.exports = { alertOrderIds, orderStillFlagged, alertsToPrune, unresolvedMoney };
+module.exports = { alertOrderIds, orderStillFlagged, alertsToPrune, unresolvedMoney, reviewClosed };
