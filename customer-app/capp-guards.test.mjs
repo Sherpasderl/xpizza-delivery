@@ -34,11 +34,11 @@ import { createRequire } from 'node:module';
 import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-// BASE → 31f05c8a4 (advisor 11-18, ruling (A); feat/capp-rider-name merged forward onto it at 6fe745ff): a capp lane on post-asm11 main pins its OWN range — BASE = its merge base with
+// BASE → 31f05c8a4 (advisor 11-18, ruling (A); feat/capp-dish-stats merged forward onto it at 0895a17c): a capp lane on post-asm11 main pins its OWN range — BASE = its merge base with
 // origin/main as a LITERAL sha (never computed at run time, so the guard cannot drift lax), CAPP_TIP = the lane tip. The offers-r20 /
 // push pins (827373d6..2b4aae89) and their merges landed on main with asm11 and sit below BASE now (MERGE_ALLOW pruned to above BASE).
 const BASE = '31f05c8a';
-const CAPP_TIP = 'e48f39c7';
+const CAPP_TIP = 'c3cd42e7';
 // ASSEMBLY STEPS (asm11 step 4, advisor 11-17): a capp commit made ON THE TRAIN line, before the lane's merge — it can't be the pin (a pin on
 // the train line pulls the train into the lane range). Each is listed by full sha with its EXACT file set: excused from the «after the pin» walk
 // only while that set is unchanged, and only while it is in HEAD's history (a step that left the tree is a stale entry). None touches a live
@@ -228,6 +228,7 @@ test(`no server change beyond S2-srv-tip + S2-srv-app + colonia: the capp range 
     .concat(git('ls-files', '--others', '--exclude-standard', '--', 'xpizza-functions').trim().split('\n').filter(Boolean));
   const allowed = (p) => /\.test\.(m?js|cjs)$/.test(p) || /^xpizza-functions\/test\//.test(p) || /\.golden\.json$|\.expect\.json$/.test(p)
     || p === 'xpizza-functions/tools/form-source-inventory.json' || p === 'xpizza-functions/package.json' || S2TIP_SERVER.has(p)
+    || p === 'xpizza-functions/tools/provenance-pins.json'   // the reviewed provenance REGISTRY: read only by tools/form-source-inventory.js, never shipped (advisor 11-18, dish-stats option A)
     || p === 'xpizza-functions/tools/app-suites.js';   // the test:apps RUNNER (never shipped): its KNOWN_RED holds the rule-20 url-token guard (advisor 11-13)
   const bad = changed.filter((p) => !allowed(p));
   assert.deepEqual(bad, [], `🔴 production files changed: ${bad.join(', ')}`);
@@ -271,6 +272,13 @@ const MERGE_ALLOW = {
   // above BASE 31f05c8a only (advisor 11-18): the offers-r20 / push / asm11 entries (b63d58a0, fc0f3213, 1adc6541, 8839193d) landed with asm11
   '6fe745ff customer-app/capp-s7a2.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
   '6fe745ff customer-app/capp.css': 'merge-forward (advisor 11-18): main\'s Figtree `.rate h2` (var(--fig)) + the lane\'s `.rate .rrow2 .t .who{white-space:nowrap}` line — both parents\' lines, 0 new',
+  // feat/capp-dish-stats merge-forward 0895a17c (advisor 11-18): each hunk resolved alone; `git show --cc` lines from NO parent listed
+  '0895a17c customer-app/capp-checkout.js': 'the fingerprint leaves out BOTH decorations: 1 line from no parent — `const { dish_stats: _stats, offers: _offers, ...content } = envelope.menu;` (+ both parents\' comments); of-13 / ds1-fp',
+  '0895a17c customer-app/capp-menu.js': 'the lane\'s `dishStats,` line + main\'s `offers` block — both parents\' lines, 0 from no parent',
+  '0895a17c customer-app/capp-ui.js': 'the lane\'s `S.upsellDesk = null` reset + main\'s empty-cart return with `trimNote` — both parents\' lines, 0 from no parent',
+  '0895a17c customer-app/capp.css': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '0895a17c customer-app/capp-s7a2.test.mjs': 'end-of-file appends on an empty base: union (the lane\'s dish-stats cells + main\'s), 0 from no parent',
+  '0895a17c customer-app/capp-ui.test.mjs': 'end-of-file appends on an empty base: union (the lane\'s dish-stats cells + main\'s), 0 from no parent',
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..${CAPP_TIP} + the merges after the pin`, () => {
   const [, tip] = capRange(), synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);

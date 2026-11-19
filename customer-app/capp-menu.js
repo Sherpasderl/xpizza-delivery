@@ -20,6 +20,9 @@
   // an extra label carrying a grammar / reader delimiter (',' driver, '|' groups, '+' extras, '[' ']' brackets) would make two
   // different configurations read — and content-key — the same; such an extra is never offered (capp-serialize refuses it too)
   const LABEL_UNSAFE = /[,|+[\]]/;
+  // the dish_stats thresholds — a COPY of the producer's (the functions' ratings/aggregate.js T; the server re-allowlists by the same
+  // T): the client fails closed below them too (Codex #145, rule 8 — no fake data). capp-ui.test DS-T fails if any value drifts (rule 4)
+  const DS_T = Object.freeze({ DISH_VOTES: 20, DISH_ORDERS: 20, TOP: 3, PAIR: 15, PAIRS_MAX: 3 });
   // S1 = toggles only: `max` absent or exactly 1, and none of the other quantity fields
   function extraSupported(ex) {
     if (!ex || typeof ex !== 'object') return false;
@@ -78,6 +81,23 @@
       groups[launcher.key] = Object.freeze({ label: String((g && g.label) || ''), basePrice: Number(g && g.basePrice),
         choices: list(g && g.variantIds).map((v) => dishById.get(String(v))).filter(Boolean).map((c) => c.key) });
     }
+    // PLAN-capp-dish-stats r0 (getPublicMenu 1d.4, 3a's (3)): the served `dish_stats` decoration { [dish_id]: { up, down, votes,
+    // orders_30d, top_rank, pairs:[{ dishId, count }] } } — the producer applies the frames' thresholds and the server re-allowlists;
+    // the model keeps a read-only copy of the well-typed fields at or above DS_T only (a malformed or below-threshold entry is dropped,
+    // never guessed — Codex #145). Absent ⇒ {}.
+    // It never changes the menu CONTENT (capp-checkout menuFingerprint leaves it out: a stats-only refresh is the same menu)
+    const nat = (v) => Number.isInteger(v) && v >= 0;
+    const dishStats = Object.freeze(Object.fromEntries(Object.entries(obj(m.dish_stats)).map(([id, e]) => {
+      if (!e || typeof e !== 'object') return null;
+      const o = {};
+      if (nat(e.up) && nat(e.down) && nat(e.votes) && e.votes >= DS_T.DISH_VOTES && e.votes === e.up + e.down) Object.assign(o, { up: e.up, down: e.down, votes: e.votes });
+      if (nat(e.orders_30d) && e.orders_30d >= DS_T.DISH_ORDERS) o.orders_30d = e.orders_30d;
+      // a rank is the producer's top-N of the dishes with ≥ DISH_ORDERS: never without its qualifying orders
+      if (o.orders_30d !== undefined && Number.isInteger(e.top_rank) && e.top_rank >= 1 && e.top_rank <= DS_T.TOP) o.top_rank = e.top_rank;
+      const pairs = list(e.pairs).filter((x) => x && typeof x.dishId === 'string' && x.dishId && nat(x.count) && x.count >= DS_T.PAIR).slice(0, DS_T.PAIRS_MAX).map((x) => Object.freeze({ dishId: x.dishId, count: x.count }));
+      if (pairs.length) o.pairs = Object.freeze(pairs);
+      return Object.keys(o).length ? [String(id), Object.freeze(o)] : null;
+    }).filter(Boolean)));
     return Object.freeze({
       rid: envelope.rid, representation_version: envelope.representation_version, photosAuthoritative: !legacyPhotos,
       // PLAN-avail-identity (5f, marker 1d.3): the restaurant's availability identity — 'id' | 'name', else null (an older envelope).
@@ -86,7 +106,7 @@
       dishes, extras, categories: list(m.categories).map((c) => Object.freeze({ id: c.id, name: c.name != null ? String(c.name) : null })),
       dish: (k) => dishByKey.get(String(k)) || null, extra: (k) => extraByKey.get(String(k)) || null, extrasFor,
       groups: Object.freeze(groups), pickupOnlyCats: new Set(list(m.pickup_only_cats).map(String)), weekendOnlyCats: new Set(list(m.weekend_only_cats).map(String)),
-      badges: obj(m.badges), hasPhoto: new Set(list(m.has_photo).map(String)),
+      badges: obj(m.badges), hasPhoto: new Set(list(m.has_photo).map(String)), dishStats,
       // PLAN-capp-marketing-offers Slice A (3a Q1 offers-serve): the served `offers` decoration [{ type, params, schedule }] — live
       // all-audience offers only, ABSENT when offers are off (⇒ []). The capp gates its store-page quote on «non-empty»; prices come from
       // the quote only, never from these rows
@@ -95,5 +115,5 @@
     });
   }
 
-  return { adaptMenu, extraSupported, LABEL_UNSAFE };
+  return { adaptMenu, extraSupported, LABEL_UNSAFE, DS_T };
 });

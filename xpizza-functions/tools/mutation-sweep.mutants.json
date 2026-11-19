@@ -36992,6 +36992,312 @@
   ]
  },
  {
+  "id": "ds1-01",
+  "slice": "dish-stats",
+  "label": "the menu fingerprint hashes dish_stats (a stats-only refresh reads as a CHANGED menu: a remount at checkout entry)",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "canonicalJson({ ...envelope, menu: content })",
+  "to": "canonicalJson(envelope)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(1\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DS-F2"
+  ]
+ },
+ {
+  "id": "ds1-02",
+  "slice": "dish-stats",
+  "label": "adaptMenu drops the served dish_stats (the model never carries them)",
+  "file": "../customer-app/capp-menu.js",
+  "from": "hasPhoto: new Set(list(m.has_photo).map(String)), dishStats,",
+  "to": "hasPhoto: new Set(list(m.has_photo).map(String)), dishStats: Object.freeze({}),",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(1\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DS-F1"
+  ]
+ },
+ {
+  "id": "rec-01",
+  "slice": "dish-stats",
+  "label": "the «%» from votes instead of up / votes (every rated dish reads 100 %)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "Math.round((100 * s.up) / s.votes)",
+  "to": "Math.round((100 * s.votes) / s.votes)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-REC1"
+  ]
+ },
+ {
+  "id": "rec-02",
+  "slice": "dish-stats",
+  "label": "no 80 % floor: a low % shown as a recommendation (rule 8)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "return n >= REC_MIN ? n : null;",
+  "to": "return n >= 0 ? n : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-REC1: 75 % is no recommendation"
+  ]
+ },
+ {
+  "id": "rec-03",
+  "slice": "dish-stats",
+  "label": "the badge VISIBLE on a sold-out dish (rule 8)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "<span class=\"pill recp\"${sold ? ' style=",
+  "to": "<span class=\"pill recp\"${false ? ' style=",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-REC2"
+  ]
+ },
+ {
+  "id": "rec-04",
+  "slice": "dish-stats",
+  "label": "a badge for a dish WITHOUT stats (a placeholder %, rule 8)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (!s || !Number.isInteger(s.votes) || s.votes < 1 || !Number.isInteger(s.up)) return null;",
+  "to": "if (!s) return REC_MIN; if (!Number.isInteger(s.votes) || s.votes < 1 || !Number.isInteger(s.up)) return null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-REC1"
+  ]
+ },
+ {
+  "id": "pop-01",
+  "slice": "dish-stats",
+  "label": "«Más pedido» on a dish without a top_rank (any dish with stats)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "return s && s.top_rank ? `<span class=\"pill pop\"",
+  "to": "return s ? `<span class=\"pill pop\"",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-POP: 21 orders but not top 3"
+  ]
+ },
+ {
+  "id": "pop-02",
+  "slice": "dish-stats",
+  "label": "a sold-out dish keeps «Más pedido» VISIBLE (rule 8)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "`<span class=\"pill pop\"${sold ? ' style=\"visibility:hidden\" aria-hidden=\"true\"' : ''}>Más pedido</span>`",
+  "to": "`<span class=\"pill pop\">Más pedido</span>`",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-POP: sold out"
+  ]
+ },
+ {
+  "id": "ups-01",
+  "slice": "dish-stats",
+  "label": "a partner already in the cart is offered again",
+  "file": "../customer-app/capp-ui.js",
+  "from": "for (const p of (st[id] && st[id].pairs) || []) if (!inDish.has(p.dishId)) best.set(",
+  "to": "for (const p of (st[id] && st[id].pairs) || []) best.set(",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-UPS: the next open leaves out"
+  ]
+ },
+ {
+  "id": "ups-02",
+  "slice": "dish-stats",
+  "label": "a partner at L 100+ (the live price) is offered",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (!it || it.group || isSold(it) || !(it.p < UPSELL_UNDER)) continue;",
+  "to": "if (!it || it.group || isSold(it)) continue;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-UPS: a partner now at L 100+"
+  ]
+ },
+ {
+  "id": "ups-03",
+  "slice": "dish-stats",
+  "label": "no cap: a 4th card",
+  "file": "../customer-app/capp-ui.js",
+  "from": "out.push(it.id); if (out.length === UPSELL_MAX) break;",
+  "to": "out.push(it.id);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-UPS: the union, ranked, at most 3"
+  ]
+ },
+ {
+  "id": "ups-04",
+  "slice": "dish-stats",
+  "label": "a sold partner is offered",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (!it || it.group || isSold(it) || !(it.p < UPSELL_UNDER)) continue;",
+  "to": "if (!it || it.group || !(it.p < UPSELL_UNDER)) continue;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-UPS: a sold partner"
+  ]
+ },
+ {
+  "id": "ups-05",
+  "slice": "dish-stats",
+  "label": "the sheet's section recomputed on every render (reflows on «+», rule 7)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const ups = off ? '' : upsellHtml(desk ? S.upsellDesk : S.upsell);",
+  "to": "const ups = off ? '' : upsellHtml(desk ? S.upsellDesk : upsellPick());",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-UPS: no reflow"
+  ]
+ },
+ {
+  "id": "ups-06",
+  "slice": "dish-stats",
+  "label": "«+» adds nothing",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (mutate(() => cart.inc(id))) bumpPill(); renderStoreKeep(); if (S.layerKind === 'cart')",
+  "to": "if (false) bumpPill(); renderStoreKeep(); if (S.layerKind === 'cart')",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-UPS: «+» adds ONE"
+  ]
+ },
+ {
+  "id": "ups-07",
+  "slice": "dish-stats",
+  "label": "a choice-launcher partner is upsold (its «+» would skip the dialog)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (!it || it.group || isSold(it) || !(it.p < UPSELL_UNDER)) continue;",
+  "to": "if (!it || isSold(it) || !(it.p < UPSELL_UNDER)) continue;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-UPS: a launcher partner is never upsold"
+  ]
+ },
+ {
+  "id": "rec-05",
+  "slice": "dish-stats",
+  "label": "the recommend pill takes v6's «Recomendado» .rec style again (uppercase, spaced, indented — owed SBS 11-14)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "<span class=\"pill recp\"${sold",
+  "to": "<span class=\"pill recp rec\"${sold",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=REC3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-REC3"
+  ]
+ },
+ {
+  "id": "ups-08",
+  "slice": "dish-stats",
+  "label": "the upsell «+» left unpositioned (it falls to the photo's top-left — owed SBS 11-14)",
+  "file": "../customer-app/capp.css",
+  "from": ".ucard .ph .qty-add-btn{position:absolute;width:30px;",
+  "to": ".ucard .ph .qty-add-btn{width:30px;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=UPS6",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "«+» at the photo"
+  ]
+ },
+ {
+  "id": "ups-09",
+  "slice": "dish-stats",
+  "label": "the upsell name back to a one-line ellipsis (hides meaning, 16b)",
+  "file": "../customer-app/capp.css",
+  "from": "min-height:2.5em;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere}",
+  "to": "min-height:2.5em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=UPS6",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "the name may wrap"
+  ]
+ },
+ {
   "id": "w1-04",
   "slice": "wake",
   "label": "the W1 cells walk the DELETED capp-fonts.css again (the Figtree swap ebe410c7e × W1, merge 8839193d) — WAKE-CSS",
@@ -37508,8 +37814,8 @@
   "slice": "capp-offers-sliceA",
   "label": "the menu fingerprint counts `offers` (an offer toggle reads as a changed menu)",
   "file": "../customer-app/capp-checkout.js",
-  "from": "    const { offers: _offers, ...content } = envelope.menu;\n",
-  "to": "    const content = envelope.menu;\n",
+  "from": "dish_stats: _stats, offers: _offers, ...content }",
+  "to": "dish_stats: _stats, ...content }",
   "command": [
    "node",
    "--test",
@@ -37518,6 +37824,23 @@
   ],
   "kills_with": [
    "OF-FP"
+  ]
+ },
+ {
+  "id": "ds1-fp",
+  "slice": "dish-stats",
+  "label": "the menu fingerprint counts `dish_stats` again (a stats-only refresh reads as a changed menu) — merge-forward 11-18 twin of of-13",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "dish_stats: _stats, offers: _offers, ...content }",
+  "to": "offers: _offers, ...content }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=F2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DS-F2"
   ]
  },
  {
@@ -41366,6 +41689,142 @@
   ],
   "kills_with": [
    "✗ RB-READ-CAP:"
+  ]
+ },
+ {
+  "id": "ds-guard",
+  "slice": "dish-stats",
+  "label": "capp-guards (11-18 re-base, merge-forward): a capp commit after CAPP_TIP no longer fails the range",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "  assert.equal(later, '', `🔴 capp commit(s) after CAPP_TIP",
+  "to": "  assert.equal('', '', `🔴 capp commit(s) after CAPP_TIP",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=still bites",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "GUARD-BITES"
+  ]
+ },
+ {
+  "id": "ds-fc-votes",
+  "slice": "dish-stats",
+  "label": "a «%» from under 20 votes reaches the model (1/1 ⇒ «100 % lo recomienda») — Codex #145",
+  "file": "../customer-app/capp-menu.js",
+  "from": "e.votes >= DS_T.DISH_VOTES && ",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=fail-closed",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-FC-REC"
+  ]
+ },
+ {
+  "id": "ds-fc-orders",
+  "slice": "dish-stats",
+  "label": "orders_30d under 20 reach the model (a rank with 0 orders ⇒ «Más pedido») — Codex #145",
+  "file": "../customer-app/capp-menu.js",
+  "from": " && e.orders_30d >= DS_T.DISH_ORDERS",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=fail-closed",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-FC-POP"
+  ]
+ },
+ {
+  "id": "ds-fc-rank",
+  "slice": "dish-stats",
+  "label": "a top_rank without its qualifying orders reaches the model — Codex #145",
+  "file": "../customer-app/capp-menu.js",
+  "from": "if (o.orders_30d !== undefined && Number.isInteger(e.top_rank)",
+  "to": "if (Number.isInteger(e.top_rank)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=fail-closed",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-FC-POP"
+  ]
+ },
+ {
+  "id": "ds-fc-top",
+  "slice": "dish-stats",
+  "label": "a rank past the producer's top 3 reaches the model — Codex #145",
+  "file": "../customer-app/capp-menu.js",
+  "from": "e.top_rank <= DS_T.TOP",
+  "to": "e.top_rank <= DS_T.TOP + 1",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=fail-closed",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-FC-POP"
+  ]
+ },
+ {
+  "id": "ds-fc-pair",
+  "slice": "dish-stats",
+  "label": "a pair under 15 co-orders is upsold — Codex #145",
+  "file": "../customer-app/capp-menu.js",
+  "from": " && x.count >= DS_T.PAIR",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=fail-closed",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-FC-UPS: pairs under 15"
+  ]
+ },
+ {
+  "id": "ds-fc-pairsmax",
+  "slice": "dish-stats",
+  "label": "more than the producer's 3 pairs are upsold — Codex #145",
+  "file": "../customer-app/capp-menu.js",
+  "from": ".slice(0, DS_T.PAIRS_MAX)",
+  "to": ".slice(0, DS_T.PAIRS_MAX + 1)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=fail-closed",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-FC-PAIRS"
+  ]
+ },
+ {
+  "id": "ds-t-drift",
+  "slice": "dish-stats",
+  "label": "the client's threshold copy drifts from the producer's (DISH_VOTES 19) — Codex #145",
+  "file": "../customer-app/capp-menu.js",
+  "from": "DS_T = Object.freeze({ DISH_VOTES: 20,",
+  "to": "DS_T = Object.freeze({ DISH_VOTES: 19,",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=DS-T",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-T: DISH_VOTES drifted"
   ]
  },
  {
