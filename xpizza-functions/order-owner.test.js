@@ -155,5 +155,35 @@ function realOrder(uid) {
   }
   ok('acquireHostedAttempt: ownerOf on every observed record — Codex\'s probe→acquire race, every state at the pre-read (reuse / in flight / paid / rotate / recover / install), inside the CAS (rotate / recover) — a foreign member gets the constant conflict, nothing written; owner and unverifiable unchanged');
 
+  // ── 6. r2 (Codex #174 P2): the reward BOUND-REUSE success path keeps its read count — the probe consumes the handler's hoisted
+  // snapshot (absence included) instead of reading the order again. The REAL probe + the REAL classifier over the honest RTDB
+  // model, every read of orders/{id} counted. Handler total on a bound reuse: the hoisted probe (1) + the classifier's own (1) = 2,
+  // as before r1 (the probe's own read (1) + the classifier's (1)) ──
+  {
+    const { probeBoundReuse } = require('./catalog/bound-reuse');
+    const CI = require('./catalog/charge-inputs');
+    const B = { order_id: 'LM-1', restaurant_id: 'la_musa', order_type: 'pickup', pickup_time: 'standard', payment_method: 'card', total: 342,
+      items_text: '1x Pad Thai - Pollo (L342)', items: [{ id: 'noodle_01_pollo', name: 'Pad Thai - Pollo', qty: 1, price: 342 }],
+      redeem: { type: 'points_ala_carte', items: [{ id: 'dimsum_01', qty: 1, name: 'Wonton' }] }, customer_name: 'Ana', customer_phone: '99990000' };
+    const NOWB = 1.8e12;
+    const seed = { orders: { 'LM-1': { restaurant_id: 'la_musa', customer_uid: U1, charge_inputs_fp: CI.chargeInputsFingerprint(B), redemption: { v: 1 }, payment_fingerprint: 'PF-1',
+        active_attempt_id: 'att1', payment_status: 'pending', status: 'pending_payment' } },
+      payment_attempts: { att1: { hosted_state: 'created', hosted_expires_at: NOWB + 60000, hosted_checkout_url: 'https://pay/x', poll_token: 'pt' } },
+      user_rewards: { [U1]: { la_musa: { reservations: { 'LM-1': { state: 'reserved', fp: 'BINDING-HASH', order_fingerprint: 'PF-1', canonical: { v: 1 }, attempt_id: 'att1' } } } } } };
+    const counted = (s) => { const c = { n: 0 }; return { c, db: makeHonestDb(s, { beforeRead: async (p) => { if (p === 'orders/LM-1') c.n += 1; } }) }; };
+    const ask = (db, extra) => probeBoundReuse(db, { orderId: 'LM-1', uid: U1, rid: 'la_musa', body: B, now: NOWB, ...extra });
+    const own = counted(seed);
+    const pre = await ask(own.db, {});
+    assert.ok(pre && pre.outcome === 'reuse' && own.c.n === 2, `premise: a bound reuse; without a snapshot the probe reads the order itself (+ the classifier) = 2 (got ${own.c.n})`);
+    const fed = counted(seed);
+    const snap = (await makeHonestDb(seed).ref('orders/LM-1').once('value')).val();
+    const r = await ask(fed.db, { probed: { order: snap } });
+    assert.deepStrictEqual([r && r.outcome, r && r.checkout_url, fed.c.n], ['reuse', 'https://pay/x', 1], '🔴 OWN-BOUND-READS: given the hoisted snapshot, the probe reads NO order of its own — only the classifier\'s (1)');
+    const none = counted(seed);
+    assert.deepStrictEqual([await ask(none.db, { probed: { order: null } }), none.c.n], [null, 0], '🔴 OWN-BOUND-ABSENT: an explicit absence is consumed (null ⇒ the current path), zero reads');
+    assert.ok(/BR\.probeBoundReuse\(db, \{ orderId, uid: customer_uid, rid: restaurantId, body, now: Date\.now\(\), probed: \{ order: probeOrder \} \}\)/.test(H), '🔴 OWN-BOUND-WIRED: the handler hands the bound-reuse probe its hoisted snapshot');
+  }
+  ok('bound reuse: consumes the hoisted snapshot (absence included) — the success path reads orders/{id} twice in all (the hoisted probe + the classifier), as before r1');
+
   console.log(`\norder-owner: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

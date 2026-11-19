@@ -1917,7 +1917,7 @@
   },
   {
    "id": "xpizza-functions/catalog/bound-reuse.js#probeBoundReuse#redeem#0",
-   "line": 28,
+   "line": 31,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -1927,7 +1927,7 @@
   },
   {
    "id": "xpizza-functions/catalog/bound-reuse.js#probeBoundReuse#restaurant_id#0",
-   "line": 33,
+   "line": 36,
    "kind": "member",
    "facts": [
     "BRAND"
@@ -1937,7 +1937,7 @@
   },
   {
    "id": "xpizza-functions/catalog/bound-reuse.js#probeBoundReuse#redemption#0",
-   "line": 35,
+   "line": 38,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -1947,7 +1947,7 @@
   },
   {
    "id": "xpizza-functions/catalog/bound-reuse.js#probeBoundReuse#redemption#1",
-   "line": 51,
+   "line": 54,
    "kind": "member",
    "facts": [
     "REWARD"

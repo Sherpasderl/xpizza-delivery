@@ -23,12 +23,15 @@ const { classifyHostedAttempt } = require('../pixelpay-hosted-charge');
 const { canonicalJson } = require('./canonical-json');
 const TV = require('./text-version');   // PLAN-A A8a (codex A-1 build r1 P1-1): the probe is provenance-aware
 
-async function probeBoundReuse(db, { orderId, uid, rid, body, now }) {
+// PLAN-3a-order-owner r2 (Codex #174 P2): `probed` = { order } — the snapshot the handler ALREADY read (its hoisted probe), absence
+// included (order: null); when given, this probe reads no order of its own, so the success path keeps its read count. Omitted ⇒
+// the probe reads it (every other caller unchanged).
+async function probeBoundReuse(db, { orderId, uid, rid, body, now, probed }) {
   try {
     if (!db || !orderId || !uid || !rid || !body || body.redeem == null) return null;
     const inputsFp = chargeInputsFingerprint(body);
     if (!inputsFp) return null;
-    const order = (await db.ref(`orders/${orderId}`).once('value')).val();
+    const order = probed && Object.prototype.hasOwnProperty.call(probed, 'order') ? probed.order : (await db.ref(`orders/${orderId}`).once('value')).val();
     if (!order || typeof order !== 'object') return null;
     if (order.restaurant_id !== rid || order.customer_uid !== uid) return null;
     if (order.charge_inputs_fp !== inputsFp) return null;

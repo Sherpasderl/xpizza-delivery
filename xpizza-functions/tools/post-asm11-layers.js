@@ -37,6 +37,13 @@ const HUNKS = Object.freeze([
  },
  {
   "layer": "order-owner",
+  "label": "chargeOnlineOrder r2 (Codex #174 P2): bound reuse consumes the hoisted probe's snapshot (no second read)",
+  "file": "index.js",
+  "now": "    const boundAcq = await BR.probeBoundReuse(db, { orderId, uid: customer_uid, rid: restaurantId, body, now: Date.now(), probed: { order: probeOrder } });   // r2: the hoisted probe's snapshot (no second read)\n",
+  "was": "    const boundAcq = await BR.probeBoundReuse(db, { orderId, uid: customer_uid, rid: restaurantId, body, now: Date.now() });\n"
+ },
+ {
+  "layer": "order-owner",
   "label": "chargeOnlineOrder r1: the probe block's former place (after the audience stamp) — a pointer comment",
   "file": "index.js",
   "now": "  // (probeOrder — the read-only order probe — is read ABOVE, where ownership is decided: PLAN-3a-order-owner r1, Codex #172 P1-a)\n",
