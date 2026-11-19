@@ -1,6 +1,6 @@
 'use strict';
 // «Quitar del menú» server prerequisites (PLAN-portal-remove-product-r1 §1b; advisor 11-12), behind ONE platform switch:
-//   P-R5  catalog/platform-removal.js removalCapabilities().productRemoval — OFF (shipped) = today's refusals and today's response bytes;
+//   P-R5  catalog/platform-removal.js removalCapabilities().productRemoval — OFF (the rollback value; ON shipped 11-19) = today's refusals and today's response bytes;
 //         ON: getEditableCatalog states `productRemoval: true`.
 //   P-R4  (d1309843 + Codex r1 P2-1) a declared removal's own entries leave with it, and an emptied extras_by_item is {} — ON only.
 //   P-R3  catalogDiff never rename-pairs a DECLARED removal (its live identity is in the draft's claim) — ON only; the save, the owner
@@ -82,6 +82,10 @@ let PORTAL = null;   // the portal's ONE claim writer (xpizza-portal/editor.js m
     const e = await editor('la_musa', canonicalize(base('la_musa')));
     assert.strictEqual(e.body.productRemoval, true);
   }));
+  await cell('PR5-SHIPPED: the REAL platform-removal module ships the switch ON (owner #4, 11-19; OFF stays the rollback value)', () => {
+    const out = require('child_process').execFileSync(process.execPath, ['-e', "process.stdout.write(JSON.stringify(require('./catalog/platform-removal').removalCapabilities()))"], { cwd: require('path').join(__dirname, '..'), encoding: 'utf8' });
+    assert.deepStrictEqual(JSON.parse(out), { productRemoval: true }, '🔴 PR5-SHIPPED: platform-removal.js does not ship productRemoval ON');
+  });
   await cell('PR1-ON: the editor read serves the SAVED draft\'s removals: { key, identity_id, row, after, photo }, sorted', () => ON(async () => {
     const rid = 'la_musa'; const live = activeOf(rid).built;
     const { r, saved } = await save(rid, removed(removed(base(rid), 'soft_01'), 'rice_03'), [stamp(rid, 'soft_01'), stamp(rid, 'rice_03')]);
