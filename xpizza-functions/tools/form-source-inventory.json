@@ -6058,6 +6058,7 @@
     {
      "file": "xpizza-functions/privacy-wiring.guard.test.js",
      "inverses": [
+      "tools/memberreads-module-inverse.js",
       "tools/privacy-module-inverse.js"
      ]
     },

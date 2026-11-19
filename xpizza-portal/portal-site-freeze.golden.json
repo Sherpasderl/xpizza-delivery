@@ -220,8 +220,8 @@
    "bytes": 841
   },
   "styles.css": {
-   "sha256": "cfebf3e894cc9744cb141682b51117e84853d307eab5e453c0080e5aeadb8c1f",
-   "bytes": 226603
+   "sha256": "b9db3d66356f4b834394e9308693e33ce8d0e5cb4ad12b090cd5bc01e3c1cc40",
+   "bytes": 229535
   }
  },
  "diff_aid": {
@@ -3658,6 +3658,18 @@
     ".mk5-pill:hover",
     "border-color",
     "var(--line)"
+   ],
+   [
+    "",
+    ".mk5-reconf",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5-reconf",
+    "color",
+    "var(--accent)"
    ],
    [
     "",
