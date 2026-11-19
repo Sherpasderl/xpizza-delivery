@@ -59,7 +59,9 @@ function loopback(answer) {
   return new Promise((resolve) => {
     const got = [];
     const srv = http.createServer((rq, rs) => { let body = ''; rq.on('data', (c) => { body += c; }); rq.on('end', () => { got.push({ method: rq.method, url: rq.url, httpVersion: rq.httpVersion, rawHeaders: masked(rq.rawHeaders), body }); answer(rs); }); });
-    srv.listen(0, '127.0.0.1', () => resolve({ srv, got, base: `http://127.0.0.1:${srv.address().port}` }));
+    // the RAW socket bytes too: bytes sent without framing (no Content-Length / chunked) never reach the parser's body, only the socket
+    const wire = []; srv.on('connection', (s) => s.on('data', (d) => wire.push(d)));
+    srv.listen(0, '127.0.0.1', () => resolve({ srv, got, wire, base: `http://127.0.0.1:${srv.address().port}` }));
   });
 }
 const json400 = (rs) => { rs.writeHead(400, { 'Content-Type': 'application/json' }); rs.end('{"success":false,"message":"El token no es valido"}'); };
@@ -98,12 +100,15 @@ const json400 = (rs) => { rs.writeHead(400, { 'Content-Type': 'application/json'
   await cell('RQ-WIRE', async (L) => {
     const PA = require('./pixelpay-adapter');
     for (const [i, gw] of [[0, null], [1, 'GW-PLACEHOLDER-0001']]) {
-      const { srv, got, base } = await loopback(json400);
+      const { srv, got, wire, base } = await loopback(json400);
       try {
         const impl = PA.makePixelPayImpl({ mode: 'production', endpoint: base, key_id: 'KEY-PLACEHOLDER-0001', auth_hash: 'HASH-PLACEHOLDER-0001', gw_token: gw, secret: 's', merchant_email: 'm@x.hn', app_url: 'https://x', namespace: 'prod' }, { log: { info() {}, warn() {}, error() {} } });
         const r = await impl.pspDeleteToken({ token: TOKEN });
         assert.deepStrictEqual(r, { status: 400, success: false }, `${L}: the status passes through (400, not a success)`);
+        await new Promise((ok) => setTimeout(ok, 100));   // let any trailing bytes land
       } finally { srv.close(); }
+      const raw = Buffer.concat(wire).toString('latin1'); const end = raw.indexOf('\r\n\r\n');
+      assert.ok(end > 0 && raw.length === end + 4, `${L}: nothing follows the request head on the socket (no body, framed or not) — ${raw.length - end - 4} trailing byte(s)`);
       assert.strictEqual(got.length, 1, `${L}: one request`);
       assert.deepStrictEqual(got[0], WIRE.captures[i], `${L}: OUR request is byte-identical to the SDK's (${gw ? 'with' : 'without'} the gateway token): method, path + query, raw headers in order, no body`);
     }

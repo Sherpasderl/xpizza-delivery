@@ -66,8 +66,8 @@ const savedCardOf = async (w, tok) => {   // a saved card made by the REAL vault
   // a write-ahead whose claim LOST (a real cancel before the claim CAS) — the client still tokenized it → queued, never a bare drop
   await cell('TQ-ORPHAN-ENQUEUE', async (L) => {
     let n = 0; let w = null; const t = TK('q3');
-    // the drain is gated OFF here (namespace unconfigured), so the queued handle stays observable after the sweeper
-    w = world({}, { namespace: 'unconfigured', hooks: { beforeTx: async (p) => { if (String(p) === 'payment_sdk/o_1' && ++n === 2) await C.cancelSdkOrder(w.deps, { orderId: 'o_1' }); } } });
+    // the drain is gated OFF here (unconfigured: deps' real { ppMode 'off', ppNamespace 'unconfigured' }), so the queued handle stays observable after the sweeper
+    w = world({}, { mode: 'off', namespace: 'unconfigured', hooks: { beforeTx: async (p) => { if (String(p) === 'payment_sdk/o_1' && ++n === 2) await C.cancelSdkOrder(w.deps, { orderId: 'o_1' }); } } });
     const p = await C.placeOriginal(w.deps, { orderId: 'o_1', attempt_id: 'att_tq_orphan_0000001', token: t, amount_cents: 100, card: card(false) });
     assert.ok(p.outcome !== 'placed' && w.node(), `premise: an orphan write-ahead (${p.outcome})`);
     await SW.sweepSdkPayments(w.deps);
@@ -76,7 +76,7 @@ const savedCardOf = async (w, tok) => {   // a saved card made by the REAL vault
   // a SAVED-CARD token never leaves through the order path — its handle lives in customer_cards (card removal / the fence enqueue it)
   await cell('TQ-ORPHAN-SAVED', async (L) => {
     let n = 0; let w = null; const t = TK('qs');
-    w = world({}, { namespace: 'unconfigured', hooks: { beforeTx: async (p) => { if (String(p) === 'payment_sdk/o_1' && ++n === 2) await C.cancelSdkOrder(w.deps, { orderId: 'o_1' }); } } });
+    w = world({}, { mode: 'off', namespace: 'unconfigured', hooks: { beforeTx: async (p) => { if (String(p) === 'payment_sdk/o_1' && ++n === 2) await C.cancelSdkOrder(w.deps, { orderId: 'o_1' }); } } });
     const id = await savedCardOf(w, t); n = 0;
     const p = await C.placeOriginal(w.deps, { orderId: 'o_1', attempt_id: 'att_tq_orphansv_00001', token: t, amount_cents: 100, card: card(false, `saved:${id}`) });
     assert.ok(p.outcome !== 'placed' && w.node() && w.node().att_tq_orphansv_00001.uid === 'uid_A', `premise: an orphan saved-card write-ahead, the uid recorded WITH the token (${p.outcome})`);
@@ -87,7 +87,7 @@ const savedCardOf = async (w, tok) => {   // a saved card made by the REAL vault
   // with NO order record (purged), the uid stored WITH the token keeps the saved-card check (r3)
   await cell('TQ-NO-UID-SAVED', async (L) => {
     let n = 0; let w = null; const t = TK('qn');
-    w = world({}, { namespace: 'unconfigured', hooks: { beforeTx: async (p) => { if (String(p) === 'payment_sdk/o_1' && ++n === 2) await C.cancelSdkOrder(w.deps, { orderId: 'o_1' }); } } });
+    w = world({}, { mode: 'off', namespace: 'unconfigured', hooks: { beforeTx: async (p) => { if (String(p) === 'payment_sdk/o_1' && ++n === 2) await C.cancelSdkOrder(w.deps, { orderId: 'o_1' }); } } });
     const id = await savedCardOf(w, t); n = 0;
     const p = await C.placeOriginal(w.deps, { orderId: 'o_1', attempt_id: 'att_tq_nouid_00000001', token: t, amount_cents: 100, card: card(false, `saved:${id}`) });
     assert.ok(p.outcome !== 'placed' && w.node(), `premise: an orphan saved-card write-ahead (${p.outcome})`);
@@ -201,7 +201,7 @@ const savedCardOf = async (w, tok) => {   // a saved card made by the REAL vault
     }
   });
   await cell('TQ-DRAIN-INERT-OFF', async (L) => {
-    const w = world({}, { namespace: 'unconfigured' }); await place(w, TK('off'), false); await finish(w);
+    const w = world({}, { mode: 'off', namespace: 'unconfigured' }); await place(w, TK('off'), false); await finish(w);
     const r = await Q().drainProviderDeletes(w.deps);
     assert.strictEqual(deletes(w).length, 0, `${L}: SDK config off ⇒ NO provider call`);
     assert.ok(w.item(TK('off')), `${L}: the item stays queued`);
