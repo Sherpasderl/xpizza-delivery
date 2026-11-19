@@ -18,7 +18,8 @@
  "ids": {
   "casa": "a_b51af1ac8585",
   "trabajo": "a_67588898c418",
-  "mama": "a_5f63349213b0"
+  "mama": "a_5f63349213b0",
+  "mama_samepin": "a_4d3c2b1a0f9e"
  },
  "scenarios": {
   "profile_default_casa": {
@@ -43,7 +44,7 @@
       "details": "Torre 2, piso 5",
       "lat": 14.1003,
       "lng": -87.1901,
-      "last_used_at": 1795097425192
+      "last_used_at": 1795049932006
      },
      {
       "id": "a_b51af1ac8585",
@@ -52,7 +53,7 @@
       "details": "Casa azul, portón negro",
       "lat": 15.52,
       "lng": -88.03,
-      "last_used_at": 1795097425185
+      "last_used_at": 1795049932003
      }
     ],
     "default_address": "a_b51af1ac8585",
@@ -103,7 +104,7 @@
       "details": "Casa azul, portón negro",
       "lat": 15.52,
       "lng": -88.03,
-      "last_used_at": 1795097425185
+      "last_used_at": 1795049932003
      }
     ],
     "default_address": "a_67588898c418",
@@ -252,7 +253,7 @@
       "details": "Casa verde, portón blanco",
       "lat": 15.525,
       "lng": -88.035,
-      "last_used_at": 1795097425194
+      "last_used_at": 1795049932009
      }
     ],
     "default_address": "a_b51af1ac8585",
@@ -299,7 +300,7 @@
       "details": "Casa verde, portón blanco",
       "lat": 15.525,
       "lng": -88.035,
-      "last_used_at": 1795097425194
+      "last_used_at": 1795049932012
      }
     ],
     "default_address": "a_5f63349213b0",
@@ -373,7 +374,7 @@
       "details": "Casa verde, portón blanco",
       "lat": 15.525,
       "lng": -88.035,
-      "last_used_at": 1795097425194
+      "last_used_at": 1795049932012
      }
     ],
     "default_address": "a_67588898c418",
@@ -411,7 +412,7 @@
       "details": "Casa verde, portón blanco",
       "lat": 15.525,
       "lng": -88.035,
-      "last_used_at": 1795097425194
+      "last_used_at": 1795049932012
      }
     ],
     "default_address": "a_67588898c418",
@@ -461,7 +462,68 @@
     "default_address": "a_b51af1ac8585",
     "default_address_rev": 1
    }
+  },
+  "m4_profile_mama_samepin": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "name": "Ana",
+    "email": null,
+    "phone": "50499990000",
+    "phone_last4": "0000",
+    "consent": {
+     "terms": false,
+     "terms_version": null,
+     "promos": false
+    },
+    "completion": "off",
+    "addresses": [
+     {
+      "id": "a_4d3c2b1a0f9e",
+      "label": "Mamá",
+      "detected": "Col. Trejo, San Pedro Sula",
+      "details": "Casa verde, portón blanco",
+      "lat": 15.52,
+      "lng": -88.03,
+      "last_used_at": 1795049932015
+     },
+     {
+      "id": "a_67588898c418",
+      "label": "Trabajo",
+      "detected": "Blvd. Morazán, Tegucigalpa",
+      "details": "Torre 2, piso 5",
+      "lat": 14.1003,
+      "lng": -87.1901,
+      "last_used_at": 1795049932006
+     },
+     {
+      "id": "a_b51af1ac8585",
+      "label": "Casa",
+      "detected": "Col. Trejo, San Pedro Sula",
+      "details": "Casa azul, portón negro",
+      "lat": 15.52,
+      "lng": -88.03,
+      "last_used_at": 1795049932003
+     }
+    ],
+    "default_address": "a_4d3c2b1a0f9e",
+    "default_address_rev": 0
+   }
+  },
+  "m4_use_trabajo_stale": {
+   "req": {
+    "id": "a_67588898c418",
+    "expected_rev": 0,
+    "expected_default": "a_b51af1ac8585"
+   },
+   "status": 409,
+   "body": {
+    "ok": false,
+    "reason": "stale_address",
+    "default_address": "a_4d3c2b1a0f9e",
+    "default_address_rev": 0
+   }
   }
  },
- "scenarios_sha256": "e7deeb237139f9bf733c238af32af1d9cf67293223e2d47d13af456f7b8f0953"
+ "scenarios_sha256": "720eb3d6ad29007bb5fbfa901ed55b43b3d2f732455bf348c8194fe9cb264bb4"
 }

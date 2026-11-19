@@ -42,8 +42,12 @@ const UID = 'u_ana';
 // the form's newAddrId draws 6 random bytes per NEW address (window.crypto.getRandomValues). The generator replays the bytes the FIRST
 // run drew (Casa, Trabajo, Mamá — the ids every cell and the SBS scenes already use), so a re-run records new scenarios without
 // re-keying the book. Generator-only: the form's code runs unchanged (r3, owner 11-19 / advisor: fixture regen for Codex #173 #8)
-const DRAWN = ['b51af1ac8585', '67588898c418', '5f63349213b0']; let drawn = 0;
-const replayCrypto = { getRandomValues: (a) => { const h = DRAWN[drawn++]; if (!h || a.length !== 6) throw new Error('premise: one 6-byte draw per new address, three in all'); for (let i = 0; i < 6; i++) a[i] = parseInt(h.slice(2 * i, 2 * i + 2), 16); return a; } };
+// the 4th («Mamá» at Casa's pin, Codex #178 #5) had no first run: a FIXED draw, recorded here once
+// and its clock: the form stamps last_used_at with Date.now — a FIXED, advancing clock in this process (generator-only), so a re-run
+// records the same bodies (the first runs used the wall clock; the order the form produced — Trabajo saved after Casa — is kept)
+{ let formNow = 1795049932000; Date.now = () => (formNow += 3); }
+const DRAWN = ['b51af1ac8585', '67588898c418', '5f63349213b0', '4d3c2b1a0f9e']; let drawn = 0;
+const replayCrypto = { getRandomValues: (a) => { const h = DRAWN[drawn++]; if (!h || a.length !== 6) throw new Error('premise: one 6-byte draw per new address, four in all'); for (let i = 0; i < 6; i++) a[i] = parseInt(h.slice(2 * i, 2 * i + 2), 16); return a; } };
 const FORM = new Function('ensureFirebase', 'heal', 'MAX_ADDRESSES', 'window', `${liftFn('function newAddrId()')}\n${liftFn('async function saveAddress(')}\n${liftFn('async function deleteAddress(')}\nreturn { saveAddress, deleteAddress };`)(
   async () => ({ auth: { authStateReady: async () => {}, currentUser: { uid: UID } }, db: null, dbMod: { ref: (_d, p) => p, get: async (p) => db.ref(p).get(), update: async (_r, u) => db.ref().update(u) } }), () => {}, 10, { crypto: replayCrypto });
 const formSaveAddress = FORM.saveAddress, formDeleteAddress = FORM.deleteAddress;   // the frozen form's OWN writers (r3: deleteAddress too)
@@ -107,19 +111,26 @@ S.profile_empty = await profile();
 // book the real writer left at the start (Casa, rev 0): 200, rev 1
 put(`user_profiles/${UID}`, world0);
 S.use_casa_same = await use({ id: C, expected_rev: 0, expected_default: C });
+// Codex #178 #5: ANOTHER address at the SAME pin — the frozen form saves «Mamá» at Casa's door and makes it the default (no rev bump),
+// on the book the real writer left at the start (Casa, rev 0); a pick of Trabajo then meets the 409 (Mamá, 0)
+put(`user_profiles/${UID}`, world0);
+const same = await formSaveAddress({ label: 'Mamá', detected: 'Col. Trejo, San Pedro Sula', details: 'Casa verde, portón blanco', lat: 15.52, lng: -88.03, makeDefault: true });
+if (!same.ok) throw new Error('premise: the form saved «Mamá» at Casa\'s pin ' + JSON.stringify(same));
+S.m4_profile_mama_samepin = await profile();                                // Mamá (at Casa's pin), rev 0
+S.m4_use_trabajo_stale = await use({ id: Tb, expected_rev: 0, expected_default: C });   // the client saw Casa ⇒ 409 (Mamá, 0)
 const WANT = { profile_default_casa: 200, use_trabajo: 200, profile_after_use: 200, use_trabajo_again: 409, use_casa: 200, profile_after_back: 200, use_trabajo_late: 409,
-  use_unknown: 404, use_bad_shape: 400, m3_profile_casa: 200, m3_profile_mama: 200, m3_use_trabajo_stale: 409, m3_use_trabajo_ok: 200, m3_profile_trabajo: 200, m3_profile_nocasa: 200, m3_use_casa_gone: 404, profile_empty: 200, use_casa_same: 200 };
+  use_unknown: 404, use_bad_shape: 400, m3_profile_casa: 200, m3_profile_mama: 200, m3_use_trabajo_stale: 409, m3_use_trabajo_ok: 200, m3_profile_trabajo: 200, m3_profile_nocasa: 200, m3_use_casa_gone: 404, profile_empty: 200, use_casa_same: 200, m4_profile_mama_samepin: 200, m4_use_trabajo_stale: 409 };
 for (const [k, v] of Object.entries(S)) if (v.status !== WANT[k]) throw new Error(`premise: ${k} answered ${v.status} (want ${WANT[k]}) ${JSON.stringify(v.body).slice(0, 160)}`);
 const pair = (k) => [S[k].body.default_address, S[k].body.default_address_rev];
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 if (!eq(pair('profile_default_casa'), [C, 0]) || !eq(pair('profile_after_use'), [Tb, 1]) || !eq(pair('use_trabajo_again'), [Tb, 1]) || !eq(pair('profile_after_back'), [C, 2])
-  || !eq(pair('use_trabajo_late'), [C, 2]) || !eq(pair('m3_profile_mama'), [mama.addrId, 2]) || !eq(pair('m3_use_trabajo_stale'), [mama.addrId, 2]) || !eq(pair('m3_profile_trabajo'), [Tb, 3]) || !eq(pair('use_casa_same'), [C, 1]))
+  || !eq(pair('use_trabajo_late'), [C, 2]) || !eq(pair('m3_profile_mama'), [mama.addrId, 2]) || !eq(pair('m3_use_trabajo_stale'), [mama.addrId, 2]) || !eq(pair('m3_profile_trabajo'), [Tb, 3]) || !eq(pair('use_casa_same'), [C, 1]) || !eq(pair('m4_use_trabajo_stale'), [same.addrId, 0]))
   throw new Error('premise: the selection CAS moved as the plan says');
 
 const out = { source: { commit: SHA, blobs: Object.fromEntries(['xpizza-orders/account.js', 'xpizza-functions/signup-platform.js', 'xpizza-functions/address-book.js', 'xpizza-functions/my-address.js', 'xpizza-functions/member-auth.js'].map((f) => [f, blob(f)])),
   // the functions' files keyed relative to xpizza-functions/ too — the provenance registry's (site, module) shape (form-source-inventory; merge-forward 11-18)
   fn_blobs: Object.fromEntries(['signup-platform.js', 'address-book.js', 'my-address.js', 'member-auth.js'].map((f) => [f, blob(`xpizza-functions/${f}`)])) },
-  ids: { casa: casa.addrId, trabajo: trabajo.addrId, mama: mama.addrId }, scenarios: S };
+  ids: { casa: casa.addrId, trabajo: trabajo.addrId, mama: mama.addrId, mama_samepin: same.addrId }, scenarios: S };
 const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
 out.scenarios_sha256 = createHash('sha256').update(canon({ ids: out.ids, scenarios: S })).digest('hex');
 writeFileSync(join(dirname(fileURLToPath(import.meta.url)), 'addr.json'), JSON.stringify(out, null, 1) + '\n');
