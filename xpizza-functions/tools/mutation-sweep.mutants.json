@@ -41692,6 +41692,159 @@
   ]
  },
  {
+  "id": "loc-sand-01",
+  "slice": "loc-sand",
+  "label": "the location-off row keeps the amber fill and text",
+  "file": "../customer-app/capp.css",
+  "from": "border-radius:12px;background:var(--sand-bg);color:var(--sand);box-shadow",
+  "to": "border-radius:12px;background:var(--warn-bg);color:var(--warn);box-shadow",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=LOC-SAND",
+   "../customer-app/capp-dark.test.mjs"
+  ],
+  "kills_with": [
+   "LOC-SAND: the row is sand"
+  ]
+ },
+ {
+  "id": "loc-sand-02",
+  "slice": "loc-sand",
+  "label": "the sand hairline is dropped (the row loses its edge on white)",
+  "file": "../customer-app/capp.css",
+  "from": "color:var(--sand);box-shadow:inset 0 0 0 1px var(--sand-line);font-size:13.5px",
+  "to": "color:var(--sand);font-size:13.5px",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=LOC-SAND",
+   "../customer-app/capp-dark.test.mjs"
+  ],
+  "kills_with": [
+   "LOC-SAND: the row is sand"
+  ]
+ },
+ {
+  "id": "loc-sand-03",
+  "slice": "loc-sand",
+  "label": "«Activar» stays amber",
+  "file": "../customer-app/capp.css",
+  "from": "background:transparent;color:var(--sand);font-weight:700;font-size:13.5px;padding:6px 0 6px 8px",
+  "to": "background:transparent;color:var(--warn);font-weight:700;font-size:13.5px;padding:6px 0 6px 8px",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=LOC-SAND",
+   "../customer-app/capp-dark.test.mjs"
+  ],
+  "kills_with": [
+   "LOC-SAND: «Activar» is sand"
+  ]
+ },
+ {
+  "id": "loc-sand-04",
+  "slice": "loc-sand",
+  "label": "Inicio keeps an amber .locrow override (the two screens differ)",
+  "file": "../customer-app/capp.css",
+  "from": ".locrow svg.i{width:18px;height:18px}",
+  "to": ".locrow svg.i{width:18px;height:18px}\n.home-head .locrow{background:var(--warn-bg);color:var(--warn)}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=LOC-SAND",
+   "../customer-app/capp-dark.test.mjs"
+  ],
+  "kills_with": [
+   "LOC-SAND: ONE rule set"
+  ]
+ },
+ {
+  "id": "loc-sand-05",
+  "slice": "loc-sand",
+  "label": "the light sand token is the old amber pair",
+  "file": "../customer-app/capp.css",
+  "from": "--sand:#7A4A24; --sand-bg:#F7EEE5;",
+  "to": "--sand:#8A5A00; --sand-bg:#FFF1D6;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=LOC-SAND",
+   "../customer-app/capp-dark.test.mjs"
+  ],
+  "kills_with": [
+   "LOC-SAND: the light sand trio"
+  ]
+ },
+ {
+  "id": "loc-sand-06",
+  "slice": "loc-sand",
+  "label": "one dark form's sand token is the old amber pair",
+  "file": "../customer-app/capp.css",
+  "from": "  --sand:#E6BC93;--sand-bg:#2B2119;--sand-line:#51402F;\n  --promo-bg:linear-gradient(135deg,#182A52 0%,#133640 100%);--promo-ink:#EDF1F8;--promo-mute:#A9B8D6;--promo-line:#2B3F66;\n  --il-sky-a:#182A52;--il-sky-b:#24427E;--il-sky-c:#17424C;--il-jacket:#4A82E0;--il-pants:#95A3BE;--il-skin:#D9A77B;--il-tyre:#3A4761;\n  --a-warm:#1C2230;--a-cool:#172033;--a-green:#182226;--a-rose:#211D25}\n@media (prefers-color-scheme: dark){:root:not([data-theme=\"light\"]) .app{--map-road:#2E3A30;--map-minor:#283329;--map-park:#243227;--map-water:#1C2A33;--bg:#0A0F1C;--surf:#121A2C;--surf2:#1A2439;--ink:#EDF1F8;--mute:#9AA6BD;--line:#24304A;--line2:#34415C;--acc:#8EC0FF;--acc-ink:#0A0F1C;--price:#EDF1F8;--pill:#EDF1F8;--pill-ink:#0A0F1C;",
+  "to": "  --sand:#F2BE4B;--sand-bg:#3A2B06;--sand-line:#51402F;\n  --promo-bg:linear-gradient(135deg,#182A52 0%,#133640 100%);--promo-ink:#EDF1F8;--promo-mute:#A9B8D6;--promo-line:#2B3F66;\n  --il-sky-a:#182A52;--il-sky-b:#24427E;--il-sky-c:#17424C;--il-jacket:#4A82E0;--il-pants:#95A3BE;--il-skin:#D9A77B;--il-tyre:#3A4761;\n  --a-warm:#1C2230;--a-cool:#172033;--a-green:#182226;--a-rose:#211D25}\n@media (prefers-color-scheme: dark){:root:not([data-theme=\"light\"]) .app{--map-road:#2E3A30;--map-minor:#283329;--map-park:#243227;--map-water:#1C2A33;--bg:#0A0F1C;--surf:#121A2C;--surf2:#1A2439;--ink:#EDF1F8;--mute:#9AA6BD;--line:#24304A;--line2:#34415C;--acc:#8EC0FF;--acc-ink:#0A0F1C;--price:#EDF1F8;--pill:#EDF1F8;--pill-ink:#0A0F1C;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=LOC-SAND",
+   "../customer-app/capp-dark.test.mjs"
+  ],
+  "kills_with": [
+   "LOC-SAND: the dark sand trio"
+  ]
+ },
+ {
+  "id": "loc-sand-07",
+  "slice": "loc-sand",
+  "label": "Inicio's guest card still promises «envío gratis»",
+  "file": "../customer-app/capp-home.js",
+  "from": "<span>Recompensas y promos</span></span>",
+  "to": "<span>Recompensas, promos y envío gratis</span></span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-6b r2 promo",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "COPY-ENVIO"
+  ]
+ },
+ {
+  "id": "loc-sand-08",
+  "slice": "loc-sand",
+  "label": "Cuenta's guest benefits still promise «envío gratis»",
+  "file": "../customer-app/capp-home.js",
+  "from": "<span>Recompensas y promos</span></li>",
+  "to": "<span>Recompensas, promos y envío gratis</span></li>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=G2 frame 5b",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PICKUP-CARD-BENEFIT"
+  ]
+ },
+ {
+  "id": "loc-guard",
+  "slice": "loc-sand",
+  "label": "capp-guards (11-18 re-base, location-banner): a capp commit after CAPP_TIP no longer fails the range",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "  assert.equal(later, '', `🔴 capp commit(s) after CAPP_TIP",
+  "to": "  assert.equal('', '', `🔴 capp commit(s) after CAPP_TIP",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=still bites",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "GUARD-BITES"
+  ]
+ },
+ {
   "id": "ds-guard",
   "slice": "dish-stats",
   "label": "capp-guards (11-18 re-base, merge-forward): a capp commit after CAPP_TIP no longer fails the range",

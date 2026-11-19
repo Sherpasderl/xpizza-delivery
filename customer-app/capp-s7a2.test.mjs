@@ -644,7 +644,7 @@ test('G2 frame 5b: a guest\'s Cuenta tab = ONE «Entrá o creá tu cuenta» + th
   const S = bootShell({ auth: 'guest', runtime: GR }); await flush();
   S.click('.tabbar [data-tab="account"]'); await flush();
   assert.equal(txt(S.q('.flowbar h1')), 'Cuenta');
-  assert.deepEqual(S.qa('.guestcard li').map((l) => txt(l)), ['Opción de pago en efectivo y tarjeta', 'Recompensas, promos y envío gratis', 'Programá pedidos y guardá tu dirección'], '🔴 PICKUP-CARD-BENEFIT: the first benefit (owner 11-16, final wording)');
+  assert.deepEqual(S.qa('.guestcard li').map((l) => txt(l)), ['Opción de pago en efectivo y tarjeta', 'Recompensas y promos', 'Programá pedidos y guardá tu dirección'], '🔴 PICKUP-CARD-BENEFIT: the first benefit (owner 11-16, final wording)');
   assert.equal(S.qa('.guestcard button.primary').length, 1); assert.equal(txt(S.q('.guestcard .primary')), 'Entrá o creá tu cuenta');
   // owner 2026-11-01: «Pedidos» IS in launch scope (ORDERS_SCREEN on) ⇒ the guest card keeps v6's «Pedidos · Los de este teléfono» row
   assert.deepEqual(S.qa('.rows .rowbtn').map((b) => txt(b)), ['Pedidos Los de este teléfono', 'Ayuda']);
@@ -3539,6 +3539,7 @@ test('C-6b r2 promo: while auth is UNRESOLVED (sign-up on) the guest card\'s foo
   assert.equal(u.style.visibility, 'hidden', '🔴 PR-1: invisible'); assert.equal(u.getAttribute('aria-hidden'), 'true', 'and out of the a11y tree');
   assert.ok(g && g.style.visibility === '' && !g.hasAttribute('aria-hidden'), '🔴 PR-1: the guest sees it');
   assert.equal(u.innerHTML, g.innerHTML, '🔴 PR-1: the SAME content ⇒ the same footprint (resolving to guest never moves the row)');
+  assert.equal(g.querySelector('.t span').textContent, 'Recompensas y promos', '🔴 COPY-ENVIO (owner 11-18, rule 10): no «envío gratis» promise on the guest card — the customer may not get it');
   assert.equal(m, null, 'a member: no card');
   assert.equal(dom(CappHome.homeHtml(VM({ desk: true, signupOn: false, auth: 'unresolved' }))).querySelector('.h1row .promo'), null, 'no sign-up ⇒ no slot at all');
 });
