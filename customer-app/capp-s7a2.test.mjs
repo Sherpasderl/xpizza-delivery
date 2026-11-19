@@ -24,8 +24,28 @@ const CappHome = require('./capp-home.js'), CappShell = require('./capp-shell.js
 const { provisionBrand } = await import(join(ROOT, 'xpizza-functions/contract/capp/capture.mjs'));
 const quiet = async (fn) => { const w = console.warn, l = console.log; console.warn = console.log = () => {}; try { return await fn(); } finally { console.warn = w; console.log = l; } };
 const PROV = { x_pizza: await quiet(() => provisionBrand('x_pizza')), la_musa: await quiet(() => provisionBrand('la_musa')) };
-const FX = JSON.parse(readFileSync(join(HERE, 'fixtures/s7a2/directory.json'), 'utf8'));
+// the fixture file: read RAW only by the contract cell and the COUNTERFACTUAL guard (each re-reads it in its own cell). Every other cell sees
+// FX / SC, whose scenarios are the guarded view below — the raw scenario objects live only inside the closure (Codex #127 P2)
+const FX_FILE = join(HERE, 'fixtures/s7a2/directory.json');
+const rawFixture = () => JSON.parse(readFileSync(FX_FILE, 'utf8'));
+// ⚠ COUNTERFACTUAL (advisor 11-17, fork A + ruling (a); gen-directory.mjs): free delivery is OFF by platform policy (delivery/pricing-admin-core.js:4-5,
+// addendum A), so no real writer produces a claim. Two declared scenarios carry ONE hand-set field (promo.free_delivery) — the claim UI's input
+// and RULE 10's unmarked twin. They may be read ONLY inside a cell declared with cfTest(title, its scenarios, fn); any other read throws in that
+// cell, and the COUNTERFACTUAL guard (end of file) proves every declared cell read its scenario and complete_writer_raw has ONE reader (RULE 10).
+const CF = Object.freeze({ promo_free_counterfactual: 'the free-delivery claim UI', complete_writer_raw: 'RULE 10: an unmarked promo claims nothing' });
+const CF_CELLS = [], CF_READS = [];
+let cfScope = null;
+const guarded = (all) => new Proxy(all, { get(o, k) {
+  if (typeof k === 'string' && Object.hasOwn(CF, k)) {
+    if (!cfScope || !cfScope.keys.includes(k)) throw new Error(`🔴 COUNTERFACTUAL: «${k}» read outside its declared claim cell${cfScope ? ` (${cfScope.name.slice(0, 60)} declares ${cfScope.keys.join(', ')})` : ''}`);
+    CF_READS.push([cfScope.name, k]);
+  }
+  return o[k]; } });
+const FX = (() => { const raw = rawFixture(); return Object.freeze({ ...raw, scenarios: guarded(raw.scenarios) }); })();
 const SC = FX.scenarios;
+const cfTest = (name, keys, fn) => { CF_CELLS.push({ name, keys }); return test(name, async (t) => { cfScope = { name, keys }; try { return await fn(t); } finally { cfScope = null; } }); };
+// the default directory: the declared cell's (counterfactual) scenario inside a claim cell, else «complete» (the real chain's)
+const defDir = () => [cfScope ? cfScope.keys[0] : 'complete'];
 const RUNTIME = { endpoints: { quoteOrder: '/x/q', createOrder: '/x/c', chargeOnlineOrder: '/x/p', paymentStatus: '/x/s' }, intakeKey: 'k_test' };
 const T0 = new Date(2026, 9, 20, 19, 5).getTime();   // Tuesday 7:05 p.m. — both stores open (the seeded hours)
 const J = (x) => JSON.parse(JSON.stringify(x));
@@ -36,19 +56,22 @@ const ENTRY_FIELDS = ['restaurant_id', 'name', 'kicker', 'unit', 'cuisines', 'lo
   'eta_delivery_min', 'eta_pickup_min', 'payments', 'pickup', 'schedule', 'schedule_state', 'fee', 'promo', 'order_id_prefix', 'house', 'meals', 'ratings', 'degraded'];
 const BODY_FIELDS = ['representation_version', 'complete', 'platform', 'restaurants', 'unavailable'];
 test('contract fake: produced by the pinned 5f commit; every 200 body is exactly the 5f schema; the declared statuses / validators', () => {
-  assert.equal(FX.source.commit, '968dd888d4cf9947734f7a31e3d78847d6f17cfa');
+  assert.equal(FX.source.commit, '31f05c8a40c35fe0c442be8839593954c3afc8b1');
   assert.equal(FX.source.blobs['directory/directory.js'], 'b4be099618835c502838a2600c0807be9c956e08', 'the handler blob the fixture came from');
   // Codex s7a2 r1 #10: the CONTENTS are pinned — the generator's digest of every scenario, recomputed here and pinned literally (a hand
   // edit, e.g. a fee, fails; a regeneration from the real handler that changes anything must update this line on purpose)
   const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
-  const digest = createHash('sha256').update(canon(FX.scenarios)).digest('hex');
+  const RAW = rawFixture();   // the contract reads EVERY scenario (counterfactuals included): its own raw read, never FX
+  const digest = createHash('sha256').update(canon(RAW.scenarios)).digest('hex');
   assert.equal(digest, FX.scenarios_sha256, '🔴 the fixture contents match the digest its generator wrote');
   // regenerated 2026-11-13 (rule 10): + the labelled «5f marker overlay» (promo.basis) and complete_writer_raw — see gen-directory.mjs
   // merged 2026-11-15 (feat/capp-offers-r20): the union generator — both lines' scenarios (complete_writer_raw + five_stores, fake_extra_stores)
   // re-pinned 2026-11-17 (asm11 step 4): the writer at 968dd888d emits the pricing marker itself — the overlay is dropped; directory-2
   // (ratings: null); complete_writer_raw is now the writer's own output for a promo without the marker
-  assert.equal(digest, 'e30b67cd9a63f9261ea0025c638749c0e3fc87486ca499b769d70d934a81e23c', '🔴 the fixture contents are the pinned generation');
-  for (const [k, s] of Object.entries(SC)) {
+  // re-pinned 2026-11-17 (s7a2 alignment, advisor 11-17): no fake — the pricing node by the REAL writer (pricing-admin-core) read through the
+  // REAL makePricingView at main 31f05c8a4; the two declared COUNTERFACTUAL scenarios (promo_free_counterfactual + its RULE 10 twin)
+  assert.equal(digest, '44ea87daabfee6e5f7f6f2f5d7fec8ff378048ba090a0c63a5fa1196a8c52eeb', '🔴 the fixture contents are the pinned generation');
+  for (const [k, s] of Object.entries(RAW.scenarios)) {
     if (s.status !== 200) continue;
     assert.deepEqual(Object.keys(s.body), BODY_FIELDS, `${k}: body schema`);
     for (const r of s.body.restaurants) assert.deepEqual(Object.keys(r), ENTRY_FIELDS, `${k}: entry schema`);
@@ -141,7 +164,7 @@ function rowsOf(body, menus = { x_pizza: 'fresh', la_musa: 'fresh' }) {
     return { rid, entry, cfg, view, menuState: st, gone: false, held: false };
   });
 }
-const VM = (over = {}) => ({ phase: 'ready', partial: false, rows: rowsOf(SC.complete.body), platform: SC.complete.body.platform, now: new Date(T0), auth: 'guest', cuisine: '', filters: new Set(),
+const VM = (over = {}) => ({ phase: 'ready', partial: false, rows: rowsOf(SC[defDir()[0]].body), platform: SC[defDir()[0]].body.platform, now: new Date(T0), auth: 'guest', cuisine: '', filters: new Set(),
   schedulingLive: false, outOfZone: false, tab: 'home', cartN: 0, q: '', recent: [], ...over, promoAuth: over.promoAuth || over.auth || 'guest' });   // the shell's admitted tri-state (= auth in these pure cells)
 const dom = (html) => new JSDOM(`<div id="x">${html}</div>`).window.document;
 // the visible text: every text node, trimmed, joined by one space (spans are spaced by CSS, not by literal spaces)
@@ -174,7 +197,7 @@ test('Inicio house: ids ⇒ those canonical dishes (a dish the loaded menu lacks
   assert.deepEqual(names(tagged), tagged[0].view.sections.flatMap((s) => s.items).filter((it) => photographed.includes(it.id)).map((it) => it.n), '🔴 house absent ⇒ the catalog-tag fallback');
   assert.deepEqual(names(rowsOf({ ...SC.complete.body, restaurants: [{ ...xp, house: null }] })), [], 'absent + no tags ⇒ no row (never invented)');
 });
-test('Inicio fees: «Envío desde L 45» only for a PRICED fee; no fee text otherwise — never «Envío gratis» / L 0; the promo is the MEMBER price', () => {
+cfTest('Inicio fees: «Envío desde L 45» only for a PRICED fee; no fee text otherwise — never «Envío gratis» / L 0; the promo is the MEMBER price', ['promo_free_counterfactual'], () => {
   const none = dom(CappHome.homeHtml(VM({ rows: rowsOf(SC.fee_none.body) })));
   const lm = none.querySelector('.rlist .rcard[data-rid="la_musa"]');
   assert.ok(!/Envío/.test(txt(lm)), `🔴 an unpriced fee draws no fee text: ${txt(lm)}`); assert.ok(!/L 0\b/.test(txt(lm)));
@@ -266,7 +289,7 @@ afterEach(() => { for (const x of SHELLS) if (!x.closed && x.cell === CUR) { try
 const flush = (ms = 30) => (VC || createClock(T0)).flush(ms);
 // stampedDir: a copy of customer-app/ stamped by the REAL platform/stamp-version.js — the page's own sherpa-client.js runs on its
 // stamped identity and capp-api.js runs in the page realm (its SherpaClient.fetch arm), the network = pageFetch (window.fetch)
-function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null, url = null, readPublic = null, preMount = null, clock: vclock = CLOCK_DEFAULT } = {}) {
+function bootShell({ realFrames = false, dirScript = defDir(), envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null, url = null, readPublic = null, preMount = null, clock: vclock = CLOCK_DEFAULT } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(stampedDir || HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: url || 'https://app.test/' });
@@ -1616,7 +1639,7 @@ const until = async (f, ms = 4000) => { const vc = VC, now = () => (vc ? vc.now(
 async function promoStore(opts = {}, rid = 'x_pizza') { const S = bootShell(opts); await until(() => S.q(`.rlist .rcard[data-rid="${rid}"]`)); S.click(`.rlist .rcard[data-rid="${rid}"]`); await flush(); assert.ok(S.q('.info'), `premise: the ${rid} store header`); return S; }
 const bare = (html) => html.replace(/<span class="pill deal" style="visibility:hidden" aria-hidden="true">/g, '<span class="pill deal">');   // the reserved pill's two attributes only
 
-test('store promo: a GUEST on a promo store — the «Envío gratis con tu cuenta» pill between the name and the facts, «Envío desde L 45» and the fee ⓘ', async () => {
+cfTest('store promo: a GUEST on a promo store — the «Envío gratis con tu cuenta» pill between the name and the facts, «Envío desde L 45» and the fee ⓘ', ['promo_free_counterfactual'], async () => {
   const S = await promoStore({ auth: 'guest' });
   const pill = S.q('.info .hdpills .pill.deal');
   assert.ok(pill, '🔴 store promo: the guest pill is missing');
@@ -1629,7 +1652,7 @@ test('store promo: a GUEST on a promo store — the «Envío gratis con tu cuent
   assert.ok(ib, '🔴 store promo: the fee ⓘ is missing'); assert.equal(ib.getAttribute('aria-label'), 'Detalle del envío');
 });
 
-test('store promo: an ADMITTED member on a promo store — no pill, «Envío gratis» in place of «Envío desde», the ⓘ kept; a raw session alone (host «member», nothing admitted) claims nothing', async () => {
+cfTest('store promo: an ADMITTED member on a promo store — no pill, «Envío gratis» in place of «Envío desde», the ⓘ kept; a raw session alone (host «member», nothing admitted) claims nothing', ['promo_free_counterfactual'], async () => {
   const raw = await promoStore({ auth: 'member' });   // Codex promo r1 #1: the checkout would send this one as a guest
   assert.equal(raw.q('.info .facts .free'), null, '🔴 store promo: a raw session the checkout does not admit gets no «Envío gratis»');
   assert.equal(raw.q('.info .pill.deal').getAttribute('aria-hidden'), 'true', 'not admitted ⇒ the pill stays reserved');
@@ -1642,7 +1665,7 @@ test('store promo: an ADMITTED member on a promo store — no pill, «Envío gra
   assert.ok(f.querySelector('.infobtn[data-act="feeinfo"]'), 'the ⓘ stays');
 });
 
-test('store promo: while auth is UNRESOLVED the pill is RESERVED (hidden, aria-hidden, same markup ⇒ same box); it resolves IN PLACE — guest shows it; a raw session not admitted re-reserves it (claims nothing)', async () => {
+cfTest('store promo: while auth is UNRESOLVED the pill is RESERVED (hidden, aria-hidden, same markup ⇒ same box); it resolves IN PLACE — guest shows it; a raw session not admitted re-reserves it (claims nothing)', ['promo_free_counterfactual'], async () => {
   const la = liveAuth('unresolved');
   const S = await promoStore({ mountExtra: { auth: la.a } });
   const pill = S.q('.info .pill.deal');
@@ -1690,7 +1713,7 @@ async function realAuthStore({ persisted = null, failSignOut = 0, complete = nul
   return { S, fb, sc, info, btn, release: async () => { gate.resolve(); await flush(); await flush(); await flush(); } };
 }
 
-test('store promo r1 #1: an INCOMPLETE restored account whose sign-out is rejected — not admitted (S.member null) ⇒ no «Envío gratis», the guest pill stays reserved', async () => {
+cfTest('store promo r1 #1: an INCOMPLETE restored account whose sign-out is rejected — not admitted (S.member null) ⇒ no «Envío gratis», the guest pill stays reserved', ['promo_free_counterfactual'], async () => {
   const R = await realAuthStore({ persisted: 'u_inc', failSignOut: 9 });
   await R.release();
   assert.ok(R.fb.calls.out >= 1, 'premise: the shell tried to sign the incomplete session out (and it was rejected)');
@@ -1700,7 +1723,7 @@ test('store promo r1 #1: an INCOMPLETE restored account whose sign-out is reject
   assert.ok(txt(f).includes('Envío desde L 45'), txt(f));
 });
 
-test('store promo r1 #2: unresolved → GUEST through the real Firebase callback keeps the store page — same nodes, scroll 250, focus — and shows the pill', async () => {
+cfTest('store promo r1 #2: unresolved → GUEST through the real Firebase callback keeps the store page — same nodes, scroll 250, focus — and shows the pill', ['promo_free_counterfactual'], async () => {
   const R = await realAuthStore({ persisted: null });
   assert.equal(R.S.q('.info .pill.deal').getAttribute('aria-hidden'), 'true', 'premise: reserved while unresolved');
   await R.release();
@@ -1711,7 +1734,7 @@ test('store promo r1 #2: unresolved → GUEST through the real Firebase callback
   assert.equal(R.S.q('.info .pill.deal').getAttribute('aria-hidden'), null, 'the guest pill is shown');
 });
 
-test('store promo r1 #2: an ADMITTED member arriving (a restored complete session) on a scrolled store — «Envío gratis», the pill gone, scroll and focus kept', async () => {
+cfTest('store promo r1 #2: an ADMITTED member arriving (a restored complete session) on a scrolled store — «Envío gratis», the pill gone, scroll and focus kept', ['promo_free_counterfactual'], async () => {
   const R = await realAuthStore({ persisted: 'u_ana', complete: 'u_ana', prof: { v: 1, uid: 'u_ana', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com' } });
   await R.release();
   assert.ok(R.S.ui.state.member && R.S.ui.state.member.uid === 'u_ana', 'premise: admitted');
@@ -1723,7 +1746,7 @@ test('store promo r1 #2: an ADMITTED member arriving (a restored complete sessio
 
 // advisor ruling (promo r1 follow-up): HOME follows the same ADMITTED identity — no «Envío gratis» unless the checkout would send as
 // that member. Through the REAL Firebase callback path
-async function realAuthHome({ persisted = null, failSignOut = 0, complete = null, prof = null, dirScript = ['complete'] } = {}) {
+async function realAuthHome({ persisted = null, failSignOut = 0, complete = null, prof = null, dirScript = defDir() } = {}) {
   const fb = fakeFirebase({ persisted, failSignOut });
   const st = memStorage({ ...(complete ? { 'capp:member_complete': JSON.stringify({ v: 1, uid: complete }) } : {}), ...(prof ? { 'capp:member_profile': JSON.stringify(prof) } : {}) });
   const S = bootShell({ auth: 'unresolved', storage: st, runtime: SU_RUNTIME, dirScript, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
@@ -1731,14 +1754,14 @@ async function realAuthHome({ persisted = null, failSignOut = 0, complete = null
   assert.ok(S.q('.rlist .rcard[data-rid="x_pizza"]'), 'premise: Inicio with the x_pizza card');
   return { S, fb };
 }
-test('home promo: an INCOMPLETE restored account whose sign-out is rejected — not admitted ⇒ no «Envío gratis» on the home cards, the guest pill reserved', async () => {
+cfTest('home promo: an INCOMPLETE restored account whose sign-out is rejected — not admitted ⇒ no «Envío gratis» on the home cards, the guest pill reserved', ['promo_free_counterfactual'], async () => {
   const { S, fb } = await realAuthHome({ persisted: 'u_inc', failSignOut: 9 });
   assert.ok(fb.calls.out >= 1, 'premise: the sign-out was tried (and rejected)'); assert.equal(S.ui.state.member ?? null, null, 'premise: not admitted');
   assert.equal(S.q('#app .free'), null, `🔴 home promo: «Envío gratis» on Inicio for a session the checkout does not admit: ${txt(S.q('.rlist .rcard[data-rid="x_pizza"]'))}`);
   const pill = S.q('.rlist .rcard[data-rid="x_pizza"] .pill.deal');
   assert.ok(pill && pill.getAttribute('aria-hidden') === 'true', '🔴 home promo: not admitted ⇒ the guest pill stays reserved');
 });
-test('home promo: an ADMITTED member (a restored complete session) ⇒ «Envío gratis» on the promo store\'s card, no guest pill', async () => {
+cfTest('home promo: an ADMITTED member (a restored complete session) ⇒ «Envío gratis» on the promo store\'s card, no guest pill', ['promo_free_counterfactual'], async () => {
   const { S } = await realAuthHome({ persisted: 'u_ana', complete: 'u_ana', prof: { v: 1, uid: 'u_ana', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com' } });
   assert.ok(S.ui.state.member && S.ui.state.member.uid === 'u_ana', 'premise: admitted');
   const card = S.q('.rlist .rcard[data-rid="x_pizza"]');
@@ -1757,7 +1780,7 @@ async function tokenBoot(failToken) {
   await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
   return { S, quotes };
 }
-test('store promo r2 P2-A: an admitted member with NO usable token — no «Envío gratis» on Inicio or the store AND no member token on the quote; with a token — both', async () => {
+cfTest('store promo r2 P2-A: an admitted member with NO usable token — no «Envío gratis» on Inicio or the store AND no member token on the quote; with a token — both', ['promo_free_counterfactual'], async () => {
   const N = await tokenBoot(99);
   assert.ok(N.S.ui.state.member && N.S.ui.state.member.uid === 'u_ana' && !N.S.ui.state.member.idToken, 'premise: admitted, no usable token');
   assert.equal(N.S.q('#app .free'), null, '🔴 store promo r2: Inicio claims «Envío gratis» for a member whose requests carry no token');
@@ -1775,7 +1798,7 @@ test('store promo r2 P2-A: an admitted member with NO usable token — no «Env�
   await toShellCheckout(T.S); T.S.click('#app [data-act="type"][data-val="pickup"]'); await flush(); await flush();
   assert.equal(T.quotes[T.quotes.length - 1], TOK('u_ana'), 'and the quote carries the member token');
 });
-test('store promo r2 P2-A: a token that ARRIVES LATER upgrades the claim in place (the same header node, «Envío gratis» shown)', async () => {
+cfTest('store promo r2 P2-A: a token that ARRIVES LATER upgrades the claim in place (the same header node, «Envío gratis» shown)', ['promo_free_counterfactual'], async () => {
   const U = await tokenBoot(1);
   U.S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
   assert.equal(U.S.q('.info .facts .free'), null, 'premise: no token yet ⇒ no claim');
@@ -1784,7 +1807,7 @@ test('store promo r2 P2-A: a token that ARRIVES LATER upgrades the claim in plac
   assert.equal(U.S.q('.info'), info, '🔴 store promo r2: the upgrade re-rendered the store');
   assert.ok(U.S.q('.info .facts .free'), '🔴 store promo r2: the token that arrived later never upgraded the claim');
 });
-test('store promo r2 P2-B: a focused «Detalle del envío» survives the real unresolved → guest callback (the same node focused, scroll 250)', async () => {
+cfTest('store promo r2 P2-B: a focused «Detalle del envío» survives the real unresolved → guest callback (the same node focused, scroll 250)', ['promo_free_counterfactual'], async () => {
   const R = await realAuthStore({ persisted: null, focus: '.info .facts .infobtn' });
   await R.release();
   assert.equal(R.S.w.document.activeElement, R.btn, `🔴 store promo r2: the focused ⓘ was destroyed (focus on ${R.S.w.document.activeElement && R.S.w.document.activeElement.tagName})`);
@@ -1806,7 +1829,7 @@ test('until(): a condition still false at the deadline REJECTS with a descriptiv
   await assert.rejects(until(() => false, 50), /until: timed out after 50 ms/);
 });
 
-test('store promo r3: token RECOVERY mid-quote — the quote\'s member header and the store\'s «Envío gratis» appear TOGETHER (the notifier patches in place)', async () => {
+cfTest('store promo r3: token RECOVERY mid-quote — the quote\'s member header and the store\'s «Envío gratis» appear TOGETHER (the notifier patches in place)', ['promo_free_counterfactual'], async () => {
   const hold = { on: false, q: [] }, quotes = [];
   const fb = fakeFirebase({ persisted: 'u_ana', failToken: 1, hold });
   const S = memberBoot({ fb, apiFetch: quoteLog(quotes) });
@@ -1826,7 +1849,7 @@ test('store promo r3: token RECOVERY mid-quote — the quote\'s member header an
   assert.ok(S.q('.info .facts .free'), '🔴 store promo r3: the token recovered (the header went out) but the store still shows guest pricing');
 });
 
-test('store promo r3: an EXPIRED cached token with the refresh REJECTED — no «Envío gratis» AND no member header on the quote', async () => {
+cfTest('store promo r3: an EXPIRED cached token with the refresh REJECTED — no «Envío gratis» AND no member header on the quote', ['promo_free_counterfactual'], async () => {
   const clock = { t: T0 }, quotes = [];
   const fb = fakeFirebase({ persisted: 'u_ana', failFrom: 1, tokExp: T0 + 120e3 });   // admission gets a 2-minute token; every refresh fails
   const S = memberBoot({ fb, apiFetch: quoteLog(quotes), now: clock });
@@ -1840,7 +1863,7 @@ test('store promo r3: an EXPIRED cached token with the refresh REJECTED — no �
   assert.equal(quotes[quotes.length - 1], null, '🔴 store promo r3: an expired token was sent (the server would price a guest anyway)');
 });
 
-test('store promo r3: a token EXPIRING while the page is open withdraws the claim IN PLACE (Inicio + the store), the pill reserved', async () => {
+cfTest('store promo r3: a token EXPIRING while the page is open withdraws the claim IN PLACE (Inicio + the store), the pill reserved', ['promo_free_counterfactual'], async () => {
   const clock = { t: T0 }, L = longTimers();
   const fb = fakeFirebase({ persisted: 'u_ana', failFrom: 1, tokExp: T0 + 120e3 });
   const S = memberBoot({ fb, now: clock, timers: L.T });
@@ -1885,7 +1908,7 @@ test('store promo r4 #1: a held quote token RELEASED AFTER a sign-out — no mem
   assert.equal(ana.idToken, anaTok, '🔴 store promo r4: a token was ACCEPTED for a signed-out member (the helper\'s identity guard)');
   assert.equal(S.ui.state.member ?? null, null);
 });
-test('store promo r4 #2: an expiry callback firing 1 ms EARLY re-arms — the claim stays until the cutoff, then is withdrawn', async () => {
+cfTest('store promo r4 #2: an expiry callback firing 1 ms EARLY re-arms — the claim stays until the cutoff, then is withdrawn', ['promo_free_counterfactual'], async () => {
   const clock = { t: T0 }, L = longTimers();
   const fb = fakeFirebase({ persisted: 'u_ana', failFrom: 1, tokExp: T0 + 120e3 });
   const S = memberBoot({ fb, now: clock, timers: L.T });
@@ -3635,7 +3658,7 @@ test('C-6c aside: «Tu pedido» · «{store}» (+ « · N …» with lines); the
   const { S: U } = await deskStoreAt({ auth: 'unresolved', runtime: { ...RUNTIME, guestCardOnly: true } });
   try { U.click('.qty-add-btn'); await flush(); assert.equal(U.q('.deskcart .cnote'), null, 'an unresolved session: no claim'); } finally { U.w.close(); }
 });
-test('C-6c header auth: the desk page\'s promo pill resolves IN PLACE (reserved while unresolved, shown for a guest) — the page is not re-rendered', async () => {
+cfTest('C-6c header auth: the desk page\'s promo pill resolves IN PLACE (reserved while unresolved, shown for a guest) — the page is not re-rendered', ['promo_free_counterfactual'], async () => {
   const la = liveAuth('unresolved');
   const { S } = await deskStoreAt({ mountExtra: { auth: la.a } });
   try {
@@ -4914,14 +4937,14 @@ test('G-B (frame 2a): the DESK aside carries «Agregar notas al restaurante» af
 
 // ── RULE 10 (advisor 11-13): a free-delivery claim needs the promo the QUOTE uses — the ONE predicate (CappShell.configFor
 // promoFree) requires 5f's `basis: 'pricing'` marker. complete_writer_raw is the pinned writer's output for a promo NOT from the quote's read ──
-const RAWDIR = { status: SC.complete_writer_raw.status, body: SC.complete_writer_raw.body, etag: SC.complete_writer_raw.headers.ETag };
+const RAWDIR = () => ({ status: SC.complete_writer_raw.status, body: SC.complete_writer_raw.body, etag: SC.complete_writer_raw.headers.ETag });   // read inside the RULE 10 cell only
 const CLAIM = /Envío gratis|envío es gratis|Gratis/;
-test('RULE 10: what the pinned directory writer emits for a promo without the pricing marker ⇒ ZERO free-delivery claims on Inicio and the store, guest and admitted member; the marked promo shows them', async () => {
-  const rawX = SC.complete_writer_raw.body.restaurants.find((e) => e.restaurant_id === 'x_pizza'), markX = SC.complete.body.restaurants.find((e) => e.restaurant_id === 'x_pizza');
+cfTest('RULE 10: what the pinned directory writer emits for a promo without the pricing marker ⇒ ZERO free-delivery claims on Inicio and the store, guest and admitted member; the marked promo shows them', ['promo_free_counterfactual', 'complete_writer_raw'], async () => {
+  const rawX = SC.complete_writer_raw.body.restaurants.find((e) => e.restaurant_id === 'x_pizza'), markX = SC.promo_free_counterfactual.body.restaurants.find((e) => e.restaurant_id === 'x_pizza');
   assert.ok(rawX.promo && rawX.promo.free_delivery === true && !('basis' in rawX.promo), 'premise: the writer\'s own promo — free_delivery, no marker');
   assert.equal(CappShell.configFor(markX, RUNTIME).promoFree, true, 'premise: the marked promo is a claim (the cell is not vacuous)');
   assert.equal(CappShell.configFor(rawX, RUNTIME).promoFree, false, '🔴 RULE 10: the raw writer promo is NOT a claim (the one predicate)');
-  for (const [dir, raw] of [[RAWDIR, true], ['complete', false]]) {
+  for (const [dir, raw] of [[RAWDIR(), true], ['promo_free_counterfactual', false]]) {
     const G = bootShell({ auth: 'guest', dirScript: [dir] });
     try {
       await until(() => G.q('.rlist .rcard[data-rid="x_pizza"]')); await flush();
@@ -5936,4 +5959,23 @@ test('PUSH-SHELL-15 (Codex r1 P2-8): a tapped push for a past order NOT in «Ped
     S.click('[data-act="order-close"]'); await flush();
     f.tap({ order_id: 'XP-NONE1' }); await until(() => S.q('.pagehead h1') && txt(S.q('.pagehead h1')) === 'Pedidos', 6000);
   } finally { S.w.close(); }
+});
+
+// ── the COUNTERFACTUAL guard (advisor 11-17): runs LAST (node:test runs this file's top-level cells in order). A read outside a declared cell
+// already threw IN that cell (the SC proxy); here: every declared cell really read its scenario (no vacuous claim cell), each counterfactual
+// has a reader, complete_writer_raw has exactly ONE declared reader (the RULE 10 raw cell), and the generator still declares both ──
+test('COUNTERFACTUAL guard: promo_free_counterfactual / complete_writer_raw are read only by their declared claim cells; every declared cell read its scenario; complete_writer_raw has ONE reader (RULE 10)', () => {
+  assert.ok(CF_CELLS.length >= 18, `premise: the claim cells are declared (${CF_CELLS.length})`);
+  const readBy = (name) => new Set(CF_READS.filter(([n]) => n === name).map(([, k]) => k));
+  for (const c of CF_CELLS) assert.ok(c.keys.some((k) => readBy(c.name).has(k)), `🔴 COUNTERFACTUAL: «${c.name.slice(0, 80)}» is declared a claim cell but read no counterfactual (vacuous)`);
+  for (const k of Object.keys(CF)) assert.ok(CF_READS.some(([, x]) => x === k), `🔴 COUNTERFACTUAL: nobody reads ${k} (${CF[k]})`);
+  const raw = CF_CELLS.filter((c) => c.keys.includes('complete_writer_raw'));
+  assert.deepEqual(raw.map((c) => c.name.slice(0, 8)), ['RULE 10:'], '🔴 COUNTERFACTUAL: complete_writer_raw is the RULE 10 raw cell\'s alone');
+  const RAW = rawFixture().scenarios;   // the guard's own raw read
+  for (const k of Object.keys(CF)) assert.ok(RAW[k] && RAW[k].status === 200, `premise: the generator wrote ${k}`);
+  const me = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  assert.equal((me.match(/rawFixture\(\)/g) || []).length, 3, '🔴 COUNTERFACTUAL: the raw fixture is read only by the FX closure, the contract cell and this guard');
+  const gen = readFileSync(join(HERE, 'fixtures/s7a2/gen-directory.mjs'), 'utf8');
+  assert.ok(gen.includes('⚠ COUNTERFACTUAL') && gen.includes('pricing-admin-core.js:4-5'), '🔴 COUNTERFACTUAL: the generator labels both scenarios and cites addendum A');
+  assert.equal(Object.keys(RAW).filter((k) => /counterfactual/.test(k)).join(), 'promo_free_counterfactual', 'ONE counterfactual scenario by name (+ its declared RULE 10 twin)');
 });

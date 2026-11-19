@@ -4,7 +4,7 @@
 // Run: node --test review/capp-sbs/fixtures.probe.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { s2Extra, memberToken, memberExtra, placeBodyViolations } from './fixtures.mjs';
+import { s2Extra, memberToken, memberExtra, placeBodyViolations, router } from './fixtures.mjs';
 
 const CF = 'https://us-central1-p.cloudfunctions.net/';
 const AUTH = { Authorization: `Bearer ${memberToken()}` };
@@ -89,4 +89,18 @@ test('getMyLastTip: the fixture = the real handler (405 for a non-GET; null outs
   for (const method of ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']) for (const stored of [undefined, 0, 1250, 200000, 200001, -1, 12.5]) {
     assert.deepEqual(fixture(method, stored), await real(method, stored), `🔴 P3: ${method} with stored ${stored} — the fixture answers as the handler`);
   }
+});
+
+// s7a2 alignment, commit 2 (advisor 11-17): the SBS quote reads the pricing node the order path's own way — delivery-wire loadPricing over the
+// node the REAL writer committed (pricing-admin-core), so free delivery is OFF by policy (addendum A) for a member too, never derived from the
+// directory's promo. A member's x_pizza delivery inside the 4 km band: L 45, no promo discount.
+test('quoteOrder (SBS): a MEMBER\'s delivery is priced by the real loadPricing — L 45, promo_discount_cents 0 (no free delivery by policy)', async () => {
+  const pin = { lat: 15.5164, lng: -88.0398, confirmed: true };   // ~1 km north of x_pizza's hub (the directory row's)
+  const r = await router({})({ url: CF + 'quoteOrder', method: 'POST', headers: { 'x-firebase-id-token': memberToken() },
+    postData: JSON.stringify({ restaurant_id: 'x_pizza', entry_mode: 'app', mode: 'delivery', pin, items: [{ name: 'Carnivora', qty: 1 }] }) });
+  assert.equal(r && r.status, 200, `premise: a priced quote (${r && r.status} ${r && r.body})`);
+  const b = typeof r.body === 'string' ? JSON.parse(r.body) : r.body;
+  assert.ok(b.ok === true && b.delivery, `premise: the envío is quoted ${JSON.stringify(b).slice(0, 200)}`);
+  assert.equal(b.delivery.delivery_cents, 4500, 'the first band');
+  assert.equal(b.delivery.promo_discount_cents, 0, '🔴 SBS-QUOTE-POLICY: no free delivery for a member — the order path forces it off (delivery-wire loadPricing)');
 });
