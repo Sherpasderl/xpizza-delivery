@@ -80,6 +80,14 @@ async function page({ b, caps = OWNER_CAPS, uid = OWNER, cache = '1', local = nu
     return okJson({});
   };
   const mods = await loadAll();
+  // owner 11-17 (MOCKUP-portal-marketing-unknown): the list's background confirmations run on FAKE timers over a VIRTUAL clock — none fires
+  // unless a cell fires it; firing one moves the clock to its due time (Codex #129 P2-4: the cells assert the send times, not the arguments)
+  const timers = [], clock = { t: 0 };
+  if (mods.marketing._confirmTimers) {
+    mods.marketing._confirmTimers.now = () => clock.t;
+    mods.marketing._confirmTimers.set = (f, ms) => { const t = { f, ms, at: clock.t + ms, on: true }; timers.push(t); return t; };
+    mods.marketing._confirmTimers.clear = (t) => { if (t) t.on = false; };
+  }
   const d = w.document;
   const reg = () => mods.shell._registered.find((r) => r.id === 'marketing');
   const host = () => reg().main;
@@ -91,7 +99,7 @@ async function page({ b, caps = OWNER_CAPS, uid = OWNER, cache = '1', local = nu
     await settle(60);
   };
   const open = async () => { reg().nav.click(); await settle(60); };
-  return { dom, w, d, mods, reg, host, text, btn, signIn, open, navHidden: () => reg().nav.classList.contains('hidden') };
+  return { dom, w, d, mods, reg, host, text, btn, signIn, open, timers, clock, navHidden: () => reg().nav.classList.contains('hidden') };
 }
 async function world(opts = {}) {
   const ext = { fn: null };
@@ -765,6 +773,14 @@ test('O3 «Pausada por vos el …»: the date is 3a\'s paused_at — an earlier 
 // Every ambiguous write (a drop, a lost reply, a 5xx, a thrown call) closes its dialog / sheet / detail, re-reads «Campañas» and says
 // ML.UNKNOWN_WORD. No client recovery read, no stored operation, a NEW op_id per click, the newest list request wins.
 const notice = (p) => p.host().querySelector('[data-notice="unknown"]');
+// owner 11-17 (MOCKUP-portal-marketing-unknown, approved as recommended): after the two ambiguous answers the LIST keeps confirming the
+// SAME op_id (U1 «Confirmando»), and only the server's answer under that op_id settles it: U2 landed · U3/U3b not landed · U4 can't tell (+ U4b)
+const CONFIRMING = 'La conexión tardó. Estamos confirmando que se guardó.';
+const CANT = 'Todavía no pudimos confirmar tu cambio. Revisá la oferta en la lista en unos minutos antes de repetirlo.';
+const NOT_SAVED = 'No se guardó el cambio. Podés intentarlo de nuevo.';
+const noticeWord = (p) => { const n = notice(p); const sp = n && n.querySelector('.mk5-ncol > span'); return sp ? sp.textContent : null; };
+const reconf = (p) => { const n = notice(p); return n ? n.querySelector('button.mk5-reconf') : null; };
+const pending = (p) => p.timers.filter((t) => t.on);
 const reads = (b, from) => b.calls.slice(from).filter((c) => c.fn === 'getMarketing');
 async function dropEnd(p) {   // an allowed live edit: «Sin fecha de fin»
   await openRow(p, 'sch');
@@ -781,7 +797,8 @@ test('U1 an edit whose outcome is ambiguous TWICE — the call and its one confi
   p.btn('Guardar cambios', dlg(p)).click(); await settle(250);
   assert.equal(stored(b, 'Almuerzo')[0].rev, o.rev, 'premise: nothing landed (yet)');
   assert.equal(dlg(p), null, 'the dialog closed');
-  assert.equal(notice(p) && notice(p).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.', 'the ONE string');
+  assert.equal(noticeWord(p), CONFIRMING, 'U1 (owner 11-17): the list keeps confirming — «Confirmando», never a guess');
+  assert.deepEqual(pending(p).map((t) => t.ms), [3000], 'the first background confirmation, +3 s');
   assert.ok(!p.text().includes('No pudimos guardar'), 'never «No pudimos guardar» (unchanged rev ≠ not landed)');
   assert.notEqual(toastText(p), 'Cambios guardados');
   assert.ok(rowNamed(p, 'Almuerzo'), 'the list, re-read: the offer as the server has it');
@@ -798,7 +815,7 @@ test('U2 an edit whose reply AND its confirmation\'s reply are lost after it lan
   p.btn('Guardar cambios', dlg(p)).click(); await settle(250);
   assert.equal(stored(b, 'Almuerzo')[0].rev, o.rev + 1, 'premise: it landed on the server');
   assert.notEqual(toastText(p), 'Cambios guardados', 'matching content is never taken as success');
-  assert.equal(notice(p).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.');
+  assert.equal(noticeWord(p), CONFIRMING);
   const after = b.calls.slice(from);
   assert.equal(after[0].fn, 'marketingOfferSave', 'premise: the write first');
   assert.equal(reads(b, from).length, 2, 'exactly the list\'s two branch reads — zero recovery reads between the writes and the navigation');
@@ -835,7 +852,7 @@ test('U3 the newest list request wins: an OLDER answer that arrives after a newe
   q.btn('Guardar cambios', dlg(q)).click(); await settle(150);
   assert.equal(dlg(q), null, 'the dialog closed');
   assert.equal(q.host().querySelectorAll('.mk5-row').length, 0, 'no cached row while the UNKNOWN\'s read is pending');
-  assert.equal(notice(q).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.');
+  assert.equal(noticeWord(q), CONFIRMING);
   go(); await settle(150);
   assert.ok(rowNamed(q, 'Almuerzo'), 'the fresh read paints');
   // … and a failed read paints the error box, never the old rows
@@ -845,7 +862,7 @@ test('U3 the newest list request wins: an OLDER answer that arrives after a newe
   q.btn('Guardar cambios', dlg(q)).click(); await settle(250);
   assert.equal(q.host().querySelectorAll('.mk5-row').length, 0, 'a failed read: no old rows under the error');
   assert.ok(q.btn('Reintentar'), 'the error box');
-  assert.equal(notice(q).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.');
+  assert.equal(noticeWord(q), CONFIRMING);
 });
 test('U4 two distinct «Programar oferta» submissions ⇒ two distinct op_ids; an UNCONFIRMED one (both calls ambiguous) ⇒ the list (nothing stored), the next click mints a NEW op_id', async () => {
   const b = await world();
@@ -855,7 +872,8 @@ test('U4 two distinct «Programar oferta» submissions ⇒ two distinct op_ids; 
   b.net.drop = ['marketingOfferSave', 'marketingOfferSave'];   // the call AND its one confirmation never reach the server
   p.btn('Programar oferta', await toReview(p)).click(); await settle(300);
   assert.equal(dlg(p), null, 'the dialog closed');
-  assert.equal(notice(p).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.');
+  assert.equal(noticeWord(p), CONFIRMING);
+  assert.equal(pending(p).length, 1, 'premise: the page holds the attempt (a confirmation scheduled)');
   assert.deepEqual(Object.keys(localOf(p)).filter((k) => /^sherpa\.(op|unsettled)\./.test(k)), [], 'no operation is stored');
   await openCard(p, 'lps');
   assert.equal(p.host().querySelector('.mk5r-modal'), null, 'a fresh dialog — no frozen review');
@@ -865,6 +883,7 @@ test('U4 two distinct «Programar oferta» submissions ⇒ two distinct op_ids; 
   assert.ok(ops.every((x) => /^op_[A-Za-z0-9_-]{12,}$/.test(x)), 'each carries an op_id');
   assert.equal(ops[1], ops[0], 'the confirmation re-sends the SAME op_id');
   assert.notEqual(ops[2], ops[0], 'two submissions ⇒ two op_ids');
+  assert.equal(pending(p).length, 0, 'a NEW write cancels the held attempt: its confirmation can never land it beside the new one');
   assert.equal(offersNamed(b, LPS).filter((r) => r.state === 'active').length, 1, 'ONE live offer');
 });
 test('U5 op_id_conflict is a CLIENT bug (advisor 11-15): never a refusal word — the fallback at once, NO confirmation; the next click mints a fresh op_id', async () => {
@@ -886,7 +905,9 @@ test('U5 op_id_conflict is a CLIENT bug (advisor 11-15): never a refusal word �
     p.btn('Programar oferta', await toReview(p)).click(); await settle(300);
     assert.equal(saves(b).length, n0 + 1, 'U5: ONE call — a conflict is never confirmed');
     assert.equal(dlg(p), null, 'U5: the dialog closed');
-    assert.equal(notice(p) && notice(p).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.', 'U5: the fallback, never a refusal word');
+    assert.equal(noticeWord(p), CANT, 'U5: the fallback at once (U4), never a refusal word');
+    assert.equal(reconf(p), null, 'U5: no «Volver a confirmar» — a conflict is never re-sent');
+    assert.equal(pending(p).length, 0, 'U5: nothing scheduled');
   } finally { delete globalThis.crypto.randomUUID; }
   await openCard(p, 'lps');
   p.btn('Programar oferta', await toReview(p)).click(); await settle(250);
@@ -903,7 +924,7 @@ test('U6 «Pausar» from the detail, its outcome UNKNOWN twice (the call + its o
   b.net.lose = ['marketingOfferSetState', 'marketingOfferSetState'];
   p.btn('Pausar').click(); await settle(250);
   assert.equal(p.host().querySelector('.mk5d-head'), null, 'the detail closed');
-  assert.equal(notice(p).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.');
+  assert.equal(noticeWord(p), CONFIRMING);
   assert.ok(rowNamed(p, 'Almuerzo'), 'the list, re-read');
   assert.ok(!p.text().includes('No pudimos hacer el cambio'), 'never a failure word');
 });
@@ -1012,10 +1033,355 @@ test('V1-vi the 2×2 card grid is SCOPED: only the two .mk5-card grid-column rul
   assert.ok(after.includes('.mk5-ogrid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:18px;margin-top:22px}'), 'the 6-column grid itself unchanged');
 });
 
+// ═══ owner 11-17 (MOCKUP-portal-marketing-unknown, APPROVED as recommended): the list keeps confirming the SAME op_id ═══════════════
+// After the call and its one confirmation are both ambiguous, «Campañas» re-sends the SAME request in the background at +3 s, +10 s, +30 s
+// (fake timers here); only an answer the server gives under that op_id settles it — U2 landed (the dialog's own success word), U3 not
+// landed with the refusal's own sentence / U3b the generic line (neutral), U4 still can't tell + U4b «Volver a confirmar» (ONE same-op_id
+// try) while the page holds the attempt. The list's content never settles anything. Leaving the page, another account or a NEW write cancels.
+async function fire(p, ms = 300) {   // → the virtual time the timer was due at
+  const t = p.timers.find((x) => x.on);
+  assert.ok(t, 'premise: a background confirmation is scheduled');
+  t.on = false; p.clock.t = Math.max(p.clock.t, t.at); t.f(); await settle(ms);
+  return t.at;
+}
+async function unconfirmedCreate(p, b, net) {   // «Programar oferta» on the «Lempiras» card, its call + one confirmation ambiguous per `net`
+  await openCard(p, 'lps');
+  Object.assign(b.net, net);
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(300);
+  assert.equal(dlg(p), null, 'premise: the dialog closed');
+  assert.equal(noticeWord(p), CONFIRMING, 'premise: U1 «Confirmando»');
+}
+test('S1 U1→U2 LANDED: the call landed, both replies lost; the +3 s re-send (the SAME op_id) gets the replay ⇒ the dialog\'s own success toast, the notice goes, ONE offer', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await unconfirmedCreate(p, b, { lose: ['marketingOfferSave', 'marketingOfferSave'] });
+  assert.equal(offersNamed(b, LPS).length, 1, 'premise: it landed on the server');
+  assert.equal(reconf(p), null, 'U1: no button while confirming');
+  assert.equal(await fire(p), 3000, 'the first re-send, due +3 s after the handoff');
+  const ops = saves(b).map((c) => c.body.op_id);
+  assert.equal(ops.length, 3, 'the call, its confirmation, ONE background re-send');
+  assert.deepEqual([...new Set(ops)], [ops[0]], 'S1: every re-send carries the SAME op_id');
+  assert.equal(notice(p), null, 'S1: landed ⇒ the notice goes');
+  assert.match(toastText(p), /^Oferta programada\. Empieza /, 'S1: the same toast as a direct success (U2 = 3e)');
+  assert.equal(offersNamed(b, LPS).length, 1, 'S1: ONE offer — the claim replayed it');
+  assert.equal(pending(p).length, 0, 'settled: nothing more scheduled');
+});
+test('S2 U1→U3 NOT LANDED, with the refusal\'s own sentence: the first call was JUDGED (too_many_live, stored in its claim), both replies lost ⇒ the re-send replays the judgement ⇒ «No se guardó la oferta.» + the dialog\'s sentence, NEUTRAL', async () => {
+  const b = await world();
+  for (let i = 0; i < 10; i += 1) await publish(b, form({ name: `Viva ${i}`, pct: 10 * (1 + (i % 5)), start: NOW, end: NOW + 20 * DAY, days: [i < 5 ? 6 : 0], window: null }));
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await unconfirmedCreate(p, b, { lose: ['marketingOfferSave', 'marketingOfferSave'] });
+  await fire(p);
+  assert.equal(noticeWord(p), 'No se guardó la oferta. Ya tenés el máximo de ofertas activas en una sucursal. Terminá una para programar esta.', 'S2: U3, the refusal\'s own sentence (Q3)');
+  const n = notice(p);
+  assert.ok(n.classList.contains('mk5-notice') && !n.classList.contains('mk5b-err'), 'S2: the NEUTRAL callout (owner Q3), never the error style');
+  assert.equal(reconf(p), null, 'S2: settled — no button');
+  assert.equal(pending(p).length, 0, 'settled: nothing more scheduled');
+  assert.equal(offersNamed(b, LPS).length, 0, 'S2: nothing was saved');
+});
+test('S3 U1→U3b NOT LANDED, no specific reason: «Pausar» never reached the server (both dropped); another session ENDED the offer meanwhile ⇒ the re-send is refused under the op_id ⇒ «No se guardó el cambio. Podés intentarlo de nuevo.»', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  b.net.drop = ['marketingOfferSetState', 'marketingOfferSetState'];
+  p.btn('Pausar').click(); await settle(250);
+  assert.equal(noticeWord(p), CONFIRMING, 'premise: U1');
+  assert.equal((await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'ended', expectedRev: o.rev, token: b.token })).status, 200, 'premise: another session ended it');
+  await fire(p);
+  assert.equal(noticeWord(p), NOT_SAVED, 'S3: U3b, the generic line');
+  assert.equal(stored(b, 'Almuerzo')[0].state, 'ended', 'nothing of ours landed');
+  assert.equal(pending(p).length, 0);
+});
+test('S4 U1→U4→U4b CAN\'T TELL: +3 s, +10 s, +30 s all ambiguous ⇒ the fallback + «Volver a confirmar»; NOTHING more scheduled; the button re-sends the SAME op_id ONCE and lands it', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await unconfirmedCreate(p, b, { drop: Array(5).fill('marketingOfferSave') });
+  const at = [];
+  for (let i = 0; i < 3; i += 1) { at.push(await fire(p)); if (i < 2) assert.equal(noticeWord(p), CONFIRMING, `still confirming after try ${i + 1}`); }
+  assert.deepEqual(at, [3000, 10000, 30000], 'S4: the schedule — due +3 / +10 / +30 s from the handoff (the clock started at 0), then stop');
+  assert.equal(noticeWord(p), CANT, 'S4: U4, the approved fallback line');
+  assert.equal(pending(p).length, 0, 'S4: stopped — nothing more scheduled');
+  const btn = reconf(p);
+  assert.ok(btn && btn.textContent === 'Volver a confirmar', 'S4: U4b, the text button');
+  assert.equal(saves(b).length, 5, 'premise: the call, its confirmation, three re-sends — all dropped');
+  assert.equal(offersNamed(b, LPS).length, 0, 'premise: nothing landed');
+  btn.click(); await settle(300);
+  const ops = saves(b).map((c) => c.body.op_id);
+  assert.equal(ops.length, 6, 'S4: the button sends ONE more');
+  assert.deepEqual([...new Set(ops)], [ops[0]], 'S4: the button re-sends the SAME op_id — never a fresh one');
+  assert.equal(offersNamed(b, LPS).length, 1, 'S4: landed exactly once');
+  assert.equal(notice(p), null, 'S4: settled ⇒ the notice goes');
+  assert.match(toastText(p), /^Oferta programada\. Empieza /, 'S4: the success toast');
+});
+test('S5 the button\'s one try still ambiguous (the call dropped) ⇒ back to U4b (the button again, nothing scheduled); then an op-judged refusal ⇒ U3', async () => {
+  const b = await world();
+  for (let i = 0; i < 10; i += 1) await publish(b, form({ name: `Viva ${i}`, pct: 10 * (1 + (i % 5)), start: NOW, end: NOW + 20 * DAY, days: [i < 5 ? 6 : 0], window: null }));
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await unconfirmedCreate(p, b, { drop: Array(5).fill('marketingOfferSave') });
+  for (let i = 0; i < 3; i += 1) await fire(p);
+  assert.equal(noticeWord(p), CANT, 'premise: U4');
+  b.net.drop = ['marketingOfferSave'];   // Codex #129: the harness's real transport drop, not a synthetic reply
+  reconf(p).click(); await settle(300);
+  assert.equal(noticeWord(p), CANT, 'S5: a dropped call settles nothing — U4 again');
+  assert.ok(reconf(p), 'S5: the button stays (the page still holds the attempt)');
+  assert.equal(pending(p).length, 0, 'S5: the button never restarts the schedule');
+  reconf(p).click(); await settle(300);   // now it reaches the real core: the branch's live slots are full ⇒ judged too_many_live
+  assert.equal(noticeWord(p), 'No se guardó la oferta. Ya tenés el máximo de ofertas activas en una sucursal. Terminá una para programar esta.', 'S5: U3');
+  assert.equal(reconf(p), null);
+});
+test('S6 the LIST\'S CONTENT never settles it: the offer landed (every reply lost) and the re-read SHOWS it — still «Confirmando», then U4; never a success toast', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  b.net.lose = Array(5).fill('marketingOfferSave');
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(300);
+  // the named assertion FIRST (a list-settles mutant must die HERE, not at a premise): the re-read is in, the notice is still U1
+  assert.equal(noticeWord(p), CONFIRMING, 'S6: a row in the list is not an answer under our op_id');
+  assert.ok(rowNamed(p, LPS), 'premise (non-vacuity): the re-read lists the offer that landed');
+  for (let i = 0; i < 3; i += 1) await fire(p);
+  assert.equal(noticeWord(p), CANT, 'S6: U4 — the list\'s content never settled it');
+  assert.ok(!/^Oferta programada/.test(toastText(p) || ''), 'S6: never a success toast from the list');
+});
+test('S8 the re-send is judged a DUPLICATE (another session programmed the identical offer meanwhile) ⇒ the existing offer opens, as the dialog does — no notice, ONE offer', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await unconfirmedCreate(p, b, { drop: ['marketingOfferSave', 'marketingOfferSave'] });
+  const sent = saves(b)[0].body;
+  assert.equal((await offerSaveRaw({ rid: RID, expectedRev: 0, offer: sent.offer, program: true, token: b.token })).status, 200, 'premise: another session programmed the identical offer');
+  await fire(p, 400);
+  assert.equal(notice(p), null, 'S8: no notice');
+  assert.equal(p.host().querySelector('.mk5d-head h1').textContent, LPS, 'S8: the EXISTING offer\'s detail');
+  assert.equal(offersNamed(b, LPS).length, 1, 'S8: still ONE');
+  assert.equal(pending(p).length, 0);
+});
+test('S9 a re-send answered op_id_conflict by the REAL core (its op_id was claimed by another kind of operation meanwhile) ⇒ U4 at once, NO button, nothing more scheduled', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  const n0 = saves(b).length;   // the seed's own save comes first
+  Object.defineProperty(globalThis.crypto, 'randomUUID', { value: () => 'fixed-op-id-0003', configurable: true, writable: true });
+  try { await unconfirmedCreate(p, b, { drop: ['marketingOfferSave', 'marketingOfferSave'] }); } finally { delete globalThis.crypto.randomUUID; }
+  assert.equal(saves(b)[n0].body.op_id, 'op_fixed-op-id-0003', 'premise: the held create\'s op_id');
+  // the SAME op_id is claimed by a MOVE (the real core, another session) — the held create's re-send now conflicts
+  assert.equal((await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'paused_owner', expectedRev: o.rev, opId: 'op_fixed-op-id-0003', token: b.token })).status, 200, 'premise: the move claimed it');
+  await fire(p);
+  assert.equal(saves(b).length - n0, 3, 'premise: the re-send reached the real core');
+  assert.equal(noticeWord(p), CANT, 'S9: U4');
+  assert.equal(reconf(p), null, 'S9: no «Volver a confirmar»');
+  assert.equal(pending(p).length, 0, 'S9: nothing more scheduled');
+});
+// ═══ Codex #129 (HIGH r1, REVISE): the held attempt on a flaky phone ═════════════════════════════════════════════════════════════
+test('X1 [P1] a re-send whose token refresh STALLS while the merchant leaves the page never reaches the server: the attempt\'s liveness is checked after the token, before fetch', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await unconfirmedCreate(p, b, { drop: ['marketingOfferSave', 'marketingOfferSave'] });
+  const tok = globalThis.__tok; let release; globalThis.__tok = new Promise((r) => { release = r; });   // the next token() stalls
+  const t = pending(p)[0];
+  t.on = false; p.clock.t = t.at; t.f(); await settle(50);   // the +3 s re-send starts — and waits on its token
+  const n = saves(b).length;
+  p.reg().unmount();                                          // the merchant leaves the page meanwhile
+  release(tok); globalThis.__tok = tok; await settle(250);
+  assert.equal(saves(b).length, n, 'X1: the cancelled re-send never reached fetch');
+  assert.equal(offersNamed(b, LPS).length, 0, 'X1: nothing was created after the page was left');
+});
+test('X2 [P1] a LATE UNKNOWN from an older write never revives it: A dismissed while its confirmation is out, B submitted and saved, then A comes back UNKNOWN ⇒ A is NOT held (no timer can create it beside B)', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  const sh = await toReview(p);
+  const f0 = globalThis.fetch; let n = 0, gateOpen; const gate = new Promise((r) => { gateOpen = r; });
+  globalThis.fetch = async (url, opts) => {   // A's call never reaches the server; A's confirmation waits on the gate, then never reaches it either
+    if (String(url).endsWith('/marketingOfferSave')) { n += 1; if (n === 1) throw new TypeError('Failed to fetch'); if (n === 2) { await gate; throw new TypeError('Failed to fetch'); } }
+    return f0(url, opts);
+  };
+  try {
+    p.btn('Programar oferta', sh).click(); await settle(80);
+    p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();   // the review sheet, then the builder (as L7)
+    p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+    assert.equal(dlg(p), null, 'premise: A dismissed while its confirmation is out');
+    assert.equal(n, 2, 'premise: A\'s confirmation is the one out (held on the gate)');
+    await openCard(p, 'pct');
+    p.btn('Programar oferta', await toReview(p)).click(); await settle(300);   // B: the third save, through the real core
+    assert.equal(Object.values(b.fake.get('marketing_brand/tb/offers') || {}).filter((r) => r.type === 'pct').length, 1, 'premise: B saved (the real core)');
+    gateOpen(); await settle(300);                                             // A's confirmation finally fails: UNKNOWN, handed over LATE
+  } finally { globalThis.fetch = f0; }
+  assert.equal(pending(p).length, 0, 'X2: a superseded write is never held — no confirmation is scheduled for A');
+  assert.equal(reconf(p), null, 'X2: and no «Volver a confirmar» can re-send it');
+  assert.equal(offersNamed(b, LPS).length, 0, 'X2: A was never created beside B');
+  assert.equal(notice(p), null, 'X2 (Codex #130): the stale handoff changed NOTHING — no «Confirmando» stranded over the list');
+});
+test('X6 [Codex #130 P2] a STALE handoff changes nothing: B is held (its call + confirmation dropped), then A\'s late UNKNOWN arrives ⇒ B\'s schedule is intact, B\'s notice stays, A is invisible; B\'s re-send still goes out', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  const sh = await toReview(p);
+  const f0 = globalThis.fetch; let n = 0, gateOpen; const gate = new Promise((r) => { gateOpen = r; }); const ops = [];   // ops[i]: the (i+1)-th save's op_id
+  globalThis.fetch = async (url, opts) => {   // A: the call dropped, its confirmation gated then dropped · B: the call + its confirmation dropped
+    if (String(url).endsWith('/marketingOfferSave')) { n += 1; ops.push(JSON.parse(opts.body).op_id); if (n === 1 || n === 3 || n === 4) throw new TypeError('Failed to fetch'); if (n === 2) { await gate; throw new TypeError('Failed to fetch'); } }
+    return f0(url, opts);
+  };
+  let bt;
+  try {
+    p.btn('Programar oferta', sh).click(); await settle(80);
+    p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+    p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+    assert.equal(n, 2, 'premise: A dismissed, its confirmation out');
+    await openCard(p, 'pct');
+    p.btn('Programar oferta', await toReview(p)).click(); await settle(300);   // B: both ambiguous ⇒ held
+    assert.equal(noticeWord(p), CONFIRMING, 'premise: B held (U1)');
+    bt = pending(p)[0];
+    assert.ok(bt, 'premise: B\'s confirmation scheduled');
+    gateOpen(); await settle(300);                                             // A's late UNKNOWN: a stale handoff
+  } finally { globalThis.fetch = f0; }
+  assert.equal(bt.on, true, 'X6: B\'s schedule is intact — the stale handoff dropped nothing');
+  assert.equal(pending(p).length, 1, 'X6: and nothing of A was scheduled');
+  assert.equal(noticeWord(p), CONFIRMING, 'X6: B\'s notice stays');
+  const before = saves(b).length;
+  await fire(p);
+  const sent = saves(b).slice(before);
+  assert.equal(sent.length, 1, 'X6: B\'s re-send went out');
+  assert.notEqual(ops[2], ops[0], 'premise: A and B are two submissions');
+  assert.equal(sent[0].body.op_id, ops[2], 'X6: under B\'s op_id (never A\'s)');
+  assert.equal(offersNamed(b, LPS).length, 0, 'X6: A is invisible — never created');
+});
+test('X3 [P2] a MOVE\'s re-send judged a DUPLICATE (an identical offer went live meanwhile) ⇒ that existing offer opens, as the dialog does — never the generic «No se guardó»', async () => {
+  const b = await world();
+  const x = await publish(b, LIVE());
+  const paused = await offerSetStateRaw({ rid: RID, offerId: x.id, to: 'paused_owner', expectedRev: x.rev, token: b.token });
+  assert.equal(paused.status, 200, 'premise: X paused');
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  b.net.drop = ['marketingOfferSetState', 'marketingOfferSetState'];
+  p.btn('Reanudar').click(); await settle(250);
+  assert.equal(noticeWord(p), CONFIRMING, 'premise: U1');
+  const y = await publish(b, LIVE());   // another session: the IDENTICAL offer goes live (the real writers)
+  await fire(p, 400);
+  assert.notEqual(noticeWord(p), NOT_SAVED, 'X3: never the generic line for a duplicate');
+  assert.equal(notice(p), null, 'X3: no notice');
+  const h = p.host().querySelector('.mk5d-head h1');
+  assert.ok(h && h.textContent === 'Almuerzo', 'X3: the existing offer\'s detail opened');
+  assert.equal(p.mods.marketing._mktState.detail, y.id, 'X3: it is the IDENTICAL live one (the server\'s offer_id)');
+});
+test('X4 [P2] the deadlines are measured from the handoff: +3 / +10 / +30 s even when every re-send takes 2 s — the SEND times, not the timer arguments', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await unconfirmedCreate(p, b, { drop: Array(5).fill('marketingOfferSave') });
+  const t0 = p.clock.t, sentAt = [];
+  const f0 = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => { if (String(url).endsWith('/marketingOfferSave')) { sentAt.push(p.clock.t - t0); p.clock.t += 2000; } return f0(url, opts); };   // each re-send «takes» 2 s
+  try { for (let i = 0; i < 3; i += 1) await fire(p); } finally { globalThis.fetch = f0; }
+  assert.deepEqual(sentAt, [3000, 10000, 30000], 'X4: sent at +3 / +10 / +30 s after the handoff — the latency never accumulates');
+  assert.equal(noticeWord(p), CANT, 'then U4');
+});
+test('X5 [P2] an OP-JUDGED 400 settles: the offer\'s start passed during the outage ⇒ the re-send is the real core\'s 400 start_past with op:\'judged\' ⇒ U3 with its own sentence — never UNKNOWN forever', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await unconfirmedCreate(p, b, { drop: ['marketingOfferSave', 'marketingOfferSave'] });
+  const now0 = b.deps.now; b.deps.now = () => now0() + 3 * DAY;   // the server's clock moves past the offer's start
+  try { await fire(p); } finally { b.deps.now = now0; }
+  const last = b.calls.filter((c) => c.fn === 'marketingOfferSave').pop();
+  assert.ok(last, 'premise: the re-send went out');
+  assert.equal(noticeWord(p), 'No se guardó la oferta. La fecha de inicio ya pasó. Elegí una fecha nueva en «Horario».', 'X5: U3, the refusal\'s own sentence');
+  assert.equal(pending(p).length, 0, 'X5: settled — nothing more scheduled');
+});
+
+test('X7 [Codex #131, owner option A] one action at a time per offer: while «Pausar» is confirming, «Editar» and «Más acciones» on that offer are disabled; once it settles they come back and «Editar» opens', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  b.net.drop = ['marketingOfferSetState'];   // the call never reaches the server …
+  let release; b.net.hold = { fn: 'marketingOfferSetState', until: new Promise((r) => { release = r; }) };   // … its confirmation is held: «Confirmando…»
+  p.btn('Pausar').click(); await settle(150);
+  const acts = () => p.host().querySelector('.mk5d-acts');
+  const edit = () => [...acts().querySelectorAll('button')].find((x) => x.textContent.trim() === 'Editar');
+  assert.ok(acts().textContent.includes('Confirmando…'), 'premise: the move is confirming');
+  assert.equal(edit().disabled, true, 'X7: «Editar» is disabled while the move on this offer is confirming');
+  assert.equal(acts().querySelector('.mk5d-more1').disabled, true, 'X7: «Más acciones» too');
+  edit().click(); await settle(80);
+  assert.equal(dlg(p), null, 'X7: a click on it opens nothing');
+  release(); await settle(300);   // the confirmation lands it: settled
+  assert.equal(toastText(p), 'Oferta pausada. Reanudala cuando querás.', 'premise: settled (landed)');
+  const ed = p.btn('Editar');
+  assert.ok(ed && !ed.disabled, 'X7: after the move settles, «Editar» is back');
+  ed.click(); await settle(150);
+  assert.ok(dlg(p), 'X7: and it opens the editor');
+});
+test('X8 [Codex #132 note] the HANDLERS refuse while busy, not only the disabled attribute: with «Editar» and «Más acciones» forced enabled (a synthetic click), nothing opens while the move confirms', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  b.net.drop = ['marketingOfferSetState'];
+  let release; b.net.hold = { fn: 'marketingOfferSetState', until: new Promise((r) => { release = r; }) };
+  p.btn('Pausar').click(); await settle(150);
+  const acts = p.host().querySelector('.mk5d-acts');
+  assert.ok(acts.textContent.includes('Confirmando…'), 'premise: the move is confirming');
+  const ed = [...acts.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Editar');
+  const more = acts.querySelector('.mk5d-more1');
+  ed.disabled = false; more.disabled = false;   // the attribute bypassed: only the handler can refuse now
+  ed.click(); await settle(80);
+  assert.equal(dlg(p), null, 'X8: the «Editar» handler refuses while busy');
+  more.click(); await settle(80);
+  assert.equal(p.host().querySelector('.mk5d-acts .mk5-menu.mk5-open'), null, 'X8: the «Más acciones» handler refuses while busy');
+  assert.equal(p.mods['marketing-detail']._detailState.menu, false, 'X8: the «Más acciones» handler left its menu closed (it would pop open once the move settles)');
+  release(); await settle(300);
+});
+test('X9 [Codex #132 note] a REFUSED move re-enables the actions: «Pausar» refused by the real core (another session paused it first — superseded) ⇒ the error row, «Editar» and «Más acciones» enabled again', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  assert.equal((await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'paused_owner', expectedRev: o.rev, token: b.token })).status, 200, 'premise: another session paused it');
+  p.btn('Pausar').click(); await settle(300);   // our move, at the old rev: a DEFINITE refusal
+  assert.ok(p.host().querySelector('.mk5b-err'), 'premise: refused — the error row');
+  const acts = p.host().querySelector('.mk5d-acts');
+  const ed = [...acts.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Editar');
+  assert.ok(ed && ed.disabled === false, 'X9: «Editar» is enabled again after the refusal');
+  assert.equal(acts.querySelector('.mk5d-more1').disabled, false, 'X9: «Más acciones» too');
+});
+test('S7 cancelled: leaving the page, another account, or a NEW write stops the confirmations — nothing more is sent', async () => {
+  for (const how of ['leave', 'account', 'write']) {
+    const b = await world();
+    await publish(b, LIVE());
+    const p = await page({ b });
+    await p.signIn(); await p.open();
+    await unconfirmedCreate(p, b, { drop: ['marketingOfferSave', 'marketingOfferSave'] });
+    const t = pending(p)[0];
+    assert.ok(t, `${how}: premise: a confirmation is scheduled`);
+    if (how === 'leave') p.reg().unmount();
+    if (how === 'account') { p.d.dispatchEvent(new p.w.CustomEvent('portal:auth', { detail: { uid: MGR } })); await settle(); }
+    if (how === 'write') { await openDetail(p, 'Almuerzo'); p.btn('Pausar').click(); await settle(250); }
+    assert.equal(t.on, false, `${how}: the scheduled confirmation is cleared`);
+    const n = saves(b).length;
+    t.f(); await settle(200);   // even a timer that slipped through finds the attempt gone
+    assert.equal(saves(b).length, n, `${how}: nothing more is sent`);
+    assert.equal(offersNamed(b, LPS).length, 0, `${how}: the dropped create never lands`);
+  }
+});
+
 // ═══ Codex r6.1-build REVISE #1 (advisor 11-15): every write path's lost reply is UNKNOWN; a dismissed write still lands in the list ═══
-const UNK = 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.';
+const UNK = CONFIRMING;   // owner 11-17: the list keeps confirming the SAME op_id
 const unknownLanded = (p, label) => {
-  assert.equal(notice(p) && notice(p).textContent, UNK, `${label}: the banner`);
+  assert.equal(noticeWord(p), UNK, `${label}: the banner`);
   assert.ok(!/No pudimos guardar|No pudimos hacer el cambio|No pudimos programar/.test(p.text()), `${label}: never a failure word`);
   assert.equal(dlg(p), null, `${label}: no dialog`);
   assert.equal(sheet(p), null, `${label}: no sheet`);
@@ -1107,7 +1473,7 @@ test('L6 DISMISS then lost (Codex P1-1): «Guardar cambios», Esc while pending,
   assert.equal(dlg(p), null, 'premise: dismissed mid-write');
   let go; release(); b.net.hold = { fn: 'getMarketing', until: new Promise((r) => { go = r; }) };   // the re-read held: what paints meanwhile?
   await settle(150);
-  assert.equal(notice(p) && notice(p).textContent, UNK, 'the banner, although the dialog was dismissed');
+  assert.equal(noticeWord(p), UNK, 'the banner, although the dialog was dismissed');
   assert.equal(p.host().querySelectorAll('.mk5-row').length, 0, 'no cached rows during the re-read');
   go(); await settle(150);
   assert.ok(rowNamed(p, 'Almuerzo'), 'the fresh read paints');
@@ -1150,7 +1516,7 @@ test('L8 a dismissed write whose account changed meanwhile is DROPPED (no banner
 // ═══ owner 11-15 «confirm every save» (MOCKUP v5b 3d/3e/3f/1c): an ambiguous CREATE / REPEAT / DRAFT is re-sent ONCE under the SAME
 // op_id — 3a's claim (offers-core claimCheck) replays the first answer or lands it now, exactly once. Only a second ambiguous answer
 // falls back to the list, in a NEUTRAL notice. Edits and moves (no op_id on the wire yet) keep the fallback directly.
-const FALLBACK = 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.';
+const FALLBACK = CONFIRMING;   // owner 11-17: after the two ambiguous answers the list keeps confirming (U1)
 test('C1 «Programar oferta», the reply lost (it LANDED) ⇒ ONE confirmation, SAME op_id ⇒ the replayed offer: the direct-success toast, no banner, ONE offer', async () => {
   const b = await world();
   const p = await page({ b });
@@ -1211,7 +1577,7 @@ test('C4 BOTH ambiguous ⇒ NEVER a second resend; the list re-reads with the NE
   assert.equal(saves(b).length - n0, 2, 'C4: the call + ONE confirmation — never a second resend');
   assert.equal(dlg(p), null, 'the dialog closed');
   const n = notice(p);
-  assert.equal(n && n.textContent, FALLBACK, 'C4: the fallback, exact');
+  assert.equal(noticeWord(p), FALLBACK, 'C4: «Confirmando» (U1), exact');
   assert.ok(n.classList.contains('mk5-notice') && !n.classList.contains('mk5b-err'), 'C4: neutral, never the error style');
   assert.equal(n.getAttribute('role'), 'status');
   assert.ok(n.previousElementSibling && n.previousElementSibling.classList.contains('mk5-bar'), 'after the filters');
@@ -1379,7 +1745,9 @@ test('E7 op_id_conflict on a MOVE ⇒ the fallback at once (a client bug, never 
     const from = b.calls.length;
     p.btn('Pausar').click(); await settle(300);
     assert.equal(b.calls.slice(from).filter((c) => c.fn === 'marketingOfferSetState').length, 1, 'E7: ONE call — never confirmed');
-    assert.equal(notice(p) && notice(p).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.', 'E7: the fallback');
+    assert.equal(noticeWord(p), CANT, 'E7: the fallback at once (U4)');
+    assert.equal(reconf(p), null, 'E7: no «Volver a confirmar»');
+    assert.equal(pending(p).length, 0, 'E7: nothing scheduled');
     assert.ok(!p.text().includes('No pudimos hacer el cambio'), 'never a refusal word');
   } finally { delete globalThis.crypto.randomUUID; }
 });

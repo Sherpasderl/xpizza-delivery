@@ -143,16 +143,19 @@ function paint() {
 function actions(o) {
   const box = el('div', 'mk5d-acts');
   const acts = ML.actionsOf(o);
-  if (ML.editable(o) !== 'none' && o.state !== 'draft') { const b = el('button', 'mk5d-btn', 'Editar'); b.type = 'button'; b.addEventListener('click', () => D.ctx.onEdit(o)); box.append(b); }
+  // Codex #131 / owner option A: ONE action at a time per offer — while a move on it is out (its call or its confirmation), «Editar» and
+  // «Más acciones» are disabled like the move's own button; they come back when it settles
+  if (ML.editable(o) !== 'none' && o.state !== 'draft') { const b = el('button', 'mk5d-btn', 'Editar'); b.type = 'button'; b.disabled = D.busy; b.addEventListener('click', () => { if (!D.busy) D.ctx.onEdit(o); }); box.append(b); }
   if (o.status === 'live' && acts.includes('pause')) { const b = el('button', 'mk5d-btn', 'Pausar'); b.type = 'button'; b.disabled = D.busy; b.addEventListener('click', () => move('pause')); if (D.confirming) busyLabel(b, 'Pausar'); box.append(b); }
   const menu = [];
   if (acts.includes('repeat')) menu.push(['repeat', 'Repetir campaña']);
   if (acts.includes('end')) menu.push(['end', 'Terminar oferta']);
   if (menu.length) {
     const k = el('div', 'mk5d-kebab');
-    const t = el('button', 'mk5d-more1'); t.type = 'button'; t.setAttribute('aria-label', 'Más acciones'); t.setAttribute('aria-haspopup', 'menu'); t.setAttribute('aria-expanded', D.menu ? 'true' : 'false');
-    t.append(svg(...MORE)); t.addEventListener('click', () => { D.menu = !D.menu; render(); });
-    const m = el('div', `mk5-menu${D.menu ? ' mk5-open' : ''}`); m.setAttribute('role', 'menu');
+    const open = D.menu && !D.busy;
+    const t = el('button', 'mk5d-more1'); t.type = 'button'; t.disabled = D.busy; t.setAttribute('aria-label', 'Más acciones'); t.setAttribute('aria-haspopup', 'menu'); t.setAttribute('aria-expanded', open ? 'true' : 'false');
+    t.append(svg(...MORE)); t.addEventListener('click', () => { if (D.busy) return; D.menu = !D.menu; render(); });
+    const m = el('div', `mk5-menu${open ? ' mk5-open' : ''}`); m.setAttribute('role', 'menu');
     for (const [a, word] of menu) {
       const b = el('button', a === 'end' ? 'mk5-opt mk5-danger' : 'mk5-opt'); b.type = 'button'; b.setAttribute('role', 'menuitem'); b.dataset.act = a;
       if (a === 'end') b.append(svg(...STOP));
@@ -178,23 +181,33 @@ export async function move(kind) {
   if (D.busy) return;
   const o = D.offer, g = D.gen, ctx = D.ctx, rid = ctx.rid, token = ctx.token, opId = newOpId();
   const to = kind === 'pause' ? 'paused_owner' : kind === 'resume' ? 'active' : 'ended';
+  const wg = typeof ctx.onWrite === 'function' ? ctx.onWrite() : null;   // a NEW write, BEFORE it sends: the list's held attempt is dropped (owner 11-17; Codex #129 P1-2)
   D.busy = true; D.err = null; render();
   const a = { op: 'state', opId, offerId: o.id, expectedRev: o.rev, to };
-  const send = (classify) => offerSetStateRaw({ rid, offerId: o.id, to, expectedRev: o.rev, opId, token }).then((res) => classify(a, res), () => ({ outcome: 'unknown' }));
+  // live (optional): the list's liveness check for a held attempt, run after the token, before fetch (Codex #129 P1-1)
+  const send = (classify, live) => Promise.resolve().then(() => offerSetStateRaw({ rid, offerId: o.id, to, expectedRev: o.rev, opId, token, assertLive: live }))
+    .then((res) => classify(a, res), () => ({ outcome: 'unknown' }));
+  const landed = (x) => ML.stateToast(x.offer, DETAIL_TOAST.resume);   // Codex #93 F3: the RETURNED state, not the button pressed
   let r = await send(ML.classifyWrite);
   if (r.outcome === 'unknown' && !r.conflict) { if (D.host && D.gen === g) { D.confirming = true; render(); } r = await send(ML.classifyConfirmation); }   // Codex #93 F2
+  // owner 11-17 (MOCKUP-portal-marketing-unknown): the list keeps confirming the SAME request (the SAME op_id); a move's refusal has no
+  // sentence of its own here (errWord is generic) ⇒ U3b. op_id_conflict (our bug) is never re-sent.
+  // a move judged a DUPLICATE on a re-send opens the existing offer, as the list's own duplicate does (Codex #129 P2-3)
+  const retry = r.conflict ? null : { op: 'state', resend: (live) => send(ML.classifyConfirmation, live),
+    onLanded: (x) => { const w = landed(x); if (w && ctx.toast) ctx.toast(w); }, reason: () => null, onDuplicate: ctx.onDuplicate || null };
   if (!D.host || D.gen !== g) {   // the view it started in is gone: an UNKNOWN still goes to the list (Codex r6.1-build P1-1); a NEWER
     // view's «Confirmando…» is its own — never cleared from here (Codex 11-15 P2-3)
-    if (r.outcome === 'unknown' && ctx.onUnknown) ctx.onUnknown({ dismissed: true }); else if (ctx.onChanged) ctx.onChanged();
+    if (r.outcome === 'unknown' && ctx.onUnknown) ctx.onUnknown({ dismissed: true, retry, wg }); else if (ctx.onChanged) ctx.onChanged();
     return;
   }
   D.busy = false; D.confirming = false;
-  if (r.outcome === 'unknown') { if (ctx.onUnknown) ctx.onUnknown(); else if (ctx.onChanged) ctx.onChanged(); return; }
+  // render FIRST: the settled move never leaves «Confirmando…» on screen, whatever the list does with the handoff (Codex #131)
+  if (r.outcome === 'unknown') { render(); if (ctx.onUnknown) ctx.onUnknown({ retry, wg }); else if (ctx.onChanged) ctx.onChanged(); return; }
   if (r.outcome !== 'saved') { D.err = errWord(r); render(); return; }
   D.offer = r.offer || o;
   D.sheet = null;
   const c = D.ctx;
-  const word = ML.stateToast(D.offer, DETAIL_TOAST.resume);   // Codex #93 F3: the RETURNED state, not the button pressed
+  const word = landed({ offer: D.offer });
   if (word) c.toast(word);
   render();
   c.onChanged && c.onChanged();

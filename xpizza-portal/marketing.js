@@ -77,6 +77,7 @@ const S = {
   filter: { rid: 'all', estado: 'all' }, howOpen: false, menu: null,
   detail: null, dhost: null, ohost: null,   // O3: the open offer's id; the detail's host; the list's row-move host
   loadSeq: 0, notice: null,   // r6.1: the newest list request wins; the UNKNOWN banner over the list
+  wgen: 0,   // owner 11-17 / Codex #129 P1-2: the page's write generation (newWrite)
 };
 const can = (cap) => !!(S.sel && S.sel.caps.includes(cap));
 function snap() {
@@ -88,6 +89,7 @@ function snap() {
 document.addEventListener('portal:auth', (e) => {
   const uid = e && e.detail ? e.detail.uid : null;
   S.gen += 1;
+  dropConfirm();   // owner 11-17: another account (or a re-auth) cancels the list's confirmations
   if (uid !== S.uid) { S.offers = []; S.reads = null; S.branches = []; S.status = 'idle'; S.menu = null; closeDetail(); if (S.body) S.body.replaceChildren(); }
   S.uid = uid;
 });
@@ -225,9 +227,13 @@ function homeTab() {
 }
 
 // the calm, NEUTRAL fallback notice (v5b 1c: surface-2, hairline, ink text, the info icon) — never the error style
+// owner 11-17: the sentence, and under it — only in U4 while the page still holds the attempt — the «Volver a confirmar» text button
 function noticeEl() {
   const n = el('div', 'mk5-notice'); n.dataset.notice = 'unknown'; n.setAttribute('role', 'status');
-  n.append(svg({ tag: 'circle', cx: 12, cy: 12, r: 9 }, 'M12 11v5M12 8h.01'), el('span', null, S.notice));
+  const col = el('div', 'mk5-ncol'); col.append(el('span', null, S.notice));
+  const p = C.pend;
+  if (S.notice === ML.UNKNOWN_WORD && p && p.done && !p.busy && p.g.alive()) col.append(button('mk5-reconf', ML.RECONFIRM_WORD, () => confirmOnce(p, false)));
+  n.append(svg({ tag: 'circle', cx: 12, cy: 12, r: 9 }, 'M12 11v5M12 8h.01'), col);
   return n;
 }
 
@@ -319,18 +325,76 @@ function emptyState() {
 function builderCtx() {
   const origin = { uid: S.uid, brandId: S.sel ? S.sel.brandId : null };   // the account + brand every write of this context started in
   return { branches: S.branches.map((b) => ({ rid: b.rid, name: b.name, address: b.location && typeof b.location.address_line === 'string' ? b.location.address_line : null })),
-    brandId: S.sel ? S.sel.brandId : null, onDuplicate: (id) => showExisting(id), brandName: S.brandName || '', token, toast, now: () => clock.now(), onDone: () => { S.tab = 'home'; S.reads = null; load(); }, onChanged: () => load(), onUnknown: (o) => afterUnknown(origin, o), onChangeType: () => { S.tab = 'create'; render(); } };
+    brandId: S.sel ? S.sel.brandId : null, onDuplicate: (id) => showExisting(id), brandName: S.brandName || '', token, toast, now: () => clock.now(), onDone: () => { S.tab = 'home'; S.reads = null; load(); }, onChanged: () => load(), onUnknown: (o) => afterUnknown(origin, o), onWrite: newWrite, onChangeType: () => { S.tab = 'create'; render(); } };
 }
 // r6.1 (owner 11-15): a write whose outcome is UNKNOWN — every dialog / sheet / detail closes, «Campañas» RE-READS (no cached row paints
 // meanwhile, nor after a failed read) and the banner says so. The list is the truth. A write whose dialog was DISMISSED first still
 // lands here (Codex r6.1-build P1-1) — the dialog now open (another opening) stays; only another account / brand (or no page) drops it.
-function afterUnknown(origin, { dismissed = false } = {}) {
+function afterUnknown(origin, { dismissed = false, retry = null, wg = null } = {}) {
   if (!origin || origin.uid !== S.uid || !S.sel || origin.brandId !== S.sel.brandId || !S.body) return;
+  // Codex #129 P1-2 / #130: a handoff from a write that a NEWER one superseded changes NOTHING — checked FIRST: no drop of the newer
+  // write's held attempt, no notice, no re-read (it could only strand «Confirmando» or revive the old write beside the new one)
+  if (wg !== null && wg !== S.wgen) return;
   if (!dismissed) closeBuilder();
   closeDetail();
-  S.tab = 'home'; S.menu = null; S.reads = null; S.offers = []; S.status = 'loading'; S.notice = ML.UNKNOWN_WORD;
+  dropConfirm();
+  S.tab = 'home'; S.menu = null; S.reads = null; S.offers = []; S.status = 'loading'; S.notice = retry ? ML.CONFIRMING_WORD : ML.UNKNOWN_WORD;
   render();
   load();
+  if (retry) { C.pend = { g: snap(), retry, step: 0, t0: _confirmTimers.now(), timer: null, busy: false, done: false }; nextConfirm(C.pend); }
+}
+// ── owner 11-17 (MOCKUP-portal-marketing-unknown, APPROVED as recommended): the list keeps confirming the SAME op_id ───────────────
+// C.pend: the ONE attempt the page still holds — in memory only, never stored. `retry` (from the dialog that sent it) re-sends the very
+// same request; ONLY its answer under that op_id (ML.classifyConfirmation) settles anything — never the list's content (a row present or
+// missing, its rev or state). The schedule: ML.CONFIRM_DELAYS (+3 s, +10 s, +30 s), then U4 + «Volver a confirmar» (one more try each
+// press). Cancelled (dropConfirm) by leaving the page, another account / brand, a NEW write, or a newer UNKNOWN.
+// Cancelling only stops OUR asking: the server may still land the held request (its op_id claim lives 7 days), so no notice ever
+// says it was dropped — the last word is U4's «check the list», which stays true either way.
+const C = { pend: null };
+export const _confirmTimers = { now: () => Date.now(), set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) };   // the tests' fake timers replace these
+// a NEW write from this page (the builder's / detail's ctx.onWrite, BEFORE it sends): drops the held attempt and moves the write
+// generation — an UNKNOWN handed over later by an older write carries an older generation and is never held (Codex #129 P1-2)
+function newWrite() { dropConfirm(); S.wgen += 1; return S.wgen; }
+function dropConfirm() {
+  const p = C.pend;
+  if (!p) return;
+  if (p.timer) _confirmTimers.clear(p.timer);
+  C.pend = null;
+  if (S.notice === ML.CONFIRMING_WORD) S.notice = ML.UNKNOWN_WORD;   // the last word stands, without the button (nothing is held now)
+}
+function nextConfirm(p) {
+  if (p.step >= ML.CONFIRM_DELAYS.length) { p.done = true; S.notice = ML.UNKNOWN_WORD; render(); return; }   // U4 (+ U4b while held)
+  // Codex #129 P2-4: each try is DUE at its offset from the handoff (+3 / +10 / +30 s) — a slow re-send never pushes the next one later
+  const wait = Math.max(0, p.t0 + ML.CONFIRM_DELAYS[p.step] - _confirmTimers.now());
+  p.timer = _confirmTimers.set(() => { p.timer = null; confirmOnce(p, true); }, wait);
+}
+async function confirmOnce(p, scheduled) {
+  if (C.pend !== p || p.busy || !p.g.alive()) return;
+  p.busy = true;
+  if (!scheduled) { S.notice = ML.CONFIRMING_WORD; render(); }   // the button's one try: «Confirmando» while it is out
+  // Codex #129 P1-1: the attempt's liveness rides into the API's post-token check (rawCall assertLive) — a re-send whose token refresh
+  // outlived the page (left, another account, a new write) throws there and never reaches fetch
+  const live = () => { if (C.pend !== p || !p.g.alive()) throw Object.assign(new Error('obsolete'), { kind: 'obsolete' }); };
+  let s;
+  try { s = await p.retry.resend(live); } catch (_) { s = { outcome: 'unknown' }; }
+  p.busy = false;
+  if (C.pend !== p || !p.g.alive()) return;   // cancelled meanwhile: nothing of it is shown
+  if (s.outcome === 'saved') {   // U2: landed — the dialog's own success toast (it words it: the builder / detail own their toasts)
+    C.pend = null; S.notice = null;
+    p.retry.onLanded(s);
+    load();
+    return;
+  }
+  if (s.outcome === 'refused') {   // U3 / U3b: not landed (judged under our op_id); a duplicate opens the existing offer, as the dialog does
+    C.pend = null;
+    if (s.code === 'duplicate' && p.retry.onDuplicate) { S.notice = null; p.retry.onDuplicate(s.offer_id); return; }
+    S.notice = ML.notSavedWord(p.retry.op, p.retry.reason(s));
+    load();
+    return;
+  }
+  if (s.conflict) { C.pend = null; S.notice = ML.UNKNOWN_WORD; render(); return; }   // our bug: never re-sent
+  if (scheduled) { p.step += 1; nextConfirm(p); return; }
+  S.notice = ML.UNKNOWN_WORD; render();   // the button's try settled nothing: U4b again (the schedule never restarts)
 }
 function startBuilder(opts) { if (can('marketing.edit') && S.host && !builderOpen()) { S.notice = null; openBuilder(S.host, builderCtx(), opts); } }
 function onRowAction(a, id) {
@@ -349,7 +413,7 @@ function repeatOffer(o) { if (can('marketing.edit') && S.host && !builderOpen())
 function detailCtx(o) {
   const origin = { uid: S.uid, brandId: S.sel ? S.sel.brandId : null };
   return { offer: o, canEdit: can('marketing.edit'), token, rid: o.branches[0], branches: builderCtx().branches,
-    toast, now: () => clock.now(), onBack: () => { closeDetail(); render(); }, onChanged: () => load(), onUnknown: (x) => afterUnknown(origin, x), onEdit: editOffer, onRepeat: repeatOffer, onClose: () => {} };
+    toast, now: () => clock.now(), onBack: () => { closeDetail(); render(); }, onChanged: () => load(), onUnknown: (x) => afterUnknown(origin, x), onWrite: newWrite, onDuplicate: (id) => showExisting(id), onEdit: editOffer, onRepeat: repeatOffer, onClose: () => {} };
 }
 // 409 duplicate (3a e3c5f7366): an identical offer is already programmed — never an error: the list re-reads and THAT offer opens
 async function showExisting(id) {
@@ -381,6 +445,7 @@ registerView({
   icon: MEGAPHONE,
   visible: (sel) => { S.navSel = sel; return !!sel && sel.caps.includes('marketing.read') && !!sel.uid && swGet(sel.uid, sel.brandId); },
   mount(host, sel) {
+    dropConfirm();
     S.sel = sel;
     S.host = host;
     const wrap = el('div', 'mktv');
@@ -394,6 +459,7 @@ registerView({
   },
   unmount() {
     S.gen += 1;
+    dropConfirm();   // owner 11-17: leaving the page cancels the list's confirmations
     closeBuilder();
     closeDetail();
     if (S.body) S.body.replaceChildren();
