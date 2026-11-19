@@ -25134,8 +25134,8 @@
   "slice": "s7a1",
   "label": "writeStrict trusts the write (no read-back byte compare)",
   "file": "../customer-app/capp-api.js",
-  "from": "function writeStrict(k, v) { try { if (!storage || voids(v)) return false; const s = JSON.stringify(v); storage.setItem(k, s); return storage.getItem(k) === s; } catch (_) { return false; } }",
-  "to": "function writeStrict(k, v) { try { if (!storage || voids(v)) return false; const s = JSON.stringify(v); storage.setItem(k, s); return true; } catch (_) { return false; } }",
+  "from": "function writeStrict(k, v) { try { if (!storage) return false; const s = JSON.stringify(v); storage.setItem(k, s); return storage.getItem(k) === s; } catch (_) { return false; } }",
+  "to": "function writeStrict(k, v) { try { if (!storage) return false; const s = JSON.stringify(v); storage.setItem(k, s); return true; } catch (_) { return false; } }",
   "command": [
    "node",
    "--test",
@@ -31002,24 +31002,6 @@
   ]
  },
  {
-  "id": "g7-10",
-  "slice": "g7",
-  "label": "«Cerrar sesión» waits for the SDK before the guest Cuenta",
-  "file": "../customer-app/capp-shell-ui.js",
-  "from": "signingOut = true; dropMember(); renderNow();",
-  "to": "signingOut = true;",
-  "command": [
-   "node",
-   "--test",
-   "--test-timeout=60000",
-   "--test-name-pattern=^G7",
-   "../customer-app/capp-s7a2.test.mjs"
-  ],
-  "kills_with": [
-   "G7-signout"
-  ]
- },
- {
   "id": "g7-11",
   "slice": "g7",
   "label": "«Olvidar este teléfono» keeps the device marker",
@@ -31058,19 +31040,18 @@
  {
   "id": "g7-13",
   "slice": "g7",
-  "label": "a rejected sign-out leaves the Cuenta signed out",
+  "label": "a rejected sign-out leaves the overlay up (the member can't use the app)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "if (u && u.uid) applyMember(CappDeviceAccount.readProfile(storage, u.uid) || { uid: u.uid }); renderNow(); return; }",
-  "to": "renderNow(); return; }",
+  "from": "        leaving = false; swap(null);\n",
+  "to": "        leaving = false;\n",
   "command": [
    "node",
    "--test",
-   "--test-timeout=60000",
-   "--test-name-pattern=^G7",
+   "--test-name-pattern=RESTART-REJECT",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "G7-reject"
+   "R3-REJECT: no overlay left"
   ]
  },
  {
@@ -34286,8 +34267,8 @@
   "slice": "route",
   "label": "hydration runs despite a payment return owning the boot",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "    if (routing && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();",
-  "to": "    if (routing) hydrate(); else reflect();",
+  "from": "      if (routing && !gestured && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();",
+  "to": "      if (routing && !gestured) hydrate(); else reflect();",
   "command": [
    "node",
    "--test",
@@ -34509,8 +34490,8 @@
   "slice": "route",
   "label": "Codex D-4a r1 P2: hydration gated on UI flags (an ownerless resumed return hydrates)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "    if (routing && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();",
-  "to": "    if (routing && !S.ret && !S.neutral) hydrate(); else reflect();",
+  "from": "      if (routing && !gestured && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();",
+  "to": "      if (routing && !gestured && !S.ret && !S.neutral) hydrate(); else reflect();",
   "command": [
    "node",
    "--test",
@@ -34527,8 +34508,8 @@
   "slice": "route",
   "label": "Codex D-4a r2: a user gesture inside the store does not cancel a pending cold link",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "    const onUserIntent = () => { if (!dead && (pendingRoute || awaitOrderRoute)) cancelRoute(); };",
-  "to": "    const onUserIntent = () => {};",
+  "from": "if (gate === 'held') gestured = true; if (pendingRoute || awaitOrderRoute) cancelRoute(); };",
+  "to": "if (gate === 'held') gestured = true; };",
   "command": [
    "node",
    "--test",
@@ -38682,8 +38663,8 @@
   "slice": "capp-push",
   "label": "sign-out without forgetting the token",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "      await pushAuthExit();   // the server forgets",
-  "to": "      void 0;   // the server forgets",
+  "from": "async () => { await pushAuthExit(); try { await fbAuth.signOut(); return true; }",
+  "to": "async () => { try { await fbAuth.signOut(); return true; }",
   "command": [
    "node",
    "--test",
@@ -41492,8 +41473,8 @@
   "slice": "c-dir-1-seed",
   "label": "the checkout ignores the saved address in use (the device location seeds: the checkout disagrees with the pill)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "return a ? { lat: a.lat, lng: a.lng, confirmed: true, saved: { label: a.label, detected: a.detected, details: a.details } } : S.loc; };",
-  "to": "return S.loc; };",
+  "from": "const seedNow = () => savedSeed() || S.loc;",
+  "to": "const seedNow = () => S.loc;",
   "command": [
    "node",
    "--test",
@@ -41519,40 +41500,6 @@
   ],
   "kills_with": [
    "DIR-SEED override"
-  ]
- },
- {
-  "id": "seed-03",
-  "slice": "c-dir-1-seed",
-  "label": "forgetMember does nothing (a signed-out checkout keeps her address)",
-  "file": "../customer-app/capp-ui.js",
-  "from": "(before the host clears her records)\n        if (dead) return;",
-  "to": "(before the host clears her records)\n        return;",
-  "command": [
-   "node",
-   "--test",
-   "--test-name-pattern=^C-DIR-1 SEED",
-   "../customer-app/capp-s7a2.test.mjs"
-  ],
-  "kills_with": [
-   "DIR-SEED sign-out"
-  ]
- },
- {
-  "id": "seed-04",
-  "slice": "c-dir-1-seed",
-  "label": "an identity change never tells the open checkout to forget the member",
-  "file": "../customer-app/capp-shell-ui.js",
-  "from": "try { if (S.store && S.store.ui && typeof S.store.ui.forgetMember === 'function') S.store.ui.forgetMember(); } catch (_) {}",
-  "to": "/* (no forgetMember) */",
-  "command": [
-   "node",
-   "--test",
-   "--test-name-pattern=^C-DIR-1 SEED",
-   "../customer-app/capp-s7a2.test.mjs"
-  ],
-  "kills_with": [
-   "DIR-SEED sign-out"
   ]
  },
  {
@@ -41655,159 +41602,6 @@
   ],
   "kills_with": [
    "DIR-B-EDITED"
-  ]
- },
- {
-  "id": "r3-c-01",
-  "slice": "r3-c",
-  "label": "the previous member leaving runs no reset at all",
-  "file": "../customer-app/capp-shell-ui.js",
-  "from": "if (prev && prev !== uid) memberLeft();",
-  "to": "if (false) memberLeft();",
-  "command": [
-   "node",
-   "--test",
-   "--test-name-pattern=^r3 \\(c\\)",
-   "../customer-app/capp-s7a2.test.mjs"
-  ],
-  "kills_with": [
-   "R3-RESET-SHEET"
-  ]
- },
- {
-  "id": "r3-c-02",
-  "slice": "r3-c",
-  "label": "Inicio's «Entregar en» stays open over the next identity",
-  "file": "../customer-app/capp-shell-ui.js",
-  "from": "      if (S.layer === 'addr') closeLayer(false);\n      S.loc = null;",
-  "to": "      S.loc = null;",
-  "command": [
-   "node",
-   "--test",
-   "--test-name-pattern=^r3 \\(c\\)",
-   "../customer-app/capp-s7a2.test.mjs"
-  ],
-  "kills_with": [
-   "R3-RESET-SHEET"
-  ]
- },
- {
-  "id": "r3-c-03",
-  "slice": "r3-c",
-  "label": "the location copies (S.loc, capp:guest_loc) survive the member",
-  "file": "../customer-app/capp-shell-ui.js",
-  "from": "S.loc = null; S.locPick = null; try { storage && storage.removeItem(LOC_KEY); } catch (_) {}",
-  "to": "S.locPick = null;",
-  "command": [
-   "node",
-   "--test",
-   "--test-name-pattern=^r3 \\(c\\)",
-   "../customer-app/capp-s7a2.test.mjs"
-  ],
-  "kills_with": [
-   "C153-3b: the persisted location copy"
-  ]
- },
- {
-  "id": "r3-c-04",
-  "slice": "r3-c",
-  "label": "the checkout's «Entregar en» stays open over the next identity",
-  "file": "../customer-app/capp-ui.js",
-  "from": "if (S.layerKind === 'addrpick' || S.layerKind === 'pin') closeLayer();",
-  "to": "if (S.layerKind === 'pin') closeLayer();",
-  "command": [
-   "node",
-   "--test",
-   "--test-name-pattern=^r3 \\(c\\)",
-   "../customer-app/capp-s7a2.test.mjs"
-  ],
-  "kills_with": [
-   "R3-RESET-PICK"
-  ]
- },
- {
-  "id": "r3-c-05",
-  "slice": "r3-c",
-  "label": "the pin editor on her address stays open",
-  "file": "../customer-app/capp-ui.js",
-  "from": "if (S.layerKind === 'addrpick' || S.layerKind === 'pin') closeLayer();",
-  "to": "if (S.layerKind === 'addrpick') closeLayer();",
-  "command": [
-   "node",
-   "--test",
-   "--test-name-pattern=^r3 \\(c\\)",
-   "../customer-app/capp-s7a2.test.mjs"
-  ],
-  "kills_with": [
-   "C153-3a: the pin editor is gone"
-  ]
- },
- {
-  "id": "r3-c-06",
-  "slice": "r3-c",
-  "label": "typed details are exempt from the reset (the touched-field exemption back)",
-  "file": "../customer-app/capp-ui.js",
-  "from": "f.geo = null; f.details = ''; f.saved = null; }",
-  "to": "f.geo = null; if (f.saved && f.details === f.saved.details) f.details = ''; f.saved = null; }",
-  "command": [
-   "node",
-   "--test",
-   "--test-name-pattern=^r3 \\(c\\)",
-   "../customer-app/capp-s7a2.test.mjs"
-  ],
-  "kills_with": [
-   "C153-4"
-  ]
- },
- {
-  "id": "r3-c-07",
-  "slice": "r3-c",
-  "label": "«Pin confirmado» outlives the member",
-  "file": "../customer-app/capp-ui.js",
-  "from": "        S.pinStepOk = false; S.outZone = false;\n        if (sending)",
-  "to": "        S.outZone = false;\n        if (sending)",
-  "command": [
-   "node",
-   "--test",
-   "--test-name-pattern=^r3 \\(c\\)",
-   "../customer-app/capp-s7a2.test.mjs"
-  ],
-  "kills_with": [
-   "C153-3b: the pin-step flag"
-  ]
- },
- {
-  "id": "r3-c-08",
-  "slice": "r3-c",
-  "label": "the dispatch snapshot stays in memory after the member left mid-send",
-  "file": "../customer-app/capp-ui.js",
-  "from": "if (sending) { S.sentOrder = null; S.sendTotals = null;",
-  "to": "if (sending) { S.sendTotals = null;",
-  "command": [
-   "node",
-   "--test",
-   "--test-name-pattern=^r3 \\(c\\)",
-   "../customer-app/capp-s7a2.test.mjs"
-  ],
-  "kills_with": [
-   "R3-SEND-RESET: the dispatch snapshot leaves memory"
-  ]
- },
- {
-  "id": "r3-c-10",
-  "slice": "r3-c",
-  "label": "«Enviando» outlives the member (the store is not unmounted)",
-  "file": "../customer-app/capp-shell-ui.js",
-  "from": "if (sending) { unmountStore(); nav.tab({ name: 'home' }); }",
-  "to": "if (false) { unmountStore(); nav.tab({ name: 'home' }); }",
-  "command": [
-   "node",
-   "--test",
-   "--test-name-pattern=^r3 \\(c\\)",
-   "../customer-app/capp-s7a2.test.mjs"
-  ],
-  "kills_with": [
-   "R3-SEND-RESET: the store mount"
   ]
  },
  {
@@ -41985,7 +41779,7 @@
   "slice": "r3-b",
   "label": "r3: the shell's click gate is gone (Inicio's «Entregar en» opens mid-pick)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "      if (S.addrPick && ADDR_ACTS.has(a)) return;",
+  "from": "      if ((S.addrPick || gate === 'held') && ADDR_ACTS.has(a)) return;",
   "to": "      if (false) return;",
   "command": [
    "node",
@@ -42019,7 +41813,7 @@
   "slice": "r3-b",
   "label": "r3: the re-read is NOT owned (any token — another member's after a switch)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "      let own = null; try { own = await fbAuth.idTokenOwned(); } catch (_) { own = null; }\n      if (dead || gen !== bookGen || !own || own.uid !== uid || !own.token) return null;",
+  "from": "      const own = await ownedToken();\n      if (dead || gen !== bookGen || !own || own.uid !== uid || !own.token) return null;",
   "to": "      let own = null; try { own = { token: await fbAuth.idToken(), uid }; } catch (_) { own = null; }\n      if (dead || gen !== bookGen || !own || own.uid !== uid || !own.token) return null;",
   "command": [
    "node",
@@ -42053,7 +41847,7 @@
   "slice": "r3-b",
   "label": "r3: a pick landing during the send re-seeds the DISPATCHED flow",
   "file": "../customer-app/capp-ui.js",
-  "from": "const flowEditable = () => !!S.flow && (S.screen === 'checkout' || S.screen === 'store') && !frozenNow() && !lockedHere();",
+  "from": "const flowEditable = () => !!S.flow && UNSENT.has(S.screen) && !frozenNow() && !lockedHere();",
   "to": "const flowEditable = () => !!S.flow;",
   "command": [
    "node",
@@ -42152,105 +41946,360 @@
   ]
  },
  {
-  "id": "r3-pk-01",
-  "slice": "r3-pk",
-  "label": "r3 (i): a member leaving clears none of her order records",
+  "id": "r3-rs-01",
+  "slice": "r3-rs",
+  "label": "r3 restart: the wipe skips the active order (her tracking token stays)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "      clearOrderRecords();\n",
+  "from": "const MEMBER_REC = /^capp:(?:active_order|rate_nudge|",
+  "to": "const MEMBER_REC = /^capp:(?:rate_nudge|",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^r3 RESTART:",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-RESTART: no unkeyed record of hers"
+  ]
+ },
+ {
+  "id": "r3-rs-02",
+  "slice": "r3-rs",
+  "label": "r3 restart: the app never restarts (her in-memory state survives)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      try { go(win.location.origin + '/'); } catch (_) {}\n",
   "to": "",
   "command": [
    "node",
    "--test",
-   "--test-name-pattern=PAYKEYS-CLEAR",
+   "--test-name-pattern=^r3 RESTART:",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "R3-PAYKEYS: no order record of hers"
+   "R3-RESTART: the app starts again at its root"
   ]
  },
  {
-  "id": "r3-pk-02",
-  "slice": "r3-pk",
-  "label": "r3 (i): her return in progress (capp:return) stays on the device",
+  "id": "r3-rs-03",
+  "slice": "r3-rs",
+  "label": "r3 restart: the self-update snapshot (her cart + checkout) survives the restart",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "const ks = new Set([CappShell.RETURN_KEY]);",
-  "to": "const ks = new Set();",
-  "command": [
-   "node",
-   "--test",
-   "--test-name-pattern=RETURN-RESUME",
-   "../customer-app/capp-s7a2.test.mjs"
-  ],
-  "kills_with": [
-   "R3-RETURN-RESUME: her return in progress left the device"
-  ]
- },
- {
-  "id": "r3-pk-03",
-  "slice": "r3-pk",
-  "label": "r3 (i): a late reply re-writes her payment record (writeJSON ignores the void)",
-  "file": "../customer-app/capp-api.js",
-  "from": "const writeJSON = (k, v) => { try { if (!storage || voids(v)) return false;",
-  "to": "const writeJSON = (k, v) => { try { if (!storage) return false;",
-  "command": [
-   "node",
-   "--test",
-   "--test-name-pattern=PAYKEYS-LATE",
-   "../customer-app/capp-s7a2.test.mjs"
-  ],
-  "kills_with": [
-   "R3-PAYKEYS-LATE: the late reply wrote nothing of hers"
-  ]
- },
- {
-  "id": "r3-pk-04",
-  "slice": "r3-pk",
-  "label": "r3 (i): a late reply re-writes her completion marker (writeStrict ignores the void)",
-  "file": "../customer-app/capp-api.js",
-  "from": "function writeStrict(k, v) { try { if (!storage || voids(v)) return false;",
-  "to": "function writeStrict(k, v) { try { if (!storage) return false;",
-  "command": [
-   "node",
-   "--test",
-   "--test-name-pattern=SEND-RESET",
-   "../customer-app/capp-s7a2.test.mjs"
-  ],
-  "kills_with": [
-   "R3-SEND-RESET: the late reply re-created no order record of hers"
-  ]
- },
- {
-  "id": "r3-pk-05",
-  "slice": "r3-pk",
-  "label": "r3 (i): the store never voids her order ids on a member leaving",
-  "file": "../customer-app/capp-ui.js",
-  "from": "        try { if (api && typeof api.identityReset === 'function') api.identityReset(); } catch (_) {}   // r3 (i): her order ids are void (before the host clears her records)\n",
+  "from": "      try { const ss = win && win.sessionStorage; if (ss) ss.removeItem(SNAPSHOT_KEY); } catch (_) {}",
   "to": "",
   "command": [
    "node",
    "--test",
-   "--test-name-pattern=PAYKEYS-LATE",
+   "--test-name-pattern=^r3 RESTART:",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "R3-PAYKEYS-LATE: the late reply wrote nothing of hers"
+   "R3-RESTART: no self-update snapshot"
   ]
  },
  {
-  "id": "r3-pk-06",
-  "slice": "r3-pk",
-  "label": "r3 (i): her sent-order record (the copy kept for the hosted return / SDK reload) stays on the device",
+  "id": "r3-rs-04",
+  "slice": "r3-rs",
+  "label": "r3 restart: the wipe runs BEFORE the push exit / sign-out completes",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "pending_place|pending_pay|placed|cart|sent_order)$/;",
-  "to": "pending_place|pending_pay|placed|cart)$/;",
+  "from": "      leaving = true; swap(kind);\n",
+  "to": "      leaving = true; swap(kind); wipeIdentity(keep);\n",
   "command": [
    "node",
    "--test",
-   "--test-name-pattern=PAYKEYS-CLEAR",
+   "--test-name-pattern=RESTART-ORDER",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "R3-PAYKEYS: no order record of hers"
+   "R3-ORDER: nothing wiped before the sign-out completes"
+  ]
+ },
+ {
+  "id": "r3-rs-05",
+  "slice": "r3-rs",
+  "label": "r3 switch: the incoming member's own completion mark is wiped (he is signed out after the restart)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        if (!keep || !v || v.uid !== keep) rawDel(k);",
+  "to": "        rawDel(k);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SWITCH-KEEP",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-SWITCH-KEEP: B's completion mark stays"
+  ]
+ },
+ {
+  "id": "r3-rs-06",
+  "slice": "r3-rs",
+  "label": "r3 switch: per-uid records kept by PREFIX, not the exact uid",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (m && m[1] !== keep) rawDel(k); }",
+  "to": "if (m && !(keep && m[1].startsWith(keep))) rawDel(k); }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SWITCH-KEEP",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-SWITCH-KEEP: capp:addr:u_bobby is gone"
+  ]
+ },
+ {
+  "id": "r3-rs-07",
+  "slice": "r3-rs",
+  "label": "r3 gate: a MISSING stamp is treated as «guest» (an upgrade's records are anyone's)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const mismatch = own !== 'guest' && own !== id && unkeyedHeld();",
+  "to": "const mismatch = own !== 'guest' && own !== null && own !== id && unkeyedHeld();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=GATE-UNSTAMPED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-GATE-UNSTAMPED: an unstamped record is wiped"
+  ]
+ },
+ {
+  "id": "r3-rs-08",
+  "slice": "r3-rs",
+  "label": "r3 gate: the stamp is written BEFORE the check (B's admission re-stamps A's records)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      const id = uid ? 'u:' + uid : 'guest', own = rawGet(OWNER_KEY);",
+  "to": "      const id = uid ? 'u:' + uid : 'guest'; try { rawStorage.setItem(OWNER_KEY, id); } catch (_) {} const own = rawGet(OWNER_KEY);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=GATE-MISMATCH",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-GATE-MISMATCH: none of her unkeyed records is left"
+  ]
+ },
+ {
+  "id": "r3-rs-09",
+  "slice": "r3-rs",
+  "label": "r3 gate: a member-scoped record is READ before the session settles (the façade bypassed)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const hidden = (k) => gate === 'held' && MEMBER_REC.test(String(k));",
+  "to": "const hidden = (k) => false;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=GATE-MATCH",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-GATE-READ: her pin is not read before the session settles"
+  ]
+ },
+ {
+  "id": "r3-rs-10",
+  "slice": "r3-rs",
+  "label": "r3 gate: a session that never settles (unavailable) RESTORES her records (fail open)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        if (st === 'guest') settleOwner(null);\n",
+  "to": "        if (st === 'unavailable' && gate === 'held') { settled = true; gate = 'open'; bootSteps(); }\n        if (st === 'guest') settleOwner(null);\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=GATE-UNAVAILABLE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-GATE-UNAVAILABLE: still nothing of hers"
+  ]
+ },
+ {
+  "id": "r3-rs-11",
+  "slice": "r3-rs",
+  "label": "r3 gate: a tap held before a MISMATCH is replayed after the wipe",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (mismatch) { S.held = null; if (win",
+  "to": "      if (mismatch) { if (win",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=GATE-MISMATCH",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-GATE-MISMATCH: the held tap is dropped"
+  ]
+ },
+ {
+  "id": "r3-rs-12",
+  "slice": "r3-rs",
+  "label": "r3 gate: a GUEST's device is gated too (its boot no longer as today)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    if (rawGet(OWNER_KEY) !== 'guest' && unkeyedHeld()) gate = 'held';",
+  "to": "    if (unkeyedHeld()) gate = 'held';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=GATE-GUEST",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-GATE-GUEST: the guest's location at once"
+  ]
+ },
+ {
+  "id": "r3-rs-13",
+  "slice": "r3-rs",
+  "label": "r3 gate: a cold route mounts the store before the session settles",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    if (gate === 'open') bootSteps(); else setTitle();",
+  "to": "    bootSteps();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=GATE-ROUTE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-GATE-ROUTE: no store mounted before"
+  ]
+ },
+ {
+  "id": "r3-rs-14",
+  "slice": "r3-rs",
+  "label": "r3 restart: a write AFTER the push exit still lands (the store not sealed)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      setItem: (k, v) => { if (!(gate === 'sealed' && memberKey(String(k))) && !hidden(k)) rawStorage.setItem(k, v); },",
+  "to": "      setItem: (k, v) => { if (!hidden(k)) rawStorage.setItem(k, v); },",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#173 #1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C173-1: her coordinates never land on the device"
+  ]
+ },
+ {
+  "id": "r3-rs-15",
+  "slice": "r3-rs",
+  "label": "r3 gate: «Entregar en» stays live while the boot is held (a pin write would be lost)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "busy = !!S.addrPick || gate === 'held';",
+  "to": "busy = !!S.addrPick;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=GATE-MATCH",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-GATE-MATCH: «Entregar en» disabled while held"
+  ]
+ },
+ {
+  "id": "r3-rs-16",
+  "slice": "r3-rs",
+  "label": "r3 restart: it reloads the CURRENT url (a ?pay= return re-fires)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "go(win.location.origin + '/');",
+  "to": "go(win.location.href);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=RESTART-ROOT",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-ROOT: ONE replace, to the origin root"
+  ]
+ },
+ {
+  "id": "r3-rs-17",
+  "slice": "r3-rs",
+  "label": "r3 restart: a switch says «Cerrando sesión…»",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "kind === 'switch' ? 'Cambiando de cuenta…' : 'Cerrando sesión…'",
+  "to": "'Cerrando sesión…'",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^r3 RESTART:",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-RESTART: its one line"
+  ]
+ },
+ {
+  "id": "r3-rs-18",
+  "slice": "r3-rs",
+  "label": "r3 gate (Codex #173 #4): a payment return opened on a MISMATCH is processed (her return record written back)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "loadLoc(); if (!mismatch) bootReturnNow(); bootSteps();",
+  "to": "loadLoc(); bootReturnNow(); bootSteps();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#173 #4",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C173-4: her order records are gone"
+  ]
+ },
+ {
+  "id": "r3-rs-19",
+  "slice": "r3-rs",
+  "label": "r3 restart: no overlay while the sign-out runs (her screen stays live and readable)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      leaving = true; swap(kind);\n",
+  "to": "      leaving = true;\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=RESTART-ORDER",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-ORDER: the overlay is up at once"
+  ]
+ },
+ {
+  "id": "r3-rs-20",
+  "slice": "r3-rs",
+  "label": "r3 restart: the seal also covers the push core's own device record (a token minted mid-switch is never invalidated)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const memberKey = (k) => MEMBER_REC.test(k) ||",
+  "to": "const memberKey = (k) => k === 'capp:push:v1' || MEMBER_REC.test(k) ||",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=PUSH-SHELL-11",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-11: the token minted for A while B is here is invalidated on the phone"
+  ]
+ },
+ {
+  "id": "r3-rs-21",
+  "slice": "r3-rs",
+  "label": "r3 restart: leave() skips dropMember (her in-flight reads run on until navigation, under the next session's token)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (S.member) dropMember();\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Receipt PREFETCH",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "RC-14: no receipt of Ana's requested after the switch"
   ]
  }
 ]

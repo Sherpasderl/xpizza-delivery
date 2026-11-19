@@ -1088,7 +1088,10 @@
     // and its details ONLY when the field still holds what the previous saved address filled (or is empty) — an edit is never replaced
     // r3 (advisor 11-18, rule 6c — the ONE place): a DISPATCHED flow is immutable — a pick landing during the send (or after it) never
     // re-seeds it, so «Enviando», a retry and the order screen all carry the address actually sent
-    const flowEditable = () => !!S.flow && (S.screen === 'checkout' || S.screen === 'store') && !frozenNow() && !lockedHere();
+    // Codex #173 #10: editability is dispatch ownership + the locks — every step BEFORE the send (the store, the checkout, the tip, the
+    // card entry) takes a confirmed pick; «Enviando» and after never do (a placement in flight also holds its lock)
+    const UNSENT = new Set(['store', 'checkout', 'tip', 'addcard']);
+    const flowEditable = () => !!S.flow && UNSENT.has(S.screen) && !frozenNow() && !lockedHere();
     function reseedSaved(sp) {
       const f = S.flow; if (dead || !f || !flowEditable() || !sp || !finitePin(sp) || !sp.saved || typeof sp.saved.label !== 'string') return;
       const unedited = !(f.details || '').trim() || (f.saved && f.saved.details && f.details === f.saved.details);
@@ -1097,6 +1100,16 @@
       if (unedited) f.details = det || '';
       f.saved = { label: sp.saved.label, detected: String(sp.saved.detected || ''), pinV: f.pinV, details: det };
       render();   // the checkout asks ONE quote per state (the new pin is a new state key); totalsNow refuses the old pin's quote — never a stale Total
+    }
+    // Codex #173 #5: the checkout follows the server's book after a recovery — only a flow seeded from a saved address (a pin the customer
+    // moved herself is hers); the address now in use re-seeds it; none ⇒ the seed (pin, line, unedited details) is cleared
+    function reconcileSaved(now) {
+      const f = S.flow; if (dead || !f || !f.saved || !flowEditable()) return;
+      if (now && finitePin(now) && finitePin(f.pin) && f.pin.lat === now.lat && f.pin.lng === now.lng) return;   // already the address in use
+      if (now) { reseedSaved(now); return; }
+      const unedited = !(f.details || '').trim() || (f.saved.details && f.details === f.saved.details);
+      f.pin = { lat: null, lng: null, confirmed: false }; f.pinV = (Number(f.pinV) || 0) + 1; f.geo = null; f.saved = null; if (unedited) f.details = '';
+      S.pinStepOk = false; S.outZone = false;
     }
     // «Usar mi ubicación actual»: the pin step centred on the device's fix (no fix ⇒ on the current pin / the branch)
     function pinAtDevice() {
@@ -1249,8 +1262,8 @@
       const zoneKm = (S.lastDelivery && Number.isFinite(S.lastDelivery.max_km) ? S.lastDelivery.max_km : cfg.zoneKm);
       // Entrega — ASAP only (scheduling, the «Programar» card, is S4)
       const timeCards = sched() ? schedCards(f, open, del) : `<div class="opts"><button class="opt" aria-pressed="${open}" data-act="time" data-val="asap"${open ? '' : ' disabled'}><b>Lo antes posible</b><span>${open ? esc(etaTxt(del ? 'delivery' : 'pickup')) : 'No disponible · cerrado'}</span></button></div>`;
-      const mapBlock = `<button class="map${S.outZone && del ? ' out' : ''}" data-act="pin" aria-label="Ajustar el pin en el mapa"${fxOff}>${MAP_SVG}${gmapBox('preview')}<span class="pin">${IC.pinfill}</span><span class="tag">${geoDenied ? 'Pin en el restaurante' : pinOk ? 'Pin confirmado' : 'Tu ubicación'}</span><span class="adj">Ajustar pin</span></button>
-    ${geoDenied ? `<div class="locrow">${IC.locoff}<span>Ubicación desactivada</span><button data-act="loc-on">Activar</button></div>` : ''}
+      const mapBlock = `<button class="map${S.outZone && del ? ' out' : ''}" data-act="pin" aria-label="Ajustar el pin en el mapa"${fxOff}${pickBusy() ? ' aria-disabled="true"' : ''}>${MAP_SVG}${gmapBox('preview')}<span class="pin">${IC.pinfill}</span><span class="tag">${geoDenied ? 'Pin en el restaurante' : pinOk ? 'Pin confirmado' : 'Tu ubicación'}</span><span class="adj">Ajustar pin</span></button>
+    ${geoDenied ? `<div class="locrow">${IC.locoff}<span>Ubicación desactivada</span><button data-act="loc-on"${pickBusy() ? ' aria-disabled="true"' : ''}>Activar</button></div>` : ''}
     ${S.outZone && del ? `<div class="gate" role="alert"><b>${esc(cfg.name || '')} no llega a esta dirección</b><span class="note">${Number.isFinite(zoneKm) && cfg.branch ? `Entregamos hasta ${esc(zoneKm)} km de ${esc(cfg.branch)}. ` : ''}Mové el pin a una dirección dentro de la zona, o recogé en tienda.</span><div class="row2"><button class="btn2" data-act="pin">Cambiar dirección</button><button class="btn2 dark" data-act="type" data-val="pickup">Recoger en tienda</button></div></div>` : ''}`;
       // a guest's address line (S2b-geo, MOCKUP-capp-S2b-geo-address.html A1 / b / b2): the confirmed pin's reverse-geocode; c (none,
       // pending, superseded) keeps today's copy byte for byte
@@ -1261,7 +1274,7 @@
       // restaurante» here — a saved address's pin is the address's own (rule 8). A guest keeps the pin button (v6 :1846)
       const sl = m ? savedLine(f) : '';
       const addrRow = sl ? `<div class="urow">${IC.pin}<span class="t"><b data-addr>${esc(sl)}</b><span>${pinOk ? 'Pin confirmado' : 'Tocá el mapa para ajustar el pin'}</span></span>${addrPicker() ? `<button class="act" data-act="co-addr"${fxOff}${pickBusy() ? ' aria-disabled="true"' : ''}>Cambiar</button>` : ''}</div>`
-        : `<button class="urow" data-act="pin"${fxOff}>${IC.pin}<span class="t"><b data-addr>${geoLine ? esc(geoLine) : geoDenied ? 'Mové el pin a tu puerta' : 'Tu ubicación'}</b><span>${pinOk ? 'Pin confirmado' : 'Ajustá el pin a tu dirección'}</span></span>${chev}</button>`;
+        : `<button class="urow" data-act="pin"${fxOff}${pickBusy() ? ' aria-disabled="true"' : ''}>${IC.pin}<span class="t"><b data-addr>${geoLine ? esc(geoLine) : geoDenied ? 'Mové el pin a tu puerta' : 'Tu ubicación'}</b><span>${pinOk ? 'Pin confirmado' : 'Ajustá el pin a tu dirección'}</span></span>${chev}</button>`;
       const detailsFld = `<div class="fld"><label for="f-details">Detalles adicionales <span class="req">*</span></label><input id="f-details" data-field="details" value="${esc(f.details)}" placeholder="Colonia, portón, piso, referencia…" autocomplete="off"${fxOff}></div>`;
       const detailsRow = m && !S.editDetails && (f.details || '').trim().length >= 3 ? `<div class="urow">${IC.home}<span class="t"><b>${esc(f.details)}</b><span>Detalles adicionales</span></span><button class="act" data-act="editdetails"${fxOff}>Cambiar</button></div>` : '';
       const entrega = `<section class="fsec" aria-label="Entrega"><h2>Entrega</h2>
@@ -2013,6 +2026,7 @@
       if (a === 'addmore') { toStore(); return true; }
       if (a === 'time') return true;   // ASAP is the only option in S2
       if (a === 'co-addr') { const p = addrPicker(); if (!p || frozenNow() || pickBusy()) return true; S.pickDir = { rows: p.rows(), sel: p.sel() }; openLayer('addrpick'); return true; }   // C-DIR-1 (b): rows frozen per open (rule 7)
+      if ((a === 'pin' || a === 'loc-on') && pickBusy()) return true;   // Codex #173 #6: a pick in flight owns the address — no pin / location control competes
       if (a === 'pin') { S.pinDraft = finitePin(f.pin) ? { lat: f.pin.lat, lng: f.pin.lng } : (cfg.loc && finitePin(cfg.loc) ? { lat: cfg.loc.lat, lng: cfg.loc.lng } : null); openLayer('pin'); return true; }
       if (a === 'loc-on') { S.geo = null; requestGeo(); return true; }
       if (a === 'feeinfo') { openLayer('feeinfo'); return true; }
@@ -2535,24 +2549,15 @@
       // direcciones r3: the host's pick changed state — undefined: repaint (started / in flight); false: it failed (the sheet's sand line is
       // the host's); null: the address in use was tapped (nothing to change); a seed: the 200 — the sheet closes and an EDITABLE flow is
       // re-seeded with the address now in use (reseedSaved refuses a dispatched one)
-      addrSettled(x) {
+      addrSettled(x, now) {
         if (dead) return;
         if ((x === null || (x && typeof x === 'object')) && S.layerKind === 'addrpick') closeLayer();
         if (x && typeof x === 'object') reseedSaved(x);
+        // Codex #173 #5: a refused pick whose owned re-read ADOPTED a book (now: the saved address now in use, or null) reconciles an
+        // editable checkout seeded from a saved address — re-seeded with the one in use, or its seed cleared — and an open sheet's rows
+        if (x === false && now !== undefined) { reconcileSaved(now); if (S.layerKind === 'addrpick') { const p = addrPicker(); if (p) S.pickDir = { rows: p.rows(), sel: p.sel() }; } }
         if (S.layerKind === 'addrpick') renderLayer();
         if (S.screen === 'checkout') render();
-      },
-      forgetMember() {
-        try { if (api && typeof api.identityReset === 'function') api.identityReset(); } catch (_) {}   // r3 (i): her order ids are void (before the host clears her records)
-        if (dead) return;
-        const sending = S.screen === 'sending';
-        if (S.layerKind === 'addrpick' || S.layerKind === 'pin') closeLayer();
-        S.pickDir = null; dropPinMap();
-        const f = S.flow;
-        if (f) { f.pin = { lat: null, lng: null, confirmed: false }; f.pinV = (Number(f.pinV) || 0) + 1; f.geo = null; f.details = ''; f.saved = null; }
-        S.pinStepOk = false; S.outZone = false;
-        if (sending) { S.sentOrder = null; S.sendTotals = null; S.sendHint = null; return; }   // her device record of the sent order: the host's clearOrderRecords (r3 (i), its ONE owner)
-        render();
       },
       // D-2: the viewport crossed the breakpoint — re-render THIS screen in the other view; every piece of state (cart, screen, flow,
       // open layer, locks, refusals) lives in S / the records and is untouched; render() keeps focus, caret and the checkout scroll

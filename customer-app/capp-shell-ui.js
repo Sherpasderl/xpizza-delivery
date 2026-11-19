@@ -28,6 +28,12 @@
   const DIR_EVERY_MS = 60 * 1000, AVAIL_EVERY_MS = 30 * 1000, MENU_LRU = 8, RECENT_MAX = 5;
   const MENU_KEY = (rid) => `capp:menu:${rid}`, AVAIL_KEY = (rid) => `capp:avail:${rid}`, LRU_KEY = 'capp:menu:lru', RECENT_KEY = 'capp:recent', LOC_KEY = 'capp:guest_loc';
   const g = typeof self !== 'undefined' ? self : {};
+  // r3 (owner 11-19, Codex #173 → rule 36: wipe + restart): the device data of whoever holds the app. MEMBER_REC = the UNKEYED records
+  // (no uid in them); UID_REC = the per-uid ones (the uid in the key); the profile cache and the completion mark carry it in the value.
+  // OWNER_KEY stamps whose the unkeyed records are: 'guest' or 'u:{uid}'
+  const OWNER_KEY = 'capp:member_owner', COMPLETE_KEY = 'capp:member_complete', SNAPSHOT_KEY = 'sherpa_reload_snapshot';
+  const MEMBER_REC = /^capp:(?:active_order|rate_nudge|rate_done|return|guest_loc|recent|store_handoff|[^:]+:(?:pending_place|pending_pay|placed|cart|sent_order))$/;
+  const UID_REC = /^capp:(?:addr|fav):(.+)$/;
   const pick = (opts, name, file) => opts[name] || g[name] || (typeof require === 'function' ? require(file) : null);
 
   function mount(doc, opts) {
@@ -58,7 +64,24 @@
     const syncBar = () => { try { const sb = win && win.Capacitor && win.Capacitor.Plugins ? win.Capacitor.Plugins.StatusBar : null; if (!Theme || !sb || typeof sb.setStyle !== 'function') return; const p = sb.setStyle({ style: Theme.barStyle(win) }); if (p && typeof p.catch === 'function') p.catch(() => {}); } catch (_) {} };
     const unTheme = Theme && win ? Theme.subscribe(win, () => { syncBar(); const pm = pinMapRef(); if (pm && pm.m && typeof pm.m.setOptions === 'function') { try { pm.m.setOptions({ styles: themeStyles() }); } catch (_) {} } }) : null;
     syncBar();
-    const storage = o.storage !== undefined ? o.storage : (() => { try { return win.localStorage; } catch (_) { return null; } })();
+    const rawStorage = o.storage !== undefined ? o.storage : (() => { try { return win.localStorage; } catch (_) { return null; } })();
+    // r3: THE device store everything in the app goes through (the store, capp-api, push, the directory). A GATED boot (its unkeyed
+    // records stamped to a member, or not stamped at all) neither reads nor writes them until its identity settles; a LEAVING app
+    // writes no member record at all (the wipe below goes to the raw store). Device records (menus, push's own queue) are untouched
+    let gate = 'open';   // 'held' | 'open' | 'sealed'
+    const hidden = (k) => gate === 'held' && MEMBER_REC.test(String(k));
+    const memberKey = (k) => MEMBER_REC.test(k) || UID_REC.test(k) || k === 'capp:member_profile' || k === COMPLETE_KEY || k === OWNER_KEY;
+    const storage = rawStorage ? {
+      getItem: (k) => (hidden(k) ? null : rawStorage.getItem(k)),
+      setItem: (k, v) => { if (!(gate === 'sealed' && memberKey(String(k))) && !hidden(k)) rawStorage.setItem(k, v); },
+      removeItem: (k) => { if (!hidden(k)) rawStorage.removeItem(k); },
+      key: (i) => rawStorage.key(i),
+      get length() { return rawStorage.length; },
+    } : null;
+    const rawGet = (k) => { try { return rawStorage ? rawStorage.getItem(k) : null; } catch (_) { return null; } };
+    const rawDel = (k) => { try { rawStorage.removeItem(k); } catch (_) {} };
+    const rawKeys = () => { const ks = []; try { for (let i = 0; rawStorage && i < rawStorage.length; i++) { const k = rawStorage.key(i); if (k) ks.push(k); } } catch (_) {} return ks; };
+    const unkeyedHeld = () => rawKeys().some((k) => MEMBER_REC.test(k));
     // state 4 (MOCKUP-capp-native-store-update): the INSTALLED app on a NEW build (its stamp vs the last build this device ran) ⇒ the
     // cart says «App actualizada…» once (closed ⇒ gone); the device's build is recorded at once (a reopen is never «updated» again)
     let appUpdated = false, curBuild = null;
@@ -106,6 +129,12 @@
     // Cuenta lands on the member's Cuenta, which G7 draws
     const SU = runtime.signup && runtime.signup.firebase && runtime.signup.endpoints ? runtime.signup : null;
     let auth = o.auth || null, fbAuth = null, signup = null;
+    // r3: the boot's GATE — whose are the unkeyed records? A guest's ('guest') paint at once; a member's, or nobody's (no stamp), wait for
+    // the first settled identity (settleOwner). Nothing on the device yet ⇒ a guest's device. Without sign-up the only identity is a guest
+    let settled = false, bootDone = false;
+    if (rawGet(OWNER_KEY) !== 'guest' && unkeyedHeld()) gate = 'held';
+    else if (rawGet(OWNER_KEY) === null) { try { rawStorage.setItem(OWNER_KEY, 'guest'); } catch (_) {} }
+    if (!SU) settleOwner(null);
     const authNow = () => { try { return auth ? auth.state() : 'unresolved'; } catch (_) { return 'unresolved'; } };
     // PLAN-capp-store-promo-feeinfo r0: a MOUNTED store reads the same tri-state (its header's promo pill / «Envío gratis») and is
     // told when it changes — the shell's own repaint never reaches a store's #app
@@ -130,7 +159,8 @@
       held: null, heldErr: false, store: null, layer: null, locDenied: false, loc: null, neutral: null, ret: null, retAssoc: null, order: null };
     let awaitOrderRoute = null;   // a /r/{rid}/pago reload waiting for its order's owner to resolve (identityChanged)
     // ── the guest location (r1 §2.3, owned by the SHELL, persisted per device): { lat, lng, confirmed, source: 'gps'|'pin', v } ──
-    { const l = readJ(LOC_KEY); if (l && Number.isFinite(l.lat) && Number.isFinite(l.lng) && (l.source === 'gps' || l.source === 'pin')) S.loc = { lat: l.lat, lng: l.lng, confirmed: l.confirmed === true, source: l.source, v: Number(l.v) || 1 }; }
+    function loadLoc() { const l = readJ(LOC_KEY); if (l && Number.isFinite(l.lat) && Number.isFinite(l.lng) && (l.source === 'gps' || l.source === 'pin')) S.loc = { lat: l.lat, lng: l.lng, confirmed: l.confirmed === true, source: l.source, v: Number(l.v) || 1 }; }
+    loadLoc();
     function setLoc(lat, lng, source) {
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
       if (S.loc && S.loc.lat === lat && S.loc.lng === lng && S.loc.source === source) return;
@@ -300,12 +330,74 @@
     // mark names its uid; anything else (no mark — e.g. a crash between the SDK persisting the uid and «Listo» —, another uid) is
     // signed out and never applied, restore after restore until the sign-out is CONFIRMED (the 'guest' callback). An ordinary sign-out
     // clears the mark. (The app has never been live: no session predates the mark — nothing to grandfather.)
-    const COMPLETE_KEY = 'capp:member_complete';
     const completeUid = () => { try { const v = JSON.parse(storage.getItem(COMPLETE_KEY) || 'null'); return v && v.v === 1 && typeof v.uid === 'string' ? v.uid : null; } catch (_) { return null; } };
     const markComplete = (uid) => { try { storage.setItem(COMPLETE_KEY, JSON.stringify({ v: 1, uid })); } catch (_) {} };
     const clearComplete = () => { try { storage.removeItem(COMPLETE_KEY); } catch (_) {} };
+    // ── r3 (owner 11-19; Codex #173 → rule 36): the device's data belongs to ONE identity at a time ──
+    // The FIRST settled identity (a guest, or a member her completion mark names) is checked against the stamp: 'guest' is anyone's (a
+    // guest who signs in keeps her cart and location), 'u:{uid}' only that member's. A mismatch — or no stamp at all — wipes it before
+    // anything of it is read (a gated boot read nothing of it: no restart); the per-uid records of anyone else go either way
+    let seenUid = null, leaving = false;
+    function dropUidKeyed(keep) {
+      for (const k of rawKeys()) { const m = UID_REC.exec(k); if (m && m[1] !== keep) rawDel(k); }
+      for (const k of [CappDeviceAccount.PROFILE_KEY, COMPLETE_KEY]) {
+        const raw = rawGet(k); if (raw === null) continue;
+        let v = null; try { v = JSON.parse(raw); } catch (_) { v = null; }
+        if (!keep || !v || v.uid !== keep) rawDel(k);
+      }
+    }
+    function wipeIdentity(keep) {
+      for (const k of rawKeys()) if (MEMBER_REC.test(k)) rawDel(k);
+      dropUidKeyed(keep); rawDel(OWNER_KEY);
+      try { const ss = win && win.sessionStorage; if (ss) ss.removeItem(SNAPSHOT_KEY); } catch (_) {}   // a self-update snapshot (cart + flow) never outlives her
+    }
+    function settleOwner(uid) {
+      if (settled) return; settled = true;
+      const id = uid ? 'u:' + uid : 'guest', own = rawGet(OWNER_KEY);
+      const mismatch = own !== 'guest' && own !== id && unkeyedHeld();
+      if (mismatch) wipeIdentity(uid); else dropUidKeyed(uid);
+      try { rawStorage.setItem(OWNER_KEY, id); } catch (_) {}   // stamped only AFTER the check (or the wipe)
+      if (gate !== 'held') return;
+      gate = 'open'; if (!bootDone) return;   // settled before the boot ran: its steps run as on any open boot
+      // the gated boot's held steps: on a MATCH, what the boot deferred (the location, the searches, a payment return, the active order,
+      // the cold route, the store handoff) and a held store tap, once; on a MISMATCH the held tap is dropped (it was made before the wipe)
+      // a payment return opened on a MISMATCH was the wiped identity's: never processed, its search stripped (nothing re-fires)
+      if (mismatch) { S.held = null; if (win && win.history && win.location && win.location.search) { try { win.history.replaceState(win.history.state, '', win.location.pathname + win.location.hash); } catch (_) {} } }
+      S.recent = (readJ(RECENT_KEY) || []).filter((x) => typeof x === 'string').slice(0, RECENT_MAX);
+      loadLoc(); if (!mismatch) bootReturnNow(); bootSteps(); checkHeld(); renderNow();
+    }
+    // a member admitted here: the stamp names her (her session settled first — a 'guest' stamp is adopted, as a guest's sign-in keeps)
+    function ownBy(uid) { seenUid = uid; if (!settled) settleOwner(uid); else { try { rawStorage.setItem(OWNER_KEY, 'u:' + uid); } catch (_) {} } }
+    // the overlay (MOCKUP-capp-identity-restart): the whole screen in the app's background, a small ring and one line; every tap blocked
+    function swap(kind) {
+      let el = $('swap');
+      if (!kind) { if (el) el.remove(); app.removeAttribute('inert'); return; }
+      if (!el) { el = doc.createElement('div'); el.id = 'swap'; el.className = `app swap${app.classList.contains('dark') ? ' dark' : ''}`; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite'); (app.parentNode || doc.body).appendChild(el); }
+      el.innerHTML = `<span class="ring" aria-hidden="true"></span><p>${kind === 'switch' ? 'Cambiando de cuenta…' : 'Cerrando sesión…'}</p>`;
+      app.setAttribute('inert', '');
+    }
+    // the admitted member LEFT: the overlay, the push exit (pre; false = the sign-out was refused ⇒ nothing changes), then the device
+    // writes nothing more, forgets every record of hers and the app starts again at its root (no search, no hash: a payment return
+    // never re-fires) — nothing of hers survives in memory. keep: the incoming member's own per-uid records (a switch)
+    async function leave(kind, keep, pre) {
+      if (leaving) return true;
+      leaving = true; swap(kind);
+      // her identity ends NOW in memory too (the one hook, dropMember): every in-flight read, token and timer of hers is void for the
+      // seconds until the page is replaced — nothing is sent as her, or under the next session's token for her
+      if (S.member) dropMember();
+      let ok = true; try { if (pre) ok = (await pre()) !== false; } catch (_) { ok = false; }
+      if (!ok) {   // the sign-out was refused: she is still the member — re-admitted, the overlay gone
+        leaving = false; swap(null);
+        const u = auth && auth.user ? auth.user() : null; if (u && u.uid) applyMember(CappDeviceAccount.readProfile(storage, u.uid) || { uid: u.uid });
+        return false;
+      }
+      gate = 'sealed'; wipeIdentity(keep);
+      const go = o.replace || ((u) => win.location.replace(u));
+      try { go(win.location.origin + '/'); } catch (_) {}
+      return true;
+    }
     async function signedIn(d) {
-      markComplete(d.uid);
+      markComplete(d.uid); ownBy(d.uid);
       CappDeviceAccount.remember(storage, d.phone);   // §4c: the device marker (full E.164), kept across ordinary sign-outs
       CappDeviceAccount.rememberProfile(storage, d);   // the member's own profile, for a RESTORED session's autofill
       await applyMember(d);
@@ -411,10 +503,11 @@
     async function signOutNow({ forget = false } = {}) {
       if (!fbAuth) return;
       if (forget) CappDeviceAccount.forget(storage);
-      signingOut = true; dropMember(); renderNow();
-      await pushAuthExit();   // the server forgets THIS device's token while the session's ID token is still valid (rule 20)
-      try { await fbAuth.signOut(); } catch (_) { signingOut = false; const u = auth && auth.user ? auth.user() : null; if (u && u.uid) applyMember(CappDeviceAccount.readProfile(storage, u.uid) || { uid: u.uid }); renderNow(); return; }
-      signingOut = false; renderNow();
+      // r3: the quiet overlay at once, then the restart; the server forgets THIS device's token while the session's ID token is still
+      // valid (rule 20). A rejected sign-out changes nothing: the overlay goes, she is still the member
+      signingOut = true;
+      const ok = await leave('signout', null, async () => { await pushAuthExit(); try { await fbAuth.signOut(); return true; } catch (_) { return false; } });
+      signingOut = false; if (!ok) renderNow();
     }
     // ── push (MOCKUP-capp-push r1): a MEMBER's, on a native phone (the token is registered under the member's ID token) ──
     let push = null;
@@ -585,6 +678,12 @@
       auth = CappAuthState.createAuthState({ subscribe: fbAuth.subscribe, timers: T });
       auth.onChange((st) => {
         storeAuth();
+        // r3 (owner 11-19): a member ADMITTED here left — a sign-out (ours or the SDK's) or another account — ⇒ the restart, never an
+        // in-place reset (the push exit first: the device forgets her token while a session still can)
+        const u0 = st === 'member' && auth.user ? auth.user() : null;
+        if (seenUid && st === 'guest') { leave('signout', null, () => pushAuthExit()); return; }
+        if (seenUid && u0 && u0.uid && u0.uid !== seenUid) { const nu = u0.uid; leave('switch', nu, () => { const c = runtime.push === true ? pushCore() : null, h = c && c.available() ? c.held() : null; return h && h.live && h.owner !== nu ? pushForget() : null; }); return; }
+        if (st === 'guest') settleOwner(null);
         if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearComplete(); pushAuthExit(); pushSettleSoon(); }   // a CONFIRMED sign-out: no personal data stays on show
         if (st !== 'member') { dropMember(); schedule(); return; }
         const u = auth.user && auth.user();
@@ -595,14 +694,13 @@
         // a RESTORED session without THIS uid's completion mark: never a member; signed out (a rejected sign-out is retried at the next
         // restore — nothing is cleared until the 'guest' callback confirms it)
         // (Codex r1 P1-4: the device's token is forgotten FIRST, while this session's token is still valid — bounded, then signed out)
+        if (u && u.uid && completeUid() !== u.uid && seenUid) { leave('signout', null, () => pushAuthExit().then(() => fbAuth.signOut()).then(() => true, () => true)); return; }
         if (u && u.uid && completeUid() !== u.uid) { dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {})); schedule(); return; }
+        if (u && u.uid) settleOwner(u.uid);   // r3: her completion mark names her ⇒ the device's data is checked against the stamp
         // a session the SDK RESTORED (no sheet ran): the cached profile of THIS uid, at once (cached-first)
-        // Codex Pedidos r2 P1: a switch to ANOTHER uid drops the previous member SYNCHRONOUSLY (before any token await) — whatever was
-        // issued or shown for them is void before the new identity is admitted
-        if (u && u.uid && S.member && S.member.uid !== u.uid) dropMember();
         // a token another person owns (a live switch, OR a cold restore as someone else — Codex r1 P1-4) is forgotten before admission
         { const c = runtime.push === true ? pushCore() : null, h = c && c.available() ? c.held() : null; if (h && h.live && h.owner !== (u && u.uid)) pushForget(); }
-        if (u && u.uid && (!S.member || S.member.uid !== u.uid)) { const c = CappDeviceAccount.readProfile(storage, u.uid); applyMember(c || { uid: u.uid }); pushSettleSoon(); return; }
+        if (u && u.uid && (!S.member || S.member.uid !== u.uid)) { ownBy(u.uid); const c = CappDeviceAccount.readProfile(storage, u.uid); applyMember(c || { uid: u.uid }); pushSettleSoon(); return; }
         pushSettleSoon();
         schedule();
       });
@@ -765,6 +863,7 @@
     }
     function checkHeld() {
       const h = S.held; if (!h || S.store) return false;
+      if (gate === 'held') return false;   // r3: a gated boot holds the tap (pressed) until its identity settles (settleOwner)
       const st = dir.state(h.rid), e = cache.peek(h.rid);
       if (st === 'unknown' && dir.view().phase === 'cold') return false;   // the directory has not answered yet (a return entered at boot): wait
       if (st === 'gone' || st === 'unknown') { S.held = null; S.reorder = null; S.carry = null; schedule(); return false; }
@@ -849,7 +948,7 @@
       return { updateLine: hidden !== dayOf(Number(nowMs())), updateRow: runtime.store.name };
     }
     // the top bar's two live facts — ONE source for Inicio's vm and the store page's bar (C-6c)
-    const addrVm = () => { const sv = savedInUse(), busy = !!S.addrPick; return sv ? { short: sv.label, line: `${sv.label} · ${sv.detected}`, busy } : { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección', busy }; };   // r3: busy = a pick in flight (the pill waits)   // v6 :1507-1508
+    const addrVm = () => { const sv = savedInUse(), busy = !!S.addrPick || gate === 'held'; return sv ? { short: sv.label, line: `${sv.label} · ${sv.detected}`, busy } : { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección', busy }; };   // r3: busy = a pick in flight (the pill waits)   // v6 :1507-1508
     const memberInitial = () => (authNow() === 'member' && S.member && S.member.name ? String(S.member.name).trim().charAt(0).toUpperCase() || null : null);
     // C-6c (D-3 r3 frame 2a): the desktop store page carries the shell's top bar — no tab is current there
     const storeChrome = () => CappHome.desknavHtml({ tab: 'store', q: '', addr: addrVm(), memberInitial: memberInitial() });
@@ -1229,7 +1328,7 @@
     // non-200 — offline, the 12 s transport cap, a refusal, a 409 (whose body is trusted for nothing but «stale») — ends in ONE owned
     // re-read (idTokenOwned, its uid = the book's): the pick is the re-read's selection ⇒ success; else the sand line on the list where it
     // was made (S.addrErr) and the re-read book is the device's. A pick the identity change overtook is void
-    let bookGen = 0, bookSeq = 0, dirShown = null, memberWho = null;
+    let bookGen = 0, bookSeq = 0, dirShown = null;
     S.book = null; S.locPick = null; S.addrPick = null; S.addrErr = null;
     const bookSave = () => { if (S.book && S.book.who) writeJ(ADDR_KEY(S.book.who), { v: 2, addresses: S.book.addresses, default_address: S.book.sel, default_address_rev: S.book.rev }); };
     const bookSel = () => (S.book && S.book.sel ? S.book.addresses.find((a) => a.id === S.book.sel) || null : null);
@@ -1247,30 +1346,29 @@
     function addressPicker() {   // a function declaration: a store mounted during boot (a restored route) reaches it before this line runs
       return { rows: () => (S.member && S.book ? CappHome.bookOrder(S.book.addresses, S.book.sel) : []), sel: () => savedSelId(),
         sheetHtml: (dir) => CappHome.addrSheetHtml({ ...dir, ...pickVm('sheet') }), pending: () => !!S.addrPick,
-        use: (id) => { if (!(S.member && S.book && S.book.addresses.some((a) => a.id === id))) return false; selectAddr(id, 'sheet'); return true; },
+        use: (id) => selectAddr(id, 'sheet'),   // Codex #173 #12 (6c): ONE validation — selectAddr's
         dismiss: () => { if (S.addrErr === 'sheet') S.addrErr = null; } };
     }
-    const seedNow = () => { const a = savedInUse(); return a ? { lat: a.lat, lng: a.lng, confirmed: true, saved: { label: a.label, detected: a.detected, details: a.details } } : S.loc; };
-    // direcciones r3 (c) (owner 11-18; Codex #153 #3): the PREVIOUS member left (a sign-out or a switch) — a hard reset of what she left on
-    // this device and screen: Inicio's «Entregar en» sheet, the location (S.loc and its persisted copy — her confirmed pin may be in it),
-    // and the open checkout's member-derived state (forgetMember). A guest signing in keeps the guest's own location
-    function memberLeft() {
-      if (S.layer === 'addr') closeLayer(false);
-      S.loc = null; S.locPick = null; try { storage && storage.removeItem(LOC_KEY); } catch (_) {}
-      const sending = !!(S.store && S.store.ui && S.store.ui.state && S.store.ui.state.screen === 'sending');
-      try { if (S.store && S.store.ui && typeof S.store.ui.forgetMember === 'function') S.store.ui.forgetMember(); } catch (_) {}
-      clearOrderRecords();
-      // advisor ruling 11-18: «Enviando» never outlives the identity — the mount goes (its late reply renders nothing) and Inicio shows
-      if (sending) { unmountStore(); nav.tab({ name: 'home' }); }
-    }
+    const savedSeed = () => { const a = savedInUse(); return a ? { lat: a.lat, lng: a.lng, confirmed: true, saved: { label: a.label, detected: a.detected, details: a.details } } : null; };
+    const seedNow = () => savedSeed() || S.loc;
     // a served book (getMyProfile's or the device copy's) with its revision — a book without a valid revision is no book (never guessed)
     const bookFrom = (uid, b) => (b && Array.isArray(b.addresses) && Number.isSafeInteger(b.default_address_rev) && b.default_address_rev >= 0
       ? { who: uid, addresses: b.addresses, sel: b.default_address, rev: b.default_address_rev } : null);
     // the OWNED read: the token's SDK user must still be the book's member when it arrives — a switch landing mid-read never fetches (or
     // stores) another member's book under hers (Codex #153 #1). A read that started before a pick settled never overrides that pick
+    // Codex #173 #7: an owned-token wait is BOUNDED by the transport's own cap (CappSignupApi.TIMEOUT_MS): a held SDK never holds the
+    // picker — on expiry it is no token (a pick settles as UNKNOWN ⇒ the owned re-read, bounded the same way); a late token lands on nothing
+    function ownedToken() {
+      return new Promise((res) => {
+        let done = false, t = null; const end = (v) => { if (done) return; done = true; if (t !== null) T.clearTimeout(t); res(v); };
+        t = T.setTimeout(() => end(null), suMod && suMod.TIMEOUT_MS > 0 ? suMod.TIMEOUT_MS : 12000);
+        let p; try { p = fbAuth.idTokenOwned(); } catch (_) { p = null; }   // asked NOW (the token queue's order is the reads' order)
+        Promise.resolve(p).then(end, () => end(null));
+      });
+    }
     async function readBook(gen, uid) {
       const seq0 = bookSeq;
-      let own = null; try { own = await fbAuth.idTokenOwned(); } catch (_) { own = null; }
+      const own = await ownedToken();
       if (dead || gen !== bookGen || !own || own.uid !== uid || !own.token) return null;
       const r = await suApi.getMyProfile({ idToken: own.token });
       if (dead || gen !== bookGen || !S.book || S.book.who !== uid || !r || r.ok !== true) return null;
@@ -1279,21 +1377,8 @@
       if (S.locPick !== 'device') S.locPick = S.book.sel ? 'saved' : null;
       bookSave(); schedule(); return b;
     }
-    // r3 (advisor 11-18 (i), money + identity): every per-store ORDER record of the member who left — pending_place (an SDK one too: no
-    // exception), pending_pay, placed, cart, sent_order, for EVERY store — and capp:return leave the device. The server owns completion
-    // (the hosted webhook, sweepStalePending, the SDK sweeper), so nothing of a payment depends on them; the open store's API voided her
-    // order ids first (forgetMember), so a late reply never writes them back
-    const ORDER_REC = /^capp:[^:]+:(?:pending_place|pending_pay|placed|cart|sent_order)$/;
-    function clearOrderRecords() {
-      if (!storage) return;
-      const ks = new Set([CappShell.RETURN_KEY]);
-      try { for (let i = 0; i < storage.length; i++) { const k = storage.key(i); if (k && ORDER_REC.test(k)) ks.add(k); } } catch (_) {}
-      for (const k of ks) { try { storage.removeItem(k); } catch (_) {} }
-    }
     function bookIdentity() {
       const uid = S.member && S.member.uid ? S.member.uid : null;
-      const prev = memberWho; memberWho = uid;
-      if (prev && prev !== uid) memberLeft();
       if (S.book && S.book.who === uid) return;
       if (S.book && S.book.who) { try { storage && storage.removeItem(ADDR_KEY(S.book.who)); } catch (_) {} }
       bookGen++; S.book = null; dirShown = null; S.locPick = null; S.addrPick = null; S.addrErr = null;
@@ -1305,37 +1390,40 @@
       T.setTimeout(() => { if (!dead && gen === bookGen) readBook(gen, uid); }, 0);   // after paint: never awaited by a render
     }
     function selectAddr(id, surface) {
-      if (S.addrPick || !S.member || !S.book || !S.book.addresses.some((a) => a.id === id) || !suApi || !fbAuth) return;
-      if (id === S.book.sel) { if (surface === 'sheet' && S.store && S.store.ui && typeof S.store.ui.addrSettled === 'function') S.store.ui.addrSettled(null); else if (S.layer === 'addr') closeLayer(); return; }
-      if (!Number.isSafeInteger(S.book.rev)) return;   // the server's pair is not known yet (the first read has not landed)
+      if (S.addrPick || !S.member || !S.book || !S.book.addresses.some((a) => a.id === id) || !suApi || !fbAuth) return false;
+      // Codex #173 #8: the address already in use is picked like any other — through the server's CAS (the write is the fence a late
+      // older write meets; its 200 puts the saved address back in use over a device location)
+      if (!Number.isSafeInteger(S.book.rev)) return false;   // the server's pair is not known yet (the first read has not landed)
       const uid = S.book.who, gen = bookGen, body = { id, expected_rev: S.book.rev, expected_default: S.book.sel };
       S.addrErr = null; S.addrPick = { id, surface }; bookSeq++; pickPaint();
       (async () => {
-        let own = null; try { own = await fbAuth.idTokenOwned(); } catch (_) { own = null; }
+        const own = await ownedToken();
         const live = () => !dead && gen === bookGen && !!S.addrPick;   // an identity change voids it (bookGen); only ONE pick can be in flight
         let r = { ok: false, reason: 'offline' };
         if (live() && own && own.uid === uid && own.token) r = await suApi.useMyAddress({ idToken: own.token, ...body });
         if (!live()) return;
-        let won = false;
+        let won = false, adopted = false;
         if (r.ok === true && r.default_address === id && Number.isSafeInteger(r.default_address_rev)) {
           S.book = { ...S.book, sel: id, rev: r.default_address_rev }; won = true;
         } else {
           const b = await readBook(gen, uid);
           if (!live()) return;
-          won = !!(b && b.sel === id);
+          won = !!(b && b.sel === id); adopted = !!b && S.book === b;
         }
         S.addrPick = null; bookSeq++;
         if (won) { S.locPick = 'saved'; bookSave(); } else S.addrErr = surface;
         if (S.layer === 'addr' && won) closeLayer();
-        pickPaint(won);
+        pickPaint(won, adopted);
       })();
+      return true;
     }
     // the pick's state reaches every surface: the shell's (Inicio, «Direcciones», its sheet) and an open store's (its sheet, «Cambiar»;
     // a 200 re-seeds its checkout — never a dispatched flow, the store's own rule)
-    function pickPaint(settled) {
+    function pickPaint(settled, adopted) {
+      if (S.layer === 'addr') renderLayer();   // Codex #173 #9: Inicio's open «Entregar en» sheet repaints too (a screen render keeps the layer)
       schedule();
       const ui = S.store && S.store.ui;
-      if (ui && typeof ui.addrSettled === 'function') { try { ui.addrSettled(settled === true ? seedNow() : settled === false ? false : undefined); } catch (_) {} }
+      if (ui && typeof ui.addrSettled === 'function') { try { ui.addrSettled(settled === true ? seedNow() : settled === false ? false : undefined, settled === false && adopted ? savedSeed() : undefined); } catch (_) {} }
     }
     function identityChanged() {
       bookIdentity();   // C-DIR-1: the previous member's book leaves the device and every surface
@@ -1905,7 +1993,7 @@
       const a = t.dataset.act;
       if (!t.closest('#layer')) lastTap = { act: a, oid: t.dataset.oid || null };   // C-5 r2: where a sheet's focus returns
       if (a && a.startsWith('rate-') && rateAct(a, t)) return;   // C-2: the rating sheet and the Pedidos rows' entries
-      if (S.addrPick && ADDR_ACTS.has(a)) return;   // r3: ONE pick in flight — every address control waits for the server's answer
+      if ((S.addrPick || gate === 'held') && ADDR_ACTS.has(a)) return;   // r3: ONE pick in flight — every address control waits for the server's answer
       if (a === 'addr' && S.store) { nav.tab({ name: 'home' }); if (!S.store && S.tab === 'home') openLayer('addr'); return; }   // the address is the shell's: Inicio, with its sheet up
       // the Cuenta tab: with the guest rules ON (runtime.guestCardOnly), a guest's (and an unresolved) is frame 5b; a member's is a
       // later slice. Flag absent ⇒ exactly the S7a-2 behaviour: a host event (Codex guest r1 #3)
@@ -2010,7 +2098,7 @@
     // ── a hosted-checkout return (S7a-1 r2 §1.5 / r3 §2): its owner from EXACT local records only. One owner ⇒ that store is entered
     //    with the return (held until it is enterable); none / several on a fresh return ⇒ the neutral surface (frame 11); a stored
     //    handoff with no owner never re-shows it on later boots (it is kept, untouched, for its authoritative outcome) ──
-    {
+    function bootReturnNow() {
       const search = o.search !== undefined ? String(o.search || '') : (win && win.location ? win.location.search : '');
       // candidates: the stored directory, the menu LRU, and every store that holds a placement / pay record on this device (a cold
       // boot has no directory yet); ownership itself is decided by resolveOwner on the EXACT records
@@ -2024,6 +2112,7 @@
         S.ret = { rid: br.owner, search: '?' + q.toString(), handoff: h };
       } else if (br && br.handoff && (br.mode === 'persisted' || br.mode === 'memory')) S.neutral = { order: br.handoff.order };
     }
+    if (gate === 'open') bootReturnNow();   // r3: a GATED boot shows nothing of a return until its identity settles (bootIdentity)
     app.classList.add('app');
     if (view) app.classList.toggle('desk', view.desk());   // D-2: BEFORE the first paint (no pop-in)
     const unView = view ? view.subscribe((d) => {
@@ -2036,23 +2125,30 @@
     renderNow();
     dir.revalidate();
     loadMenus();
-    if (S.ret) enter(S.ret.rid, null);
-    // D-4a §3: a payment return OWNS the boot (S.ret / S.neutral) — hydration runs only when the boot found NO return
-    booted = true;
-    restoreActive();   // the device's active order, before the boot's route decision (a reload of /r/{rid}/pago lands on it)
-    if (routing && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();
-    // back from the store on a NEW build (state 4): the store left for, its cart open — never on a payment return (that owns the boot)
-    if (!S.ret && !S.neutral) { const rid = pendingHandoff(); if (rid) { appUpdated = true; S.reopenCart = rid; enter(rid); } }   // ANY return (persisted / memory / resumed, owned or not) owns the boot
+    // Codex code r2 (inverted, one check): a pending cold link is retried ONLY while the user has done NOTHING since hydration began
+    // — ANY gesture (a tap, a key, typing; in the store or the shell: its search, a category, a sheet, an in-app back, a blocked
+    // exit) cancels it through the same cancelRoute / navGen, BEFORE any retry can fire. The router itself dispatches no events.
+    // r3: on a GATED boot the hydration waits for the identity — a gesture made while it waits voids the cold link the same way
+    const USER_INTENT = ['pointerdown', 'click', 'keydown', 'input'];
+    let gestured = false;
+    const onUserIntent = () => { if (dead) return; if (gate === 'held') gestured = true; if (pendingRoute || awaitOrderRoute) cancelRoute(); };
+    // the boot's member-scoped steps: at once on an open boot; on a GATED one, once its identity settles on the stamp's owner (settleOwner)
+    function bootSteps() {
+      if (S.ret) enter(S.ret.rid, null);
+      // D-4a §3: a payment return OWNS the boot (S.ret / S.neutral) — hydration runs only when the boot found NO return
+      booted = true;
+      restoreActive();   // the device's active order, before the boot's route decision (a reload of /r/{rid}/pago lands on it)
+      if (routing && !gestured && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();
+      // back from the store on a NEW build (state 4): the store left for, its cart open — never on a payment return (that owns the boot)
+      if (!S.ret && !S.neutral) { const rid = pendingHandoff(); if (rid) { appUpdated = true; S.reopenCart = rid; enter(rid); } }   // ANY return (persisted / memory / resumed, owned or not) owns the boot
+    }
+    if (gate === 'open') bootSteps(); else setTitle();
+    bootDone = true;
     // a device Back leaves the sentinel: the nav (its listener runs first) re-pushes it — inheriting the PREVIOUS entry's URL — and
     // a blocked back renders nothing; this listener re-reflects the screen actually shown (pathname only)
     const onPopReflect = () => { if (dead) return; cancelRoute(); reflect(); };   // a device Back is a user navigation (Codex code r1 P1): it cancels a held cold link too
     if (routing && typeof win.addEventListener === 'function') win.addEventListener('popstate', onPopReflect);
-    // Codex code r2 (inverted, one check): a pending cold link is retried ONLY while the user has done NOTHING since hydration began
-    // — ANY gesture (a tap, a key, typing; in the store or the shell: its search, a category, a sheet, an in-app back, a blocked
-    // exit) cancels it through the same cancelRoute / navGen, BEFORE any retry can fire. The router itself dispatches no events
-    const USER_INTENT = ['pointerdown', 'click', 'keydown', 'input'];
-    const onUserIntent = () => { if (!dead && (pendingRoute || awaitOrderRoute)) cancelRoute(); };
-    if (routing && (pendingRoute || awaitOrderRoute) && typeof doc.addEventListener === 'function') for (const ev of USER_INTENT) doc.addEventListener(ev, onUserIntent, true);
+    if (routing && (gate === 'held' || pendingRoute || awaitOrderRoute) && typeof doc.addEventListener === 'function') for (const ev of USER_INTENT) doc.addEventListener(ev, onUserIntent, true);
     if (SU) raf(() => startAuth());   // G6: the Auth SDK after the first paint (never awaited by it)
 
     return {

@@ -643,6 +643,13 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .center{padding:48px 24px 40px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
 .ring{width:44px;height:44px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--acc);animation:spin .9s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* r3 (owner 11-19, MOCKUP-capp-identity-restart): the account-switch overlay — the whole screen in the app's background, a small ring
+   and one line, until the restart lands on Inicio; no logo, no splash */
+.swap{position:fixed;inset:0;z-index:2147483000;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:0 24px calc(env(safe-area-inset-bottom,0px) + 40px);animation:swapIn .16s ease-out both}
+.swap .ring{width:28px;height:28px;border-width:2.5px}
+.swap p{margin:0;font-size:15px;line-height:1.4;font-weight:500;color:var(--mute);white-space:nowrap}
+@keyframes swapIn{from{opacity:0}}
+@media (prefers-reduced-motion:reduce){.swap,.swap .ring{animation:none}.swap .ring{border-top-color:var(--mute)}}
 .center h2{margin:0;font-family:var(--head);font-style:var(--head-style);font-weight:var(--head-weight);font-size:26px}
 .center p{margin:0;font-size:15px;line-height:1.5;color:var(--mute);max-width:32ch}
 .center .steps{display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--mute);margin-top:4px}

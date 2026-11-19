@@ -67,6 +67,9 @@ test('contract fake: produced by the pinned 5f commit; every 200 body is exactly
 
 // ── the client directory store ──
 function memStorage(init = {}) { const m = new Map(Object.entries(init)); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), get length() { return m.size; }, key: (i) => [...m.keys()][i] ?? null, _m: m }; }
+// r3 (owner 11-19): a device ON THE NEW BUILD carries the stamp of whose its unkeyed records are — 'guest', or 'u:{uid}' (a member's).
+// Explicit per cell (never a harness default): an unstamped device with records is an UPGRADE, and its records are wiped at settle
+const owned = (init = {}, owner = 'guest') => memStorage({ 'capp:member_owner': owner, ...init });
 const resp = (k) => ({ status: SC[k].status, body: SC[k].body, etag: SC[k].headers.ETag });
 function rigDir({ storage = memStorage(), script = [], now = { t: T0 } } = {}) {
   const calls = [];
@@ -270,7 +273,7 @@ function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'o
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(stampedDir || HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: url || 'https://app.test/' });
-  const w = dom.window; { const rec = { w, cell: CUR, closed: false }; SHELLS.push(rec); const cl = w.close.bind(w); w.close = () => { rec.closed = true; return cl(); }; }
+  const w = dom.window; { const rec = { w, cell: CUR, closed: false }; SHELLS.push(rec); const cl = w.close.bind(w); w.close = () => { rec.closed = true; rec.w = null; return cl(); }; }   // a CLOSED window is released (the guard keeps only its cell + flag): the file's heap stays flat
   if (media) w.matchMedia = media.matchMedia;   // D-2: the viewport the shell reads at mount (a controllable matchMedia)
   // the paint frame is a MICROTASK (2e: test 35 flaky under load — a fixed flush raced jsdom's timer-driven frame): a render the shell
   // schedules lands in the same microtask drain as the data it paints, before any timer, whatever the load (no sleep, no timeout)
@@ -280,7 +283,7 @@ function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'o
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-theme.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
     'capp-menu-cache.js', 'capp-directory.js', 'capp-splash.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'phone-countries.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-push.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
-  const dirCalls = [], envCalls = [], pend = {}, events = [];
+  const dirCalls = [], envCalls = [], pend = {}, events = [], replaced = [];   // replaced: r3's restart (location.replace), recorded
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
     envCalls.push(rid);
@@ -298,11 +301,11 @@ function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'o
   // clock drives the timers and flush only); otherwise the app's time IS the virtual clock (S.clock.t forward = a jump)
   const clock = vc ? (now || { get t() { return vc.now(); }, set t(v) { vc.jump(v); } }) : (now || { t: T0 });
   const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), ...(readPublic ? { readPublic } : {}), fetchDirectory, fetchEnvelope, readAvailability: async () => [], onEvent: (n, d) => events.push([n, J(d)]), runtime, storage: storage || memStorage(), now: () => clock.t,
-    auth: { state: () => auth }, geolocation, search, timers: vc || { setTimeout: (f, ms) => { const h = setTimeout(f, ms); if (h && typeof h.unref === 'function') h.unref(); return h; }, clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(vc ? { timeout: (ms) => new Promise((r) => vc.setTimeout(r, ms)) } : {}), ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } }, ...mountExtra });
+    auth: { state: () => auth }, geolocation, search, timers: vc || { setTimeout: (f, ms) => { const h = setTimeout(f, ms); if (h && typeof h.unref === 'function') h.unref(); return h; }, clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(vc ? { timeout: (ms) => new Promise((r) => vc.setTimeout(r, ms)) } : {}), ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } }, replace: (u) => replaced.push(u), ...mountExtra });
   const q = (s) => w.document.querySelector(s), qa = (s) => [...w.document.querySelectorAll(s)];
   const click = (s) => { const el = typeof s === 'string' ? q(s) : s; assert.ok(el, `premise: ${s} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   const release = (rid, body) => { const d = (pend[rid] || []).shift(); d.resolve({ status: 200, body: body || J(PROV[rid].envelope), etag: body ? '"changed"' : PROV[rid].etag }); };
-  return { w, ui, q, qa, click, dirCalls, envCalls, release, pend, clock, events };
+  return { w, ui, q, qa, click, dirCalls, envCalls, release, pend, clock, events, replaced };
 }
 
 test('shell: Inicio paints the directory-only rows BEFORE any envelope lands; menu rows fill in as each lands (never waits for all)', async () => {
@@ -400,11 +403,11 @@ test('shell location: denied ⇒ the drawn «Ubicación desactivada · Activar»
 });
 test('shell location: the guest location drives frame 4 (every store outside) and SEEDS the store\'s checkout pin', async () => {
   const far = { lat: 15.9, lng: -87.5, confirmed: true, source: 'pin', v: 3 };
-  const S = bootShell({ storage: memStorage({ 'capp:guest_loc': JSON.stringify(far) }) });
+  const S = bootShell({ storage: owned({ 'capp:guest_loc': JSON.stringify(far) }) });
   await flush();
   assert.equal(S.q('.home-body .empty b').textContent, 'Ningún restaurante entrega en esta dirección');
   const near = { lat: 15.531, lng: -88.021, confirmed: true, source: 'pin', v: 1 };
-  const N = bootShell({ storage: memStorage({ 'capp:guest_loc': JSON.stringify(near) }) });
+  const N = bootShell({ storage: owned({ 'capp:guest_loc': JSON.stringify(near) }) });
   await flush();
   N.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
   const ui = N.ui.store().ui; ui.cart.inc(ui.menu.dishes.find((d) => !d.launcher && !d.variantOf).key); ui.render();
@@ -465,7 +468,7 @@ const frozenCart = () => { const m = CappMenu.adaptMenu(PROV.x_pizza.envelope); 
   return { 'capp:x_pizza:cart': JSON.stringify({ v: 2, lines: [{ key: d.key, qty: 1, ex: [{}], added: 1 }], rid: 'x_pizza', mode: 'delivery', cart_gen: 'g_1', frozen_for: ORDER }) }; };
 test('frame 10: a cart frozen for a placement is read-only — the note, its controls disabled, «Ver estado del pedido» reads the STATUS (the recovery sheet) and sends NOTHING', async () => {
   const fetchLog = [];
-  const S = bootShell({ storage: memStorage(frozenCart()), fetchLog });
+  const S = bootShell({ storage: owned(frozenCart()), fetchLog });
   await flush();
   S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
   S.click('#cart-bar'); await flush();
@@ -481,7 +484,7 @@ test('frame 10: a cart frozen for a placement is read-only — the note, its con
   assert.equal(S.ui.store().ui.cart.count(), 1, 'still frozen: a tap through the store is refused');
 });
 test('frame 11: a fresh return this phone cannot tie to ONE store ⇒ the neutral surface (no tab bar, no store mounted); «Ir a Inicio»; a later boot does not show it again', async () => {
-  const storage = memStorage();
+  const storage = owned();
   const S = bootShell({ storage, search: `?pay=complete&order=${ORDER}&t=pt_9` });
   await flush();
   assert.equal(S.q('.empty.neutral b').textContent, 'No encontramos este pedido en este teléfono');
@@ -494,7 +497,7 @@ test('frame 11: a fresh return this phone cannot tie to ONE store ⇒ the neutra
   assert.equal(again.q('.empty.neutral'), null, 'a resumed, ownerless handoff never re-shows the surface');
 });
 test('return: a return OWNED by one store (its pay stash) enters THAT store with the return, once — even on a cold boot (no directory yet)', async () => {
-  const storage = memStorage({ 'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_1' }) });
+  const storage = owned({ 'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_1' }) });
   const S = bootShell({ storage, search: `?pay=complete&order=${ORDER}&t=pt_9` });
   await flush(); await flush();
   assert.equal(S.ui.store() && S.ui.store().rid, 'x_pizza');
@@ -505,7 +508,7 @@ test('return: a return OWNED by one store (its pay stash) enters THAT store with
 
 // ── Codex s7a2 r1 ──
 test('Codex s7a2 r1 #1 (P1): checkout adoption carries the IN-MEMORY cart — a cart whose persistence fails loses nothing across the remount', async () => {
-  const base = memStorage(storedMenu('x_pizza'));
+  const base = owned(storedMenu('x_pizza'));
   const storage = { ...base, getItem: base.getItem, removeItem: base.removeItem, key: base.key, get length() { return base.length; },
     setItem: (k, v) => { if (k === 'capp:x_pizza:cart') throw new Error('quota'); base.setItem(k, v); } };
   const S = bootShell({ envelope: 'hold', storage });
@@ -534,7 +537,7 @@ test('Codex s7a2 r1 #3: a STALE menu (verified > 60 s ago) never authorizes orde
 
 test('Codex s7a2 r1 #4: a LATER terminal outcome settles the return handoff — pending return (kept) → «Ver estado del pedido» → paid ⇒ capp:return removed', async () => {
   const t0 = T0, polls = [{ ok: true, state: 'pending' }, { ok: true, state: 'paid' }];
-  const storage = memStorage({ ...frozenCart(),
+  const storage = owned({ ...frozenCart(),
     'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_1', order: null, ts: t0 }),
     'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, dispatched: 1, cart_gen: 'g_1', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }) });
   const apiFetch = async (u) => { const j = u.startsWith('/x/s') ? (polls.length > 1 ? polls.shift() : polls[0]) : { ok: false }; return { status: 200, ok: true, json: async () => j }; };
@@ -551,7 +554,7 @@ test('Codex s7a2 r1 #4: a LATER terminal outcome settles the return handoff — 
 test('Codex s7a2 r1 #5: a tap HELD while the directory read is in flight is released to frame 7 when that read fails', async () => {
   const gate = deferred();
   // menus held: no other event may re-run the held-tap check (only the directory's own notification can release it)
-  const S = bootShell({ dirScript: [gate, 'complete'], envelope: 'hold', storage: memStorage(stored(SC.complete.body, T0 - 1000)) });
+  const S = bootShell({ dirScript: [gate, 'complete'], envelope: 'hold', storage: owned(stored(SC.complete.body, T0 - 1000)) });
   S.click('.rlist .rcard[data-rid="x_pizza"]');
   { const row = S.q('.rlist .rcard[data-rid="x_pizza"]'); assert.ok(!!row && row.classList.contains('held'), 'the drawn pressed state: held while the read is in flight'); }
   gate.resolve(resp('unavailable_503')); await flush();
@@ -870,7 +873,12 @@ test('Codex G6 r1 #3: a member apply delayed by a slow token never lands after a
     if (after === 'signout') await authMod.signOut(); else { storage.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_b' })); await authMod.signInWithCustomToken(null, 'ct:u_b'); }
     await flush(); hold.on = false; for (const r of hold.q.splice(0)) r(); await flush(); await flush();
     if (after === 'signout') assert.equal(S.ui.state.member, null, '🔴 a late apply never revives a signed-out member');
-    else assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_b', '🔴 a late apply for A never overwrites B');
+    else {   // r3 (owner 11-19): the switch RESTARTS the app — re-pointed: A never lands here, and the fresh app admits B
+      assert.notEqual(S.ui.state.member && S.ui.state.member.uid, 'u_ana', '🔴 a late apply for A never lands after the switch');
+      assert.equal(S.replaced.length, 1, 'premise: the switch restarted the app');
+      const { S: F } = await relaunch(storage, 'u_b');
+      try { assert.equal(F.ui.state.member && F.ui.state.member.uid, 'u_b', '🔴 a late apply for A never overwrites B (the fresh app admits B)'); } finally { F.w.close(); }
+    }
   }
 });
 test('Codex G6 r3: a complete account that leaves the sheet by Back then ✕ is a marked member and restores normally after a reload', async () => {
@@ -1162,10 +1170,14 @@ test('G7 Codex r1 #5: auth says member, the ID token still pending — the Cuent
 test('G7 frame 3: «Cerrar sesión» — no confirmation; the guest\'s Cuenta at once; the profile cache cleared on the confirmed sign-out; the device marker KEPT', async () => {
   const { S, fb, store } = await g7Boot();
   S.click('[data-act="signout"]');
-  assert.ok(S.q('.guestcard'), '🔴 G7-signout: the guest\'s Cuenta at once'); assert.equal(S.q('#layer .errsheet'), null, 'no confirmation');
-  await flush();
+  // r3 (owner 11-19) re-pointed: at once = the quiet overlay (her Cuenta covered); the guest's Cuenta is the restarted app's
+  assert.ok(S.q('#swap'), '🔴 G7-signout: her Cuenta covered at once'); assert.equal(S.q('#layer .errsheet'), null, 'no confirmation');
+  await flush(); await flush();
   assert.equal(fb.calls.out, 1); assert.equal(store.getItem('capp:member_profile'), null, 'no personal data stays on show');
   assert.ok(store.getItem('capp:device_account'), '🔴 G7-marker: an ordinary sign-out keeps the device marker');
+  const { S: F } = await relaunch(store, null);
+  try { F.click('.tabbar [data-tab="account"]'); await flush(); assert.ok(F.q('.guestcard'), '🔴 G7-signout: the guest\'s Cuenta (the restarted app)'); } finally { F.w.close(); }
+  S.w.close();
 });
 test('G7 frame 2: «Olvidar este teléfono» asks first («¿Olvidar este teléfono?» + the body, [Olvidar este teléfono][Cancelar]); Cancelar changes nothing; confirming forgets the marker and signs out', async () => {
   const { S, fb, store } = await g7Boot();
@@ -1176,7 +1188,12 @@ test('G7 frame 2: «Olvidar este teléfono» asks first («¿Olvidar este teléf
   S.click('#layer [data-act="lclose"]'); await flush();
   assert.equal(S.q('#layer .errsheet'), null); assert.equal(fb.calls.out, 0); assert.ok(store.getItem('capp:device_account'), 'Cancelar keeps everything');
   S.click('[data-act="forget"]'); S.click('#layer [data-act="forget-confirm"]'); await flush();
-  assert.equal(store.getItem('capp:device_account'), null, '🔴 G7-forget: the device marker removed'); assert.equal(fb.calls.out, 1); assert.ok(S.q('.guestcard'));
+  await flush();
+  assert.equal(store.getItem('capp:device_account'), null, '🔴 G7-forget: the device marker removed'); assert.equal(fb.calls.out, 1);
+  // r3 re-pointed: the guest's Cuenta is the restarted app's (here: the overlay)
+  assert.ok(S.q('#swap'), 'her Cuenta covered'); S.w.close();
+  const { S: F } = await relaunch(store, null);
+  try { F.click('.tabbar [data-tab="account"]'); await flush(); assert.ok(F.q('.guestcard'), 'the guest\'s Cuenta (the restarted app)'); } finally { F.w.close(); }
 });
 test('G7 a REJECTED sign-out restores the member (nothing pretends to be signed out)', async () => {
   const { S, fb } = await g7Boot({ fbOpts: { failSignOut: 1 } });
@@ -1424,12 +1441,12 @@ test('D-4a precedence: a payment RETURN owns the boot — the owner store resolv
   const apiFetch = async () => ({ status: 200, ok: true, json: async () => ({ ok: true, state: 'pending' }) });
   // the deep-linked store is READY first (its menu answers) while the owner's menu is held: only the precedence rule keeps it out
   const ownerLate = (rid) => (rid === 'x_pizza' ? 'hold' : 'ok');
-  const P = routeShell('/r/la_musa/pago', { storage: memStorage(recs()), search: ret, apiFetch, envelope: ownerLate }); await flush(); await flush();
+  const P = routeShell('/r/la_musa/pago', { storage: owned(recs()), search: ret, apiFetch, envelope: ownerLate }); await flush(); await flush();
   assert.ok(!P.ui.store() || P.ui.store().rid !== 'la_musa', '🔴 the deep-linked store was entered while a return owns the boot');
   P.release('x_pizza'); await flush(); await flush();
   assert.equal(P.ui.store() && P.ui.store().rid, 'x_pizza', '🔴 the return owner handles the boot (never the deep-linked store)');
   assert.equal(P.w.location.search, '', 'persisted ⇒ the boot (not the router) stripped the query');
-  const st = memStorage(recs()), real = st.setItem; st.setItem = (k, v) => { if (k === 'capp:return') throw new Error('quota'); real(k, v); };
+  const st = owned(recs()), real = st.setItem; st.setItem = (k, v) => { if (k === 'capp:return') throw new Error('quota'); real(k, v); };
   const M = routeShell('/r/la_musa/pago', { storage: st, search: ret, apiFetch }); await flush(); await flush();
   assert.equal(M.ui.store() && M.ui.store().rid, 'x_pizza', 'memory mode: still the owner');
   assert.equal(M.w.location.search, ret, '🔴 memory mode: the return query is the ONLY evidence — it must survive the reflections');
@@ -1439,9 +1456,9 @@ test('D-4a cold entry: /r/{rid} ⇒ that store; /pedido ⇒ the cart; /pago ⇒ 
   const d = anyDish();
   const A = routeShell('/r/x_pizza'); await flush(); await flush();
   assert.equal(A.ui.store() && A.ui.store().rid, 'x_pizza', '🔴 a cold store link must enter that store'); assert.equal(where(A), '/r/x_pizza');
-  const B = routeShell('/r/x_pizza/pedido', { storage: memStorage(cartOf('x_pizza', d.key)) }); await flush(); await flush();
+  const B = routeShell('/r/x_pizza/pedido', { storage: owned(cartOf('x_pizza', d.key)) }); await flush(); await flush();
   assert.equal(B.ui.store().ui.state.layerKind, 'cart', '🔴 /pedido opens the cart'); assert.equal(where(B), '/r/x_pizza/pedido');
-  const C = routeShell('/r/x_pizza/pago', { storage: memStorage(cartOf('x_pizza', d.key)) }); await flush(); await flush();
+  const C = routeShell('/r/x_pizza/pago', { storage: owned(cartOf('x_pizza', d.key)) }); await flush(); await flush();
   assert.equal(C.ui.store().ui.state.screen, 'checkout', '🔴 /pago opens the checkout'); assert.equal(where(C), '/r/x_pizza/pago');
   const E = routeShell('/r/x_pizza/pago'); await flush(); await flush();
   assert.equal(E.ui.store().ui.state.screen, 'store', 'an empty cart ⇒ the store'); assert.equal(where(E), '/r/x_pizza');
@@ -1449,14 +1466,14 @@ test('D-4a cold entry: /r/{rid} ⇒ that store; /pedido ⇒ the cart; /pago ⇒ 
 
 test('D-4a cold /pago under a LOCK: the lock is checked FIRST and resolved by status only — frozen ⇒ «Necesitamos revisar», a live card send ⇒ its status poll — ZERO sends', async () => {
   const sends = [];
-  const F = routeShell('/r/x_pizza/pago', { storage: memStorage(frozenCart()), fetchLog: sends }); await flush(); await flush();
+  const F = routeShell('/r/x_pizza/pago', { storage: owned(frozenCart()), fetchLog: sends }); await flush(); await flush();
   assert.equal(F.ui.store().ui.state.screen, 'store', 'no checkout over a lock');
   assert.match(txt(F.q('#layer')), /Necesitamos revisar tu pedido/, '🔴 a frozen cart ⇒ the recovery sheet');
   const t0 = T0, polls = [];
   const live = { ...frozenCart(), 'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_1', order: null, ts: t0 }),
     'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, pay_pending: true, dispatched: 1, cart_gen: 'g_1', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }) };
   const apiFetch = async (u) => { polls.push(u.split('?')[0]); return { status: 200, ok: true, json: async () => ({ ok: true, state: 'pending' }) }; };
-  const L = routeShell('/r/x_pizza/pago', { storage: memStorage(live), apiFetch }); await flush(); await flush();
+  const L = routeShell('/r/x_pizza/pago', { storage: owned(live), apiFetch }); await flush(); await flush();
   assert.ok(polls.length >= 1 && polls.every((u) => u === '/x/s'), `🔴 only status reads (${polls.join(',')})`);
   assert.equal(L.ui.store().ui.state.screen, 'store'); assert.ok(L.q('#layer .errsheet'), 'a held sheet, never the checkout');
   assert.deepEqual(sends.filter((x) => /createOrder|chargeOnlineOrder|\/x\/c|\/x\/p/.test(String(x))), [], '🔴 zero sends');
@@ -1464,7 +1481,7 @@ test('D-4a cold /pago under a LOCK: the lock is checked FIRST and resolved by st
 
 test('D-4a cold dish: resolved against the VERIFIED FRESH body — waits on a presentation body, opens on the fresh one; absent from the fresh body ⇒ the store', async () => {
   const d = anyDish();
-  const W = routeShell(`/r/x_pizza/plato/${encodeURIComponent(d.key)}`, { envelope: 'hold', storage: memStorage(storedMenu('x_pizza')) }); await flush(); await flush();
+  const W = routeShell(`/r/x_pizza/plato/${encodeURIComponent(d.key)}`, { envelope: 'hold', storage: owned(storedMenu('x_pizza')) }); await flush(); await flush();
   const ui = W.ui.store() && W.ui.store().ui;
   assert.ok(ui, 'premise: the store mounts on its stored (presentation) menu');
   assert.equal(ui.state.open, null, '🔴 never opened on the unverified presentation body');
@@ -1507,7 +1524,7 @@ test('D-4a native / routing off: no replaceState from the router and no hydratio
 test('D-4a cold /pago, every UNREADABLE lock case (Codex r2 #4): the marker (reconcile fails), the freeze state (unknown), the pending record ⇒ «Sin conexión» with a status-only retry — never the checkout, ZERO sends', async () => {
   const d = anyDish();
   for (const key of ['capp:x_pizza:placed', 'capp:x_pizza:cart', 'capp:x_pizza:pending_place']) {
-    const st = memStorage(cartOf('x_pizza', d.key)), real = st.getItem;
+    const st = owned(cartOf('x_pizza', d.key)), real = st.getItem;
     let armed = false; st.getItem = (k) => { if (armed && k === key) throw new Error('unreadable'); return real(k); };
     const sends = [];
     const S = routeShell('/r/x_pizza/pago', { storage: st, fetchLog: sends });
@@ -1525,7 +1542,7 @@ test('D-4a cold /pago, every UNREADABLE lock case (Codex r2 #4): the marker (rec
 
 test('D-4a §4: ADOPTION never discards a lock — a staged fresh body is NOT adopted (the mount is not torn down) while a payment lock is held, on the TAP path too', async () => {
   const t0 = T0, d = anyDish();
-  const storage = memStorage({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key),
+  const storage = owned({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key),
     'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_c', order: null, ts: t0 }),
     'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, pay_pending: true, dispatched: 1, cart_gen: 'g_c', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }) });
   const apiFetch = async () => ({ status: 200, ok: true, json: async () => ({ ok: true, state: 'pending' }) });
@@ -1551,7 +1568,7 @@ test('D-4a r1 P1: a device Back while a cold link is HELD cancels it — a delay
 
 test('D-4a r1 P2: a cold /pago on a PRESENTATION menu keeps its intent — the fresh menu arriving opens the checkout (never left on the store)', async () => {
   const d = anyDish();
-  const S = routeShell('/r/x_pizza/pago', { envelope: 'hold', storage: memStorage({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key) }) }); await flush(); await flush();
+  const S = routeShell('/r/x_pizza/pago', { envelope: 'hold', storage: owned({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key) }) }); await flush(); await flush();
   const ui = S.ui.store() && S.ui.store().ui; assert.ok(ui, 'premise: mounted on the stored (presentation) menu');
   assert.equal(ui.orderable(), false, 'premise: not orderable yet');
   S.release('x_pizza'); await flush(); await flush();
@@ -1561,7 +1578,7 @@ test('D-4a r1 P2: a cold /pago on a PRESENTATION menu keeps its intent — the f
 
 test('D-4a r1 P2: a LOCKED cold dish with a staged CHANGED menu never opens on the old mount (stale prices) — it stays pending', async () => {
   const t0 = T0, d = anyDish();
-  const storage = memStorage({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key),
+  const storage = owned({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key),
     'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_c', order: null, ts: t0 }),
     'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, pay_pending: true, dispatched: 1, cart_gen: 'g_c', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }) });
   const apiFetch = async () => ({ status: 200, ok: true, json: async () => ({ ok: true, state: 'pending' }) });
@@ -1574,7 +1591,7 @@ test('D-4a r1 P2: a LOCKED cold dish with a staged CHANGED menu never opens on t
 });
 
 test('D-4a r1 P2: hydration is gated on bootReturn.mode ∈ {none, invalid} — an OWNERLESS resumed handoff does not hydrate the linked store', async () => {
-  const storage = memStorage({ 'capp:return': JSON.stringify({ v: 1, pay: 'complete', order: ORDER, t: 'pt_9', owner: null, at: T0 }) });
+  const storage = owned({ 'capp:return': JSON.stringify({ v: 1, pay: 'complete', order: ORDER, t: 'pt_9', owner: null, at: T0 }) });
   const S = routeShell('/r/x_pizza', { storage }); await flush(); await flush();
   assert.equal(S.ui.store(), null, '🔴 r1 P2: a resumed (ownerless) return let the deep link hydrate');
 });
@@ -1582,7 +1599,7 @@ test('D-4a r1 P2: hydration is gated on bootReturn.mode ∈ {none, invalid} — 
 // ── Codex D-4a code r2 (NEW P2): a pending retry fires ONLY while the user has done nothing since hydration began ──
 test('D-4a r2: opening the store SEARCH while a cold /pago waits cancels it — the fresh menu never dismisses the search for the checkout', async () => {
   const d = anyDish();
-  const S = routeShell('/r/x_pizza/pago', { envelope: 'hold', storage: memStorage({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key) }) }); await flush(); await flush();
+  const S = routeShell('/r/x_pizza/pago', { envelope: 'hold', storage: owned({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key) }) }); await flush(); await flush();
   const ui = S.ui.store().ui; assert.equal(ui.orderable(), false, 'premise: /pago is waiting for the fresh menu');
   S.click('[data-act="ssearch"]'); await flush();
   assert.equal(ui.state.layerKind, 'ssearch', 'premise: the store search is open');
@@ -1593,7 +1610,7 @@ test('D-4a r2: opening the store SEARCH while a cold /pago waits cancels it — 
 
 test('D-4a r2: an in-store action during a LOCKED dish hydration cancels it — the dish never opens later when the lock clears', async () => {
   const t0 = T0, d = anyDish();
-  const storage = memStorage({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key),
+  const storage = owned({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key),
     'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_c', order: null, ts: t0 }),
     'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, pay_pending: true, dispatched: 1, cart_gen: 'g_c', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }) });
   const apiFetch = async () => ({ status: 200, ok: true, json: async () => ({ ok: true, state: 'pending' }) });
@@ -2220,7 +2237,7 @@ test('store-update state 1: with a store AND the «newer build» signal — the 
   try { await flush(); assert.equal(F.q('[data-act="app-update"]'), null, '🔴 SU-1: the signal says no newer build ⇒ no line'); } finally { F.w.close(); }
 });
 test('store-update state 4 (frozen): back on a new build with a cart FROZEN for a placement ⇒ «App actualizada. Estamos revisando tu pedido.» above frame 10\'s line, its controls still disabled', async () => {
-  const S = bootShell({ storage: memStorage({ ...frozenCart(), 'capp:app_build': 'b1' }), runtime: { ...RUNTIME, native: true }, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b2' } } } });
+  const S = bootShell({ storage: owned({ ...frozenCart(), 'capp:app_build': 'b1' }), runtime: { ...RUNTIME, native: true }, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b2' } } } });
   try {
     await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); S.click('#cart-bar'); await flush();
     assert.deepEqual(S.qa('#layer .cartnote .cn-l').map((x) => x.textContent), ['App actualizada. Estamos revisando tu pedido.', 'Tu pedido se está confirmando; no se puede cambiar mientras tanto.'], '🔴 SU-4b: the two drawn lines');
@@ -2229,7 +2246,7 @@ test('store-update state 4 (frozen): back on a new build with a cart FROZEN for 
   } finally { S.w.close(); }
 });
 test('store-update r2 (state 3 safety): the in-flight sheet keeps the retained placement record and the cart byte-for-byte (nothing cleared by the sheet)', async () => {
-  const storage = memStorage();
+  const storage = owned();
   const S = bootShell({ storage, runtime: STORE_RT, apiFetch: F426(['network', { status: 426, json: { error: 'client_update_required', app: 'orders', required_compat: 3 } }]), geolocation: GEO_OK2 });
   try {
     await flush(); await toShellPlace(S);
@@ -2245,7 +2262,7 @@ test('store-update r2 (state 3 safety): the in-flight sheet keeps the retained p
   } finally { S.w.close(); }
 });
 test('store-update r2 (round trip): «Abrir App Store» records the store; the NEW build reopens THAT store with its cart open and the «App actualizada» line; the same build never; a first install is never «updated»', async () => {
-  const storage = memStorage({ 'capp:app_build': 'b1' });
+  const storage = owned({ 'capp:app_build': 'b1' });
   const A = bootShell({ storage, runtime: STORE_RT, apiFetch: F426([{ status: 426, json: { error: 'client_update_required', app: 'orders', required_compat: 3 } }]), geolocation: GEO_OK2, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b1' } } } });
   try { A.w.open = () => null; await flush(); await toShellPlace(A); A.click('#layer [data-act="store-open"]'); await flush(); } finally { A.w.close(); }
   assert.equal(JSON.parse(storage.getItem('capp:store_handoff') || '{}').rid, 'x_pizza', '🔴 SU-r2-2: the store left for is recorded');
@@ -2265,7 +2282,7 @@ test('store-update r2 (round trip): «Abrir App Store» records the store; the N
     assert.equal(storage.getItem('capp:store_handoff'), null, 'one-shot');
   } finally { B.w.close(); }
   // a FIRST install (no previous build on the device): never «updated», nothing reopened; the build is recorded
-  const fresh = memStorage({ ...frozenCart() });
+  const fresh = owned({ ...frozenCart() });
   const F = bootShell({ storage: fresh, runtime: STORE_RT, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b9' } } } });
   try {
     await flush(); F.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); F.click('#cart-bar'); await flush();
@@ -2490,7 +2507,7 @@ test('getMyOrders client: ONLY the Row whitelist survives; a malformed row is dr
 });
 test('store-update r3 (Codex r2 #1): back on a new build with an UNRESOLVED card placement (valid credentials) ⇒ its verification starts by itself — a status request with no tap', async () => {
   const t0 = T0, polls = [];
-  const storage = memStorage({ ...frozenCart(), 'capp:app_build': 'b1',
+  const storage = owned({ ...frozenCart(), 'capp:app_build': 'b1',
     'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_1', order: null, ts: t0 }),
     'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, dispatched: 1, cart_gen: 'g_1', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }),
     'capp:store_handoff': JSON.stringify({ v: 1, rid: 'x_pizza', at: t0 - 60e3, build: 'b1' }) });
@@ -2504,7 +2521,7 @@ test('store-update r3 (Codex r2 #1): back on a new build with an UNRESOLVED card
   } finally { S.w.close(); }
 });
 test('store-update r3 (Codex r2 #2): an OFFLINE first launch of the new build (directory 503) keeps the handoff; the next (online) launch on that build still restores the store, its cart open, the line', async () => {
-  const storage = memStorage({ 'capp:app_build': 'b1', 'capp:store_handoff': JSON.stringify({ v: 1, rid: 'x_pizza', at: T0 - 60e3, build: 'b1' }),
+  const storage = owned({ 'capp:app_build': 'b1', 'capp:store_handoff': JSON.stringify({ v: 1, rid: 'x_pizza', at: T0 - 60e3, build: 'b1' }),
     'capp:x_pizza:cart': (() => { const m = CappMenu.adaptMenu(PROV.x_pizza.envelope); const d = m.dishes.find((x) => !x.launcher && !x.variantOf && !m.pickupOnlyCats.has(String(x.cat))); return JSON.stringify({ v: 2, lines: [{ key: d.key, qty: 1, ex: [{}], added: 1 }], rid: 'x_pizza', mode: 'delivery' }); })() });
   const A = bootShell({ storage, dirScript: ['unavailable_503'], runtime: STORE_RT, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b2' } } } });
   try { await flush(); await flush(); assert.equal(A.ui.store(), null, 'premise: offline — nothing mounted'); } finally { A.w.close(); }
@@ -2899,7 +2916,7 @@ async function againBoot(extra = {}) {
   placeReal(db, orders, 'u_ana', 'XP-V1', { ts: T0 - 86400e3 });   // 2× Margherita, Mozzarella on one (the real recipe)
   placeReal(db, orders, 'u_ana', 'LM-V2', { rid: 'la_musa', type: 'pickup', pay: 'card_delivery', ts: T0 - 2 * 86400e3, items_text: '1x Pad Thai (L210)' });
   const st = extra.storage || g7Store(G7_PROFILE({ promos: true }));
-  if (extra.seed) extra.seed(st);
+  if (extra.seed) { st.setItem('capp:member_owner', 'u:u_ana'); extra.seed(st); }   // r3: her records on her device (the stamp her admission wrote)
   const { S, mo, fb } = await pedidosBoot(db, { orders, storage: st, contextFor: extra.contextFor || AGAIN_CTX, ...(extra.envelope ? { envelope: extra.envelope } : {}), ...(extra.preMount ? { preMount: extra.preMount } : {}), ...(extra.receipts ? { receipts: extra.receipts } : {}), ...(extra.rgate ? { rgate: extra.rgate } : {}) });
   return { S, mo, fb, st, orders, db };
 }
@@ -3057,6 +3074,17 @@ test('Volver a pedir r2 (Codex VP r1 #2, the REAL held flow): a pill tapped whil
         await flush(); await flush(); await flush();
       }
       assert.equal(S.ui.store(), null, `🔴 VP-12 ${how}: the late menu opens NO store`);
+      if (how === 'identity') {   // r3 (owner 11-19) re-pointed: the sign-out restarts the app and her cart leaves with her — no recipe landed
+        assert.equal(st.getItem('capp:x_pizza:cart'), null, '🔴 VP-12 identity: no recipe applied to the cart (her cart left the device with her)');
+        assert.equal(S.replaced.length, 1, 'premise: the sign-out restarted the app');
+        const { S: F } = await relaunch(st, null);
+        try {
+          await until(() => F.q('.rlist .rcard[data-rid="x_pizza"]')); F.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); await flush();
+          assert.ok(F.ui.store() && F.ui.store().rid === 'x_pizza', 'premise: the store opened on the plain tap (the restarted app)');
+          assert.deepEqual(J(F.ui.store().ui.cart.lines().map((l) => l.key)), [], '🔴 VP-12 identity: the restarted app\'s cart carries no stale «Volver a pedir»');
+        } finally { F.w.close(); }
+        continue;
+      }
       assert.equal(st.getItem('capp:x_pizza:cart'), OWN, `🔴 VP-12 ${how}: no recipe applied to the cart`);
       // and a LATER plain visit of that store shows THEIR cart — no left-over recipe. After the release: straight from «Pedidos»
       // (its «Volver a pedir» store header — no navigation in between); after the identity change: from Inicio
@@ -4467,7 +4495,7 @@ const ACTIVE_REC = (TOKEN, placedAt) => JSON.stringify({ v: 1, exp: placedAt + 2
 // wrapper: no injected payFetch — the production path, the page's SherpaClient present before mount (sherpa-client.js loads first)
 function payMember({ reply, rt = {}, wrapper = false }) {
   const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12', srv = payServer(reply), fb = fakeFirebase({ persisted: 'u_ana' }), via = [];
-  const storage = memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }), 'capp:member_profile': JSON.stringify(ANA_PROF), 'capp:active_order': ACTIVE_REC(TOKEN, T0) });
+  const storage = owned({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }), 'capp:member_profile': JSON.stringify(ANA_PROF), 'capp:active_order': ACTIVE_REC(TOKEN, T0) }, 'u:u_ana');
   const preMount = wrapper ? (w) => { w.SherpaClient = { fetch: (u, i) => { via.push(String(u)); return srv.fetch(u, i); } }; } : null;
   const S = routeShell('/r/x_pizza/pago', { auth: 'unresolved', storage, preMount, runtime: { ...PAY_RT(SU_RUNTIME), ...rt }, readPublic: async () => ({ ok: false }), mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch, EventSource: ES, ...(wrapper ? {} : { payFetch: srv.fetch }) } });
   return { S, srv, made, TOKEN, via };
@@ -4691,7 +4719,7 @@ test('harness · REAL frames (advisor 11-08): with jsdom\'s own timer-driven req
 test('S2-checkout 8 (v7): an order placed with the in-app card shows its card in «Pago y entrega» — «Pago · Visa ···· 4242», the Total, «Se cobra al recibir tu pedido.» — before any adjustment projection exists', async () => {
   const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12', fb = fakeFirebase({ persisted: 'u_ana' });
   const rec = JSON.parse(ACTIVE_REC(TOKEN, T0)); rec.order.sdkCard = { brand: 'visa', last4: '4242' };
-  const storage = memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }), 'capp:member_profile': JSON.stringify(ANA_PROF), 'capp:active_order': JSON.stringify(rec) });
+  const storage = owned({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }), 'capp:member_profile': JSON.stringify(ANA_PROF), 'capp:active_order': JSON.stringify(rec) }, 'u:u_ana');
   const S = routeShell('/r/x_pizza/pago', { auth: 'unresolved', storage, runtime: PAY_RT(SU_RUNTIME), readPublic: async () => ({ ok: false }), mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch, EventSource: ES, payFetch: payServer(() => null).fetch } });
   try {
     await until(() => S.ui.state.member && made.some((e) => e.url.includes('/order_pay_view/'))); await flush();
@@ -5093,7 +5121,7 @@ const dirRows = (S) => S.qa('.addrlist .rowbtn').map((b) => [b.dataset.act, b.da
 async function dirBoot(o = {}) {
   const addr = addrServer(o);
   const st = o.storage || g7Store(G7_PROFILE({ promos: true }));
-  const b = await pedidosBoot({}, { storage: st, addr, ...(o.fbOpts ? { fbOpts: o.fbOpts } : {}), ...(o.apiFetch ? { apiFetch: o.apiFetch } : {}) });
+  const b = await pedidosBoot({}, { storage: st, addr, ...(o.fbOpts ? { fbOpts: o.fbOpts } : {}), ...(o.apiFetch ? { apiFetch: o.apiFetch } : {}), ...(o.url ? { url: o.url } : {}) });
   await flush(); await flush();
   return { ...b, addr, st };
 }
@@ -5285,17 +5313,23 @@ test('C-DIR-1 SEED: a device fix chosen AFTER the saved address («Usar mi ubica
   } finally { S.w.close(); }
 });
 test('C-DIR-1 SEED: a SIGN-OUT with the seeded checkout open never leaves the saved address in it (no pin, no details, no row)', async () => {
-  const { S, ui, fb } = await seedCheckout();
+  const { S, ui, fb, st } = await seedCheckout();
   try {
     assert.equal(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', 'premise: seeded');
     const { authMod } = await fb.loadSdk(); await authMod.signOut(); await flush(); await flush();
-    const f = S.ui.store() ? S.ui.store().ui.state.flow : null;
-    if (f) {
-      assert.notDeepEqual([f.pin.lat, f.pin.lng], [casaOf().lat, casaOf().lng], '🔴 DIR-SEED sign-out: the saved pin is gone');
-      assert.notEqual(f.details, 'Casa azul, portón negro', '🔴 DIR-SEED sign-out: the saved details are gone');
-    }
-    assert.ok(!/Casa · Col\. Trejo/.test(S.w.document.body.textContent), '🔴 DIR-SEED sign-out: nothing on screen names her address');
+    assert.equal(S.replaced.length, 1, 'premise: the sign-out restarted the app');
   } finally { S.w.close(); }
+  // r3 (owner 11-19) re-pointed: the checkout after the sign-out is the RESTARTED app's — it holds none of her saved address
+  const { S: F } = await relaunch(st, null);
+  try {
+    await until(() => F.q('.rlist .rcard[data-rid="x_pizza"]')); F.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    const u = F.ui.store().ui; u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render();
+    F.click('#cart-bar'); F.click('[data-act="checkout"]'); await flush(); await flush();
+    const f = u.state.flow;
+    assert.notDeepEqual([f.pin.lat, f.pin.lng], [casaOf().lat, casaOf().lng], '🔴 DIR-SEED sign-out: the saved pin is gone');
+    assert.notEqual(f.details, 'Casa azul, portón negro', '🔴 DIR-SEED sign-out: the saved details are gone');
+    assert.ok(!/Casa · Col\. Trejo/.test(F.w.document.body.textContent), '🔴 DIR-SEED sign-out: nothing on screen names her address');
+  } finally { F.w.close(); }
 });
 
 // ── C-3r v2 (PLAN-3a-capp-member-reads R2.7 / R3.2 / R4.3 / §4.3; advisor 11-14): the reorder reads the snapshot from the RECEIPT through
@@ -5605,13 +5639,21 @@ test('Codex P1 (A→B→A): Ana\'s OLD refusal landing after Bob and Ana again n
   try {
     await flush(); await reEnterHome(S); S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush();
     assert.equal(held.length, 1, 'premise: Ana\'s x_pizza save is in flight');
-    await switchTo(S, fb, st, 'u_bob'); await switchTo(S, fb, st, 'u_ana'); await flush(); await reEnterHome(S);
-    S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="la_musa"]'); await flush(); await flush();
-    assert.ok(bookOf(st).includes('la_musa'), 'premise: the NEW session saved la_musa');
-    const t0 = txt(S.q('#toast') || S.q('body'));
-    held[0](); await flush(); await flush();
-    assert.ok(bookOf(st).includes('la_musa'), '🔴 P1: the stale rollback never lands on the new session');
-    assert.ok(!/máximo/.test(txt(S.q('#toast'))) || /máximo/.test(t0), '🔴 P1: the stale refusal never speaks to the new session (no toast)');
+    await switchTo(S, fb, st, 'u_bob');
+    assert.equal(S.replaced.length, 1, 'premise: the switch restarted the app');
+    // r3 (owner 11-19) re-pointed: «Ana again» is a NEW app (the old page still holds her stale save) — the stale answer lands there,
+    // never on the new session's book or screen
+    st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_ana' }));
+    const { S: F } = await relaunch(st, 'u_ana', { fav });
+    try {
+      await flush(); await reEnterHome(F);
+      F.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="la_musa"]'); await flush(); await flush();
+      assert.ok(bookOf(st).includes('la_musa'), 'premise: the NEW session saved la_musa');
+      const t0 = txt(F.q('#toast') || F.q('body'));
+      held[0](); await flush(); await flush();
+      assert.ok(bookOf(st).includes('la_musa'), '🔴 P1: the stale rollback never lands on the new session');
+      assert.ok(!/máximo/.test(txt(F.q('#toast'))) || /máximo/.test(t0), '🔴 P1: the stale refusal never speaks to the new session (no toast)');
+    } finally { F.w.close(); }
   } finally { S.w.close(); }
 });
 test('Codex P2 (read × save): a getMyFavorites snapshot that started BEFORE a save and lands AFTER it never erases the save', async () => {
@@ -6211,108 +6253,8 @@ test('PUSH-SHELL-15 (Codex r1 P2-8): a tapped push for a past order NOT in «Ped
   } finally { S.w.close(); }
 });
 
-// ── direcciones r3 (owner 11-18: the CONFIRM-FIRST prototype, APPROVED — PROTO-capp-direcciones-confirm-first.html; Codex #153 →
-// rule 36): (c) a sign-out OR an account switch is a HARD RESET of everything derived from the previous member — the book, the
-// selection, an open sheet, the pin editor + its draft, the checkout's details (no exemption for typed text), the location copies
-// (S.loc, capp:guest_loc) and the device book. Codex #153 #3 / #4 map here ──
+// r3 helpers: the SDK's own sign-out (the 'guest' callback), and a pin draft on Casa
 const signOutNow = async (fb) => { const { authMod } = await fb.loadSdk(); await authMod.signOut(); await flush(); await flush(); };
-const pinOnCasa = async (S, ui) => { S.click('.map[data-act="pin"]'); await flush(); ui.state.pinDraft = { lat: casaOf().lat, lng: casaOf().lng }; };
-for (const [how, go] of [['a SIGN-OUT', (fb) => signOutNow(fb)], ['an ACCOUNT SWITCH', (fb, S, st) => switchTo(S, fb, st, 'u_bob')]]) {
-  test(`r3 (c) RESET-SHEET: ${how} with Inicio's «Entregar en» open closes it — none of her rows stay on screen`, async () => {
-    const { S, fb, st } = await dirBoot();
-    try {
-      S.click('.tabbar [data-tab="home"]'); await flush(); S.click('[data-act="addr"]'); await flush();
-      assert.equal(S.qa('#layer [data-act="addr-use"]').length, 2, 'premise: her two saved rows in the open sheet');
-      await go(fb, S, st);
-      assert.equal(S.qa('#layer [data-act="addr-use"]').length, 0, '🔴 R3-RESET-SHEET: no saved row of hers in any open sheet');
-      assert.ok(!/Trabajo|Col\. Trejo/.test(S.q('#layer').textContent), '🔴 R3-RESET-SHEET: nothing of her book in the layer');
-    } finally { S.w.close(); }
-  });
-  test(`r3 (c) RESET-PICK: ${how} with the checkout's «Entregar en» open closes it and drops its frozen rows`, async () => {
-    const { S, ui, fb, st } = await seedCheckout();
-    try {
-      S.click('[data-act="co-addr"]'); await flush();
-      assert.equal(S.qa('#layer [data-act="addr-use"]').length, 2, 'premise: the checkout sheet shows her rows');
-      await go(fb, S, st);
-      assert.notEqual(ui.state.layerKind, 'addrpick', '🔴 R3-RESET-PICK: the checkout sheet is closed (not merely re-filled from the next book)');
-      assert.equal(S.qa('#layer [data-act="addr-use"]').length, 0, '🔴 R3-RESET-PICK: none of her rows remain');
-      assert.equal(ui.state.pickDir == null, true, '🔴 R3-RESET-PICK: its frozen snapshot is cleared');
-    } finally { S.w.close(); }
-  });
-  test(`r3 (c) Codex #153 #3a (P1): ${how} with the pin editor open on her saved address tears it down — no editor, no draft, «Listo» cannot land her coordinates`, async () => {
-    const { S, ui, fb, st } = await seedCheckout();
-    try {
-      await pinOnCasa(S, ui);
-      assert.ok(S.q('.pinstep'), 'premise: the pin editor is open on Casa');
-      await go(fb, S, st);
-      assert.equal(S.q('.pinstep'), null, '🔴 C153-3a: the pin editor is gone');
-      assert.equal(ui.state.pinDraft, null, '🔴 C153-3a: its draft (her coordinates) is dropped');
-      const lc = st.getItem('capp:guest_loc');
-      assert.ok(!lc || JSON.parse(lc).lat !== casaOf().lat, '🔴 C153-3a: her coordinates never become the device location');
-    } finally { S.w.close(); }
-  });
-  test(`r3 (c) Codex #153 #3b (P1): ${how} after she CONFIRMED the pin on her saved address clears every location copy (S.loc and capp:guest_loc)`, async () => {
-    const { S, ui, fb, st } = await seedCheckout();
-    try {
-      await pinOnCasa(S, ui); S.click('[data-act="pin-done"]'); await flush(); await flush();
-      const lc0 = st.getItem('capp:guest_loc'); assert.ok(lc0 && JSON.parse(lc0).lat === casaOf().lat, 'premise: «Listo» reported her pin to the shell (persisted)');
-      await go(fb, S, st);
-      assert.equal(st.getItem('capp:guest_loc'), null, '🔴 C153-3b: the persisted location copy is removed');
-      assert.equal(S.ui.state.loc, null, '🔴 C153-3b: the shell\'s location (S.loc) is cleared');
-      S.ui.nav.tab({ name: 'home' }); await flush();
-      assert.equal(S.q('.addr-btn').getAttribute('aria-label'), 'Dirección de entrega: Agregá tu dirección', '🔴 C153-3b: Inicio holds no location of hers (the pill asks for one)');
-      assert.equal(ui.state.pinStepOk, false, '🔴 C153-3b: the pin-step flag is reset with it');
-      const fl = S.q('.flow'); assert.ok(!fl || !/Pin confirmado/.test(fl.textContent), '🔴 C153-3b: the checkout row never reads «Pin confirmado»');
-    } finally { S.w.close(); }
-  });
-  test(`r3 (c) Codex #153 #4 (P1): ${how} clears the checkout's details whatever she typed — retyped saved text AND new text (no touched-field exemption)`, async () => {
-    for (const typed of ['Casa azul, portón negro', 'Portón verde, segundo piso']) {
-      const { S, ui, fb, st } = await seedCheckout();
-      try {
-        S.click('[data-act="editdetails"]'); await flush();
-        const d = S.q('[data-field="details"]'); assert.ok(d, 'premise: the details field');
-        d.value = ''; d.dispatchEvent(new S.w.Event('input', { bubbles: true }));
-        d.value = typed; d.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
-        assert.equal(ui.state.flow.details, typed, 'premise: typed');
-        await go(fb, S, st);
-        assert.equal(ui.state.flow.details, '', `🔴 C153-4: «${typed}» is cleared from the flow`);
-        const v = S.q('[data-field="details"]'); assert.ok(!v || v.value === '', `🔴 C153-4: and from the visible field`);
-        assert.ok(!S.w.document.body.textContent.includes(typed), `🔴 C153-4: nothing on screen still reads «${typed}»`);
-      } finally { S.w.close(); }
-    }
-  });
-  // advisor ruling 11-18: a member sign-out / switch DURING «Enviando» — the order goes on server-side, but the SCREEN never outlives
-  // the identity: «Enviando» is left for the signed-out Inicio, the dispatch snapshot leaves memory, the DOM and the device, and the
-  // order's late reply renders nothing (she finds the order under «Pedidos» once signed in again)
-  test(`r3 (c) SEND-RESET: ${how} during «Enviando» leaves it for Inicio — no address, details, item or snapshot anywhere; the late reply renders nothing`, async () => {
-    let release = null; const co = [], api = [];
-    const apiFetch = (u, i) => (api.push(u.split('?')[0]), u.startsWith('/x/q') ? quoteOk(u, i) : u.startsWith('/x/c') ? new Promise((r) => { co.push(JSON.parse(i.body)); release = () => r({ status: 200, ok: true, json: async () => ({ ok: true, order_id: JSON.parse(i.body).order_id, tracking_token: 'tok_abcdefgh12' }) }); }) : new Promise(() => {}));
-    const { S, ui, fb, st } = await seedCheckout({ apiFetch });
-    try {
-      await flush(); await flush();
-      if (S.q('[data-act="pay"][data-val="cash"]')) { S.click('[data-act="pay"][data-val="cash"]'); await flush(); }
-      S.click('#cta'); await flush(); S.click('#layer [data-act="placing-go"]'); await flush(); await flush(); await flush(700);
-      assert.equal(ui.state.screen, 'sending', 'premise: «Enviando» is showing');
-      assert.equal(co.length, 1, 'premise: ONE createOrder in flight, held');
-      const item = txt(S.q('.sndcard .prow:nth-child(3) .t > span')) || '';
-      assert.ok(/Casa · Col\. Trejo/.test(S.w.document.body.textContent) && item, 'premise: her address and item on «Enviando»');
-      await go(fb, S, st);
-      assert.equal(S.ui.store(), null, '🔴 R3-SEND-RESET: the store mount (and its «Enviando») is gone');
-      assert.equal(S.ui.state.tab, 'home', '🔴 R3-SEND-RESET: the signed-out Inicio');
-      assert.equal(ui.state.sentOrder, null, '🔴 R3-SEND-RESET: the dispatch snapshot leaves memory');
-      const body = () => S.w.document.body.textContent;
-      for (const t of ['Enviando tu pedido', 'Casa · Col. Trejo', 'Casa azul, portón negro', item]) assert.ok(!body().includes(t), `🔴 R3-SEND-RESET: «${t}» is nowhere in the DOM`);
-      const vals = [...st._m.values()].join('\n');
-      for (const t of ['Casa azul, portón negro', 'Col. Trejo', item]) assert.ok(!vals.includes(t), `🔴 R3-SEND-RESET: «${t}» is nowhere on the device`);
-      release(); await flush(); await flush(); await flush(700);
-      for (const t of ['Enviando tu pedido', 'Pedido recibido', 'Casa · Col. Trejo', item]) assert.ok(!body().includes(t), `🔴 R3-SEND-RESET: the late reply renders nothing («${t}»)`);
-      assert.equal(S.ui.state.tab, 'home', 'still Inicio');
-      assert.deepEqual(api.filter((u) => /^\/x\/(c|p|s)/.test(u)), ['/x/c'], '🔴 R3-SEND-RESET: ONE createOrder, then no retry, charge or payment poll after the reset (rule 17)');
-      assert.deepEqual([...st._m.keys()].filter((k) => /^capp:(?:[a-z0-9_-]+:(?:pending_place|pending_pay|placed|cart|sent_order)|return)$/.test(k)), [], '🔴 R3-SEND-RESET: the late reply re-created no order record of hers (no marker, no record)');
-    } finally { S.w.close(); }
-  });
-}
-
 // ── direcciones r3 BATCH 2 — CONFIRM-FIRST (owner-APPROVED prototype; PLAN-3a-addr-rev @805a5015; Codex #153). A tap never switches
 // anything: the tapped row carries the spinner in its right slot, every other address control is disabled until the server answers,
 // and «en uso» moves ONLY on a 200. Every non-200 (offline, a timeout, a refusal, a 409) ends in the OWNED profile re-read: the pick is
@@ -6562,12 +6504,6 @@ test('r3 STALE-READ: a profile read that STARTED before a pick landed never over
   } finally { S.w.close(); }
 });
 
-// ── direcciones r3 · THE PAYMENT-KEY RESET (advisor rulings 11-18 (i): its own commit; money + identity). A member sign-out / switch
-// removes every per-store order record of hers (pending_place, pending_pay, placed, cart, sent_order — every rid) and capp:return, with
-// NO SDK exception; a reply landing AFTER the reset never re-creates them (the order API's identity reset voids her order ids). The
-// server owns completion: the hosted webhook / sweepStalePending / the SDK sweeper resolve a mid-flight payment without this device ──
-const ORDER_KEYS = /^capp:(?:[a-z0-9_-]+:(?:pending_place|pending_pay|placed|cart|sent_order)|return)$/;
-const orderKeys = (st) => [...st._m.keys()].filter((k) => ORDER_KEYS.test(k)).sort();
 // Ana's member CARD send on the real writers: her seeded checkout → card → tip 0 → «Hacer pedido»; createOrder answers, then the charge
 // (/x/p) answers with the hosted checkout — or is HELD until the test releases it
 async function memberCardSend({ holdCharge = false } = {}) {
@@ -6588,100 +6524,348 @@ async function memberCardSend({ holdCharge = false } = {}) {
   await flush(700);
   return { ...b, sent, release: () => releaseCharge && releaseCharge() };
 }
-for (const [how, go] of [['a SIGN-OUT', (fb) => signOutNow(fb)], ['an ACCOUNT SWITCH', (fb, S, st) => switchTo(S, fb, st, 'u_bob')]]) {
-  test(`r3 PAYKEYS-CLEAR: ${how} after her card send removes every order record of hers from the device (every store, capp:return)`, async () => {
-    const { S, fb, st, sent } = await memberCardSend();
-    try {
-      assert.ok(sent.some((x) => x[0] === '/x/p'), `premise: the charge was sent (${sent.map((x) => x[0]).join(',')})`);
-      assert.ok(orderKeys(st).includes('capp:x_pizza:pending_pay'), `premise: the real writer stashed her payment (${orderKeys(st).join(',')})`);
-      assert.ok(orderKeys(st).includes('capp:x_pizza:sent_order'), `premise: the real writer kept her sent order (${orderKeys(st).join(',')})`);
-      await go(fb, S, st);
-      assert.deepEqual(orderKeys(st), [], '🔴 R3-PAYKEYS: no order record of hers is left on the device');
-    } finally { S.w.close(); }
-  });
-  test(`r3 PAYKEYS-LATE: ${how} while her charge is in flight — the reply landing after the reset never re-creates her payment record`, async () => {
-    const { S, fb, st, sent, release } = await memberCardSend({ holdCharge: true });
-    try {
-      assert.ok(sent.some((x) => x[0] === '/x/p'), 'premise: the charge is in flight (held)');
-      await go(fb, S, st);
-      release(); await flush(); await flush(); await flush(700);
-      assert.equal(st.getItem('capp:x_pizza:pending_pay'), null, '🔴 R3-PAYKEYS-LATE: the late reply wrote nothing of hers');
-      assert.deepEqual(orderKeys(st), [], '🔴 R3-PAYKEYS-LATE: no order record of hers at all');
-    } finally { S.w.close(); }
-  });
-}
-test('r3 RETURN-FOREIGN: after a switch, a payment return for HER order on this device polls nothing and shows nothing of hers (no owner record left)', async () => {
-  const { S, fb, st, sent } = await memberCardSend();
-  let oid = null;
+// ── r3 WIPE + RESTART (owner 11-19, Codex #173 → rule 36; MOCKUP-capp-identity-restart): a member ADMITTED here who leaves — the
+// «Cerrar sesión» row, the SDK's own sign-out, another account — gets the quiet overlay, the push exit, then EVERY record of hers
+// leaves the device and the app starts again at its root (location.replace(origin + '/')). Nothing of hers survives in memory, so
+// Codex #173 #1–#3 are proven on a FRESH boot over the same device. A boot whose unkeyed records are stamped to a member (or not
+// stamped) holds them until its identity settles: a match restores them, a mismatch wipes them (no restart: nothing was read) ──
+const OWNER = 'capp:member_owner';
+const UNKEYED = /^capp:(?:active_order|rate_nudge|rate_done|return|guest_loc|recent|store_handoff|[^:]+:(?:pending_place|pending_pay|placed|cart|sent_order))$/;
+const keysOf = (st) => [...st._m.keys()].sort();
+const unkeyedOf = (st) => keysOf(st).filter((k) => UNKEYED.test(k));
+const relaunch = (st, persisted, extra = {}) => pedidosBoot({}, { storage: st, fbOpts: { persisted }, ...extra });
+const viaRow = async (fb, S) => { S.ui.nav.tab({ name: 'account' }); await flush(); S.click('[data-act="signout"]'); await flush(); await flush(); };
+const LEAVES = [['the «Cerrar sesión» row', viaRow, null], ['the SDK signing her out', (fb) => signOutNow(fb), null], ['an ACCOUNT SWITCH', (fb, S, st) => switchTo(S, fb, st, 'u_bob'), 'u_bob']];
+test('r3 RESTART-ROOT: the restart replaces the page with the app\'s ROOT — the origin + «/», no path, no search (a ?pay= never re-fires), no hash', async () => {
+  const { S, fb } = await dirBoot({ url: 'https://app.test/r/x_pizza/pago?pay=complete&order=XP-1&t=pt_1#top' });
   try {
-    const ch = sent.find((x) => x[0] === '/x/p' && x[1] && x[1].order_id); assert.ok(ch, 'premise: her charge'); oid = ch[1].order_id;
-    await switchTo(S, fb, st, 'u_bob');
-  } finally { S.w.close(); }
-  const calls = [];
-  const apiFetch = (u, i) => { calls.push(u.split('?')[0]); return u.startsWith('/x/q') ? quoteOk(u, i) : new Promise(() => {}); };
-  const { S: B } = await pedidosBoot({}, { storage: st, apiFetch, search: `?pay=complete&order=${oid}&t=pt_1`, fbOpts: { persisted: 'u_bob' } });
-  try {
-    await flush(); await flush(700);
-    assert.deepEqual(calls.filter((u) => u === '/x/s'), [], '🔴 R3-RETURN-FOREIGN: no payment poll for her order from Bob\'s session');
-    const shown = B.w.document.body.textContent + JSON.stringify((B.ui.store() && B.ui.store().ui.state.flow) || {});
-    for (const t of ['Casa azul', 'Col. Trejo', '9999']) assert.ok(!shown.includes(t), `🔴 R3-RETURN-FOREIGN: «${t}» (hers) is nowhere`);
-  } finally { B.w.close(); }
-});
-for (const [how, go] of [['a SIGN-OUT', (fb) => signOutNow(fb)], ['an ACCOUNT SWITCH', (fb, S, st) => switchTo(S, fb, st, 'u_bob')]]) {
-  test(`r3 FROZEN-CART: ${how} after her card send — the next person's cart in that store is not frozen on her order`, async () => {
-    const { S, fb, st } = await memberCardSend();
-    try {
-      assert.ok(st.getItem('capp:x_pizza:cart') && /frozen_for/.test(st.getItem('capp:x_pizza:cart')), `premise: her cart is frozen on her order (${st.getItem('capp:x_pizza:cart')})`);
-      await go(fb, S, st);
-      assert.equal(st.getItem('capp:x_pizza:cart'), null, '🔴 R3-FROZEN-CART: her frozen cart left the device');
-      S.ui.nav.tab({ name: 'home' }); await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
-      const u = S.ui.store().ui, key = u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key;
-      u.cart.inc(key); u.render();
-      assert.equal(u.cart.count(), 1, '🔴 R3-FROZEN-CART: the next person\'s cart takes items (not frozen on her order)');
-    } finally { S.w.close(); }
-  });
-}
-test('r3 SDK-RECORD: her UNRESOLVED in-app card record (the real writer\'s) leaves the device on a switch — no exception; a fresh mount finds nothing to restore or poll', async () => {
-  const st = g7Store(G7_PROFILE({ promos: true }));
-  const A = require('./capp-api.js'), CC = require('./capp-checkout.js');
-  const OPEN = Array.from({ length: 7 }, () => [0, 0, 23, 59]);
-  const EP = Object.fromEntries(['quoteOrder', 'createOrder', 'chargeOnlineOrder', 'paymentStatus', 'verifyCheckoutCode', 'placeSdkOrder', 'placeSdkStatus', 'cancelSdkPending', 'listCards'].map((k) => [k, `https://fn.test/${k}`]));
-  const ana = { uid: 'u_ana', idToken: null, getIdToken: async () => TOK('u_ana') };
-  const mk = () => A.createApi({ config: { restaurantId: 'x_pizza', orderIdPrefix: 'XP', pendingPayKey: 'capp:x_pizza:pending_pay', endpoints: EP, hours: OPEN, sdkCheckout: true },
-    fetch: async () => { throw new TypeError('Failed to fetch'); }, storage: st, now: () => T0, sleep: async () => {}, setInterval: () => 0, clearInterval: () => {},
-    member: () => ana });   // ONE member object: the API binds a token to the member it read (memberOf() === m)
-  const f = CC.freshFlow(null); CC.setPin(f, casaOf().lat, casaOf().lng, true); Object.assign(f, { details: 'Casa azul, portón negro', name: 'Ana Pérez', phone: '99990000', pay: 'online' }); CC.chooseTip(f, 20);
-  const ctx = { restaurantId: 'x_pizza', items: [{ id: 'm', name: 'Margherita', dish_id: 'd_1', qty: 1, price: 250, subtotal: 250, extras: [], extrasTotal: 0 }], itemsText: '1x Margherita (L250)', member: null };
-  let out = null; try { out = await mk().placeSdk({ flow: f, ctx, sig: 's1', expectedNetCents: 31500, card: { kind: 'saved', card_id: 'CV4242000000000000AB' } }); } catch (e) { out = { threw: String(e && (e.code || e.message)) }; }
-  const rec0 = JSON.parse(st.getItem('capp:x_pizza:pending_place') || 'null');
-  assert.ok(rec0 && rec0.sdk === true && rec0.unresolved === true, `premise: the real writer left her unresolved SDK record (${JSON.stringify(rec0).slice(0, 160)}; placeSdk → ${JSON.stringify(out).slice(0, 200)})`);
-  const { S, fb } = await dirBoot({ storage: st });
-  try {
-    await switchTo(S, fb, st, 'u_bob');
-    assert.equal(st.getItem('capp:x_pizza:pending_place'), null, '🔴 R3-SDK-RECORD: her SDK record (and its inputs) left the device — no exception');
-    const fresh = mk();
-    assert.ok(!fresh.sdkLive(), '🔴 R3-SDK-RECORD: a fresh mount finds nothing live (nothing to restore, no status to poll)');
-    assert.ok(!fresh.sdkInputs(), 'and no inputs of hers');
-  } finally { S.w.close(); }
-});
-test('r3 RETURN-RESUME: her payment return in progress (capp:return, persisted by the real boot) leaves the device on a sign-out — a reload never resumes her poll', async () => {
-  const { S, st, sent } = await memberCardSend();
-  let oid = null;
-  try { const ch = sent.find((x) => x[0] === '/x/p' && x[1] && x[1].order_id); assert.ok(ch, 'premise: her charge'); oid = ch[1].order_id; } finally { S.w.close(); }
-  const polls = [];
-  const apiFetch = (u, i) => { if (u.startsWith('/x/s')) polls.push(u); return u.startsWith('/x/q') ? quoteOk(u, i) : new Promise(() => {}); };
-  const { S: R1, fb } = await pedidosBoot({}, { storage: st, apiFetch, search: `?pay=complete&order=${oid}&t=pt_1` });
-  try {
-    await flush(); await flush(700);
-    assert.ok(st.getItem('capp:return'), 'premise: the real boot persisted her return in progress');
-    assert.ok(polls.length >= 1, 'premise: her own return polls (it is hers)');
     await signOutNow(fb);
-    assert.equal(st.getItem('capp:return'), null, '🔴 R3-RETURN-RESUME: her return in progress left the device');
-  } finally { R1.w.close(); }
-  polls.length = 0;
-  const { S: R2 } = await pedidosBoot({}, { storage: st, apiFetch, fbOpts: { persisted: null } });
+    assert.deepEqual(S.replaced, ['https://app.test/'], '🔴 R3-ROOT: ONE replace, to the origin root');
+  } finally { S.w.close(); }
+});
+for (const [how, go, next] of LEAVES) {
+  test(`r3 RESTART: ${how} ⇒ the overlay («${next ? 'Cambiando de cuenta…' : 'Cerrando sesión…'}», a status, the app inert), every record of hers off the device, the stamp gone, the restart`, async () => {
+    const { S, fb, st } = await seedCheckout();
+    try {
+      for (const k of ['capp:recent', 'capp:guest_loc', 'capp:active_order', 'capp:rate_nudge', 'capp:rate_done', 'capp:return', 'capp:store_handoff', 'capp:la_musa:pending_place', 'capp:la_musa:pending_pay', 'capp:la_musa:placed', 'capp:la_musa:sent_order', 'capp:fav:u_ana']) st.setItem(k, '{"v":1}');
+      S.w.sessionStorage.setItem('sherpa_reload_snapshot', '{"v":1}');
+      S.click('[data-act="type"][data-val="delivery"]'); await flush();   // the store's own cart writer (a mode tap persists it)
+      assert.ok(st.getItem('capp:x_pizza:cart') && st.getItem('capp:addr:u_ana') && st.getItem('capp:member_profile'), 'premise: her cart, book and profile (the real writers)');
+      await go(fb, S, st);
+      const ov = S.q('#swap');
+      assert.ok(ov && ov.getAttribute('role') === 'status', '🔴 R3-RESTART: the overlay, a status');
+      assert.equal(txt(ov), next ? 'Cambiando de cuenta…' : 'Cerrando sesión…', '🔴 R3-RESTART: its one line');
+      assert.ok(S.q('#app').hasAttribute('inert'), '🔴 R3-RESTART: the app behind it takes no input');
+      assert.deepEqual(unkeyedOf(st), [], '🔴 R3-RESTART: no unkeyed record of hers (every class) is left');
+      for (const k of ['capp:addr:u_ana', 'capp:fav:u_ana', 'capp:member_profile', OWNER]) assert.equal(st.getItem(k), null, `🔴 R3-RESTART: ${k} is gone`);
+      assert.equal(S.w.sessionStorage.getItem('sherpa_reload_snapshot'), null, '🔴 R3-RESTART: no self-update snapshot can bring her checkout back');
+      assert.deepEqual(S.replaced, ['https://app.test/'], '🔴 R3-RESTART: the app starts again at its root');
+      if (next) assert.equal(JSON.parse(st.getItem('capp:member_complete')).uid, next, 'the next member\'s completion mark stays (he is restored after the restart)');
+      else assert.equal(st.getItem('capp:member_complete'), null, '🔴 R3-RESTART: her completion mark is gone');
+    } finally { S.w.close(); }
+  });
+}
+test('r3 SWITCH-KEEP: A → B keeps ONLY the records whose uid IS B (exact) — B\'s mark, book and favourites; every record of A, and of a uid B merely prefixes, goes', async () => {
+  const { S, fb, st } = await dirBoot();
   try {
-    await flush(); await flush(700);
-    assert.deepEqual(polls, [], '🔴 R3-RETURN-RESUME: a reload by the next person never resumes her payment poll');
-  } finally { R2.w.close(); }
+    for (const k of ['capp:addr:u_bob', 'capp:fav:u_bob', 'capp:addr:u_bobby', 'capp:fav:u_bobby', 'capp:fav:u_ana']) st.setItem(k, '{"v":1}');
+    await switchTo(S, fb, st, 'u_bob');
+    for (const k of ['capp:addr:u_bob', 'capp:fav:u_bob']) assert.ok(st.getItem(k), `🔴 R3-SWITCH-KEEP: B's ${k} stays`);
+    assert.equal(JSON.parse(st.getItem('capp:member_complete')).uid, 'u_bob', '🔴 R3-SWITCH-KEEP: B\'s completion mark stays');
+    for (const k of ['capp:addr:u_ana', 'capp:fav:u_ana', 'capp:member_profile', 'capp:addr:u_bobby', 'capp:fav:u_bobby']) assert.equal(st.getItem(k), null, `🔴 R3-SWITCH-KEEP: ${k} is gone`);
+  } finally { S.w.close(); }
+});
+test('r3 RESTART-REJECT: a REFUSED sign-out changes nothing — the overlay goes, she is still the member, every record stays, no restart', async () => {
+  const { S, st } = await dirBoot({ fbOpts: { failSignOut: 1 } });
+  try {
+    const before = keysOf(st);
+    await viaRow(null, S);
+    assert.equal(S.q('#swap'), null, '🔴 R3-REJECT: no overlay left');
+    assert.ok(!S.q('#app').hasAttribute('inert'), '🔴 R3-REJECT: the app takes input again');
+    assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', '🔴 R3-REJECT: she is still the member');
+    assert.deepEqual(keysOf(st), before, '🔴 R3-REJECT: nothing wiped');
+    assert.deepEqual(S.replaced, [], '🔴 R3-REJECT: no restart');
+  } finally { S.w.close(); }
+});
+test('r3 RESTART-ORDER: nothing is wiped (and no restart) while the push exit / sign-out is still in flight — the wipe comes after it', async () => {
+  const { S, fb, st } = await dirBoot();
+  try {
+    const { authMod } = await fb.loadSdk(); const real = authMod.signOut; let go = null;
+    authMod.signOut = (...a) => new Promise((r) => { go = () => r(real(...a)); });
+    for (const k of ['capp:recent', 'capp:x_pizza:cart', 'capp:active_order']) st.setItem(k, '{"v":1}');
+    const recs = () => keysOf(st).filter((k) => !k.startsWith('capp:addr:'));   // the device book copy goes with dropMember (C-DIR-1's own hook)
+    const before = recs();
+    await toAccount(S); S.click('[data-act="signout"]'); await flush(); await flush();
+    assert.ok(S.q('#swap'), '🔴 R3-ORDER: the overlay is up at once');
+    assert.ok(go, 'premise: the sign-out is in flight');
+    assert.deepEqual(recs(), before, '🔴 R3-ORDER: nothing wiped before the sign-out completes');
+    assert.deepEqual(S.replaced, [], '🔴 R3-ORDER: no restart before it');
+    go(); await flush(); await flush();
+    assert.equal(st.getItem('capp:addr:u_ana'), null, 'then the wipe'); assert.equal(S.replaced.length, 1, 'then the restart');
+  } finally { S.w.close(); }
+});
+for (const [how, go, next] of LEAVES) {
+  test(`r3 Codex #173 #1 (P1): ${how} with Inicio's pin editor open on Casa — «Listo» after it lands nothing; the fresh app has no pin of hers`, async () => {
+    const { S, fb, st } = await dirBoot();
+    try {
+      S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush(); S.click('#layer [data-act="addr-new"]'); await flush();
+      assert.ok(S.q('[data-act="pin-done"]'), 'premise: Inicio\'s pin editor is open');
+      await go(fb, S, st);
+      if (S.q('[data-act="pin-done"]')) { S.click('[data-act="pin-done"]'); await flush(); }   // a tap that slipped through (jsdom ignores inert)
+      assert.equal(st.getItem('capp:guest_loc'), null, '🔴 C173-1: her coordinates never land on the device');
+    } finally { S.w.close(); }
+    const { S: F } = await relaunch(st, next);
+    try {
+      F.click('.tabbar [data-tab="home"]'); await flush();
+      assert.equal(F.q('.addr-btn').getAttribute('aria-label'), 'Dirección de entrega: Agregá tu dirección', '🔴 C173-1: the fresh app holds no location of hers');
+    } finally { F.w.close(); }
+  });
+  test(`r3 Codex #173 #2 (P1): ${how} from an open checkout — the fresh app's checkout has none of her name, phone or email`, async () => {
+    const { S, ui, fb, st } = await seedCheckout();
+    try {
+      assert.ok(/Ana/.test(ui.state.flow.name || ''), `premise: her name in the checkout (${ui.state.flow.name})`);
+      await go(fb, S, st);
+      assert.equal(S.replaced.length, 1, '🔴 C173-2: the page holding her checkout is replaced — nothing of it survives in memory');
+    } finally { S.w.close(); }
+    const { S: F } = await relaunch(st, next);
+    try {
+      await until(() => F.q('.rlist .rcard[data-rid="x_pizza"]')); F.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+      const u = F.ui.store().ui; u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render();
+      F.click('#cart-bar'); F.click('[data-act="checkout"]'); await flush(); await flush();
+      const f = u.state.flow || {};
+      for (const t of ['Ana', '9612', '96123344', 'ana.perez']) {
+        assert.ok(![f.name, f.phone, f.email].some((v) => String(v || '').includes(t)), `🔴 C173-2: «${t}» is in none of the fresh checkout's fields`);
+        assert.ok(!F.qa('input').some((i) => String(i.value).includes(t)), `🔴 C173-2: no visible field reads «${t}»`);
+      }
+    } finally { F.w.close(); }
+  });
+  test(`r3 Codex #173 #3 (P1): ${how} after her cash order — no active order of hers on the device; the fresh app shows no card and no tracking token`, async () => {
+    const apiFetch = (u, i) => (u.startsWith('/x/q') ? quoteOk(u, i) : u.startsWith('/x/c') ? Promise.resolve({ status: 200, ok: true, json: async () => ({ ok: true, order_id: JSON.parse(i.body).order_id, tracking_token: 'tok_abcdefgh12' }) }) : new Promise(() => {}));
+    const { S, fb, st } = await seedCheckout({ apiFetch });
+    try {
+      await flush(); await flush();
+      if (S.q('[data-act="pay"][data-val="cash"]')) { S.click('[data-act="pay"][data-val="cash"]'); await flush(); }
+      S.click('#cta'); await flush(); S.click('#layer [data-act="placing-go"]'); await flush(); await flush(); await flush(700);
+      assert.ok(st.getItem('capp:active_order'), 'premise: the real writer kept her active order (token + snapshot)');
+      await go(fb, S, st);
+      assert.equal(st.getItem('capp:active_order'), null, '🔴 C173-3: her active order left the device');
+    } finally { S.w.close(); }
+    const { S: F } = await relaunch(st, next);
+    try {
+      await flush(); await flush();
+      assert.equal(F.ui.state.order, null, '🔴 C173-3: the fresh app holds no order of hers');
+      assert.ok(!F.w.document.body.innerHTML.includes('tok_abcdefgh12'), '🔴 C173-3: her tracking token is nowhere');
+    } finally { F.w.close(); }
+  });
+}
+// ── r3 the COLD gate (owner 11-19 rulings 1–4, A): a boot whose unkeyed records are a member's (or nobody's) reads none of them, and holds
+// every control that would write one (a store tap: pressed; «Entregar en»: disabled), until the session settles ──
+const gateQ = () => ({ q: [] }), release = async (g) => { for (const f of g.q.splice(0)) f(); await flush(); await flush(); };
+const memberWithOrder = async () => {   // her cash order through the REAL writers (active order + stamp), then the app is simply closed
+  const apiFetch = (u, i) => (u.startsWith('/x/q') ? quoteOk(u, i) : u.startsWith('/x/c') ? Promise.resolve({ status: 200, ok: true, json: async () => ({ ok: true, order_id: JSON.parse(i.body).order_id, tracking_token: 'tok_abcdefgh12' }) }) : new Promise(() => {}));
+  const { S, st } = await seedCheckout({ apiFetch });
+  try {
+    await flush(); await flush();
+    if (S.q('[data-act="pay"][data-val="cash"]')) { S.click('[data-act="pay"][data-val="cash"]'); await flush(); }
+    S.click('#cta'); await flush(); S.click('#layer [data-act="placing-go"]'); await flush(); await flush(); await flush(700);
+    if (S.q('[data-act="order-close"]')) { S.click('[data-act="order-close"]'); await flush(); }
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush(); S.click('#layer [data-act="addr-new"]'); await flush(); S.click('[data-act="pin-done"]'); await flush(); await flush();
+  } finally { S.w.close(); }
+  assert.ok(st.getItem('capp:active_order'), 'premise: her active order (the real writer)');
+  assert.ok(st.getItem('capp:guest_loc'), 'premise: her pin on the device (the real writer, Inicio\'s editor)');
+  return st;
+};
+test('r3 GATE-GUEST: a GUEST\'s device (stamp «guest») boots exactly as today — its location and cart at once, nothing held, «Entregar en» live, a store tap enters', async () => {
+  const st = memStorage({ [OWNER]: 'guest', 'capp:guest_loc': JSON.stringify({ lat: 15.52, lng: -88.04, confirmed: true, source: 'pin', v: 1 }), ...cartOf('x_pizza', anyDish().key) });
+  const g = gateQ(); const { S } = await relaunch(st, null, { fbOpts: { persisted: null, authGate: g } });
+  try {
+    assert.equal(S.ui.state.loc && S.ui.state.loc.lat, 15.52, '🔴 R3-GATE-GUEST: the guest\'s location at once (before auth)');
+    assert.equal(S.q('.addr-btn').getAttribute('aria-disabled'), null, '🔴 R3-GATE-GUEST: «Entregar en» live');
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    assert.equal(S.ui.store() && S.ui.store().rid, 'x_pizza', '🔴 R3-GATE-GUEST: a store tap enters at once (not held)');
+    assert.equal(S.ui.store().ui.cart.count(), 1, '🔴 R3-GATE-GUEST: its cart restored at once');
+  } finally { S.w.close(); }
+});
+test('r3 GATE-MATCH: her device, her session restoring — nothing of hers is read before it settles (no order, no location; the store tap HELD, «Entregar en» disabled); once it is hers: the order, and the held tap opens ONCE', async () => {
+  const st = await memberWithOrder();
+  const g = gateQ(); const { S } = await relaunch(st, 'u_ana', { fbOpts: { persisted: 'u_ana', authGate: g } });
+  try {
+    assert.equal(S.ui.state.order, null, '🔴 R3-GATE-MATCH: her active order is not read before the session settles');
+    assert.equal(S.ui.state.loc, null, '🔴 R3-GATE-READ: her pin is not read before the session settles');
+    assert.equal(S.q('.addr-btn').getAttribute('aria-disabled'), 'true', '🔴 R3-GATE-MATCH: «Entregar en» disabled while held');
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 R3-GATE-MATCH: the store tap is held (no store, no cart read)');
+    assert.equal(S.ui.state.held && S.ui.state.held.rid, 'x_pizza', 'the tap is held (pressed)');
+    await release(g);
+    assert.ok(S.ui.state.order && S.ui.state.order.order_id, '🔴 R3-GATE-MATCH: her order once her session settled');
+    assert.ok(S.ui.state.loc, '🔴 R3-GATE-MATCH: and her pin');
+    assert.equal(S.ui.store() && S.ui.store().rid, 'x_pizza', '🔴 R3-GATE-MATCH: the held tap opened');
+    assert.equal(st.getItem(OWNER), 'u:u_ana', 'still hers'); assert.deepEqual(S.replaced, [], 'no restart');
+  } finally { S.w.close(); }
+});
+for (const who of [null, 'u_bob']) {
+  test(`r3 GATE-MISMATCH: her device opened by ${who ? 'ANOTHER member' : 'a guest'} — her records are wiped before anything reads them (no restart), the held tap is DROPPED, the stamp ${who ? 'names him' : 'is «guest»'}${who ? ', his own mark kept' : ''}`, async () => {
+    const st = await memberWithOrder();
+    if (who) st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: who }));
+    const g = gateQ(); const { S } = await relaunch(st, who, { fbOpts: { persisted: who, authGate: g } });
+    try {
+      await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+      assert.equal(S.ui.store(), null, '🔴 R3-GATE-MISMATCH: the tap is held until the session settles');
+      await release(g);
+      assert.deepEqual(unkeyedOf(st), [], '🔴 R3-GATE-MISMATCH: none of her unkeyed records is left');
+      for (const k of ['capp:addr:u_ana', 'capp:member_profile']) assert.equal(st.getItem(k), null, `🔴 R3-GATE-MISMATCH: ${k} is gone`);
+      assert.equal(S.ui.state.order, null, '🔴 R3-GATE-MISMATCH: her order never shown');
+      assert.equal(S.ui.store(), null, '🔴 R3-GATE-MISMATCH: the held tap is dropped, never replayed');
+      assert.equal(st.getItem(OWNER), who ? 'u:' + who : 'guest', '🔴 R3-GATE-MISMATCH: stamped to who settled — after the wipe');
+      if (who) assert.equal(JSON.parse(st.getItem('capp:member_complete')).uid, who, 'his own mark stays');
+      assert.deepEqual(S.replaced, [], '🔴 R3-GATE-MISMATCH: no restart (nothing of hers was read)');
+    } finally { S.w.close(); }
+  });
+}
+test('r3 GATE-UNSTAMPED (upgrade): records with NO stamp are nobody\'s — the settling guest gets none of them', async () => {
+  const st = memStorage(cartOf('x_pizza', anyDish().key));
+  const { S } = await relaunch(st, null);
+  try {
+    await flush(); await flush();
+    assert.equal(st.getItem('capp:x_pizza:cart'), null, '🔴 R3-GATE-UNSTAMPED: an unstamped record is wiped at settle (a missing stamp is a mismatch)');
+    assert.equal(st.getItem(OWNER), 'guest', 'then stamped');
+  } finally { S.w.close(); }
+});
+test('r3 GATE-UNAVAILABLE: the session never settles (the SDK silent past its 10 s) ⇒ fail CLOSED — nothing of hers read, the tap still held, nothing wiped', async () => {
+  const st = await memberWithOrder();
+  const g = gateQ(); const { S } = await relaunch(st, 'u_ana', { fbOpts: { persisted: 'u_ana', authGate: g } });
+  try {
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    await flush(11000);
+    assert.equal(S.ui.state.order, null, '🔴 R3-GATE-UNAVAILABLE: still nothing of hers');
+    assert.equal(S.ui.store(), null, '🔴 R3-GATE-UNAVAILABLE: the tap still held');
+    assert.ok(st.getItem('capp:active_order'), '🔴 R3-GATE-UNAVAILABLE: nothing wiped on a guess');
+  } finally { S.w.close(); }
+});
+test('r3 GATE-ROUTE: a cold /r/x_pizza on her device mounts NO store before her session settles; then it mounts once, her cart in it', async () => {
+  const { S: A, st } = await seedCheckout();
+  try { A.click('[data-act="type"][data-val="delivery"]'); await flush(); } finally { A.w.close(); }   // the store's own cart writer
+  assert.ok(st.getItem('capp:x_pizza:cart'), 'premise: her cart (the real writer)');
+  const g = gateQ(); const { S } = await relaunch(st, 'u_ana', { fbOpts: { persisted: 'u_ana', authGate: g }, url: 'https://app.test/r/x_pizza', routing: true });
+  try {
+    await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 R3-GATE-ROUTE: no store mounted before the session settles');
+    await release(g); await until(() => S.ui.store());
+    assert.equal(S.ui.store().rid, 'x_pizza', '🔴 R3-GATE-ROUTE: then the route mounts it');
+    assert.equal(S.ui.store().ui.cart.count(), 1, '🔴 R3-GATE-ROUTE: with her cart');
+  } finally { S.w.close(); }
+});
+for (const who of [null, 'u_bob']) {
+  test(`r3 Codex #173 #4 (P1): she left for the hosted payment; ${who ? 'another member' : 'a guest'} opens the payment return — no poll with her capability, nothing of hers shown, her records gone`, async () => {
+    const { S, st, sent } = await memberCardSend();
+    let oid = null;
+    try { const ch = sent.find((x) => x[0] === '/x/p' && x[1] && x[1].order_id); assert.ok(ch, 'premise: her charge'); oid = ch[1].order_id; } finally { S.w.close(); }   // the page left for PixelPay: no sign-out ran
+    if (who) st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: who }));
+    const calls = [];
+    const apiFetch = (u, i) => { calls.push(u.split('?')[0]); return u.startsWith('/x/q') ? quoteOk(u, i) : new Promise(() => {}); };
+    const { S: B } = await relaunch(st, who, { apiFetch, search: `?pay=complete&order=${oid}&t=pt_1` });
+    try {
+      await flush(); await flush(700);
+      assert.deepEqual(calls.filter((u) => u === '/x/s'), [], '🔴 C173-4: no payment poll for her order');
+      assert.deepEqual(unkeyedOf(st), [], '🔴 C173-4: her order records are gone');
+      const shown = B.w.document.body.textContent + JSON.stringify((B.ui.store() && B.ui.store().ui.state.flow) || {});
+      for (const t of ['Casa azul', 'Col. Trejo', 'Ana']) assert.ok(!shown.includes(t), `🔴 C173-4: «${t}» (hers) is nowhere`);
+    } finally { B.w.close(); }
+  });
+}
+test('r3 GUEST-SIGNIN-KEEP: a guest who signs in keeps her own cart and location (the «guest» stamp is adopted, then names her) — no wipe, no restart', async () => {
+  const fb = fakeFirebase(); const srv = signupServer(ANA);
+  const st = memStorage({ [OWNER]: 'guest', 'capp:guest_loc': JSON.stringify({ lat: 15.52, lng: -88.04, confirmed: true, source: 'pin', v: 1 }), ...cartOf('x_pizza', anyDish().key) });
+  const S = bootShell({ auth: 'unresolved', storage: st, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: srv.fetch } });
+  try {
+    await flush(); await flush();
+    await signInViaSheet(S); S.click(suHost(S).querySelector('[data-su="finish"]')); await flush(); await flush();
+    assert.ok(st.getItem('capp:x_pizza:cart') && st.getItem('capp:guest_loc'), '🔴 R3-SIGNIN-KEEP: her guest cart and location stay');
+    assert.equal(st.getItem(OWNER), 'u:u_ana', '🔴 R3-SIGNIN-KEEP: the stamp now names her');
+    assert.deepEqual(S.replaced, [], 'no restart');
+  } finally { S.w.close(); }
+});
+// ── r3 Codex #173 P2/P3 (the picker; not identity — the restart does not touch them) ──
+test('r3 Codex #173 #7 (P2): the owned token held by the SDK never holds the picker — the pick settles at the transport\'s cap (UNKNOWN: sand line, rows live), and the late token sends nothing', async () => {
+  const hold = { on: false, q: [] };
+  const { S, addr } = await dirBoot({ fbOpts: { hold } });
+  try {
+    await toDirecciones(S); await flush();
+    hold.on = true;
+    S.click(dirRow(S, AID.trabajo)); await flush();
+    assert.ok(S.ui.state.addrPick, 'premise: the pick waits on its owned token');
+    await flush(25000);
+    assert.equal(S.ui.state.addrPick, null, '🔴 C173-7: the pick settled (bounded by the cap)');
+    assert.equal(sandOf(S, '.flow'), SAND, '🔴 C173-7: the calm sand line (UNKNOWN)');
+    assert.ok(!S.qa('.addrlist [aria-disabled="true"]').length, '🔴 C173-7: the rows are live again');
+    hold.on = false; for (const f of hold.q.splice(0)) f(); await flush(); await flush();
+    assert.deepEqual(addrWrites(addr), [], '🔴 C173-7: the late token sends nothing');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 Codex #173 #9 (P2): Inicio\'s open «Entregar en» sheet paints the pick — the spinner on the tapped row (the rest disabled) while it waits, the sand line on a refusal', async () => {
+  const h = held();
+  const { S, addr } = await dirBoot({ uses: ['use_trabajo_late'], ugate: () => h.gate() });
+  try {
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush();
+    S.click(sheetRow(S, AID.trabajo)); await flush();
+    assert.equal(sheetRow(S, AID.trabajo).getAttribute('aria-busy'), 'true', '🔴 C173-9: the tapped row spins in the open sheet');
+    assert.ok(off(sheetRow(S, AID.casa)), '🔴 C173-9: the other row is disabled');
+    h.release(); await flush(); await flush(); await flush();
+    assert.equal(sandOf(S, '#layer'), SAND, '🔴 C173-9: the refusal\'s sand line in the open sheet');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 Codex #173 #5 (P2): a refused pick whose re-read ADOPTS another selection (the form chose Mamá) re-seeds the editable checkout with it — row, pin and the open sheet\'s selection', async () => {
+  const mama = ADX.scenarios.m3_profile_mama.body.addresses.find((a) => a.id === AID.mama);
+  const { S, ui, addr } = await seedCheckout({ reads: ['m3_profile_casa', 'm3_profile_mama'], uses: ['m3_use_trabajo_stale'] });
+  try {
+    assert.equal(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', 'premise: Casa seeds the checkout');
+    S.click('[data-act="co-addr"]'); await flush();
+    S.click(sheetRow(S, AID.trabajo)); await flush(); await flush(); await flush();
+    assert.equal(sandOf(S, '#layer'), SAND, 'premise: the refusal\'s sand line (409 ⇒ the re-read adopted Mamá)');
+    assert.deepEqual([ui.state.flow.pin.lat, ui.state.flow.pin.lng], [mama.lat, mama.lng], '🔴 C173-5: the checkout prices / routes the address now in use (Mamá)');
+    assert.ok(/^Mamá · /.test(addrBold(S) || ''), `🔴 C173-5: its row names Mamá (${addrBold(S)})`);
+    assert.ok(sheetRow(S, AID.mama) && sheetRow(S, AID.mama).classList.contains('on'), '🔴 C173-5: the open sheet marks Mamá in use');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 Codex #173 #6 (P2): a pick in flight holds EVERY pin / location control of the checkout — the map and its row are disabled and open no editor', async () => {
+  const h = held();
+  const { S, ui, addr } = await seedCheckout({ ugate: () => h.gate() });
+  try {
+    S.click('[data-act="co-addr"]'); await flush(); S.click(sheetRow(S, AID.trabajo)); await flush(); S.click('#layer [data-act="lclose"]'); await flush();
+    const map = S.q('.map[data-act="pin"]'); assert.ok(map, 'premise: the checkout map');
+    assert.ok(off(map), '🔴 C173-6: the map is disabled while the pick is in flight');
+    S.click(map); await flush();
+    assert.notEqual(ui.state.layerKind, 'pin', '🔴 C173-6: «Ajustar pin» opens no editor mid-pick');
+    h.release(); await flush(); await flush();
+    assert.ok(!off(S.q('.map[data-act="pin"]')), 'live again after the 200');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 Codex #173 #8 (P2): the address ALREADY in use, picked again after a device location, goes through the CAS (the real handler\'s 200) and puts the saved address back in use', async () => {
+  const { S, addr } = await dirBoot({ uses: ['use_casa_same'] });
+  try {
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush(); S.click('#layer [data-act="addr-new"]'); await flush(); S.click('[data-act="pin-done"]'); await flush(); await flush();
+    assert.equal(S.ui.state.locPick, 'device', 'premise: a device location took over');
+    S.click('.addr-btn'); await flush(); S.click(sheetRow(S, AID.casa)); await flush(); await flush(); await flush();
+    assert.deepEqual(addrWrites(addr), [{ id: AID.casa, expected_rev: 0, expected_default: AID.casa }], '🔴 C173-8: the same id is written through the CAS (the fence)');
+    assert.equal(S.ui.state.locPick, 'saved', '🔴 C173-8: the saved address is back in use');
+    assert.equal(txt(S.q('.addr-btn .v > span')), 'Casa', '🔴 C173-8: the pill names it');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 Codex #173 #10 (P2): a confirmed pick landing while the card TIP step is open (not yet sent) re-seeds the flow — the tip step is editable, «Enviando» is not', async () => {
+  const h = held();
+  const { S, ui, addr } = await seedCheckout({ ugate: () => h.gate() });
+  try {
+    S.click('[data-act="co-addr"]'); await flush(); S.click(sheetRow(S, AID.trabajo)); await flush(); S.click('#layer [data-act="lclose"]'); await flush();
+    if (S.q('[data-act="pay"][data-val="online"]')) { S.click('[data-act="pay"][data-val="online"]'); await flush(); }
+    S.click('#cta'); await flush(); await until(() => ui.state.screen === 'tip', 4000).catch(() => {});
+    assert.equal(ui.state.screen, 'tip', 'premise: the card tip step (nothing sent)');
+    h.release(); await flush(); await flush();
+    assert.equal(ui.state.flow.saved && ui.state.flow.saved.label, 'Trabajo', '🔴 C173-10: the undispatched flow takes the confirmed pick');
+    noProblems(addr);
+  } finally { S.w.close(); }
 });
