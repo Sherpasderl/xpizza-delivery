@@ -267,6 +267,14 @@ t('production DRV2_PAUSE_ENABLED is false (dark) — read from the index.html so
   assert.doesNotMatch(INDEX, /const DRV2_PAUSE_ENABLED = true;/, 'never shipped true');
 });
 
+// ---- Pausa colours: lavender, no amber (owner 2026-11-20) — read FROM SOURCE ----
+t('pausa ring + chip are lavender (#5B4F9E / #EDEBF7), never amber (#8A5A00 / #FBF1DC)', () => {
+  assert.match(SCRIPT, /stroke="#5B4F9E"/, 'the ring progress stroke is lavender ink #5B4F9E');
+  assert.doesNotMatch(SCRIPT, /stroke="#8A5A00"/, 'no amber ring stroke survives');
+  assert.match(INDEX, /\.pausa-chip \{[^}]*background: #EDEBF7;[^}]*color: #5B4F9E;/, 'the chip is the lavender wash + ink');
+  assert.doesNotMatch(INDEX, /\.pausa-chip \{[^}]*#FBF1DC/, 'no amber chip wash survives');
+});
+
 await (async () => {
   for (const { name, fn } of _tests) {
     try { await fn(); passed += 1; } catch (e) { console.error('✗ ' + name); throw e; }

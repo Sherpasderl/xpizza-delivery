@@ -7391,7 +7391,7 @@
     "site": "${scheduledBadge(order)}",
     "siteSha": "7af405919535866e072b12a5ba044e0784e06462de324f2e022f9d7c706ac584",
     "scope": "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon",
-    "scopeSha": "2774d3061e3dc4251b11d72a30bff579429e1b3bfaf55d17f61d263d4a068d87"
+    "scopeSha": "bce8d9de47f317465f8dd6e82f1d0f1c951703036ceb5939d88085f4273dbe01"
    },
    "guards": [
     {
@@ -8380,7 +8380,7 @@
     "site": "<div class=\"ib-title\">🔔 Nuevo pedido ${escapeHtml(displayOrderLabel(order))} ${restaurantChip(order, 'sm')}</div>",
     "siteSha": "bbdf91d360515ab6bbf47f1b59186b31fe98c1f067c615bb359af5b24f204302",
     "scope": "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon",
-    "scopeSha": "2774d3061e3dc4251b11d72a30bff579429e1b3bfaf55d17f61d263d4a068d87"
+    "scopeSha": "bce8d9de47f317465f8dd6e82f1d0f1c951703036ceb5939d88085f4273dbe01"
    },
    "guards": [
     {

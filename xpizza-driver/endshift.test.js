@@ -84,7 +84,8 @@ t('live: the «Terminar turno» slide renders at the bottom of disponible + mirr
   assert.ok(sl, 'the slide is present');
   assert.ok(sl.classList.contains('slide-confirm') && sl.classList.contains('endshift'), 'slide-confirm endshift classes (mirrors .start)');
   assert.match(sl.querySelector('.slide-text').textContent, /Terminar turno/, 'the label');
-  assert.ok(sl.querySelector('.slide-fill') && sl.querySelector('.slide-thumb') && sl.querySelector('.slide-hint'), 'the attachSlideConfirm markup (fill/thumb/hint)');
+  assert.ok(sl.querySelector('.slide-fill') && sl.querySelector('.slide-thumb'), 'the attachSlideConfirm markup (fill/thumb)');
+  assert.ok(!sl.querySelector('.slide-hint'), 'hint-free slider (owner 2026-11-20: «deslizá» removed)');
   assert.equal(sl.getAttribute('role'), 'button', 'keyboard-operable');
 });
 t('live: the slide is wired through attachSlideConfirm, and doEndShift runs the SAME end-shift path (handleEndShift)', async () => {
@@ -264,6 +265,18 @@ t('P2-1 (real): «Volver al turno» re-renders a FRESH slide that accepts a new 
   assert.ok(!h.$('cuadre-screen').classList.contains('open'), 'Volver closed the cuadre');
   await h.drag();            // the REBUILT slide must drive a fresh end-shift (pre-fix: stays latched → opens stays 1)
   assert.equal(h.opens, 2, 'the rebuilt slide is un-latched and runs a new end-shift');
+});
+
+// ---- Sliders: hint-free + «Aceptar» (owner 2026-11-20) — read FROM SOURCE ----
+const STACKED_SRC = readFileSync(join(__dir, 'stacked-view.js'), 'utf8');
+t('sliders carry NO «deslizá» hint node, and the accept label is «Aceptar» (owner 2026-11-20)', () => {
+  // Done this pass: start / end-shift / cuadre + both stacked sliders are hint-free. The ONE remaining index.html hint
+  // is the pickup slider (inside SLICE2:STACKED-BRANCH) — it lands with the frozen batch (SLICE3DEPS carve), see the plan.
+  assert.equal((SCRIPT.match(/class="slide-hint">deslizá/g) || []).length, 1, 'only the pickup hint remains in index.html (deferred to the SLICE3DEPS-carve batch)');
+  assert.doesNotMatch(STACKED_SRC, /class="slide-hint">deslizá/, 'no .slide-hint node in stacked-view.js sliders');
+  assert.doesNotMatch(SCRIPT, /slide-text">Deslizá para aceptar/, 'index accept slider label is «Aceptar», not «Deslizá para aceptar»');
+  assert.doesNotMatch(STACKED_SRC, /slide-text">Deslizá para aceptar/, 'stacked accept slider label is «Aceptar»');
+  assert.match(SCRIPT, /class="slide-text">Aceptar<\/div>/, 'the index accept slider shows exactly «Aceptar»');
 });
 
 await (async () => {

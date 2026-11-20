@@ -339,17 +339,17 @@
 #idle-state .disp-cancel-banner .dcb-chip { display: inline-block; font: 700 12px 'Red Hat Text', sans-serif; background: transparent; border: 1px solid currentColor; border-radius: 999px; padding: 4px 10px; }   /* proto .chip.err transparent + border */
 #idle-state .disp-cancel-ack { appearance: none; border: 0; width: 100%; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -.01em; border-radius: 14px; padding: 15px 14px; min-height: 52px; background: #2F5FB8; color: #fff; cursor: pointer; }   /* proto .btn.primary «Entendido» */
 #idle-state .disp-cancel-ack:active { background: #24488C; }
-/* slice 3-P — manual pause (prototype S.pausa): a FULL amber ring (the pause never ends on its own), the amber «No
+/* slice 3-P — manual pause (prototype S.pausa): a FULL lavender ring (the pause never ends on its own), the lavender «No
    recibís pedidos» pill, «Pausa manual» copy, the «pedido en mano» note (reuses .pr-card/.pr), and the «Reanudar turno»
-   foot button. Amber hex inlined per the app's --p-* convention (--p-warn #8A5A00 / --p-warnwash #FBF1DC; ring track
-   --p-surface2 #E7ECF4). */
+   foot button. Lavender hex inlined per the app's --p-* convention (owner 2026-11-20, retire amber: --p-pause #5B4F9E /
+   --p-pausewash #EDEBF7; ring track --p-surface2 #E7ECF4). */
 #idle-state .pausa-body { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; text-align: center; gap: 16px; padding-top: 2px; }   /* prototype top-aligns the content (its .sp spacer pushes it up); the foot button sits at the bottom */
 #idle-state .pausa-ring { position: relative; width: 128px; height: 128px; margin: 0 auto; }
 #idle-state .pausa-ring svg { transform: rotate(-90deg); width: 100%; height: 100%; }
 #idle-state .pausa-ring-c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 #idle-state .pausa-ring-c b { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 34px; letter-spacing: -.02em; line-height: 1; font-variant-numeric: tabular-nums; color: var(--text, #0D1424); }
 #idle-state .pausa-ring-c small { font-size: 11px; color: var(--text-soft, #546078); font-weight: 600; }   /* Codex r1 #6: prototype .ring .c small has no caption margin */
-#idle-state .pausa-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; line-height: 1.2; white-space: nowrap; background: #FBF1DC; color: #8A5A00; }
+#idle-state .pausa-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; line-height: 1.2; white-space: nowrap; background: #EDEBF7; color: #5B4F9E; }
 #idle-state .pausa-chip svg { width: 13px; height: 13px; }
 #idle-state .pausa-copy .pausa-h { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -.02em; line-height: 1.15; color: var(--text, #0D1424); }   /* prototype .h */
 #idle-state .pausa-copy .pausa-sub { margin: 6px 0 0; font-size: 13px; color: var(--text-soft, #546078); }   /* prototype .sub (13px) */
@@ -3344,7 +3344,7 @@ function renderOffshift() {
       <div class="off2-stats ${earnStat ? 'two' : 'one'}">${cashStat}${earnStat}</div>
       <div style="flex:1"></div>
     </div>
-    <div class="off2-foot"><div class="slide-confirm start" id="btn-start-shift"><div class="slide-fill"></div><div class="slide-text">Iniciar turno</div><div class="slide-hint">deslizá</div><div class="slide-thumb">${ARROW}</div></div></div>
+    <div class="off2-foot"><div class="slide-confirm start" id="btn-start-shift"><div class="slide-fill"></div><div class="slide-text">Iniciar turno</div><div class="slide-thumb">${ARROW}</div></div></div>
     <button class="duty-toggle hidden" id="duty-toggle-off" aria-hidden="true"></button>`;
   const nm = $('off-driver-name'); if (nm) nm.textContent = first;
   const cb = $('cuenta-btn'); if (cb) cb.addEventListener('click', openCuenta);
@@ -3483,7 +3483,7 @@ function drv2PauseRingHtml(big) {
   const C = (2 * Math.PI * 56).toFixed(2);
   return '<div class="pausa-ring">'
     + '<svg viewBox="0 0 128 128" aria-hidden="true"><circle cx="64" cy="64" r="56" fill="none" stroke="#E7ECF4" stroke-width="9"/>'
-    + '<circle cx="64" cy="64" r="56" fill="none" stroke="#8A5A00" stroke-width="9" stroke-linecap="round" stroke-dasharray="' + C + '" stroke-dashoffset="0"/></svg>'
+    + '<circle cx="64" cy="64" r="56" fill="none" stroke="#5B4F9E" stroke-width="9" stroke-linecap="round" stroke-dasharray="' + C + '" stroke-dashoffset="0"/></svg>'
     + '<div class="pausa-ring-c"><b>' + escapeHtml(big) + '</b><small>en pausa</small></div></div>';
 }
 // renderPausa — the S.pausa takeover of #idle-state (mirrors renderSoloCancel: overwrite + preserve the bound controls
@@ -3721,7 +3721,7 @@ function renderDisponible() {
     // «Terminar turno» idle slide (owner 2026-10-27), at the bottom above the tabs — mirrors the offshift «Iniciar
     // turno» slide. Dark until DRV2_ENDSHIFT_SLIDE flips (then the header duty toggle is hidden; see renderStatusBar).
     + (DRV2_ENDSHIFT_SLIDE
-        ? '<div class="disp-endshift-foot"><div class="slide-confirm endshift" id="btn-end-shift-slide" role="button" tabindex="0" aria-label="Terminar turno"><div class="slide-fill"></div><div class="slide-text">Terminar turno</div><div class="slide-hint">deslizá</div><div class="slide-thumb">' + DRV2_SLIDE_ARROW + '</div></div></div>'
+        ? '<div class="disp-endshift-foot"><div class="slide-confirm endshift" id="btn-end-shift-slide" role="button" tabindex="0" aria-label="Terminar turno"><div class="slide-fill"></div><div class="slide-text">Terminar turno</div><div class="slide-thumb">' + DRV2_SLIDE_ARROW + '</div></div></div>'
         : '');
   const helpSlot = $('disp-help-slot'); if (helpLink && helpSlot) helpSlot.replaceWith(helpLink);   // re-insert the bound controls
   const arriveSlot = $('disp-arrive-slot'); if (arriveBtn && arriveSlot) arriveSlot.replaceWith(arriveBtn);
@@ -5220,7 +5220,7 @@ function cuadreConfirmFootHtml() {
   // .slide-thumb/.slide-fill, not the class, so the mechanics are unaffected. role="button" tabindex="0" per the
   // prototype .slide (keyboard Enter/Space confirms through the same gates — wired in renderCuadreReceipt).
   return `<div class="cuadre-slide" id="cuadre-confirm" role="button" tabindex="0" aria-label="Confirmar entrega de efectivo"><div class="slide-fill"></div>`
-    + `<div class="slide-text">Confirmar entrega de efectivo</div><div class="slide-hint">deslizá</div>`
+    + `<div class="slide-text">Confirmar entrega de efectivo</div>`
     + `<div class="slide-thumb">${CUADRE_ARROW_SVG}</div></div>`
     + `<button class="rc-volver cuadre-volver" type="button">Volver al turno</button>`;
 }
@@ -6652,7 +6652,9 @@ function renderIncomingBanners(pending) {
         ${scheduledBadge(order)}
         <div class="slide-confirm accept" id="btn-accept-inc-${escapeHtml(o.orderId)}">
           <div class="slide-fill"></div>
-          <div class="slide-text">Deslizá para aceptar</div>
+          <!-- ===== SLICE3:ACCEPT-INC-LABEL:START — owner 2026-11-20 (hint-free sliders): the incoming-accept slider label «Deslizá para aceptar» → «Aceptar»; REPLACE region, restores the frozen 07e5ab38 baseline line. ===== -->
+          <div class="slide-text">Aceptar</div>
+          <!-- ===== SLICE3:ACCEPT-INC-LABEL:END ===== -->
           <div class="slide-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div>
         </div>
       </div>

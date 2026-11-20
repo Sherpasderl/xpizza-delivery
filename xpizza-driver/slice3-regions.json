@@ -609,6 +609,13 @@
     "async function handleEndShift() {",
     "  if (!currentUser) return;"
    ]
+  },
+  {
+   "name": "ACCEPT-INC-LABEL",
+   "kind": "replace",
+   "restore": [
+    "          <div class=\"slide-text\">Deslizá para aceptar</div>"
+   ]
   }
  ],
  "deps": [
