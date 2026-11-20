@@ -68,7 +68,8 @@
     // r3: THE device store everything in the app goes through (the store, capp-api, push, the directory). A GATED boot (its unkeyed
     // records stamped to a member, or not stamped at all) neither reads nor writes them until its identity settles; a LEAVING app
     // writes no member record at all (the wipe below goes to the raw store). Device records (menus, push's own queue) are untouched
-    let gate = 'open', myStamp = null, unstamped = false;   // gate: 'held' | 'open' | 'sealed' · myStamp: the stamp THIS mount owns (set by the boot / settle / admission)
+    // leaving (r3 restart): this mount is leaving the device — declared before the boot path, which settles and stamps (advisor 11-20)
+    let gate = 'open', myStamp = null, unstamped = false, leaving = false;   // gate: 'held' | 'open' | 'sealed' · myStamp: the stamp THIS mount owns (set by the boot / settle / admission)
     // unstamped (Codex #189 P2-3): this mount's stamp could not be PERSISTED (quota) — member records fail closed; never an ownership change
     const hidden = (k) => gate === 'held' && MEMBER_REC.test(String(k));
     const memberKey = (k) => MEMBER_REC.test(k) || UID_REC.test(k) || k === 'capp:member_profile' || k === COMPLETE_KEY || k === OWNER_KEY;
@@ -344,7 +345,7 @@
     // The FIRST settled identity (a guest, or a member her completion mark names) is checked against the stamp: 'guest' is anyone's (a
     // guest who signs in keeps her cart and location), 'u:{uid}' only that member's. A mismatch — or no stamp at all — wipes it before
     // anything of it is read (a gated boot read nothing of it: no restart); the per-uid records of anyone else go either way
-    let seenUid = null, leaving = false;
+    let seenUid = null;
     function dropUidKeyed(keep) {
       for (const k of rawKeys()) { const m = UID_REC.exec(k); if (m && m[1] !== keep) rawDel(k); }
       for (const k of [CappDeviceAccount.PROFILE_KEY, COMPLETE_KEY]) {
@@ -359,7 +360,7 @@
       try { const ss = win && win.sessionStorage; if (ss) ss.removeItem(SNAPSHOT_KEY); } catch (_) {}   // a self-update snapshot (cart + flow) never outlives her
     }
     function settleOwner(uid) {
-      if (settled) return; settled = true;
+      if (settled || leaving) return; settled = true;   // a tab that left never settles: no stamp, no mismatch wipe (advisor 11-20)
       const id = uid ? 'u:' + uid : 'guest', own = rawGet(OWNER_KEY);
       const mismatch = own !== 'guest' && own !== id && unkeyedHeld();
       if (mismatch) wipeIdentity(uid); else dropUidKeyed(uid);
@@ -374,7 +375,9 @@
       loadLoc(); if (!mismatch) bootReturnNow(); bootSteps(); checkHeld(); renderNow();
     }
     // a member admitted here: the stamp names her (her session settled first — a 'guest' stamp is adopted, as a guest's sign-in keeps)
-    function ownBy(uid) { seenUid = uid; if (!settled) settleOwner(uid); else stampAs('u:' + uid); }
+    // r3 (identity, advisor 11-20): once LEAVING, nothing stamps — the ONE place every admission stamps; a late one (a sheet's «Listo», an
+    // offer's sign-in) never rewrites the device's stamp, which by then is another identity's (its records would be re-labelled as this one's)
+    function ownBy(uid) { if (leaving) return; seenUid = uid; if (!settled) settleOwner(uid); else stampAs('u:' + uid); }
     function stampAs(id) {
       try { rawStorage.setItem(OWNER_KEY, id); } catch (_) {}
       // Codex #189 P2-3: only a stamp the device HOLDS is this mount's; a failed write keeps the device's own (no stale ⇒ no restart)
@@ -1529,7 +1532,8 @@
       const em = app.querySelector('#offer-email'), email = em ? String(em.value || '').trim() : od.email;
       offerBusy = true;
       let uid = null, r = null;
-      try { r = await suApi.redeemSignupGrant({ grant: od.grant.token, email, name: od.name || '' }); if (r && r.ok && r.token) uid = await fbAuth.signInWithCustomToken(r.token); } catch (_) { uid = null; }
+      // a reply landing after a leave signs nothing in (the SDK is never flipped by a tab that left; the fresh page decides)
+      try { r = await suApi.redeemSignupGrant({ grant: od.grant.token, email, name: od.name || '' }); if (r && r.ok && r.token && !leaving) uid = await fbAuth.signInWithCustomToken(r.token); } catch (_) { uid = null; }
       offerBusy = false;
       if (dead || S.order !== od) return;
       if (typeof uid === 'string' && uid) { od.offerDone = true; od.claimedBy = `u:${uid}`; await signedIn({ uid, name: (r && r.name) || od.name || '', phone: od.phoneWire, email: email || null, isNew: !!(r && r.isNew) }); if (!dead && S.tab === 'order' && !S.store) renderNow(); return; }

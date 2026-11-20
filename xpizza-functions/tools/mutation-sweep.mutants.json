@@ -41303,8 +41303,8 @@
   "slice": "c-dir-1",
   "label": "r3: the pick is never sent (no useMyAddress)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "if (live() && own && own.uid === uid && own.token) r = await suApi.useMyAddress({ idToken: own.token, ...body });",
-  "to": "if (false) r = await suApi.useMyAddress({ idToken: own.token, ...body });",
+  "from": "if (live() && own) r = await suApi.useMyAddress({ idToken: own, ...body });",
+  "to": "if (false) r = await suApi.useMyAddress({ idToken: own, ...body });",
   "command": [
    "node",
    "--test",
@@ -41813,16 +41813,16 @@
   "slice": "r3-b",
   "label": "r3: the re-read is NOT owned (any token — another member's after a switch)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "      const own = await ownedToken();\n      if (dead || gen !== bookGen || !own || own.uid !== uid || !own.token) return null;",
-  "to": "      let own = null; try { own = { token: await fbAuth.idToken(), uid }; } catch (_) { own = null; }\n      if (dead || gen !== bookGen || !own || own.uid !== uid || !own.token) return null;",
+  "from": "      const own = await ownedToken(uid);\n      if (dead || gen !== bookGen || !own) return null;",
+  "to": "      const own = await sdkTokenAnswer().then((x) => (x && x.token) || null);\n      if (dead || gen !== bookGen || !own) return null;",
   "command": [
    "node",
    "--test",
-   "--test-name-pattern=#153 #1",
+   "--test-name-pattern=re-anchor r3-b-04",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "C153-1: no write and no read under"
+   "C197-BOOK: no profile re-read under Bob's token while the book is Ana's"
   ]
  },
  {
@@ -41830,8 +41830,8 @@
   "slice": "r3-b",
   "label": "r3: the write skips the owner check (a token of whoever the SDK holds)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "if (live() && own && own.uid === uid && own.token) r = await",
-  "to": "if (live() && own && own.token) r = await",
+  "from": "        const own = await ownedToken(uid);\n        const live = () =>",
+  "to": "        const own = await sdkTokenAnswer().then((x) => (x && x.token) || null);\n        const live = () =>",
   "command": [
    "node",
    "--test",
@@ -42169,18 +42169,18 @@
  {
   "id": "r3-rs-14",
   "slice": "r3-rs",
-  "label": "r3 restart: a write AFTER the push exit still lands (the store not sealed)",
+  "label": "r3 restart: a write AFTER the leave still lands once the device stamp is hers again (her other tab re-admitted her) — the store not sealed",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "      setItem: (k, v) => { k = String(k); if ((gate === 'sealed' && memberKey(k)) || hidden(k)) return;",
-  "to": "      setItem: (k, v) => { k = String(k); if (hidden(k)) return;",
+  "from": "      setItem: (k, v) => { k = String(k); if (((gate === 'sealed' || unstamped) && memberKey(k)) || hidden(k)) return;",
+  "to": "      setItem: (k, v) => { k = String(k); if ((unstamped && memberKey(k)) || hidden(k)) return;",
   "command": [
    "node",
    "--test",
-   "--test-name-pattern=#173 #1",
+   "--test-name-pattern=re-anchor r3-rs-14",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "C173-1: her coordinates never land on the device"
+   "R3-SEAL: the leaving tab writes nothing, even under her own returned stamp"
   ]
  },
  {
@@ -42290,16 +42290,16 @@
   "slice": "r3-rs",
   "label": "r3 restart: leave() skips dropMember (her in-flight reads run on until navigation, under the next session's token)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "      if (S.member) dropMember();\n      gate = 'sealed'; wipeIdentity(keep);",
-  "to": "      gate = 'sealed'; wipeIdentity(keep);",
+  "from": "      if (S.member) dropMember();\n      gate = 'sealed';\n",
+  "to": "      gate = 'sealed';\n",
   "command": [
    "node",
    "--test",
-   "--test-name-pattern=Receipt PREFETCH",
+   "--test-name-pattern=re-anchor r3-rs-21",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "RC-14: no receipt of Ana's requested after the switch"
+   "C178-DROP: the shell holds no member after the leave"
   ]
  },
  {
@@ -42322,18 +42322,18 @@
  {
   "id": "r3-rs-23",
   "slice": "r3-rs",
-  "label": "r3 (Codex #178 #2): the token's SDK user is not checked against the member (Bob's token carries Ana's order)",
+  "label": "r3 (Codex #189 #1): a change answer without a token — the SDK says its user changed (switched / signed out) but returns no token; the member is not marked moved, so her still-usable cached token carries her order",
   "file": "../customer-app/capp-api.js",
-  "from": "if (o && o.uid && o.uid !== m.uid) { m.moved = true;",
+  "from": "if (o && (o.uid || null) !== m.uid) { m.moved = true;",
   "to": "if (false) { m.moved = true;",
   "command": [
    "node",
    "--test",
-   "--test-name-pattern=#178 #2",
+   "--test-name-pattern=#189 #1",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "C178-2: Bob's token never carries her order"
+   "C189-1: her order is not dispatched (never with her cached token)"
   ]
  },
  {
@@ -42487,6 +42487,57 @@
   ],
   "kills_with": [
    "C189-P2-3: a failed stamp write is never an ownership change (no restart, no overlay)"
+  ]
+ },
+ {
+  "id": "r3-rs-33",
+  "slice": "r3-rs",
+  "label": "r3 (identity, 11-20): the offer's redeem reply landing after a leave still signs the new account in (the SDK flipped by a tab that left)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (r && r.ok && r.token && !leaving) uid = await fbAuth.signInWithCustomToken(r.token);",
+  "to": "if (r && r.ok && r.token) uid = await fbAuth.signInWithCustomToken(r.token);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=OFFER-RACE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "OFFER-RACE: a tab that left never signs the new account in"
+  ]
+ },
+ {
+  "id": "r3-rs-34",
+  "slice": "r3-rs",
+  "label": "r3 (identity, 11-20): ownBy stamps while LEAVING — a late «Listo» rewrites another identity's stamp (its records re-labelled)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "function ownBy(uid) { if (leaving) return; seenUid = uid;",
+  "to": "function ownBy(uid) { seenUid = uid;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SHEET-RACE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "SHEET-RACE: Bob's stamp is never overwritten by a tab that left"
+  ]
+ },
+ {
+  "id": "r3-rs-35",
+  "slice": "r3-rs",
+  "label": "r3 (identity, 11-20): settleOwner runs in a tab that left while its gate was held — it stamps and mismatch-wipes the identity that holds the device now",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (settled || leaving) return; settled = true;",
+  "to": "      if (settled) return; settled = true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=PRESETTLE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PRESETTLE: a tab that left writes no stamp"
   ]
  }
 ]

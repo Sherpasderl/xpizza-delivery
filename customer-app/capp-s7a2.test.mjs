@@ -708,7 +708,7 @@ const WARNINGS = []; process.on('warning', (w) => WARNINGS.push(w));   // Codex 
 // notifyGate: { on, q } — while on, a sign-out / sign-in changes currentUser AT ONCE but its listeners wait for the test (production's order:
 // the SDK's user moves before onAuthStateChanged fires — Codex #152 #2 / #153 #1: the fake must never be laxer, on BOTH transitions)
 function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0, failFrom = Infinity, failIf = null, tokExp, rotate = false, authGate = null, notifyGate = null } = {}) {
-  const calls = { load: 0, ct: [], out: 0 }; let listeners = [], user = persisted;
+  const calls = { load: 0, ct: [], out: 0, get reads() { return tokN; } }; let listeners = [], user = persisted;   // reads: every SDK token read (r3-rs-21's cell)
   // hold: { on, q } — while on, every token read waits for the test to release it (a slow SDK)
   let tokN = 0; const rot = (n) => (rotate ? (tokExp ?? T0 + 3600e3) + n * 1000 : tokExp);
   const tok = (u) => { const n = tokN++; return failToken > 0 ? (failToken--, Promise.reject(new Error('network'))) : n >= failFrom || (failIf && failIf()) ? Promise.reject(new Error('network')) : hold && hold.on ? new Promise((r) => hold.q.push(() => r(TOK(u, rot(n))))) : Promise.resolve(TOK(u, rot(n))); };
@@ -2028,7 +2028,9 @@ test('Pedido recibido: «Ayuda» opens wa.me/<runtime.supportWhatsapp> with the 
 // frame 7 (owner 10-27) in v6's .rw slot, end to end on the REAL writers: a guest card order (the code sheet, the charge with its
 // grant) leaves for PixelPay; a NEW page load on the paid return lands on «Pedido recibido» with the offer; «Crear mi cuenta» redeems
 // the grant (no second code) and signs in through the shell's own path; the offer is gone for the member
-test('Pedido recibido · frame 7: a guest card order\'s paid return shows the account offer (phone + email pre-filled); «Crear mi cuenta» redeems the grant and signs in — the offer gone', async () => {
+// a guest card order up to its charge (the real checkout, the code sheet, the charge with its signup grant): the device storage, the
+// order id and the runtime — frame 7's paid return and the r3 offer race build on it
+async function guestPaidOrder() {
   const storage = memStorage(), grant = { token: 'sg_1', expires_at: T0 + 15 * 60e3 };
   const GEO = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) };
   const sent = [];
@@ -2054,6 +2056,10 @@ test('Pedido recibido · frame 7: a guest card order\'s paid return shows the ac
     const ch = sent.find((x) => x[0] === 'p' && x[1] && x[1].order_id);   // RUNTIME.endpoints.chargeOnlineOrder = /x/p
     assert.ok(ch, `premise: the charge was sent (${sent.map((x) => x[0]).join(',')})`); id = ch[1].order_id;
   } finally { A.w.close(); }
+  return { storage, id, RT };
+}
+test('Pedido recibido · frame 7: a guest card order\'s paid return shows the account offer (phone + email pre-filled); «Crear mi cuenta» redeems the grant and signs in — the offer gone', async () => {
+  const { storage, id, RT } = await guestPaidOrder();
   // the paid return: a NEW page load on the same device storage
   const fb = fakeFirebase(); const su = [];
   const suFetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop(); const b = i && i.body ? JSON.parse(i.body) : null; su.push([ep, b]);
@@ -2079,6 +2085,100 @@ test('Pedido recibido · frame 7: a guest card order\'s paid return shows the ac
     assert.equal(su.filter((x) => x[0] === 'requestOtp').length, 0, 'no second code');
     assert.equal(B.q('.guestcard.offer'), null, '🔴 PR-7: the offer is gone for the member');
   } finally { B.w.close(); }
+});
+// r3 (re-anchor r3-rs-14): the SEAL is the only guard once the device's stamp is HERS again after this tab left — her other tab re-admitted
+// her (the same stamp) before this page unloaded; a late write of the leaving tab still lands nothing
+test('r3 (re-anchor r3-rs-14) SEAL: she signs out here, her OTHER tab re-admits her (the same stamp returns) — «Listo» in the leaving tab still lands nothing', async () => {
+  const { S, fb, st } = await dirBoot();
+  try {
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush(); S.click('#layer [data-act="addr-new"]'); await flush();
+    assert.ok(S.q('[data-act="pin-done"]'), 'premise: Inicio\'s pin editor is open');
+    await signOutNow(fb);
+    assert.equal(S.replaced.length, 1, 'premise: this tab left (the page is still alive)');
+    st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_ana' }));   // her completion mark (switchTo's writer format)
+    const { S: C } = await relaunch(st, 'u_ana');   // her other tab: the same device storage — she is admitted there again
+    try { await flush(); assert.equal(st.getItem(OWNER), 'u:u_ana', 'premise: the device\'s stamp is hers again'); } finally { C.w.close(); }
+    assert.equal(st.getItem('capp:guest_loc'), null, 'premise: no location on the device before the late tap');
+    if (S.q('[data-act="pin-done"]')) { S.click('[data-act="pin-done"]'); await flush(); }   // a tap that slipped through (jsdom ignores inert)
+    assert.equal(st.getItem('capp:guest_loc'), null, '🔴 R3-SEAL: the leaving tab writes nothing, even under her own returned stamp');
+  } finally { S.w.close(); }
+});
+// r3 (identity, advisor 11-20): a tab that goes STALE while its owner check is still held (the SDK unresolved) never settles afterwards —
+// no stamp, no mismatch wipe of the identity that holds the device now
+test('r3 (identity) PRESETTLE: a tab stale while its gate is HELD, then its SDK resolves (guest) — no stamp written, Bob\'s records untouched', async () => {
+  const { S: S0, st } = await dirBoot(); S0.w.close();   // the device: Ana's (her stamp, her records)
+  const gA = { q: [] };
+  const { S: A } = await relaunch(st, null, { fbOpts: { persisted: null, authGate: gA }, noFlush: true });   // tab A: the SDK not resolved yet
+  try {
+    await flush();
+    assert.equal(gA.q.length, 1, 'premise: tab A\'s first auth state is held (its owner check waits)');
+    st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' }));   // Bob's completion mark (switchTo's writer format)
+    const { S: B } = await relaunch(st, 'u_bob');   // tab B: Bob admitted on the same device
+    try {
+      await flush(); assert.equal(st.getItem(OWNER), 'u:u_bob', 'premise: the device is Bob\'s (tab B stamped it)');
+      B.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); const u = B.ui.store().ui; u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render();
+      B.click('.seg [data-val="delivery"]'); await flush();   // the store's own cart writer
+    } finally { B.w.close(); }
+    const cart = st.getItem('capp:x_pizza:cart'); assert.ok(cart, 'premise: Bob\'s cart is on the device');
+    A.w.dispatchEvent(new A.w.StorageEvent('storage', { key: OWNER })); await flush();   // the browser tells tab A the stamp changed
+    assert.equal(A.replaced.length, 1, 'premise: tab A is stale and left');
+    for (const f of gA.q.splice(0)) f(); await flush(); await flush(); await flush();   // tab A's SDK resolves (guest) after it left
+    assert.equal(st.getItem(OWNER), 'u:u_bob', '🔴 PRESETTLE: a tab that left writes no stamp');
+    assert.equal(st.getItem('capp:x_pizza:cart'), cart, '🔴 PRESETTLE: another identity\'s records are untouched (no mismatch wipe)');
+  } finally { A.w.close(); }
+});
+// r3 (identity, advisor 11-20): the ONE stamping place (ownBy) refuses once LEAVING — the sign-in sheet's «Listo» landing after this tab
+// left (another tab admitted Bob) never rewrites his stamp
+test('r3 (identity) SHEET-RACE: the sheet\'s «Listo» lands AFTER this tab left (another tab admitted Bob) — Bob\'s stamp and completion mark stay his', async () => {
+  const fb = fakeFirebase(); const srv = signupServer(ANA); const storage = memStorage();
+  const A = bootShell({ auth: 'unresolved', storage, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: srv.fetch } });
+  try {
+    await flush(); await flush();
+    await signInViaSheet(A);
+    assert.ok(suHost(A).querySelector('[data-su="finish"]'), 'premise: the sheet waits on «Listo»');
+    storage.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' }));   // Bob's completion mark (switchTo's writer format)
+    const { S: B } = await relaunch(storage, 'u_bob');   // tab B: the same device storage — Bob is admitted there
+    try { await flush(); assert.equal(storage.getItem(OWNER), 'u:u_bob', 'premise: the device is Bob\'s (tab B stamped it)'); } finally { B.w.close(); }
+    A.w.dispatchEvent(new A.w.StorageEvent('storage', { key: OWNER })); await flush();   // the browser tells tab A the stamp changed
+    assert.equal(A.replaced.length, 1, 'premise: tab A is stale and left');
+    A.click(suHost(A).querySelector('[data-su="finish"]')); await flush(); await flush();   // a tap that slipped through (jsdom ignores inert)
+    assert.equal(storage.getItem(OWNER), 'u:u_bob', '🔴 SHEET-RACE: Bob\'s stamp is never overwritten by a tab that left');
+    assert.equal(JSON.parse(storage.getItem('capp:member_complete')).uid, 'u_bob', '🔴 SHEET-RACE: no completion mark of hers lands');
+  } finally { A.w.close(); }
+});
+// r3 (identity, advisor 11-20): once a tab is LEAVING nothing admits or stamps. The race: this tab's «Crear mi cuenta» redeem is in flight,
+// another tab admits Bob (the device's stamp is his) ⇒ this tab is stale and leaves; the redeem reply lands after — the new account is
+// never signed in or admitted HERE, Bob's stamp is never overwritten, his records are never re-labelled as the new account's
+test('r3 (identity) OFFER-RACE: the offer\'s redeem lands AFTER this tab left (another tab admitted Bob) — no sign-in, no admission, Bob\'s stamp and records stay his', async () => {
+  const { storage, id, RT } = await guestPaidOrder();
+  let release = null; const held = new Promise((r) => { release = r; });
+  const fb = fakeFirebase(); const su = [];
+  const suFetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop(); const b = i && i.body ? JSON.parse(i.body) : null; su.push([ep, b]);
+    if (ep === 'redeemSignupGrant') await held;
+    const j = ep === 'getSignupConfig' ? { ok: true, terms_url: 'https://legal.test/t', privacy_url: 'https://legal.test/p', legal_ready: true, google_enabled: false }
+      : ep === 'redeemSignupGrant' ? { ok: true, token: 'ct:u_new', is_new: true, name: 'Ana', completion: 'complete' } : { ok: true };
+    return { status: 200, json: async () => j }; };
+  const pay2 = async (u) => ({ status: 200, ok: true, json: async () => (u.startsWith('/x/s') ? { ok: true, state: 'paid' } : { ok: false }) });
+  const A = bootShell({ storage, auth: 'guest', runtime: RT, apiFetch: pay2, search: `?pay=complete&order=${id}&t=pt_1`, mountExtra: { loadSdk: fb.loadSdk, signupFetch: suFetch } });
+  try {
+    await flush(); await flush(); await flush(800);
+    assert.ok(A.q('.mk-sheet .guestcard.offer'), 'premise: the offer in the order sheet');
+    A.click('[data-act="offer-create"]'); await flush(); await flush();
+    assert.ok(su.some((x) => x[0] === 'redeemSignupGrant'), 'premise: the redeem is in flight (held)');
+    storage.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' }));   // Bob's completion mark (switchTo's writer format)
+    const { S: B } = await relaunch(storage, 'u_bob');   // tab B: the same device storage — Bob is admitted there
+    try { await flush(); assert.equal(storage.getItem(OWNER), 'u:u_bob', 'premise: the device is Bob\'s (tab B stamped it)'); } finally { B.w.close(); }
+    const recs = keysOf(storage).filter((k) => /^capp:(?:active_order|[^:]+:(?:cart|placed|sent_order))$/.test(k)).sort();
+    A.w.dispatchEvent(new A.w.StorageEvent('storage', { key: OWNER }));   // the browser tells tab A the stamp changed
+    await flush();
+    assert.equal(A.replaced.length, 1, 'premise: tab A is stale and left');
+    release(); await flush(); await flush(); await flush();   // the redeem reply lands after the leave
+    assert.deepEqual(fb.calls.ct, [], '🔴 OFFER-RACE: a tab that left never signs the new account in');
+    assert.equal(storage.getItem(OWNER), 'u:u_bob', '🔴 OFFER-RACE: Bob\'s stamp is never overwritten — his records are never re-labelled');
+    assert.equal(JSON.parse(storage.getItem('capp:member_complete')).uid, 'u_bob', '🔴 OFFER-RACE: no completion mark of the new account lands');
+    assert.ok(!/u_new/.test(storage.getItem('capp:member_profile') || ''), '🔴 OFFER-RACE: no member profile of the new account lands');
+    assert.deepEqual(keysOf(storage).filter((k) => /^capp:(?:active_order|[^:]+:(?:cart|placed|sent_order))$/.test(k)).sort(), recs, 'the device records are untouched by the late reply');
+  } finally { A.w.close(); }
 });
 // ── «Pedido recibido» stage 2: the LIVE status, in place, from order_tracking/{token} (RTDB REST stream) — the record from the REAL
 // writer (create-order-build.buildCreateOrderUpdates) and its transitions on the paths index.js writes (status / delivered_at /
@@ -6443,6 +6543,24 @@ test('r3 Codex #153 #1 (P1): a switch that landed in the SDK BEFORE the pick (th
     assert.deepEqual([S.replaced.length, txt(S.q('#swap p'))], [1, 'Cambiando de cuenta…'], '🔴 C153-1: ONE leave, reason switch — the shell told a moment later never leaves (or wipes) again');
   } finally { S.w.close(); }
 });
+test('r3 Codex #197 (re-anchor r3-b-04): her pick FAILS after the SDK switched to Bob (the shell not told) ⇒ the book re-read is never made under Bob\'s token; her copy never holds his book; ONE leave, reason switch', async () => {
+  const gate = { on: false, q: [] }, fail = [];
+  const { S, fb, addr, st } = await dirBoot({ fbOpts: { notifyGate: gate }, ugate: () => new Promise((_, rej) => fail.push(() => rej(new Error('offline')))) });
+  try {
+    await toDirecciones(S);
+    assert.ok(addrStored(st), 'premise: her book is on the device (the real read)');
+    S.click(dirRow(S, AID.trabajo)); await flush(); await flush();
+    assert.equal(addrWrites(addr).length, 1, 'premise: her pick is in flight (her own token)');
+    gate.on = true;
+    const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush();   // the SDK is Bob's; the shell not told yet
+    assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: the shell still holds Ana');
+    for (const f of fail.splice(0)) f(); await flush(); await flush(); await flush();   // the pick fails ⇒ the re-read
+    assert.deepEqual(addr.calls.filter((c) => c.who === 'u_bob').map((c) => c.ep), [], '🔴 C197-BOOK: no profile re-read under Bob\'s token while the book is Ana\'s');
+    assert.equal(addrStored(st), null, '🔴 C197-BOOK: the proven switch removes her book with the leave — her copy never holds his');
+    gate.on = false; for (const e of gate.q.splice(0)) e(); await flush(); await flush();
+    assert.deepEqual([S.replaced.length, txt(S.q('#swap p'))], [1, 'Cambiando de cuenta…'], '🔴 C197-BOOK: ONE leave, reason switch');
+  } finally { S.w.close(); }
+});
 test('r3 Codex #153 #5 (P2): an UNKNOWN pick made in the checkout leaves the checkout exactly where the shell is (Casa) — row, pin and price', async () => {
   const { S, ui, addr } = await seedCheckout({ ugate: () => 'OFFLINE', reads: ['profile_default_casa'], uses: [] });
   try {
@@ -6964,6 +7082,22 @@ test('r3 Codex #193 (P1) repro: the SDK is Bob (listener held) and her token\'s 
     if (!S.q('#swap')) await c193Submit(S);
     assert.ok(!sent.some(([, t]) => subOf(t) === 'u_bob'), '🔴 C193: Bob\'s token never carries her request');
     assert.ok(S.q('#swap'), '🔴 C193: the app leaves (the overlay)');
+  } finally { S.w.close(); }
+});
+test('r3 (re-anchor r3-rs-21) leave() ends her identity IN MEMORY before the restart (the checkout mounted): the shell holds no member, her token timers are void — a refresh due after the leave never reads the SDK', async () => {
+  const { clock, L, fb, S } = c193();
+  try {
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
+    await toShellCheckout(S); await flush();
+    assert.ok(S.ui.store(), 'premise: her checkout is mounted');
+    const exp = [...L.pend.keys()]; assert.equal(exp.length, 1, 'premise: her token\'s expiry is armed');
+    const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush(); await flush();
+    assert.equal(S.replaced.length, 1, 'premise: the switch left (the restart is recorded; the page is still alive)');
+    assert.equal(S.ui.state.member, null, '🔴 C178-DROP: the shell holds no member after the leave');
+    assert.ok(!L.pend.has(exp[0]), '🔴 C178-DROP: her token expiry is cancelled');
+    const r0 = fb.calls.reads; clock.t = T0 + exp[0].ms + 60e3;
+    for (let i = 0; i < 4; i++) { L.fire(); await flush(); await flush(); }
+    assert.equal(fb.calls.reads, r0, '🔴 C178-DROP: a refresh due after the leave never reads the SDK');
   } finally { S.w.close(); }
 });
 test('r3 Codex #193 (P1) SINK: a foreign token in her cache (through the ONE setter) and a failed owned read — her request is never sent with it; she leaves', async () => {
