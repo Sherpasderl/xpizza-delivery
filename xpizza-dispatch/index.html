@@ -2629,6 +2629,21 @@
   </div>
 </div>
 
+<!-- Generic styled confirm (the «Quitar repartidor» look; title/body/two labels, resolves a Promise<boolean>).
+     Nothing operation-specific — reused for the Auto-asignar pause confirm (#1b); other dispatcher confirms can adopt it later. -->
+<div class="overlay-bg hidden" id="styled-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="styled-confirm-title">
+  <div class="picker-panel unassign-confirm-panel">
+    <div class="picker-header">
+      <div class="picker-title" id="styled-confirm-title"></div>
+    </div>
+    <div class="unassign-confirm-body" id="styled-confirm-body"></div>
+    <div class="unassign-confirm-actions">
+      <button id="styled-confirm-cancel" class="ucb-cancel" type="button">Cancelar</button>
+      <button id="styled-confirm-ok" class="ucb-do" type="button">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Task 12: read-only Comms thread sheet (floating glass over the board; populated by renderCommsThread) -->
 <div class="comms-scrim" id="comms-scrim"></div>
 <div class="comms-sheet" id="comms-sheet" role="dialog" aria-modal="true" aria-label="Conversación con cliente"></div>
@@ -3259,7 +3274,9 @@ function subscribeAll() {
   });
 
   // #1a: never let a double-click double-write the auto-assign toggle — a latch + disabled button until the
-  // server write settles and the subscription echo re-syncs the class. (The pause confirm is wired in #1b.)
+  // server write settles and the subscription echo re-syncs the class.
+  // #1b: PAUSING stops new orders from routing themselves, so confirm it first (through the generic styled
+  // confirm); resuming stays one tap. The latch+disable span the confirm too, so the dialog can't be double-opened.
   let autoAssignInFlight = false;
   $('auto-assign-toggle').addEventListener('click', async () => {
     if (autoAssignInFlight) return;                                   // ignore re-clicks while a write is in flight
@@ -3268,6 +3285,11 @@ function subscribeAll() {
     autoAssignInFlight = true;
     btn.disabled = true;
     try {
+      if (isOn && !(await styledConfirm({
+        title: 'Pausar asignación automática',
+        body: 'Pausar la asignación automática. Mientras esté en pausa, los pedidos nuevos no se asignan solos — los asignás vos desde la cola.',
+        confirmLabel: 'Pausar', cancelLabel: 'Cancelar',
+      }))) return;                                                   // declined → finally re-enables, no write
       await XPD.setAutoAssignEnabled(!isOn);
       toast(isOn ? 'Auto-asignación desactivada' : 'Auto-asignación activada',
             isOn ? 'error' : 'success');
@@ -5167,6 +5189,44 @@ $('recon-note-overlay').addEventListener('keydown', (e) => {
   }
 });
 
+// ── Generic styled confirm (#1b) — the «Quitar repartidor» look, but generic: title / body / two labels,
+// resolving a Promise<boolean>. Nothing operation-specific. Element-level focus-trapped: initial focus on
+// Cancel, own Tab trap, Esc = cancel with stopPropagation so the document arbiter never double-fires. Reused
+// for the Auto-asignar pause confirm; Cancelar pedido / Sacar de turno can adopt it later (noted for polish).
+let styledConfirmSettle = null, styledConfirmOpener = null;
+function settleStyledConfirm(result) {
+  if (!styledConfirmSettle) return;
+  const done = styledConfirmSettle; styledConfirmSettle = null;
+  $('styled-confirm-overlay').classList.add('hidden');
+  const opener = styledConfirmOpener; styledConfirmOpener = null;
+  if (opener && document.contains(opener)) { try { opener.focus(); } catch (_) {} }
+  done(result);
+}
+function styledConfirm({ title, body, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar' }) {
+  settleStyledConfirm(false);   // a newer confirm supersedes any still-open one (resolves it false)
+  styledConfirmOpener = document.activeElement;
+  $('styled-confirm-title').textContent = title || '';
+  $('styled-confirm-body').textContent = body || '';     // textContent — plain text, no HTML injection
+  $('styled-confirm-ok').textContent = confirmLabel;
+  $('styled-confirm-cancel').textContent = cancelLabel;
+  $('styled-confirm-overlay').classList.remove('hidden');
+  const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  $('styled-confirm-cancel').focus({ preventScroll: reduceMotion });   // default focus on the safe choice
+  return new Promise((resolve) => { styledConfirmSettle = resolve; });
+}
+$('styled-confirm-cancel').addEventListener('click', () => settleStyledConfirm(false));
+$('styled-confirm-ok').addEventListener('click', () => settleStyledConfirm(true));
+$('styled-confirm-overlay').addEventListener('click', (e) => { if (e.target === $('styled-confirm-overlay')) settleStyledConfirm(false); });
+$('styled-confirm-overlay').addEventListener('keydown', (e) => {
+  if (!styledConfirmSettle) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); settleStyledConfirm(false); return; }
+  if (e.key === 'Tab') {
+    const focusables = [...$('styled-confirm-overlay').querySelectorAll('button:not([disabled])')];
+    const target = focusTrapTarget(e.shiftKey, document.activeElement, focusables);
+    if (target) { e.preventDefault(); target.focus(); }
+  }
+});
+
 // ── "Quitar repartidor / Sin asignar" — styled confirm (NOT window.confirm). Opens OVER the reassign picker.
 // Initial focus on Cancelar; own focus trap (Tab/Shift-Tab wrap both ways); Esc = cancel (stopPropagation so the
 // picker's own Esc never also fires — no double dismiss). On cancel, focus returns to the picker's remove row
@@ -6307,6 +6367,7 @@ const OVERLAYS = [
   { name: 'picker',      z: 220, modal: true,  transient: false, open: () => { const e = $('picker-overlay');      return !!(e && !e.classList.contains('hidden')); },   close: null /* element-level focus-trapped: self-handles Esc (stopPropagation) → arbiter skips it */ },
   { name: 'recon-note',  z: 220, modal: true,  transient: false, open: () => { const e = $('recon-note-overlay');  return !!(e && !e.classList.contains('hidden')); },   close: null /* element-level focus-trapped MONEY dialog: self-handles Esc (stopPropagation) → arbiter skips it */ },
   { name: 'unassign-confirm', z: 230, modal: true, transient: false, open: () => { const e = $('unassign-confirm-overlay'); return !!(e && !e.classList.contains('hidden')); }, close: null /* opens OVER the picker; element-level focus-trapped: self-handles Esc (stopPropagation) → arbiter skips it */ },
+  { name: 'styled-confirm', z: 235, modal: true, transient: false, open: () => { const e = $('styled-confirm-overlay'); return !!(e && !e.classList.contains('hidden')); }, close: null /* generic focus-trapped confirm: self-handles Esc (stopPropagation) → arbiter skips it */ },
   { name: 'toast',       z: 240, modal: false, transient: true,  open: () => { const e = $('toast');               return !!(e && e.classList.contains('show')); } },
   { name: 'account-menu',z: 300, modal: false, transient: false, open: () => { const e = $('rail-av-menu');        return !!(e && !e.hidden); },                          close: null /* set by initAvatarMenu */ },
 ];

@@ -1,10 +1,12 @@
 // xpizza-dispatch/dispatch-auto-assign-lock.test.js
 //
-// CTA audit #1a — the «Auto-asignar» toggle changes order routing for every incoming order, but the
-// handler read the DOM `.on` class and wrote setAutoAssignEnabled(!isOn) with no guard, so a rapid
-// double-click double-wrote before the subscription echo re-synced the class — the toggle could land
-// opposite to what the dispatcher saw. Fix: an in-flight latch + a disabled button until the write settles.
-// (The pause confirm is #1b, wired through the generic styled confirm.)
+// CTA audit #1 — the «Auto-asignar» toggle changes order routing for every incoming order.
+//   #1a in-flight lock: the handler read the DOM `.on` class and wrote setAutoAssignEnabled(!isOn) with no
+//        guard, so a rapid double-click double-wrote before the subscription echo re-synced the class. Fix:
+//        an in-flight latch + a disabled button until the write settles.
+//   #1b confirm on PAUSE: pausing (which can strand orders) now goes through the generic styledConfirm with
+//        «Pausar»/«Cancelar»; a decline writes nothing. Resuming stays one tap.
+// Asserts BEHAVIOUR, not the confirm copy (owner wording can change freely).
 import assert from 'node:assert';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -19,10 +21,11 @@ const start = html.indexOf('let autoAssignInFlight');
 assert.ok(start > -1, 'the #1a fix is present (in-flight latch)');
 const anchor = html.indexOf("$('auto-assign-toggle').addEventListener('click'", start);
 const regSrc = html.slice(start, html.indexOf('\n  });', anchor) + '\n  });'.length);
-assert.ok(regSrc.includes('autoAssignInFlight') && regSrc.includes('.addEventListener'), 'sliced the handler registration');
+assert.ok(regSrc.includes('autoAssignInFlight') && regSrc.includes('.addEventListener') && regSrc.includes('styledConfirm'),
+  'sliced the handler registration (latch + styled-confirm pause)');
 
-function harness({ setEnabled, isOn = true } = {}) {
-  const calls = { setEnabled: [], toasts: [], confirms: 0, disabled: [] };
+function harness({ setEnabled, confirmResult = true, isOn = true } = {}) {
+  const calls = { setEnabled: [], toasts: [], confirms: 0, disabled: [], confirmOpts: null };
   const btn = {
     classList: { contains: () => isOn },
     _d: false,
@@ -34,16 +37,17 @@ function harness({ setEnabled, isOn = true } = {}) {
   const $ = () => btn;
   const XPD = { setAutoAssignEnabled: (v) => { calls.setEnabled.push(v); return setEnabled ? setEnabled() : Promise.resolve(); } };
   const toast = (m) => calls.toasts.push(m);
-  const confirm = () => { calls.confirms++; return confirmResult; };
-  new Function('$', 'XPD', 'toast', 'confirm', regSrc)($, XPD, toast, confirm);
+  const styledConfirm = (opts) => { calls.confirms++; calls.confirmOpts = opts; return Promise.resolve(confirmResult); };
+  new Function('$', 'XPD', 'toast', 'styledConfirm', regSrc)($, XPD, toast, styledConfirm);
   return { handler: btn._handler, btn, calls };
 }
 
-// (a) in-flight latch: two concurrent clicks write exactly once; disabled during flight, re-enabled after.
+// (#1a) in-flight latch: two concurrent clicks write exactly once; disabled during flight, re-enabled after.
+// Uses the RESUME path (isOn:false) so no confirm step sits between the click and the write.
 {
   let release;
   const pending = () => new Promise((r) => { release = r; });
-  const { handler, calls } = harness({ setEnabled: pending, isOn: true, confirmResult: true });
+  const { handler, calls } = harness({ setEnabled: pending, isOn: false });
   const p1 = handler();           // first click — setAutoAssignEnabled pends
   const p2 = handler();           // second click WHILE in flight — must be ignored
   assert.equal(calls.setEnabled.length, 1, 'a double-click writes exactly once while the first is in flight');
@@ -54,27 +58,35 @@ function harness({ setEnabled, isOn = true } = {}) {
   ok('in-flight latch: concurrent clicks write once; button disabled during flight, re-enabled after');
 }
 
-// (a') the latch releases even if the server write throws (finally re-enables + clears the latch).
+// (#1a) the latch releases even if the server write throws (finally re-enables + clears the latch).
 {
-  const { handler, calls } = harness({ setEnabled: () => Promise.reject(new Error('net')), isOn: true, confirmResult: true });
+  const { handler, calls } = harness({ setEnabled: () => Promise.reject(new Error('net')), isOn: false });
   await handler();
   assert.equal(calls.disabled[calls.disabled.length - 1], false, 're-enabled after a failed write');
   assert.equal(calls.toasts.length, 1, 'an error toast is shown');
-  // a subsequent click still works (latch cleared)
   await handler();
   assert.equal(calls.setEnabled.length, 2, 'the latch cleared — a later click writes again');
   ok('latch clears on a failed write (finally); a later click still works');
 }
 
-// the write direction follows the current state (pause when ON, resume when OFF)
+// (#1b) confirm only when PAUSING; a decline blocks the write; resume is one tap.
 {
-  const pause = harness({ isOn: true });
-  await pause.handler();
-  assert.equal(pause.calls.setEnabled[0], false, 'clicking while ON writes setAutoAssignEnabled(false) — pause');
-  const resume = harness({ isOn: false });
+  const declined = harness({ isOn: true, confirmResult: false });   // ON → click = pause
+  await declined.handler();
+  assert.equal(declined.calls.confirms, 1, 'pausing opens the styled confirm');
+  assert.equal(declined.calls.setEnabled.length, 0, 'declining the pause confirm writes nothing');
+  assert.equal(declined.calls.disabled[declined.calls.disabled.length - 1], false, 're-enabled after a decline');
+  assert.equal(declined.calls.confirmOpts.confirmLabel, 'Pausar', 'the confirm action is labelled «Pausar»');
+
+  const accepted = harness({ isOn: true, confirmResult: true });
+  await accepted.handler();
+  assert.equal(accepted.calls.setEnabled[0], false, 'accepting the pause confirm writes setAutoAssignEnabled(false)');
+
+  const resume = harness({ isOn: false });   // OFF → click = resume
   await resume.handler();
-  assert.equal(resume.calls.setEnabled[0], true, 'clicking while OFF writes setAutoAssignEnabled(true) — resume');
-  ok('toggle writes the opposite of the current state');
+  assert.equal(resume.calls.confirms, 0, 'resuming is one tap — no confirm');
+  assert.equal(resume.calls.setEnabled[0], true, 'resuming writes setAutoAssignEnabled(true)');
+  ok('confirm on pause only via styledConfirm (decline blocks the write); resume is one tap');
 }
 
 console.log(`dispatch-auto-assign-lock: OK (${n})`);

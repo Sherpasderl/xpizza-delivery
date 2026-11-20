@@ -229,13 +229,16 @@ const pickerJs = html.slice(openIdx, closeEnd);
 {
   const reg = html.slice(html.indexOf('const OVERLAYS = ['), html.indexOf('const anyModalOpen ='));
   assert.ok(reg && reg.length > 0, 'canonical OVERLAYS registry present');
-  for (const n of ['flyout', 'action-menu', 'msg-modal', 'comms', 'drawer', 'picker', 'recon-note', 'toast', 'account-menu'])
+  // 'styled-confirm' is the CTA #1b declared delta — a new generic focus-trapped confirm overlay.
+  for (const n of ['flyout', 'action-menu', 'msg-modal', 'comms', 'drawer', 'picker', 'recon-note', 'styled-confirm', 'toast', 'account-menu'])
     assert.match(reg, new RegExp(`name: '${n}'`), `registry includes the '${n}' overlay`);
   assert.match(html, /const anyModalOpen = \(\) => OVERLAYS\.some\(o => o\.modal && o\.open\(\)\)/, 'anyModalOpen (⌘K bail) DERIVES from OVERLAYS');
   // flyout + account-menu closers attach in their IIFEs; picker + recon-note are close:null (self-handled).
   assert.match(html, /_am\.close = \(\) => setOpen\(false\)/, 'account-menu registers its close() (arbiter-driven)');
   assert.match(reg, /name: 'picker',[^\n]*close: null/, 'picker is close:null → arbiter skips it (self-handles Esc)');
   assert.match(reg, /name: 'recon-note',[^\n]*close: null/, 'recon-note is close:null → arbiter skips it (self-handles Esc)');
+  assert.match(reg, /name: 'styled-confirm',[^\n]*close: null/, 'styled-confirm is close:null → arbiter skips it (self-handles Esc) [CTA #1b delta]');
+  assert.match(html, /\$\('styled-confirm-overlay'\)\.addEventListener\('keydown'[\s\S]*?e\.key === 'Escape'[\s\S]*?e\.stopPropagation\(\); settleStyledConfirm\(false\)/, 'styled-confirm self-handles Esc element-level with stopPropagation (settle false)');
   // the two self-handled modals DO keep their own element-level Esc (with stopPropagation, so the arbiter can't double-fire)
   assert.match(html, /\$\('picker-overlay'\)\.addEventListener\('keydown'[\s\S]*?e\.key === 'Escape'[\s\S]*?e\.stopPropagation\(\);[\s\S]*?closePicker\(\)/, 'picker self-handles Esc element-level with stopPropagation');
   assert.match(html, /\$\('recon-note-overlay'\)\.addEventListener\('keydown'[\s\S]*?e\.key === 'Escape'[\s\S]*?e\.stopPropagation\(\); settleReconNote\(null\)/, 'recon-note self-handles Esc element-level with stopPropagation (money dismiss = settle null)');
