@@ -202,10 +202,11 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
   const box = doc.getElementById('map');
   const send = (kind, cause) => { try { parent.postMessage(MP.childMessage(kind, mount, cause), MP.PORTAL_ORIGIN); } catch (_) { /* the portal is gone */ } };
   const st = { latest: null, maps: null, map: null, layer: null, failed: false, ready: false, userMoved: false, programmatic: false, width: 0, type: null,
-    cursor: null, press: null, drag: null, justDragged: false };   // Z2: the drawing cursor, a handle being dragged, the click that ends a drag
+    cursor: null, press: null, drag: null, justDragged: false, panHeld: false };   // Z2: the drawing cursor, a handle being dragged, the click that ends a drag
   const fail = (cause) => { if (st.failed || st.ready) return; st.failed = true; send('failed', cause); };
   // Z2: the map's v2 messages (hello, draft_points, finish, edit_request) — the exact portal origin, never '*'
   const sendMap = (kind, body) => { try { parent.postMessage(MP.mapMessage(kind, mount, body), MP.PORTAL_ORIGIN); } catch (_) { /* the portal is gone */ } };
+  const BASE_GESTURE = 'cooperative';   // the map's own gestures — held to 'none' only while a handle is pressed (holdPan / endPress)
   const ctl = drawController({ send: sendMap, onChange: () => { if (st.layer) st.layer.draw(); cursor(); } });
   st.ctl = ctl;
 
@@ -214,6 +215,7 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
     if (!m) return;
     st.latest = m;
     ctl.onRender(m.v === 3 ? m.drawing : null);   // a v1 / v2 render: no session (the parent never sent v3 to this document)
+    { const v = ctl.view(); if (!v || !v.editable) endPress(false); }   // the session ended / went inert mid-press: the pan back, nothing committed
     apply();
   });
   win.gm_authFailure = () => fail('auth_failure');
@@ -278,29 +280,43 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
     // becomes a DRAG only once the pointer moves past DRAG_PX (mockup px) — an unmoved press is a CLICK, left to the click handler
     const DRAG_PX = 4;
     const pxOf = (ll) => { const proj = st.layer && st.layer.getProjection && st.layer.getProjection(); return proj ? proj.fromLatLngToDivPixel(ll) : null; };
+    // PLAN-portal-zones-z2-fixes-r0 (a) route 1: a press on a HANDLE switches the map's own panning off AT ONCE (Google starts its pan on the
+    // first move, so the old switch — after 4 px of mousemove — never came: the real-browser trace). gestureHandling covers touch as well as
+    // the mouse. A press elsewhere never touches it.
     st.map.addListener('mousedown', (e) => {
       const v = ctl.view();
       if (!e || !e.latLng || !v || !v.editable) return;
       const i = vertexAt(e.latLng);
       if (i === -1) return;
       st.press = { i, at: pxOf(e.latLng) };
+      holdPan();
     });
     st.map.addListener('mousemove', (e) => {
       if (!st.press || !e || !e.latLng) return;
       if (!st.drag) {
         const now = pxOf(e.latLng), u = W() / G.MOCK.w;
         if (!now || !st.press.at || Math.hypot(now.x - st.press.at.x, now.y - st.press.at.y) <= DRAG_PX * u) return;
-        st.drag = { i: st.press.i, pt: ptOf(e.latLng) }; st.map.setOptions({ draggable: false });
+        st.drag = { i: st.press.i, pt: ptOf(e.latLng) };
       }
       st.drag.pt = ptOf(e.latLng); st.layer.draw();
     });
-    st.map.addListener('mouseup', () => {
-      st.press = null;
-      if (!st.drag) return;   // no movement: a click (the click handler decides)
-      const d = st.drag; st.drag = null; st.justDragged = true;
-      st.map.setOptions({ draggable: true });
-      ctl.dragEnd(d.i, d.pt); st.layer.draw(); cursor();
-    });
+    st.map.addListener('mouseup', () => endPress(true));
+    // EVERY other end path gives the pan back (advisor 11-20): a release OFF the map or a finger lift commits the drag; a cancel or the window
+    // losing focus commits nothing (the shape stays)
+    for (const t of ['pointerup', 'touchend', 'mouseup']) win.addEventListener(t, () => endPress(true), true);
+    for (const t of ['pointercancel', 'touchcancel', 'blur']) win.addEventListener(t, () => endPress(false), true);
+  }
+  // the pan, held while a handle is pressed — restored to the map's base on EVERY end (endPress, the session ending)
+  function holdPan() { if (st.panHeld || !st.map) return; st.panHeld = true; st.map.setOptions({ gestureHandling: 'none' }); }
+  // ONE end for a press (idempotent: the first end path wins, a later one finds nothing): the pan back; a drag committed only if `commit`
+  function endPress(commit) {
+    const d = st.drag;
+    st.press = null; st.drag = null;
+    if (st.panHeld) { st.panHeld = false; st.map.setOptions({ gestureHandling: BASE_GESTURE }); }
+    if (!d) return;   // no movement: a click (the click handler decides)
+    st.justDragged = true;
+    if (commit) ctl.dragEnd(d.i, d.pt);
+    st.layer.draw(); cursor();
   }
   function build() {
     const maps = st.maps, hub = st.latest.hub;
@@ -308,7 +324,7 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
     const look = styleFor(st.type);
     st.map = new maps.Map(box, {
       center: G.cameraCenter(hub), zoom: G.zoomFor(W(), hub.lat), isFractionalZoomEnabled: true,
-      disableDefaultUI: true, zoomControl: true, gestureHandling: 'cooperative', clickableIcons: false, keyboardShortcuts: false,
+      disableDefaultUI: true, zoomControl: true, gestureHandling: BASE_GESTURE, clickableIcons: false, keyboardShortcuts: false,
       styles: look.styles, mapTypeId: look.mapTypeId,
     });
     box.setAttribute('data-maptype', look.mapTypeId);

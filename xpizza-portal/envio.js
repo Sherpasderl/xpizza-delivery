@@ -495,7 +495,7 @@ function startMap(box) {
   // Codex r1 F6: the frame's listener lives as long as THIS frame (S.map === m), not as long as one request generation: a
   // discard / reload bumps the generation, the map stays; every session end (sign-out, revocation, unmount) stops the frame
   const m = { frame: null, mount, deadline: null, listening: false, ready: false, failed: false, v3: false, onMsg: null, postedPick: undefined,
-    pending: null, frameReq: null, rateT: 0, rateN: 0 };   // Z2: the coalesced draft_points (the latest seq), its frame callback, the 30/s window
+    pending: null, frameReq: null, rateT: 0, rateN: 0, io: null, seen: false };   // (b): the box's observer, and whether it has been seen   // Z2: the coalesced draft_points (the latest seq), its frame callback, the 30/s window
   m.onMsg = (event) => {
     if (S.map !== m || !S.root) return;
     const msg = MP.acceptFromChild(event, { frameWindow: m.frame && m.frame.contentWindow, mount });
@@ -506,7 +506,7 @@ function startMap(box) {
     if (msg.kind === 'listening') {
       const again = m.listening || m.failed || m.ready;
       m.failed = false; m.v3 = false; m.ready = false; m.listening = true;
-      if (again) { clearTimeout(m.deadline); m.deadline = setTimeout(() => mapFailed('timeout'), TIMING.deadlineMs); paintMapBox(); }
+      if (again) { clearTimeout(m.deadline); m.deadline = m.seen ? setTimeout(() => mapFailed('timeout'), TIMING.deadlineMs) : null; paintMapBox(); }   // (b): a box never seen waits for its first sight
       postRender('reset'); paintDraw();
       return;
     }
@@ -525,7 +525,17 @@ function startMap(box) {
   f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
   f.addEventListener('error', () => mapFailed('frame_error'));
   m.frame = f;
-  m.deadline = setTimeout(() => mapFailed('timeout'), TIMING.deadlineMs);   // absolute, from load start
+  // PLAN-portal-zones-z2-fixes-r0 (b): the deadline starts when the map box is first SEEN — Chrome throttles an off-screen cross-origin frame
+  // (Maps never fires tilesloaded), so a deadline from load failed every phone whose map sat below the fold (proven in Chrome, 11-20). The
+  // frame itself is still created at once (C2: listening first). No IntersectionObserver ⇒ today's timing (from load).
+  const arm = () => { if (S.map !== m || m.ready || m.failed) return; m.deadline = setTimeout(() => mapFailed('timeout'), TIMING.deadlineMs); };
+  if (typeof window.IntersectionObserver === 'function') {
+    m.io = new window.IntersectionObserver((entries) => {
+      if (!entries.some((e) => e.isIntersecting) || S.map !== m) return;
+      m.io.disconnect(); m.io = null; m.seen = true; arm();
+    }, { threshold: 0.01 });
+    m.io.observe(box);
+  } else { m.seen = true; arm(); }
   f.src = `${MP.MAP_ORIGIN}/map.html#m=${mount}`;
   box.append(f);
 }
@@ -533,6 +543,7 @@ function stopMap() {
   const m = S.map;
   if (!m) return;
   S.map = null;
+  if (m.io) { m.io.disconnect(); m.io = null; }   // (b): an observer still waiting for its first sight goes with its frame
   if (S.drawing) { clearTimeout(S.drawing.reqT); S.drawing = null; }   // Z2: a session belongs to its frame — it goes with it (no render: no frame)
   dropFrame(m.frameReq);
   clearTimeout(m.deadline);

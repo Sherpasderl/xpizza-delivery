@@ -512,3 +512,61 @@ test('#204-P3 child: retries exhausted ⇒ the view says unconfirmed, the overla
   const m = overlayModel(v3, flat(640), 1, c.view());
   assert.deepEqual([m.draw.vtx.length, m.draw.closing], [0, null], '🔴 no handles, no close preview');
 });
+
+// ── Z2 fix (a), PLAN-portal-zones-z2-fixes-r0 route 1 (advisor 11-20): a press on a HANDLE switches the map's own panning off AT ONCE (Google
+// starts its pan on the first move, so a switch after 4 px of mousemove never came — the real-browser trace); panning comes back on EVERY end
+// path; a press off a handle never touches it; #204's click-vs-drag threshold unchanged
+function panEnv() {
+  const env = liveEnv();
+  const wl = {};
+  const add = env.E.win.addEventListener.bind(env.E.win);
+  env.E.win.addEventListener = (t, f, o) => { (wl[t] = wl[t] || []).push(f); add(t, f, o); };
+  const fireWin = (t) => { for (const f of [...(wl[t] || [])]) f({ type: t }); };
+  const panOf = () => { const opts = env.E.maps.made[0].calls.filter(([k]) => k === 'options').map(([, o]) => o).filter((o) => 'gestureHandling' in o); return opts.length ? opts[opts.length - 1].gestureHandling : 'cooperative'; };
+  return { ...env, fireWin, panOf };
+}
+async function editing(env) {
+  boot({ win: env.E.win, doc: env.E.doc, loadMaps: env.E.loadMaps }); await tick();
+  env.E.fromParent(v3With(DRAW({ zone: 'z_aaaaaaaa', points: [P(0), P(1), P(2), P(3)] }))); await tick();
+}
+test('Z2 fix (a): a press on a handle switches the map\'s panning off BEFORE any move; a press off a handle never does', async () => {
+  const env = panEnv(); await editing(env);
+  env.fire('mousedown', { lat: 15.6, lng: -88.1 });
+  assert.equal(env.panOf(), 'cooperative', 'a press off every handle leaves the map\'s own pan alone');
+  env.fire('mouseup', { lat: 15.6, lng: -88.1 });
+  env.fire('mousedown', P(1));
+  assert.equal(env.panOf(), 'none', '🔴 the press on a handle stops Google\'s pan at once (mouse AND touch: gestureHandling)');
+});
+for (const [path, end] of [
+  ['the release over the map', (env) => env.fire('mouseup', P(1))],
+  ['a release OFF the map (pointerup on the window)', (env) => env.fireWin('pointerup')],
+  ['pointercancel', (env) => env.fireWin('pointercancel')],
+  ['touchend', (env) => env.fireWin('touchend')],
+  ['touchcancel', (env) => env.fireWin('touchcancel')],
+  ['the window losing focus', (env) => env.fireWin('blur')],
+  ['the session ending mid-press (the parent renders no session)', (env) => env.E.fromParent(v3With(null))],
+]) {
+  test(`Z2 fix (a): panning comes back on EVERY end path — ${path}`, async () => {
+    const env = panEnv(); await editing(env);
+    env.fire('mousedown', P(1));
+    assert.equal(env.panOf(), 'none', 'premise: the press holds the pan');
+    end(env); await tick();
+    assert.equal(env.panOf(), 'cooperative', `🔴 the map is never left unpannable (${path})`);
+  });
+}
+test('Z2 fix (a): a drag released OFF the map still commits (the window\'s pointerup ends it with the last moved point)', async () => {
+  const env = panEnv(); await editing(env);
+  const far = { lat: P(1).lat + 0.002, lng: P(1).lng };
+  env.fire('mousedown', P(1)); env.fire('mousemove', far); env.fireWin('pointerup'); await tick();
+  const last = env.E.parent.posted[env.E.parent.posted.length - 1][0];
+  assert.deepEqual([last.kind, last.points[1]], ['finish', far], '🔴 the drag end is the finish');
+  assert.equal(env.panOf(), 'cooperative');
+  env.fire('mouseup', far);
+  assert.equal(env.kinds().filter((k) => k === 'finish').length, 1, 'the map\'s own late mouseup adds nothing (one end per press)');
+});
+test('Z2 fix (a): a cancelled press commits nothing (pointercancel mid-drag: the shape stays)', async () => {
+  const env = panEnv(); await editing(env);
+  const n = env.kinds().length;
+  env.fire('mousedown', P(1)); env.fire('mousemove', { lat: P(1).lat + 0.002, lng: P(1).lng }); env.fireWin('pointercancel'); await tick();
+  assert.equal(env.kinds().length, n, '🔴 nothing sent for a cancelled gesture');
+});

@@ -50,6 +50,7 @@
   "envio-limit.test.mjs",
   "envio-logic.js",
   "envio-logic.test.mjs",
+  "envio-map-deadline.test.mjs",
   "envio-map-protocol.js",
   "envio-map-protocol.test.mjs",
   "envio-map-site.test.mjs",

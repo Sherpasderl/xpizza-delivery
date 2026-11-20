@@ -56095,7 +56095,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#render#status#0",
-   "line": 594,
+   "line": 605,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -56108,7 +56108,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#render#status#1",
-   "line": 595,
+   "line": 606,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -56121,7 +56121,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#frozen#status#0",
-   "line": 794,
+   "line": 805,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -56134,7 +56134,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#paintBands#status#0",
-   "line": 800,
+   "line": 811,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -56147,7 +56147,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#flushPoints>anon#lat#0",
-   "line": 1106,
+   "line": 1117,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -56157,7 +56157,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#flushPoints>anon#lng#0",
-   "line": 1106,
+   "line": 1117,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -56167,7 +56167,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#onFinish>anon#lat#0",
-   "line": 1135,
+   "line": 1146,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -56177,7 +56177,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#onFinish>anon#lng#0",
-   "line": 1135,
+   "line": 1146,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -56187,7 +56187,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#startEditing>anon#lat#0",
-   "line": 1197,
+   "line": 1208,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -56197,7 +56197,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#startEditing>anon#lng#0",
-   "line": 1197,
+   "line": 1208,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -56207,7 +56207,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#paintMapBox#status#0",
-   "line": 1252,
+   "line": 1263,
    "kind": "member",
    "facts": [
     "STATUS",
