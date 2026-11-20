@@ -31485,7 +31485,9 @@
   ],
   "kills_with": [
    "G7-privacy"
-  ]
+  ],
+  "equivalent": true,
+  "why": "COVERED ELSEWHERE, not strictly equivalent (advisor 11-20): on every admitted path, settleOwner(u.uid) → dropUidKeyed(u.uid) removes another uid's cached profile in the SAME auth callback; on the no-completion-mark restore path (which returns before the settle) a brief DEVICE-ONLY window remains, and it closes at the sign-out's guest settle (dropUidKeyed(null)); readProfile is uid-validated, so another uid's profile is never shown. The purge line stays in the code (live, not removable)"
  },
  {
   "id": "g7-24",
