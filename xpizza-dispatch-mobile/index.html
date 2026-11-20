@@ -2026,11 +2026,23 @@ function openDriverInfo(uid){
   const ordLabel = oid ? displayLabel(oid, STORE.orders[oid]) : null;
   const statusEs = DRIVER_STATUS_ES[d.status] || d.status || '';
   // Google's bubble is always light — these literals are intentional, not theme tokens.
-  driverInfoWindow.setContent(`<div style="font-family:-apple-system,system-ui,sans-serif;padding:1px 3px;min-width:118px">
+  // §4b: the bubble was info-only — give it two READ-ONLY shortcuts into existing flows (no new mutation, so
+  // the read-only contract is untouched): «Llamar» = tel: the driver, «Ver pedido» = openDetail of the order
+  // they carry (the same detail sheet, one tap from «Reasignar»). «Ver pedido» shows only when they carry one.
+  // Google's bubble is always light → literal colours (lilac wash / violet solid), as the name/status already are.
+  driverInfoWindow.setContent(`<div style="font-family:-apple-system,system-ui,sans-serif;padding:1px 3px;min-width:160px">
     <div style="font-weight:700;font-size:14px;color:#191627">${escapeHtml(d.name || 'Repartidor')}</div>
     <div style="font-size:12px;color:#5E5A75;margin-top:1px">${escapeHtml(statusEs)}${ordLabel ? ` · ${escapeHtml(ordLabel)}` : ''}</div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      ${d.phone ? `<a href="tel:${escapeHtml(String(d.phone))}" style="flex:1 1 0;height:34px;border-radius:10px;font-size:13px;font-weight:700;background:#F1E8FC;color:#7E45E1;display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h3l2 5-2.5 1.5a13 13 0 0 0 6 6L15 13l5 2v3a2 2 0 0 1-2.2 2A17 17 0 0 1 3 5.2 2 2 0 0 1 5 3z"/></svg>Llamar</a>` : ''}
+      ${oid ? `<button type="button" data-iw-order="${escapeHtml(oid)}" style="flex:1 1 0;height:34px;border-radius:10px;border:none;font-size:13px;font-weight:700;background:#9256D7;color:#fff">Ver pedido</button>` : ''}
+    </div>
   </div>`);
   driverInfoWindow.open(map, mk);
+  if (oid) google.maps.event.addListenerOnce(driverInfoWindow, 'domready', () => {
+    const vp = document.querySelector('[data-iw-order]');
+    if (vp) vp.addEventListener('click', () => { driverInfoWindow.close(); openDetail(vp.dataset.iwOrder); });   // read-only: opens the existing detail sheet
+  });
 }
 
 window.__driversUpdated = () => {

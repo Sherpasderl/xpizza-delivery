@@ -213,7 +213,11 @@ const fnSrc = (src, name) => { const s = src.indexOf(`function ${name}(`); const
   // approved branch and comparing — so the roster's liveness logic + presentation stay provably untouched.
   const node = fnSrc(html, 'renderDriverNode');
   const stripped = node.replace(/  \/\/ «Pausa»: the pause label[\s\S]*?\n  \}\n(?=  else if \(gpsDark\))/, '');
-  assert.strictEqual(stripped, fnSrc(baseHtml, 'renderDriverNode'), 'renderDriverNode byte-identical to base APART FROM the approved «Pausa» metaText branch (roster logic + presentation untouched)');
+  // §4a (CTA #8, owner-approved): the dead «Mensaje in-app (Fase 2)» button was removed from the driver row.
+  // Strip that exact line from the base too, so the comparison still proves everything ELSE — the liveness
+  // predicates, dot vocab, order count, GPS-dark row and the rest of the presentation — is byte-identical.
+  const base = fnSrc(baseHtml, 'renderDriverNode').replace(/ *<button class="da msg"[^\n]*\n/, '');
+  assert.strictEqual(stripped, base, 'renderDriverNode byte-identical to base APART FROM the approved «Pausa» metaText branch and the §4a Fase-2 button removal (roster logic + presentation untouched)');
   assert.notStrictEqual(stripped, node, 'the «Pausa» metaText branch is present (strip actually removed it)');
   // the predicates the roster relies on are the existing ones (documents what byte-identity protects)
   for (const pred of ['XPD.isStalePing(', 'hasPushReachability(', 'staleDriverUids.has(', 'getOrdersForDriver(']) assert.ok(node.includes(pred), `roster uses existing predicate ${pred}`);
