@@ -3287,7 +3287,7 @@ function subscribeAll() {
     btn.disabled = true;
     try {
       if (confirmShown && !(await styledConfirm({
-        title: 'Pausar asignación automática',
+        title: 'Pausar Auto-asignar',
         body: 'Pausar la asignación automática. Mientras esté en pausa, los pedidos nuevos no se asignan solos — los asignás vos desde la cola.',
         confirmLabel: 'Pausar', cancelLabel: 'Cancelar', opener: btn,   // #1b P2-1: the trigger, captured before it is disabled
       }))) return;                                                   // declined → finally re-enables + (maybe) re-focuses
