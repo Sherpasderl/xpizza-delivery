@@ -3777,7 +3777,7 @@ async function confirmCancelOrder(orderId) {
   const o = allOrders[orderId] || {};
   await styledConfirm({
     title: 'Cancelar pedido',
-    sub: `${displayOrderLabel(orderId)} · ${o.customer_name || '—'}${o.total != null ? ` · L${o.total}` : ''}`,
+    sub: `${displayOrderLabel(orderId)} · ${o.customer_name || '—'}${o.total != null ? ` · ${fmtL(o.total)}` : ''}`,
     body: `Vas a cancelar el pedido ${displayOrderLabel(orderId)} de ${o.customer_name || '—'}. Se marca como cancelado, se reembolsa el cargo si hubo pago y el repartidor queda libre si estaba asignado.`,
     confirmLabel: 'Cancelar pedido', cancelLabel: 'Volver', busyLabel: 'Cancelando…',
     onConfirm: async () => {
@@ -6025,6 +6025,12 @@ function escapeHtml(s) {
 // Compact glance label for LISTS — the friendly daily "#47", or a short code suffix
 // when a daily number hasn't been assigned yet. The full order code (PZSX…) is NOT
 // shown in lists; it lives in the detail modal (see orderCode / renderOrderDetailModal).
+// Canonical money format — «L 1,250.00» (es-HN thousands + 2 decimals), matching the approved mockups, so a
+// total reads the same way wherever it's shown to the dispatcher. A null/non-finite amount renders «—».
+function fmtL(n) {
+  const v = Number(n);
+  return (n == null || !Number.isFinite(v)) ? '—' : 'L ' + v.toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 function displayOrderLabel(orderOrId) {
   const isObj = orderOrId && typeof orderOrId === 'object';
   const orderId = isObj ? orderOrId.order_id : orderOrId;
