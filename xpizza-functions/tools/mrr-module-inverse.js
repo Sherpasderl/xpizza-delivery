@@ -7,22 +7,27 @@ const BASE = '1244a613c';
 const HUNKS = Object.freeze([
  {
   "file": "cancel-order-core.js",
-  "now": "    if (rec.to === 'manual_review') { cleared.payment_status = 'manual_review'; cleared.blocked_reason = 'cancel_stale_recovered'; }   // the reason rides the write that enters review (Central names it)\n",
+  "now": "    if (rec.to === 'manual_review') { cleared.payment_status = 'manual_review'; cleared.blocked_reason = cur.blocked_reason || 'cancel_stale_recovered'; }   // the reason rides the write that enters review (Central names it); a prior reason is kept (Codex #224)\n",
   "was": "    if (rec.to === 'manual_review') cleared.payment_status = 'manual_review';\n"
  },
  {
   "file": "resolve-manual.js",
-  "now": "      await orderRef.update({ payment_status: 'manual_review', blocked_reason: 'resolve_no_charge', status: 'cancelled', resolving_action: null, resolving_claim_id: null, resolving_claimed_at: null, resolving_phase: null });\n",
+  "now": "      await orderRef.transaction((cur) => (cur === null ? null : !cur ? undefined : { ...cur, payment_status: 'manual_review', blocked_reason: cur.blocked_reason || 'resolve_no_charge', status: 'cancelled', resolving_action: null, resolving_claim_id: null, resolving_claimed_at: null, resolving_phase: null }));   // one write; a prior reason is kept (Codex #224)\n",
   "was": "      await orderRef.update({ payment_status: 'manual_review', status: 'cancelled', resolving_action: null, resolving_claim_id: null, resolving_claimed_at: null, resolving_phase: null });\n"
  },
  {
   "file": "resolve-manual.js",
-  "now": "             ...(rec.to === 'manual_review' ? { status: 'cancelled', blocked_reason: 'resolve_stale_recovered' } : {}) };\n",
+  "now": "             ...(rec.to === 'manual_review' ? { status: 'cancelled', blocked_reason: cur.blocked_reason || 'resolve_stale_recovered' } : {}) };\n",
   "was": "             ...(rec.to === 'manual_review' ? { status: 'cancelled' } : {}) };\n"
  },
  {
   "file": "pixelpay-hosted-webhook.js",
-  "now": "      [`orders/${orderId}/payment_status`]: 'manual_review', [`orders/${orderId}/blocked_reason`]: 'paid_after_cancel_no_uuid',\n",
+  "now": "  if (!uuid) { const priorReason = (await db.ref(`orders/${orderId}/blocked_reason`).once('value')).val();   // a reason another writer set is kept (Codex #224)\n",
+  "was": "  if (!uuid) {\n"
+ },
+ {
+  "file": "pixelpay-hosted-webhook.js",
+  "now": "      [`orders/${orderId}/payment_status`]: 'manual_review', ...(priorReason ? {} : { [`orders/${orderId}/blocked_reason`]: 'paid_after_cancel_no_uuid' }),\n",
   "was": "      [`orders/${orderId}/payment_status`]: 'manual_review',\n"
  }
 ]);

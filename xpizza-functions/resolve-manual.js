@@ -272,7 +272,7 @@ async function resolveManualReconciliationCore(deps, { orderId, action, actor, n
     const uuid = attemptId ? (await db.ref(`payment_attempts/${attemptId}/payment_uuid`).once('value')).val() : null;
     if (!uuid) {
       // No real charge to void → NEVER report refunded (R3-#3). Converge to manual_review (post-side-effect: no revert).
-      await orderRef.update({ payment_status: 'manual_review', blocked_reason: 'resolve_no_charge', status: 'cancelled', resolving_action: null, resolving_claim_id: null, resolving_claimed_at: null, resolving_phase: null });
+      await orderRef.transaction((cur) => (cur === null ? null : !cur ? undefined : { ...cur, payment_status: 'manual_review', blocked_reason: cur.blocked_reason || 'resolve_no_charge', status: 'cancelled', resolving_action: null, resolving_claim_id: null, resolving_claimed_at: null, resolving_phase: null }));   // one write; a prior reason is kept (Codex #224)
       await audit('manual_review', { reason: 'no_charge' });
       return { status: 409, body: { ok: false, outcome: 'manual_review', detail: 'No se encontró el cargo — revisar en PixelPay' } };
     }
@@ -306,7 +306,7 @@ async function recoverStaleResolve(deps, orderId, order, now, staleMs) {
     if (cur === null) return null;                                      // null-first-safe (R1-#1): force server round-trip, don't abort
     if (!cur || cur.resolving_claim_id !== claimId || !MR.isResolving(cur.payment_status)) return; // only OUR still-stale claim
     return { ...cur, payment_status: rec.to, resolving_action: null, resolving_claim_id: null, resolving_claimed_at: null, resolving_phase: null,
-             ...(rec.to === 'manual_review' ? { status: 'cancelled', blocked_reason: 'resolve_stale_recovered' } : {}) };
+             ...(rec.to === 'manual_review' ? { status: 'cancelled', blocked_reason: cur.blocked_reason || 'resolve_stale_recovered' } : {}) };
   });
   if (cas.committed && rec.alert) await alert('resolve_stale_recovered', { orderId, to: rec.to, claim_id: claimId });
   return cas.committed ? { recovered: true, to: rec.to } : null;

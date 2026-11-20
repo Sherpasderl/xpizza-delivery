@@ -695,6 +695,7 @@
   "resolve-manual.js#confirmAndMaterializeFromManualClaim": "payment",
   "resolve-manual.js#confirmAndMaterializeFromManualClaim>anon": "payment",
   "resolve-manual.js#recoverStaleResolve>anon": "payment",
+  "cancel-order-core.js#recoverStaleCancel>anon": "payment",
   "resolve-manual.js#releaseClaim>anon": "payment",
   "resolve-manual.js#resolveManualReconciliationCore": "payment",
   "payments/review-attest.js#refusal": "payment",

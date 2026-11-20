@@ -256,7 +256,7 @@ async function recoverStaleCancel(deps, orderId, order, now, staleMs) {
     if (cur === null) return null;                                     // null-first-safe
     if (!cur || cur.cancel_claim_id !== claimId || cur.resolving_action !== 'cancel') return;
     const cleared = { ...cur, cancel_claim_id: null, resolving_action: null, resolving_phase: null, resolving_claimed_at: null, side_effect_started_at: null };
-    if (rec.to === 'manual_review') { cleared.payment_status = 'manual_review'; cleared.blocked_reason = 'cancel_stale_recovered'; }   // the reason rides the write that enters review (Central names it)
+    if (rec.to === 'manual_review') { cleared.payment_status = 'manual_review'; cleared.blocked_reason = cur.blocked_reason || 'cancel_stale_recovered'; }   // the reason rides the write that enters review (Central names it); a prior reason is kept (Codex #224)
     return cleared;
   });
   if (cas.committed && rec.alert) await alert('cancel_stale_recovered', { orderId, to: rec.to || 'cleared', claim_id: claimId });
