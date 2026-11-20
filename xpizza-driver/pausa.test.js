@@ -261,10 +261,10 @@ t('Codex r2 P2: a deferred intent bound to a PRIOR session is cleared + never wr
   assert.equal(same.wrote, 'pause', 'the originating session still applies its own deferred pause');
 });
 
-// ---- Survivor (Codex r1): the SHIPPED flag is false, read FROM SOURCE ----
-t('production DRV2_PAUSE_ENABLED is false (dark) — read from the index.html source, not a supplied flag', () => {
-  assert.match(INDEX, /const DRV2_PAUSE_ENABLED = false;/, 'the shipped constant is false; flipping it true in source → RED (kills the flag-flip survivor)');
-  assert.doesNotMatch(INDEX, /const DRV2_PAUSE_ENABLED = true;/, 'never shipped true');
+// ---- Go-live gate (Codex r1 survivor, INVERTED at the Pausa flip): the SHIPPED flag is TRUE, read FROM SOURCE ----
+t('production DRV2_PAUSE_ENABLED is true (live) — read from the index.html source, not a supplied flag', () => {
+  assert.match(INDEX, /const DRV2_PAUSE_ENABLED = true;/, 'the shipped constant is true (Pausa live); reverting it to false in source → RED (the go-live gate)');
+  assert.doesNotMatch(INDEX, /const DRV2_PAUSE_ENABLED = false;/, 'no longer shipped dark');
 });
 
 await (async () => {
