@@ -289,16 +289,18 @@ const pickerJs = html.slice(openIdx, closeEnd);
   assert.ok(gStart > -1 && gate, 'confirmAssignOverride is present');
   // EXACT prompt-argument freeze (Codex #227 P3): the WHOLE confirm(...) statement, terminator included, so
   // appending text to a message — e.g. + ' MUTATED COPY' — breaks the match and the mutant dies here.
+  // §6 (declared delta): the cascade moved from window.confirm to styledConfirm. Freeze the EXACT message as
+  // the dialog BODY (so an append-mutant still dies), the «Asignar igual» override label, and the priority order.
   const stmt = {
-    full: `if (full) return confirm('${MSG.full}');`,
-    enRoute: `if (enRoute) return confirm('${MSG.enRoute}');`,
-    unreachable: `if (unreachable) return confirm('${MSG.unreachable}');`,
+    full: `if (full) return styledConfirm({ title, sub: 'requiere confirmación · lleno', body: '${MSG.full}', confirmLabel: 'Asignar igual', cancelLabel: 'Cancelar' });`,
+    enRoute: `if (enRoute) return styledConfirm({ title, sub: 'requiere confirmación · en camino', body: '${MSG.enRoute}', confirmLabel: 'Asignar igual', cancelLabel: 'Cancelar' });`,
+    unreachable: `if (unreachable) return styledConfirm({ title, sub: 'requiere confirmación · sin notificaciones', body: '${MSG.unreachable}', confirmLabel: 'Asignar igual', cancelLabel: 'Cancelar' });`,
   };
-  for (const [k, s] of Object.entries(stmt)) assert.ok(gate.includes(s), `confirmAssignOverride freezes the EXACT ${k} prompt statement`);
+  for (const [k, s] of Object.entries(stmt)) assert.ok(gate.includes(s), `confirmAssignOverride freezes the EXACT ${k} styledConfirm statement (message + «Asignar igual»)`);
   assert.ok(gate.indexOf(stmt.full) > -1 && gate.indexOf(stmt.full) < gate.indexOf(stmt.enRoute)
     && gate.indexOf(stmt.enRoute) < gate.indexOf(stmt.unreachable),
     'full → en-route → unreachable priority preserved');
-  ok('override cascade frozen EXACTLY in the shared confirmAssignOverride (whole prompt statements + priority; base-sanity it pre-existed inline)');
+  ok('override cascade frozen EXACTLY in the shared confirmAssignOverride (whole styledConfirm statements + priority; base-sanity the messages pre-existed inline)');
 }
 
 // The picker click LISTENER now routes through the shared gate, then assigns. Base had the inline cascade.
@@ -309,11 +311,11 @@ const pickerJs = html.slice(openIdx, closeEnd);
   assert.ok(baseHtml.includes(baseBlock), '[base sanity] base had the inline-cascade click listener');
   const block = `    $('picker-list').querySelectorAll('[data-driver-uid]').forEach(row => {
       row.addEventListener('click', async () => {
-        if (!confirmAssignOverride({ full: row.dataset.full === '1', enRoute: row.dataset.enroute === '1', unreachable: row.dataset.unreachable === '1' })) return;
+        if (!(await confirmAssignOverride({ full: row.dataset.full === '1', enRoute: row.dataset.enroute === '1', unreachable: row.dataset.unreachable === '1', driverName: (allDrivers[row.dataset.driverUid] || {}).name }))) return;
         await assignOrder(orderId, row.dataset.driverUid);
       });
     });`;
-  assert.ok(html.includes(block), 'picker click listener routes through confirmAssignOverride then assignOrder (CTA #2)');
+  assert.ok(html.includes(block), 'picker click listener routes through (await) confirmAssignOverride then assignOrder (CTA #2 + §6 async)');
   ok('picker click listener block is the shared-gate form');
 }
 

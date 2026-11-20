@@ -2623,6 +2623,7 @@
   <div class="picker-panel unassign-confirm-panel">
     <div class="picker-header">
       <div class="picker-title" id="styled-confirm-title"></div>
+      <div class="picker-sub" id="styled-confirm-sub" hidden></div>
     </div>
     <div class="unassign-confirm-body" id="styled-confirm-body"></div>
     <div class="unassign-confirm-actions">
@@ -4086,7 +4087,7 @@ function wireColaHandlers(list) {
       e.stopPropagation();
       const oid = btn.dataset.assignSelf;
       // #2: self-assign runs the SAME confirm-to-override gate as the picker — no special case.
-      if (!confirmAssignOverride(classifyDriverForAssign(currentUser.uid))) return;
+      if (!(await confirmAssignOverride({ ...classifyDriverForAssign(currentUser.uid), driverName: (allDrivers[currentUser.uid] || {}).name }))) return;
       try {
         const res = await XPD.assignOrderToDriver(oid, currentUser.uid);
         if (res && res.ok === false) { toast(assignFailMsg(res.reason), 'error'); return; }
@@ -4155,21 +4156,32 @@ function renderOrderExpanded(order) {
 const cancelInFlight = new Set();   // F12: one cancel per order at a time (no double-fire stressing the server race)
 async function confirmCancelOrder(orderId) {
   if (cancelInFlight.has(orderId)) return;
-  if (!confirm(`¿Cancelar el pedido ${displayOrderLabel(orderId)}?\n\nEsto lo marcará como cancelado, reembolsará el cargo si hubo pago, y liberará al driver si está asignado.`)) return;
-  cancelInFlight.add(orderId);
-  try {
-    // Money-safe server cancel: voids the charge iff captured money, heals an already-cancelled-but-paid order.
-    const r = await XPD.cancelOrderRemote(orderId, 'Cancelado por dispatcher');
-    const refund = r && r.refund;
-    const suffix = refund === 'refunded' ? ' (reembolsado)' : refund === 'refund_pending' ? ' (reembolso pendiente)' : '';
-    toast(`Pedido ${displayOrderLabel(orderId)} cancelado${suffix}`, 'success');
-  } catch (e) {
-    // refund_pending / manual_review / claim_lost arrive as a non-2xx carrying e.outcome — show "revisar".
-    if (e && e.outcome) toast(`Pedido ${displayOrderLabel(orderId)}: ${e.outcome} — revisar`, 'error');
-    else toast('Error: ' + e.message, 'error');
-  } finally {
-    cancelInFlight.delete(orderId);
-  }
+  // §6 (styledConfirm adoption): the cancel confirm moves from window.confirm to the styled confirm («Volver»
+  // never collides with «Cancelar pedido»). The money logic below (the cancelInFlight latch, the money-safe
+  // cancelOrderRemote and its exact outcome mapping) is UNCHANGED — it just runs inside onConfirm.
+  const o = allOrders[orderId] || {};
+  await styledConfirm({
+    title: 'Cancelar pedido',
+    sub: `${displayOrderLabel(orderId)} · ${o.customer_name || '—'}${o.total != null ? ` · L${o.total}` : ''}`,
+    body: `Vas a cancelar el pedido ${displayOrderLabel(orderId)} de ${o.customer_name || '—'}. Se marca como cancelado, se reembolsa el cargo si hubo pago y el repartidor queda libre si estaba asignado.`,
+    confirmLabel: 'Cancelar pedido', cancelLabel: 'Volver', busyLabel: 'Cancelando…',
+    onConfirm: async () => {
+      cancelInFlight.add(orderId);
+      try {
+        // Money-safe server cancel: voids the charge iff captured money, heals an already-cancelled-but-paid order.
+        const r = await XPD.cancelOrderRemote(orderId, 'Cancelado por dispatcher');
+        const refund = r && r.refund;
+        const suffix = refund === 'refunded' ? ' (reembolsado)' : refund === 'refund_pending' ? ' (reembolso pendiente)' : '';
+        toast(`Pedido ${displayOrderLabel(orderId)} cancelado${suffix}`, 'success');
+      } catch (e) {
+        // refund_pending / manual_review / claim_lost arrive as a non-2xx carrying e.outcome — show "revisar".
+        if (e && e.outcome) toast(`Pedido ${displayOrderLabel(orderId)}: ${e.outcome} — revisar`, 'error');
+        else toast('Error: ' + e.message, 'error');
+      } finally {
+        cancelInFlight.delete(orderId);
+      }
+    },
+  });
 }
 
 // Cash bar — read-only aggregate of today's CLOSED cuadres
@@ -4710,9 +4722,21 @@ function showLastLocation(uid) {
 
 async function forceOffShift(uid) {
   const d = allDrivers[uid];
-  if (!confirm(`¿Sacar de turno a ${d?.name || 'este repartidor'}?\n\nSe marcará fuera de turno y desaparecerá del mapa.`)) return;
-  try { await XPD.endShift(uid); toast(`${d?.name || 'Repartidor'} fuera de turno`, 'success'); }
-  catch (e) { toast('Error: ' + e.message, 'error'); }
+  // §6: Sacar de turno moves to the styled confirm. endShift ONLY flips the driver node — it never reassigns
+  // the driver's order (verified), so the body says so honestly (rule 17). Count distinct active orders for the sub.
+  const activeOrders = new Set();
+  Object.values(allTasks).forEach((t) => { if (t && t.assigned_driver_id === uid && t.status !== 'completed' && t.status !== 'cancelled' && t.order_id) activeOrders.add(t.order_id); });
+  const active = activeOrders.size;
+  await styledConfirm({
+    title: 'Sacar de turno',
+    sub: `${d?.name || 'Repartidor'} · ${active} ${active === 1 ? 'pedido activo' : 'pedidos activos'}`,
+    body: `Vas a sacar de turno a ${d?.name || 'este repartidor'}. Queda fuera de turno y desaparece del mapa. Si tiene un pedido asignado, no se reasigna solo: queda con este repartidor, reasignalo vos.`,
+    confirmLabel: 'Sacar de turno', cancelLabel: 'Cancelar', busyLabel: 'Sacando de turno…',
+    onConfirm: async () => {
+      try { await XPD.endShift(uid); toast(`${d?.name || 'Repartidor'} fuera de turno`, 'success'); }
+      catch (e) { toast('Error: ' + e.message, 'error'); }
+    },
+  });
 }
 
 // «Pausa» — the on_break status label with elapsed minutes from drivers/{uid}/break_since. Number.isFinite
@@ -5204,13 +5228,14 @@ function settleStyledConfirm(result) {
 // Generic styled confirm → Promise<boolean>. Optional async flow: pass onConfirm (+ busyLabel) and the «do»
 // button runs it with a disabled «…ando» state (like #1a's in-flight latch), closing on success and staying
 // open on failure so the action can surface its own error. Without onConfirm it is a plain yes/no.
-function styledConfirm({ title, body, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', opener, onConfirm, busyLabel } = {}) {
+function styledConfirm({ title, sub, body, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', opener, onConfirm, busyLabel } = {}) {
   styledConfirmBusy = false; settleStyledConfirm(false);   // a newer confirm supersedes any still-open one
   // Capture the trigger to restore focus to on dismiss (CTA #1b P2-1). A caller whose trigger gets disabled
   // while the dialog is open passes it explicitly AND re-focuses it after re-enabling.
   styledConfirmOpener = opener || document.activeElement;
   styledConfirmFlow = { onConfirm, busyLabel, confirmLabel };
   $('styled-confirm-title').textContent = title || '';
+  const subEl = $('styled-confirm-sub'); subEl.textContent = sub || ''; subEl.hidden = !sub;   // optional header sub line
   $('styled-confirm-body').textContent = body || '';     // textContent — plain text, no HTML injection
   const okBtn = $('styled-confirm-ok'), cancelBtn = $('styled-confirm-cancel');
   okBtn.textContent = confirmLabel; okBtn.disabled = false;
@@ -6107,7 +6132,7 @@ function openPicker(orderId, isReassign = false) {
 
     $('picker-list').querySelectorAll('[data-driver-uid]').forEach(row => {
       row.addEventListener('click', async () => {
-        if (!confirmAssignOverride({ full: row.dataset.full === '1', enRoute: row.dataset.enroute === '1', unreachable: row.dataset.unreachable === '1' })) return;
+        if (!(await confirmAssignOverride({ full: row.dataset.full === '1', enRoute: row.dataset.enroute === '1', unreachable: row.dataset.unreachable === '1', driverName: (allDrivers[row.dataset.driverUid] || {}).name }))) return;
         await assignOrder(orderId, row.dataset.driverUid);
       });
     });
@@ -6239,10 +6264,13 @@ function assignFailMsg(reason) {
 // The confirm-to-override gate, shared by EVERY assignment path (picker rows and «A mí») so none can
 // skip it. full → en-route → unreachable, in that priority; returns true to proceed, false if the
 // dispatcher declined a required confirmation. (CTA audit #2.)
-function confirmAssignOverride({ full, enRoute, unreachable }) {
-  if (full) return confirm('Este repartidor ya tiene 2 pedidos (al límite). ¿Asignar de todas formas?');
-  if (enRoute) return confirm('Este repartidor ya salió a entregar (en camino). ¿Asignar de todas formas?');
-  if (unreachable) return confirm('Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?');
+async function confirmAssignOverride({ full, enRoute, unreachable, driverName }) {
+  // §6: the override cascade moves from window.confirm to the styled confirm («Asignar igual» / «Cancelar»).
+  // The three messages and their priority (full → en-route → unreachable) are UNCHANGED, now the dialog body.
+  const title = driverName || 'Confirmar asignación';
+  if (full) return styledConfirm({ title, sub: 'requiere confirmación · lleno', body: 'Este repartidor ya tiene 2 pedidos (al límite). ¿Asignar de todas formas?', confirmLabel: 'Asignar igual', cancelLabel: 'Cancelar' });
+  if (enRoute) return styledConfirm({ title, sub: 'requiere confirmación · en camino', body: 'Este repartidor ya salió a entregar (en camino). ¿Asignar de todas formas?', confirmLabel: 'Asignar igual', cancelLabel: 'Cancelar' });
+  if (unreachable) return styledConfirm({ title, sub: 'requiere confirmación · sin notificaciones', body: 'Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?', confirmLabel: 'Asignar igual', cancelLabel: 'Cancelar' });
   return true;
 }
 

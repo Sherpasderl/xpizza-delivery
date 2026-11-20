@@ -35,33 +35,36 @@ const fnSrc = (src, name) => {
     enRoute: 'Este repartidor ya salió a entregar (en camino). ¿Asignar de todas formas?',
     unreachable: 'Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?',
   };
+  // §6: the cascade now runs through styledConfirm (async). Stub it, capture the opts; the exact message is
+  // the dialog BODY, the override button «Asignar igual». The exact-body asserts keep the P3 mutant dead.
   const calls = [];
-  const make = () => new Function('confirm', `${src}\n; return confirmAssignOverride;`)((msg) => { calls.push(msg); return calls._ret; });
+  const make = (ret) => new Function('styledConfirm', `${src}\n; return confirmAssignOverride;`)((opts) => { calls.push(opts); return Promise.resolve(ret); });
 
-  calls.length = 0; calls._ret = false;
-  assert.equal(make()({ full: true, enRoute: false, unreachable: false }), false, 'decline on full → does not proceed');
-  assert.equal(calls.length, 1); assert.equal(calls[0], MSG.full, 'exact full-driver prompt');
+  calls.length = 0;
+  assert.equal(await make(false)({ full: true, enRoute: false, unreachable: false }), false, 'decline on full → does not proceed');
+  assert.equal(calls.length, 1); assert.equal(calls[0].body, MSG.full, 'exact full-driver prompt as the dialog body');
+  assert.equal(calls[0].confirmLabel, 'Asignar igual', 'the override button is «Asignar igual»');
 
-  calls.length = 0; calls._ret = true;
-  assert.equal(make()({ full: true }), true, 'accept on full → proceeds');
+  calls.length = 0;
+  assert.equal(await make(true)({ full: true }), true, 'accept on full → proceeds');
 
-  calls.length = 0; calls._ret = false;
-  make()({ enRoute: true });
-  assert.equal(calls[0], MSG.enRoute, 'exact en-route prompt');
+  calls.length = 0;
+  await make(false)({ enRoute: true });
+  assert.equal(calls[0].body, MSG.enRoute, 'exact en-route prompt');
 
-  calls.length = 0; calls._ret = false;
-  make()({ unreachable: true });
-  assert.equal(calls[0], MSG.unreachable, 'exact unreachable prompt');
+  calls.length = 0;
+  await make(false)({ unreachable: true });
+  assert.equal(calls[0].body, MSG.unreachable, 'exact unreachable prompt');
 
-  calls.length = 0; calls._ret = false;
-  assert.equal(make()({ full: false, enRoute: false, unreachable: false }), true, 'no flag → proceeds without asking');
+  calls.length = 0;
+  assert.equal(await make(false)({ full: false, enRoute: false, unreachable: false }), true, 'no flag → proceeds without asking');
   assert.equal(calls.length, 0, 'a clean driver is never prompted');
 
-  calls.length = 0; calls._ret = false;
-  make()({ full: true, enRoute: true, unreachable: true });
-  assert.match(calls[0], /2 pedidos/, 'full takes priority over en-route/unreachable');
+  calls.length = 0;
+  await make(false)({ full: true, enRoute: true, unreachable: true });
+  assert.equal(calls[0].body, MSG.full, 'full takes priority over en-route/unreachable');
   assert.equal(calls.length, 1, 'only one prompt, the highest-priority reason');
-  ok('confirmAssignOverride: full→en-route→unreachable cascade, clean driver never prompted');
+  ok('confirmAssignOverride: full→en-route→unreachable cascade via styledConfirm, «Asignar igual», clean driver never prompted');
 }
 
 // ── the classifier mirrors the picker's rules (full = 2 distinct active orders, en-route by status, unreachable by push) ──
