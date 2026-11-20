@@ -129,4 +129,26 @@ function build() {
   ok('async onConfirm: a failed action keeps the dialog open and re-enabled');
 }
 
+// Codex #241 P1: a busy completion settles ONLY its own dialog; a new confirm is refused while busy; a
+// stale-token completion is ignored.
+{
+  const { styledConfirm, el, fire } = build();
+  let release; const slow = () => new Promise((r) => { release = r; });
+  const pA = styledConfirm({ title: 'A', body: 'cancel', confirmLabel: 'Cancelar pedido', busyLabel: 'Cancelando…', onConfirm: slow });
+  fire('styled-confirm-ok', 'click');   // A is now busy
+  const pB = styledConfirm({ title: 'B', body: 'override', confirmLabel: 'Asignar igual' });
+  assert.equal(await pB, false, 'a second styledConfirm is REFUSED while the first is busy (resolves false, does not open)');
+  assert.equal(el('styled-confirm-title').textContent, 'A', 'the busy dialog A is still the one shown (B never opened)');
+  release();
+  assert.equal(await pA, true, 'A’s own completion settles A');
+  ok('P1: a new confirm is blocked while busy; a busy completion settles only its own dialog');
+}
+{
+  const { styledConfirm, settleStyledConfirm, el } = build();
+  styledConfirm({ title: 'X', body: 'b', confirmLabel: 'OK' });   // opens → token = 1
+  settleStyledConfirm(true, 999);                                 // a stale-token completion
+  assert.equal(el('styled-confirm-overlay').classList.contains('hidden'), false, 'a stale-token completion does NOT settle the open dialog');
+  ok('P1: settleStyledConfirm ignores a completion whose token is not the current dialog’s');
+}
+
 console.log(`dispatch-styled-confirm: OK (${n})`);

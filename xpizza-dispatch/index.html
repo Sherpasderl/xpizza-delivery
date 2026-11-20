@@ -2636,7 +2636,7 @@
 <!-- Generic styled confirm (the «Quitar repartidor» look; title/body/two labels, resolves a Promise<boolean>).
      Nothing operation-specific — reused for the Auto-asignar pause confirm (#1b); other dispatcher confirms can adopt it later. -->
 <div class="overlay-bg hidden" id="styled-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="styled-confirm-title">
-  <div class="picker-panel unassign-confirm-panel">
+  <div class="picker-panel unassign-confirm-panel" tabindex="-1">
     <div class="picker-header">
       <div class="picker-title" id="styled-confirm-title"></div>
       <div class="picker-sub" id="styled-confirm-sub" hidden></div>
@@ -2925,8 +2925,10 @@ $('login-btn').addEventListener('click', async () => {
 
 $('signout-btn').addEventListener('click', async () => {
   // §3 (#7): confirm before dropping the session mid-shift, through the generic styledConfirm.
+  const email = $('topbar-user')?.textContent || '';   // §3/#241 P3: the signed-in account + device in the sub
   await styledConfirm({
     title: '¿Cerrar sesión?',
+    sub: email ? `${email} · este dispositivo` : 'este dispositivo',
     body: 'Vas a salir de la Central en este dispositivo. Para volver a entrar vas a necesitar tu correo y contraseña.',
     confirmLabel: 'Cerrar sesión', cancelLabel: 'Cancelar', busyLabel: 'Cerrando sesión…',
     onConfirm: async () => {
@@ -5093,10 +5095,15 @@ $('recon-note-overlay').addEventListener('keydown', (e) => {
 // resolving a Promise<boolean>. Nothing operation-specific. Element-level focus-trapped: initial focus on
 // Cancel, own Tab trap, Esc = cancel with stopPropagation so the document arbiter never double-fires. Reused
 // for the Auto-asignar pause confirm; Cancelar pedido / Sacar de turno can adopt it later (noted for polish).
-let styledConfirmSettle = null, styledConfirmOpener = null, styledConfirmFlow = null, styledConfirmBusy = false;
-function settleStyledConfirm(result) {
-  if (!styledConfirmSettle || styledConfirmBusy) return;   // never dismiss while a confirm's action is in flight
-  const done = styledConfirmSettle; styledConfirmSettle = null; styledConfirmFlow = null;
+let styledConfirmSettle = null, styledConfirmOpener = null, styledConfirmFlow = null, styledConfirmBusy = false, styledConfirmToken = 0;
+function settleStyledConfirm(result, token) {
+  // Codex #241 P1: a completion may settle ONLY the dialog it belongs to. An async «do» completion passes its
+  // captured token and is ignored if a newer dialog has opened meanwhile (so a late action can't approve a
+  // different confirm). A plain dismiss (no token) never fires while a flow is in flight.
+  if (!styledConfirmSettle) return;
+  if (token != null && token !== styledConfirmToken) return;
+  if (token == null && styledConfirmBusy) return;
+  const done = styledConfirmSettle; styledConfirmSettle = null; styledConfirmFlow = null; styledConfirmBusy = false;
   $('styled-confirm-overlay').classList.add('hidden');
   const opener = styledConfirmOpener; styledConfirmOpener = null;
   if (opener && document.contains(opener)) { try { opener.focus(); } catch (_) {} }
@@ -5106,7 +5113,8 @@ function settleStyledConfirm(result) {
 // button runs it with a disabled «…ando» state (like #1a's in-flight latch), closing on success and staying
 // open on failure so the action can surface its own error. Without onConfirm it is a plain yes/no.
 function styledConfirm({ title, sub, body, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', opener, onConfirm, busyLabel } = {}) {
-  styledConfirmBusy = false; settleStyledConfirm(false);   // a newer confirm supersedes any still-open one
+  if (styledConfirmBusy) return Promise.resolve(false);   // Codex #241 P1: never open a new dialog while one's action is in flight
+  settleStyledConfirm(false); styledConfirmToken += 1;    // supersede any still-open (idle) dialog; this open gets its own token
   // Capture the trigger to restore focus to on dismiss (CTA #1b P2-1). A caller whose trigger gets disabled
   // while the dialog is open passes it explicitly AND re-focuses it after re-enabling.
   styledConfirmOpener = opener || document.activeElement;
@@ -5126,10 +5134,11 @@ $('styled-confirm-cancel').addEventListener('click', () => settleStyledConfirm(f
 $('styled-confirm-ok').addEventListener('click', async () => {
   const flow = styledConfirmFlow;
   if (flow && typeof flow.onConfirm === 'function') {
+    const myToken = styledConfirmToken;   // Codex #241 P1: bind this completion to THIS dialog
     const okBtn = $('styled-confirm-ok'), cancelBtn = $('styled-confirm-cancel');
     styledConfirmBusy = true; okBtn.disabled = true; cancelBtn.disabled = true;
     if (flow.busyLabel) okBtn.textContent = flow.busyLabel;
-    try { await flow.onConfirm(); styledConfirmBusy = false; settleStyledConfirm(true); }
+    try { await flow.onConfirm(); styledConfirmBusy = false; settleStyledConfirm(true, myToken); }
     catch (_) { styledConfirmBusy = false; okBtn.disabled = false; cancelBtn.disabled = false; okBtn.textContent = flow.confirmLabel; }   // keep open; the action surfaced its own error
     return;
   }
@@ -5141,6 +5150,7 @@ $('styled-confirm-overlay').addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); settleStyledConfirm(false); return; }
   if (e.key === 'Tab') {
     const focusables = [...$('styled-confirm-overlay').querySelectorAll('button:not([disabled])')];
+    if (!focusables.length) { e.preventDefault(); $('styled-confirm-overlay').querySelector('.picker-panel')?.focus(); return; }   // Codex #241 P1: busy (both buttons disabled) → keep focus in the dialog
     const target = focusTrapTarget(e.shiftKey, document.activeElement, focusables);
     if (target) { e.preventDefault(); target.focus(); }
   }
@@ -5878,6 +5888,7 @@ function isPostPickup(orderId, tasksSrc = allTasks) {
 }
 
 function openPicker(orderId, isReassign = false) {
+  if (styledConfirmBusy) return;   // Codex #241 P1: don't open the picker while a styled confirm's action is in flight
   // a11y: remember who opened the picker (first-choice return target if it's still attached+visible on close).
   pickerOpener = document.activeElement;
   pickerOpen = true;

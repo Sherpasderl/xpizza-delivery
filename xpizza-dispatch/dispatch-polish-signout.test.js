@@ -26,6 +26,9 @@ assert.ok(region.includes("title: '¿Cerrar sesión?'"), 'confirm title');
 assert.ok(region.includes('Vas a salir de la Central en este dispositivo. Para volver a entrar vas a necesitar tu correo y contraseña.'), 'desktop confirm body (verbatim)');
 assert.ok(region.includes("confirmLabel: 'Cerrar sesión'"), 'confirm button «Cerrar sesión»');
 assert.ok(region.includes("busyLabel: 'Cerrando sesión…'"), 'busy label «Cerrando sesión…»');
+// Codex #241 P3: the approved sub line «<email> · este dispositivo»
+assert.ok(region.includes("$('topbar-user')?.textContent") && region.includes('· este dispositivo'),
+  'the confirm sub shows the signed-in email + «este dispositivo»');
 // the actual sign-out runs inside onConfirm (so a decline does nothing), before the handler ends
 const oc = region.indexOf('onConfirm');
 assert.ok(oc > -1 && region.indexOf('XPD.signOutUser()', oc) > -1 && region.indexOf('requestReload()', oc) > -1,
