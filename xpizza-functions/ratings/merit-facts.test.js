@@ -108,7 +108,7 @@ async function order(db, { created, steps, rid = R, uid = null }) {
   let end = created;
   for (const [s, dt] of steps) { end = created + dt; await status(db, id, s, end); }
   const last = db.get(`orders/${id}/status`);
-  if (last === 'delivered' || last === 'completed') await stampRatingFulfilment(db, { orderId: id, status: last, now: end });
+  if (last === 'delivered' || last === 'completed') await stampRatingFulfilment(db, { orderId: id, status: last, eventTime: end });
   return id;
 }
 const deps = (db, o = {}) => ({ db, nowMs: NOW, keyOf: P.repeatKeyer(process.env.OTP_SALT), priceOf: () => null, runId: 'run1', ...o });
@@ -185,7 +185,7 @@ const PUBLISH_GOLDEN = 'f3412cf7713d3f555d5d9e67d78d905c839f3246324efb420111dc6e
       assert.strictEqual(o.materialized_at, rel, `🔴 ${pay}: … and equals materialized_at (so no separate read is needed — Q1)`);
       assert.ok(created < rel && db.get(`order_timelines/${id}/new_at`) !== created, `${pay}: never the creation time`);
       await status(db, id, 'preparing', rel + 2 * MIN); await status(db, id, 'completed', rel + 9 * MIN);
-      await stampRatingFulfilment(db, { orderId: id, status: 'completed', now: rel + 9 * MIN });
+      await stampRatingFulfilment(db, { orderId: id, status: 'completed', eventTime: rel + 9 * MIN });
       await P.aggregateRestaurant(deps(db), R);
       assert.deepStrictEqual(db.get(`stats_buckets/${R}/${YDAY}`).merit, { accept_s: [120], accept_invalid: 0 }, `🔴 ${pay}: accept measured from the RELEASE (120 s), never from creation`);
     }
@@ -253,6 +253,43 @@ const PUBLISH_GOLDEN = 'f3412cf7713d3f555d5d9e67d78d905c839f3246324efb420111dc6e
     assert.throws(() => AG.storeStars(R, [{ state: 'withdrawn', restaurant_id: R, store: 5 }], NOW), /non-countable/, 'a non-countable rating is refused (readCountable upstream)');
   }
   ok('storeStars is publish\'s own rating math: publish byte-equal to its pre-extraction golden; the same count / avg / 30-day count; a non-countable input refused');
+
+  // ── 7. the carry onto main (PLAN-3a-s4-carry-r0, advisor GO 11-19): the merit_ratings write and the Anuncio's hidden-day recorder
+  //       share the producer's tail — each runs in its OWN try, so either failing leaves the other intact and the run still completes.
+  //       The world is the Anuncio's (test/_anuncio-world: the REAL roster, config, ratings pipeline and producer; a REAL booking). ──
+  {
+    const AW = require('../test/_anuncio-world');
+    const AC = require('../marketing/anuncio-core');
+    const BOOK_AT = AW.at('2027-03-03', 12); const RUN_AT = AW.at('2027-03-10', 4.5); const WK = 'W2027-03-08';
+    const booked = async () => {
+      const db = await AW.world(); await AW.eligible(db, 'tb_centro');
+      const b = (await AC.anuncioBookCore(AW.depsAt(db, BOOK_AT), AW.req(`t-${AW.OWNER}`, { rid: 'tb_centro', week: WK }))).body.booking;
+      assert.ok(b && b.id, 'premise: the REAL booking writer booked the week');
+      return { db, id: b.id };
+    };
+    const failing = (db, test) => { const real = db.ref; db.ref = (p) => { const r = real(p); if (!test(String(p))) return r; const boom = async () => { throw new Error('down'); }; return { ...r, set: boom, update: boom, once: boom, get: boom, transaction: boom }; }; };
+    const runQuiet = async (db) => { const errs = []; const ce = console.error; console.error = (...a) => errs.push(a.join(' ')); try { return { out: await AW.produce(db, 'tb_centro', RUN_AT), errs }; } finally { console.error = ce; } };
+
+    const base = await booked(); const ok0 = await runQuiet(base.db);
+    const days0 = base.db.get(`anuncio_bookings/tb_centro/${base.id}/days`); const merit0 = base.db.get('stats_agg/tb_centro/merit_ratings');
+    assert.deepStrictEqual(days0, { '2027-03-08': { state: 'shown' } }, 'premise: a healthy run records the booked day');
+    assert.ok(merit0 && merit0.count >= 10 && merit0.as_of === RUN_AT, 'premise: a healthy run writes merit_ratings');
+    assert.strictEqual(ok0.out.anuncio_days, 1, 'premise: the run reports one recorded day');
+
+    const a = await booked(); failing(a.db, (p) => p.startsWith('anuncio_slots/'));
+    const ar = await runQuiet(a.db).catch((e) => assert.fail(`🔴 ANUNCIO-MERIT-ISOLATION: an Anuncio failure must not fail the run (${e.message})`));
+    assert.deepStrictEqual(a.db.get('stats_agg/tb_centro/merit_ratings'), merit0, '🔴 ANUNCIO-MERIT-ISOLATION: an Anuncio failure still writes merit_ratings');
+    assert.strictEqual(a.db.get(`anuncio_bookings/tb_centro/${a.id}/days`) ?? null, null, 'premise: the Anuncio step really failed (no day recorded)');
+    assert.ok(ar.errs.some((l) => /^anuncio days tb_centro /.test(l)), 'the Anuncio failure is logged');
+
+    const m = await booked(); failing(m.db, (p) => p === 'stats_agg/tb_centro/merit_ratings');
+    const mr = await runQuiet(m.db).catch((e) => assert.fail(`🔴 MERIT-ANUNCIO-ISOLATION: a merit_ratings failure must not fail the run (${e.message})`));
+    assert.deepStrictEqual(m.db.get(`anuncio_bookings/tb_centro/${m.id}/days`), days0, '🔴 MERIT-ANUNCIO-ISOLATION: a merit_ratings failure still records the Anuncio day');
+    assert.strictEqual(mr.out.anuncio_days, 1, 'the run still reports the recorded day');
+    assert.deepStrictEqual(m.db.get('public_stats/tb_centro'), base.db.get('public_stats/tb_centro'), 'public_stats byte-identical to the healthy run');
+    assert.ok(mr.errs.some((l) => /^merit ratings tb_centro /.test(l)), 'the merit failure is logged (rid only)');
+  }
+  ok('merit_ratings and the Anuncio hidden-day recorder each run in their own try: either failing leaves the other intact, public_stats unchanged, the run completes and logs it');
 
   FINISHED = true;
   console.log(`\nmerit-facts: OK (${n})`);
