@@ -105,6 +105,12 @@ async function seed() {
     [`drivers/${D1}`]: { name: 'uno', status: 'available', active: false },
     [`drivers/${D2}`]: { name: 'dos', status: 'available', active: false },
   });
+  // asm12 (advisor 11-19): the branch's BRAND, as production has it (x_pizza / la_musa resolve live) — seeded by the REAL legacy-singleton
+  // writer (brands/brand-store planSeedLegacy → applySeedLegacy) from this identity, so markAudienceOnStatus resolves it (no brand_unresolved)
+  { const BS = rootRequire(path.join(FNR, 'brands/brand-store.js')); const identity = (await db.ref(`restaurants/${RID}/identity`).once('value')).val();
+    const plan = BS.planSeedLegacy({ rid: RID, identity, existing: null, nowMs: Date.now() });
+    if (!plan.ok) throw new Error(`premise: the legacy brand seed — ${plan.error}`);
+    const w = await BS.applySeedLegacy(db, plan); if (!w.ok) throw new Error(`premise: the legacy brand write — ${w.error}`); }
   return buildCreateOrderUpdates({
     orderId: OID, orderType: 'delivery', now: Date.now(), trackingToken: TOK, total: 250, lat: CUST.lat, lng: CUST.lng,
     fields: { customer_name: 'Ana', customer_phone: '+50499990000', items_text: '1x Margherita', notes: '', payment_method: 'cash', address_detected: 'Col. Centro', address_details: 'Casa azul' },

@@ -188,6 +188,12 @@ async function reset() {
     [`dispatchers/${DISP}`]: { name: 'D' },
     ...Object.fromEntries([DA, DB, DC].map((u, i) => [`drivers/${u}`, { name: ['ana', 'beto', 'cris'][i], status: 'available', active: false }])),
   });
+  // asm12 (advisor 11-19): the branch's BRAND, as production has it (x_pizza / la_musa resolve live) — seeded by the REAL legacy-singleton
+  // writer (brands/brand-store planSeedLegacy → applySeedLegacy) from this identity, so markAudienceOnStatus resolves it (no brand_unresolved)
+  { const BS = require('./brands/brand-store.js'); const identity = (await db.ref(`restaurants/${RID}/identity`).once('value')).val();
+    const plan = BS.planSeedLegacy({ rid: RID, identity, existing: null, nowMs: Date.now() });
+    if (!plan.ok) throw new Error(`premise: the legacy brand seed — ${plan.error}`);
+    const w = await BS.applySeedLegacy(db, plan); if (!w.ok) throw new Error(`premise: the legacy brand write — ${w.error}`); }
   flag._resetForTest();
 }
 let seq = 0;
