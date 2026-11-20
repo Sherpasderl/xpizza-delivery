@@ -2044,8 +2044,12 @@ window.__focusDriverOnMap = async (uid) => {
   clearFocus();
   const d = STORE.drivers[uid];
   if (d && typeof d.lat === 'number' && typeof d.lng === 'number') {
+    showMapMsg('');                                   // #4: clear any prior "no location" note
     map.panTo({ lat:d.lat, lng:d.lng }); map.setZoom(15);
     openDriverInfo(uid);
+  } else {
+    // #4: a driver with no GPS fix would otherwise do nothing silently — give honest feedback on the map.
+    showMapMsg(d?.name ? `${d.name} todavía no envió su ubicación.` : 'Todavía no hay ubicación de este repartidor.');
   }
 };
 
