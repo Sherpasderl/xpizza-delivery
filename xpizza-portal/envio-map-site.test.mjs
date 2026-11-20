@@ -570,3 +570,34 @@ test('Z2 fix (a): a cancelled press commits nothing (pointercancel mid-drag: the
   env.fire('mousedown', P(1)); env.fire('mousemove', { lat: P(1).lat + 0.002, lng: P(1).lng }); env.fireWin('pointercancel'); await tick();
   assert.equal(env.kinds().length, n, '🔴 nothing sent for a cancelled gesture');
 });
+// Codex #237 P2-1: a CANCELLED drag must not swallow the next intentional click — the click suppression belongs only to a drag that COMMITS
+test('#237 a drag cancelled mid-press (pointercancel / blur) leaves the next click on vertex 1 working — it closes the shape', async () => {
+  for (const cancel of ['pointercancel', 'blur']) {
+    const env = panEnv();
+    boot({ win: env.E.win, doc: env.E.doc, loadMaps: env.E.loadMaps }); await tick();
+    env.E.fromParent(v3With(DRAW())); await tick();
+    for (const q of [P(0), P(1), P(2)]) env.fire('click', q);
+    env.fire('mousedown', P(1)); env.fire('mousemove', { lat: P(1).lat + 0.002, lng: P(1).lng }); env.fireWin(cancel); await tick();
+    env.fire('mousedown', P(0)); env.fire('mouseup', P(0)); env.fire('click', P(0));
+    assert.equal(env.kinds()[env.kinds().length - 1], 'finish', `🔴 the first click on vertex 1 after a ${cancel} acts`);
+  }
+});
+test('#237 after a CANCELLED drag the next tap OFF the handles adds its point (the commit-only rule — this press never reaches the reset)', async () => {
+  const env = panEnv();
+  boot({ win: env.E.win, doc: env.E.doc, loadMaps: env.E.loadMaps }); await tick();
+  env.E.fromParent(v3With(DRAW())); await tick();
+  for (const q of [P(0), P(1), P(2)]) env.fire('click', q);
+  env.fire('mousedown', P(1)); env.fire('mousemove', { lat: P(1).lat + 0.002, lng: P(1).lng }); env.fireWin('pointercancel'); await tick();
+  const n = env.kinds().filter((k) => k === 'draft_points').length;
+  env.fire('click', { lat: 15.51, lng: -88.02 });
+  assert.equal(env.kinds().filter((k) => k === 'draft_points').length, n + 1, '🔴 the tap after a cancelled drag adds its point');
+});
+test('#237 a drag COMMITTED off the map (no click follows its release) does not swallow the next click on a handle (the new-press reset)', async () => {
+  const env = panEnv();
+  boot({ win: env.E.win, doc: env.E.doc, loadMaps: env.E.loadMaps }); await tick();
+  env.E.fromParent(v3With(DRAW())); await tick();
+  for (const q of [P(0), P(1), P(2)]) env.fire('click', q);
+  env.fire('mousedown', P(1)); env.fire('mousemove', { lat: P(1).lat + 0.002, lng: P(1).lng }); env.fireWin('pointerup'); await tick();
+  env.fire('mousedown', P(0)); env.fire('mouseup', P(0)); env.fire('click', P(0));
+  assert.equal(env.kinds()[env.kinds().length - 1], 'finish', '🔴 the first click on vertex 1 after a drag released off the map acts');
+});

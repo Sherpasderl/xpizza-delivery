@@ -56095,19 +56095,6 @@
   },
   {
    "id": "xpizza-portal/envio.js#render#status#0",
-   "line": 605,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "page-fn",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-portal/envio.js#render#status#1",
    "line": 606,
    "kind": "member",
    "facts": [
@@ -56120,8 +56107,21 @@
    "exempt": true
   },
   {
+   "id": "xpizza-portal/envio.js#render#status#1",
+   "line": 607,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "page-fn",
+   "exempt": true
+  },
+  {
    "id": "xpizza-portal/envio.js#frozen#status#0",
-   "line": 805,
+   "line": 806,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -56134,7 +56134,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#paintBands#status#0",
-   "line": 811,
+   "line": 812,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -56147,7 +56147,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#flushPoints>anon#lat#0",
-   "line": 1117,
+   "line": 1118,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -56157,7 +56157,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#flushPoints>anon#lng#0",
-   "line": 1117,
+   "line": 1118,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -56167,7 +56167,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#onFinish>anon#lat#0",
-   "line": 1146,
+   "line": 1147,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -56177,7 +56177,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#onFinish>anon#lng#0",
-   "line": 1146,
+   "line": 1147,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -56187,7 +56187,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#startEditing>anon#lat#0",
-   "line": 1208,
+   "line": 1209,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -56197,7 +56197,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#startEditing>anon#lng#0",
-   "line": 1208,
+   "line": 1209,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -56207,7 +56207,7 @@
   },
   {
    "id": "xpizza-portal/envio.js#paintMapBox#status#0",
-   "line": 1263,
+   "line": 1264,
    "kind": "member",
    "facts": [
     "STATUS",

@@ -16,7 +16,7 @@ function withIO(p) {
     constructor(cb) { this.cb = cb; this.els = []; this.off = false; made.push(this); }
     observe(el) { this.els.push(el); }
     disconnect() { this.off = true; }
-    see(on = true) { if (!this.off) this.cb(this.els.map((target) => ({ target, isIntersecting: on, intersectionRatio: on ? 1 : 0 })), this); }
+    see(on = true, ratio = on ? 1 : 0) { if (!this.off) this.cb(this.els.map((target) => ({ target, isIntersecting: on, intersectionRatio: ratio })), this); }
   };
   return made;
 }
@@ -79,4 +79,15 @@ test('(b) leaving the page disconnects an observer still waiting (no timer per m
   assert.equal(made[0].off, false, 'premise: still waiting for the first sight');
   p.d.getElementById('navprod').click(); await settle(20);
   assert.equal(made[0].off, true, '🔴 disconnected with its frame');
+});
+
+// Codex #237 P2-2: an edge-touching entry (isIntersecting true, intersectionRatio 0 — the box only TOUCHES the viewport) is not a sight
+test('#237 a zero-area intersection (ratio 0) does not arm the deadline; a visible slice (ratio > 0) does', async () => {
+  const { p, made } = await open();
+  made[0].see(true, 0); await wait(300);
+  assert.ok(!p.text().includes(FAIL), '🔴 a box only touching the edge is not seen');
+  assert.equal(made[0].off, false, 'still watching');
+  made[0].see(true, 0.2); await settle();
+  await wait(300);
+  assert.ok(p.text().includes(FAIL), 'a visible slice arms it (a map that never gets ready still fails)');
 });

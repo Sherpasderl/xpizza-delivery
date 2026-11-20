@@ -288,7 +288,7 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
       if (!e || !e.latLng || !v || !v.editable) return;
       const i = vertexAt(e.latLng);
       if (i === -1) return;
-      st.press = { i, at: pxOf(e.latLng) };
+      st.press = { i, at: pxOf(e.latLng) }; st.justDragged = false;   // Codex #237 P2-1: a new press starts clean (no stale click suppression)
       holdPan();
     });
     st.map.addListener('mousemove', (e) => {
@@ -314,8 +314,8 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
     st.press = null; st.drag = null;
     if (st.panHeld) { st.panHeld = false; st.map.setOptions({ gestureHandling: BASE_GESTURE }); }
     if (!d) return;   // no movement: a click (the click handler decides)
-    st.justDragged = true;
-    if (commit) ctl.dragEnd(d.i, d.pt);
+    // Codex #237 P2-1: only a drag that COMMITS swallows the click its release produces; a cancelled one leaves the next click alone
+    if (commit) { st.justDragged = true; ctl.dragEnd(d.i, d.pt); }
     st.layer.draw(); cursor();
   }
   function build() {

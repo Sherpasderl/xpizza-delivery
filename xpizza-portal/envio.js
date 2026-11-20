@@ -531,7 +531,8 @@ function startMap(box) {
   const arm = () => { if (S.map !== m || m.ready || m.failed) return; m.deadline = setTimeout(() => mapFailed('timeout'), TIMING.deadlineMs); };
   if (typeof window.IntersectionObserver === 'function') {
     m.io = new window.IntersectionObserver((entries) => {
-      if (!entries.some((e) => e.isIntersecting) || S.map !== m) return;
+      // Codex #237 P2-2: a SIGHT is a visible slice — an entry merely touching the viewport edge (isIntersecting, ratio 0) is not one
+      if (!entries.some((e) => e.isIntersecting && e.intersectionRatio > 0) || S.map !== m) return;
       m.io.disconnect(); m.io = null; m.seen = true; arm();
     }, { threshold: 0.01 });
     m.io.observe(box);
