@@ -724,11 +724,11 @@ function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToke
 const SU_EP = Object.fromEntries(require('./capp-signup-api.js').ENDPOINTS.map((k) => [k, `https://fn.test/${k}`]));   // the ONE source of the set
 const SU_RUNTIME = { ...RUNTIME, guestCardOnly: true, signup: { firebase: { apiKey: 'k_test', projectId: 'p' }, endpoints: SU_EP } };
 function signupServer(verify) {
-  const sent = [];
-  const fetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop(); sent.push([ep, i && i.body ? JSON.parse(i.body) : null]);
+  const sent = [], heads = [];   // heads: [ep, the x-firebase-id-token header] (Codex #197's signup cell reads it)
+  const fetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop(); sent.push([ep, i && i.body ? JSON.parse(i.body) : null]); heads.push([ep, i && i.headers ? i.headers['x-firebase-id-token'] || null : null]);
     const j = ep === 'getSignupConfig' ? { ok: true, terms_url: 'https://legal.test/t', privacy_url: 'https://legal.test/p', legal_ready: true, google_enabled: false } : ep === 'verifyOtp' ? verify : { ok: true, cooldown: 30 };
     return { status: 200, json: async () => j }; };
-  return { fetch, sent };
+  return { fetch, sent, heads };
 }
 const ANA = { ok: true, token: 'ct:u_ana', is_new: false, name: 'Ana Pérez', completion: 'complete', profile: { name: 'Ana Pérez', email: 'ana@gmail.com' } };
 const suHost = (S) => S.q('#su-host');
@@ -763,7 +763,7 @@ test('G6 shell: the SDK after the first paint; «Entrá» opens the sheet; a ver
   assert.deepEqual(JSON.parse(storage.getItem('capp:device_account')), { v: 1, account: true, e164: '+50499990000' });
   assert.deepEqual(JSON.parse(storage.getItem('capp:member_profile')), { v: 1, uid: 'u_ana', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com' });
   assert.deepEqual(J(S.ui.state.member), { uid: 'u_ana', name: 'Ana Pérez', phone: '99990000', email: 'ana@gmail.com', idToken: TOK('u_ana') });
-  assert.equal(await S.ui.state.member.getIdToken(), TOK('u_ana'), 'the transport\'s send-time token comes from the SDK');
+  assert.deepEqual(J(await S.ui.state.member.getIdTokenOwned()), { token: TOK('u_ana'), uid: 'u_ana' }, 'the transport\'s send-time token comes from the SDK — with the user it belongs to (Codex #197: the ONE owned accessor)');
   S.click('.tabbar [data-tab="account"]'); await flush();
   assert.equal(S.q('.acct-hero .t b') && S.q('.acct-hero .t b').textContent, 'Ana Pérez', 'G7: a member\'s Cuenta is the shell\'s (under runtime.signup)'); assert.equal(S.events.filter((e) => e[0] === 'tab').length, 0);
   await fb.loadSdk().then(({ authMod }) => authMod.signOut()); await flush();
@@ -4494,12 +4494,12 @@ test('S2 shell · dark: runtime.sdkPay absent ⇒ no projection stream, no notic
 const ACTIVE_REC = (TOKEN, placedAt) => JSON.stringify({ v: 1, exp: placedAt + 24 * 3600e3, order: { rid: 'x_pizza', order_id: 'XP-9', token: TOKEN, mode: 'delivery', status: 'new', owner: 'u:u_ana', placedAt, storeName: 'X. Pizza', branch: '', storeAddr: '',
   lines: [{ n: 1, name: 'Carnivora', extras: '', total: 340, dish_id: null }], fee: 45, tip: 20, total: 405, pay: 'online', addr: 'Col. Trejo', details: '', notes: '', whenText: 'Lo antes posible', phoneText: '', display_number: null, windowText: null, driver: null, stacked: false, doneAt: null, offerDone: true } });
 // wrapper: no injected payFetch — the production path, the page's SherpaClient present before mount (sherpa-client.js loads first)
-function payMember({ reply, rt = {}, wrapper = false }) {
-  const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12', srv = payServer(reply), fb = fakeFirebase({ persisted: 'u_ana' }), via = [];
+function payMember({ reply, rt = {}, wrapper = false, fbOpts = {} }) {
+  const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12', srv = payServer(reply), fb = fakeFirebase({ persisted: 'u_ana', ...fbOpts }), via = [];
   const storage = owned({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }), 'capp:member_profile': JSON.stringify(ANA_PROF), 'capp:active_order': ACTIVE_REC(TOKEN, T0) }, 'u:u_ana');
   const preMount = wrapper ? (w) => { w.SherpaClient = { fetch: (u, i) => { via.push(String(u)); return srv.fetch(u, i); } }; } : null;
   const S = routeShell('/r/x_pizza/pago', { auth: 'unresolved', storage, preMount, runtime: { ...PAY_RT(SU_RUNTIME), ...rt }, readPublic: async () => ({ ok: false }), mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch, EventSource: ES, ...(wrapper ? {} : { payFetch: srv.fetch }) } });
-  return { S, srv, made, TOKEN, via };
+  return { S, srv, made, TOKEN, via, fb };
 }
 
 test('S2 shell · member, the production path (no injected payFetch): getPayAdjust and respondPayAdjust go through SherpaClient.fetch (pselfupdate-wrapper-lint)', async () => {
@@ -6408,12 +6408,12 @@ test('r3 (e) Codex #153 #7 TIMEOUT: the 12 s cap ⇒ UNKNOWN (sand line, re-read
     noProblems(addr);
   } finally { S.w.close(); }
 });
-test('r3 Codex #153 #1 (P1): a switch landing while the pick waits on its token ⇒ nothing is sent or read with the next member\'s token, and her device copy keeps her book', async () => {
+test('r3 Codex #153 #1 (P1): a switch landing while the pick waits on its token ⇒ nothing is sent or read with the next member\'s token; the proven switch leaves ONCE and removes her book (never another account\'s data)', async () => {
   const hold = { on: false, q: [] }, gate = { on: false, q: [] };
   const { S, fb, addr, st } = await dirBoot({ fbOpts: { hold, notifyGate: gate } });
   try {
     await toDirecciones(S);
-    const before = JSON.stringify(addrStored(st));
+    assert.ok(addrStored(st), 'premise: her book is on the device (the real read)');
     hold.on = true; S.click(dirRow(S, AID.trabajo)); await flush();
     assert.ok(hold.q.length >= 1, 'premise: the pick waits on its token');
     hold.on = false; gate.on = true;
@@ -6421,8 +6421,9 @@ test('r3 Codex #153 #1 (P1): a switch landing while the pick waits on its token 
     for (const r of hold.q.splice(0)) r(); await flush(); await flush(); await flush();
     assert.deepEqual(addrWrites(addr), [], '🔴 C153-1: the pick is never sent once the SDK is no longer hers (owned token)');
     assert.deepEqual(addr.calls.filter((c) => c.who === 'u_bob').map((c) => c.ep), [], '🔴 C153-1: no write and no read under Bob\'s token while the book is Ana\'s');
-    assert.equal(JSON.stringify(addrStored(st)), before, '🔴 C153-1: her device copy is never overwritten from another account');
+    assert.equal(addrStored(st), null, '🔴 C153-1: the proven switch (owned read, Codex #197) REMOVES her book with the leave — her copy never holds another account\'s data');
     gate.on = false; for (const e of gate.q.splice(0)) e(); await flush(); await flush();
+    assert.deepEqual([S.replaced.length, txt(S.q('#swap p'))], [1, 'Cambiando de cuenta…'], '🔴 C153-1: ONE leave, reason switch — the shell told a moment later never leaves (or wipes) again');
   } finally { S.w.close(); }
 });
 test('r3 Codex #153 #1 (P1): a switch that landed in the SDK BEFORE the pick (the shell not told yet) ⇒ the token is the next member\'s, so nothing is sent with it', async () => {
@@ -6430,15 +6431,16 @@ test('r3 Codex #153 #1 (P1): a switch that landed in the SDK BEFORE the pick (th
   const { S, fb, addr, st } = await dirBoot({ fbOpts: { notifyGate: gate } });
   try {
     await toDirecciones(S);
-    const before = JSON.stringify(addrStored(st));
+    assert.ok(addrStored(st), 'premise: her book is on the device (the real read)');
     gate.on = true;
     const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush();   // the SDK is Bob's; the shell still shows Ana's book
     assert.ok(dirRow(S, AID.trabajo), 'premise: Ana\'s «Direcciones» is still on screen');
     S.click(dirRow(S, AID.trabajo)); await flush(); await flush(); await flush();
     assert.deepEqual(addrWrites(addr), [], '🔴 C153-1: a token owned by another member never carries her pick');
     assert.deepEqual(addr.calls.filter((c) => c.who === 'u_bob').map((c) => c.ep), [], '🔴 C153-1: no write and no read under Bob\'s token while the book is Ana\'s');
-    assert.equal(JSON.stringify(addrStored(st)), before, '🔴 C153-1: her device copy is never overwritten from another account');
+    assert.equal(addrStored(st), null, '🔴 C153-1: the proven switch (owned read, Codex #197) REMOVES her book with the leave — her copy never holds another account\'s data');
     gate.on = false; for (const e of gate.q.splice(0)) e(); await flush(); await flush();
+    assert.deepEqual([S.replaced.length, txt(S.q('#swap p'))], [1, 'Cambiando de cuenta…'], '🔴 C153-1: ONE leave, reason switch — the shell told a moment later never leaves (or wipes) again');
   } finally { S.w.close(); }
 });
 test('r3 Codex #153 #5 (P2): an UNKNOWN pick made in the checkout leaves the checkout exactly where the shell is (Casa) — row, pin and price', async () => {
@@ -6975,6 +6977,109 @@ test('r3 Codex #193 (P1) SINK: a foreign token in her cache (through the ONE set
     assert.ok(!sent.some(([, t]) => subOf(t) === 'u_bob'), '🔴 C193-SINK: a token whose user is not hers never leaves with her request');
     assert.ok(S.q('#swap'), '🔴 C193-SINK: the app leaves (the overlay)');
   } finally { S.w.close(); }
+});
+// Codex #197 (P1, the CLASS): EVERY member request outside the transport takes its token through the shell's ONE owned accessor — the SDK
+// switched to Bob while the shell's listener is held, an action of Ana's never carries Bob's token and the app leaves. Codex's repro
+// (togglePromos) + one representative per caller family: push (tokFor), the member reads (Pedidos), the favorite write, the pay
+// adjustment (payHeaders), the signup's completeProfile (its expected user = the account the sheet just signed in)
+const bobHeld = async (fb, gate) => { const { authMod } = await fb.loadSdk(); gate.on = true; await authMod.signInWithCustomToken(null, 'ct:u_bob'); };
+const anaHeld = (S) => assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: the SDK is Bob, the shell still holds Ana (the listener is held)');
+test('r3 Codex #197 (P1) repro: Notificaciones «Por correo y WhatsApp» after the SDK switched to Bob — setPromos never carries Bob\'s token (his consent untouched); the app leaves', async () => {
+  const gate = { on: false, q: [] }; const ok = await g7Boot({ fbOpts: { notifyGate: gate } }); await toNotifsG7(ok.S);
+  try {
+    await bobHeld(ok.fb, gate); anaHeld(ok.S);
+    ok.S.click('[data-act="promos"]'); await flush(); await flush(); await flush();
+    assert.ok(!ok.srv.sent.some((x) => x[0] === 'setPromos' && subOf(x[2]) === 'u_bob'), '🔴 C197-promos: Ana\'s toggle never writes with Bob\'s token');
+    assert.ok(ok.S.q('#swap'), '🔴 C197-promos: the app leaves (the overlay)');
+  } finally { ok.S.w.close(); }
+});
+test('r3 Codex #197 (P1) push (tokFor): «Pedidos» notifications switched on after the SDK switched to Bob — no push call carries Bob\'s token; the app leaves', async () => {
+  const gate = { on: false, q: [] }; const { S, srv, fb } = await pushBoot({ fake: { permission: 'granted' }, fbOpts: { notifyGate: gate } });
+  try {
+    await toNotifs(S); await until(() => srv.calls.some((c) => c.name === 'getCustomerPushPrefs')); await flush(); await flush();
+    const n0 = srv.calls.length; await bobHeld(fb, gate); anaHeld(S);
+    S.click('.switch[data-k="pedidos"]'); await flush(); await flush(); await flush(); await flush();
+    assert.ok(!srv.calls.slice(n0).some((c) => subOf(c.headers['x-firebase-id-token']) === 'u_bob'), '🔴 C197-push: no push call with Bob\'s token');
+    assert.ok(S.q('#swap'), '🔴 C197-push: the app leaves (the overlay)');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #197 (P1) member reads: «Pedidos» opened after the SDK switched to Bob — getMyOrders never carries Bob\'s token (his history never read for her); the app leaves', async () => {
+  const gate = { on: false, q: [] }; const { S, mo, fb } = await pedidosBoot({ u_ana: {}, u_bob: {} }, { fbOpts: { notifyGate: gate } });
+  try {
+    await bobHeld(fb, gate); anaHeld(S); const n0 = mo.calls.length;
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush(); await flush();
+    assert.ok(!mo.calls.slice(n0).some((c) => subOf(c.headers['x-firebase-id-token']) === 'u_bob'), '🔴 C197-reads: getMyOrders never with Bob\'s token');
+    assert.ok(S.q('#swap'), '🔴 C197-reads: the app leaves (the overlay)');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #197 (P1) favorite write: the store heart tapped after the SDK switched to Bob — setFavorite never carries Bob\'s token; the app leaves', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: ['x_pizza'], recent: [] }));
+  const fav = favServer({ favs: ['x_pizza'] }), gate = { on: false, q: [] };
+  const { S, fb } = await pedidosBoot({}, { fav, storage: st, fbOpts: { notifyGate: gate } });
+  try {
+    await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    await bobHeld(fb, gate); anaHeld(S); const n0 = fav.calls.length;
+    S.click(S.q('.store-nav [data-act="fav"]')); await flush(); await flush(); await flush();
+    assert.ok(!fav.calls.slice(n0).some((c) => subOf(c.tok) === 'u_bob'), '🔴 C197-fav: setFavorite never with Bob\'s token');
+    assert.ok(S.q('#swap'), '🔴 C197-fav: the app leaves (the overlay)');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #197 (P1) pay adjustment (payHeaders): a pending adjustment read after the SDK switched to Bob — getPayAdjust never carries Bob\'s Bearer; the app leaves', async () => {
+  const exp = T0 + 10 * 60e3, gate = { on: false, q: [] };
+  const { S, srv, made, TOKEN, fb } = payMember({ fbOpts: { notifyGate: gate }, reply: (e) => e.method === 'GET' ? { view: payInc(2, 'pending'), server_now: exp - 120000 } : { outcome: 'action_required', view: payInc(3, 'action_required'), server_now: exp - 100000 } });
+  try {
+    await until(() => S.ui.state.member && made.some((e) => e.url.includes('/order_pay_view/'))); await flush();
+    await bobHeld(fb, gate); anaHeld(S);
+    made.find((e) => e.url === `https://rtdb.test/order_pay_view/${TOKEN}.json`).emit('put', '/', payInc(2, 'pending')); await flush(); await flush(); await flush();
+    assert.ok(!srv.log.some((e) => subOf(String(e.auth || '').replace(/^Bearer /, '')) === 'u_bob'), '🔴 C197-pay: no adjustment call with Bob\'s Bearer');
+    assert.ok(S.q('#swap'), '🔴 C197-pay: the app leaves (the overlay)');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #197 (P1) signup: a NEW account\'s «Guardar» after the SDK switched to another user — completeProfile never carries that user\'s token (the sheet\'s own account is the expected one)', async () => {
+  const gate = { on: false, q: [] }, fb = fakeFirebase({ notifyGate: gate }), srv = signupServer({ ...ANA, is_new: true, completion: 'needed', profile: null });
+  const S = bootShell({ auth: 'unresolved', storage: memStorage(), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: srv.fetch } }); await flush(); await flush();
+  try {
+    await signInViaSheet(S); const h = suHost(S);
+    const em = h.querySelector('#su-email'); em.value = 'ana@gmail.com'; em.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+    S.click(h.querySelector('[data-su="email-go"]')); await flush();
+    const nm = h.querySelector('#su-name'); nm.value = 'Ana Pérez'; nm.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+    const c = h.querySelector('#su-terms'); c.checked = true; c.dispatchEvent(new S.w.Event('change', { bubbles: true })); await flush();
+    await bobHeld(fb, gate);
+    S.click(h.querySelector('[data-su="save"]')); await flush(); await flush(); await flush();
+    assert.ok(!srv.heads.some((x) => x[0] === 'completeProfile' && subOf(x[1]) === 'u_bob'), '🔴 C197-signup: completeProfile never with another user\'s token');
+  } finally { S.w.close(); }
+});
+// Codex #189 P2-2 / P2-3 (owner 11-19: option A — two one-place checks). Codex #189's exact repros.
+test('r3 Codex #189 P2-2: a STALE tab\'s delayed sign-out (tab B already left; a guest built a cart since) never wipes the device — the guest\'s cart and stamp stay; the stale tab restarts', async () => {
+  const { S: A, fb: fbA, st } = await dirBoot();
+  try {
+    const { S: B, fb: fbB } = await relaunch(st, 'u_ana'); try { await signOutNow(fbB); assert.equal(B.replaced.length, 1, 'premise: tab B wiped and restarted'); } finally { B.w.close(); }
+    const { S: G } = await relaunch(st, null);
+    try {
+      G.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); const u = G.ui.store().ui; u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render();
+      G.click('.seg [data-val="delivery"]'); await flush();   // the store's own cart writer
+      const cart = st.getItem('capp:x_pizza:cart'); assert.ok(cart, 'premise: the guest\'s cart is on the device'); assert.equal(st.getItem(OWNER), 'guest', 'premise: the device is the guest\'s');
+      await signOutNow(fbA); await flush();   // tab A's sign-out lands late (before any storage event reached it)
+      assert.equal(st.getItem('capp:x_pizza:cart'), cart, '🔴 C189-P2-2: the guest\'s cart is never wiped by a stale tab');
+      assert.equal(st.getItem(OWNER), 'guest', '🔴 C189-P2-2: the device\'s stamp stays the guest\'s');
+      assert.deepEqual(A.replaced, ['https://app.test/'], 'the stale tab restarts at the root');
+    } finally { G.w.close(); }
+  } finally { A.w.close(); }
+});
+test('r3 Codex #189 P2-3: a device whose owner stamp cannot be PERSISTED (quota) — two fresh guest boots never restart on their own; member records fail closed', async () => {
+  const base = memStorage(), storage = { ...base, setItem(k, v) { if (k === OWNER) throw new Error('QuotaExceededError'); base.setItem(k, v); }, get length() { return base.length; } };
+  const rows = [];
+  for (let i = 0; i < 2; i++) {
+    const { S } = await relaunch(storage, null);
+    try {
+      await flush();
+      S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); const u = S.ui.store() && S.ui.store().ui;
+      if (u) { u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render(); S.click('.seg [data-val="delivery"]'); await flush(); }
+      rows.push({ restarts: S.replaced.length, overlay: !!S.q('#swap'), cart: base.getItem('capp:x_pizza:cart') !== null });
+    } finally { S.w.close(); }
+  }
+  assert.deepEqual(rows.map((r) => [r.restarts, r.overlay]), [[0, false], [0, false]], '🔴 C189-P2-3: a failed stamp write is never an ownership change (no restart, no overlay)');
+  assert.ok(rows.every((r) => !r.cart), 'fails closed: no member record is written on a device whose stamp could not be stored');
 });
 test('r3 Codex #178 #3 (P2): a REFUSED sign-out keeps her device book byte for byte and the address in use — even when her profile can no longer be re-read', async () => {
   const { S, st, addr } = await dirBoot({ fbOpts: { failSignOut: 1 } });

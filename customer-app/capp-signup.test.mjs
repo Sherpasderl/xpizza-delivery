@@ -36,7 +36,8 @@ test('G6 auth adapter: nothing loads until asked; ONE initialization with the RU
   await settle();
   assert.equal(S.calls.load, 1, 'one load, shared'); assert.deepEqual(S.calls.init, [['k_test', 'capp']]); assert.deepEqual(S.calls.persistence, ['LOCAL']);
   assert.deepEqual(seen, [{ uid: 'u1' }], 'the cached session is restored');
-  assert.equal(await fb.idToken(), 'id:u1:cached'); assert.equal(await fb.idToken(true), 'id:u1:fresh');
+  assert.deepEqual(await fb.idTokenOwned(), { token: 'id:u1:cached', uid: 'u1' }); assert.deepEqual(await fb.idTokenOwned(true), { token: 'id:u1:fresh', uid: 'u1' });
+  assert.equal(fb.idToken, undefined, 'Codex #197: the adapter has NO unowned token read (the token always comes with its user)');
 });
 test('G6 auth adapter → CappAuthState: unresolved until the first callback (never guest); a custom token signs in ⇒ member; an ordinary sign-out ⇒ guest; a failed SDK ⇒ unavailable (never guest)', async () => {
   const S = fakeSdk();
@@ -79,13 +80,14 @@ function fakeAuth() {
   const calls = { ct: [], out: 0 }; let uid = null;
   return { calls, get uid() { return uid; },
     signInWithCustomToken: async (t) => { calls.ct.push(t); uid = t.replace(/^ct:/, ''); return uid; },
-    signOut: async () => { calls.out++; uid = null; }, idToken: async () => (uid ? `id:${uid}` : null) };
+    signOut: async () => { calls.out++; uid = null; } };
 }
 function sheet(o = {}) {
   const w = new JSDOM('<!doctype html><body><div id="h"></div></body>', { pretendToBeVisual: true }).window;
   const host = w.document.getElementById('h'); const api = fakeApi(o); const auth = fakeAuth(); const events = [];
   if (o.holdSignIn) { const real = auth.signInWithCustomToken; auth.signInWithCustomToken = (t) => new Promise((r) => { o.holdSignIn.release = () => r(real(t)); }); }
-  const su = createSignup({ doc: w.document, host, api, auth, google: o.google || null, ...(o.intl ? { intlPhone: true, CappPhone: require('./capp-phone.js') } : {}), timers: o.timers || { setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {} }, ...(o.now ? { now: o.now } : {}), onEvent: (n, d) => events.push([n, d]) });
+  // the host's owned accessor as production's (Codex #197): a token only for the user the SDK holds — another uid ⇒ none
+  const su = createSignup({ doc: w.document, host, api, auth, memberToken: async (u) => (auth.uid && auth.uid === u ? `id:${u}` : null), google: o.google || null, ...(o.intl ? { intlPhone: true, CappPhone: require('./capp-phone.js') } : {}), timers: o.timers || { setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {} }, ...(o.now ? { now: o.now } : {}), onEvent: (n, d) => events.push([n, d]) });
   const q = (s) => host.querySelector(s), qa = (s) => [...host.querySelectorAll(s)];
   const txt = (s) => { const el = q(s); return el ? el.textContent.replace(/\s+/g, ' ').trim() : null; };
   const click = async (s) => { const el = q(s); assert.ok(el, `premise: ${s}`); assert.ok(!el.disabled, `premise: ${s} enabled`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await settle(); };

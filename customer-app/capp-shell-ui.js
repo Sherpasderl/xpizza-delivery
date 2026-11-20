@@ -68,7 +68,8 @@
     // r3: THE device store everything in the app goes through (the store, capp-api, push, the directory). A GATED boot (its unkeyed
     // records stamped to a member, or not stamped at all) neither reads nor writes them until its identity settles; a LEAVING app
     // writes no member record at all (the wipe below goes to the raw store). Device records (menus, push's own queue) are untouched
-    let gate = 'open', myStamp = null;   // gate: 'held' | 'open' | 'sealed' · myStamp: the stamp THIS mount owns (set by the boot / settle / admission)
+    let gate = 'open', myStamp = null, unstamped = false;   // gate: 'held' | 'open' | 'sealed' · myStamp: the stamp THIS mount owns (set by the boot / settle / admission)
+    // unstamped (Codex #189 P2-3): this mount's stamp could not be PERSISTED (quota) — member records fail closed; never an ownership change
     const hidden = (k) => gate === 'held' && MEMBER_REC.test(String(k));
     const memberKey = (k) => MEMBER_REC.test(k) || UID_REC.test(k) || k === 'capp:member_profile' || k === COMPLETE_KEY || k === OWNER_KEY;
     // Codex #178 #1 (P1, the cross-tab stale writer): a member record is written / removed ONLY while the device's stamp is still THIS
@@ -77,8 +78,8 @@
     const stale = (k) => memberKey(k) && rawGet(OWNER_KEY) !== myStamp;
     const storage = rawStorage ? {
       getItem: (k) => (hidden(k) ? null : rawStorage.getItem(k)),
-      setItem: (k, v) => { k = String(k); if ((gate === 'sealed' && memberKey(k)) || hidden(k)) return; if (stale(k)) { staleLeave(); return; } rawStorage.setItem(k, v); },
-      removeItem: (k) => { k = String(k); if ((gate === 'sealed' && memberKey(k)) || hidden(k)) return; if (stale(k)) { staleLeave(); return; } rawStorage.removeItem(k); },
+      setItem: (k, v) => { k = String(k); if (((gate === 'sealed' || unstamped) && memberKey(k)) || hidden(k)) return; if (stale(k)) { staleLeave(); return; } rawStorage.setItem(k, v); },
+      removeItem: (k) => { k = String(k); if (((gate === 'sealed' || unstamped) && memberKey(k)) || hidden(k)) return; if (stale(k)) { staleLeave(); return; } rawStorage.removeItem(k); },
       key: (i) => rawStorage.key(i),
       get length() { return rawStorage.length; },
     } : null;
@@ -374,7 +375,11 @@
     }
     // a member admitted here: the stamp names her (her session settled first — a 'guest' stamp is adopted, as a guest's sign-in keeps)
     function ownBy(uid) { seenUid = uid; if (!settled) settleOwner(uid); else stampAs('u:' + uid); }
-    function stampAs(id) { try { rawStorage.setItem(OWNER_KEY, id); } catch (_) {} myStamp = id; }
+    function stampAs(id) {
+      try { rawStorage.setItem(OWNER_KEY, id); } catch (_) {}
+      // Codex #189 P2-3: only a stamp the device HOLDS is this mount's; a failed write keeps the device's own (no stale ⇒ no restart)
+      const held = rawGet(OWNER_KEY); unstamped = held !== id; myStamp = unstamped ? held : id;
+    }
     // Codex #178 #1: the device's stamp moved under this tab (another tab left, or another identity owns it): this tab writes no member
     // record from here on and starts again at the root — NO wipe (what is on the device now is not this tab's to delete)
     function staleLeave() {
@@ -389,6 +394,18 @@
     const switchPre = (nu) => { const c = runtime.push === true ? pushCore() : null, h = c && c.available() ? c.held() : null; return h && h.live && h.owner !== nu ? pushForget() : null; };
     // Codex #189 #1: no user at all (the SDK signed out first) is the sign-out, as the 'guest' callback would be
     function identityMoved(nu) { if (leaving || !seenUid) return; if (!nu) leave('signout', null, () => pushAuthExit()); else if (nu !== seenUid) leave('switch', nu, () => switchPre(nu)); }
+    // Codex #197 (P1, the CLASS): THE ONE place the app reads a member's ID token from the SDK (capp-guards' census pins it) — the
+    // answer names the user it belongs to ({ token, uid }: the adapter's idTokenOwned; null = the read failed). Asked synchronously
+    // (the token queue's order is the callers' order)
+    function sdkTokenAnswer() { if (!fbAuth) return Promise.resolve(null); let p; try { p = fbAuth.idTokenOwned(); } catch (_) { p = null; } return Promise.resolve(p).then((x) => x || null, () => null); }
+    // the token for a request made FOR `uid` — every member request outside the transport takes it HERE: an answer naming another user
+    // (or none: signed out) is the leave (#189's rule) and no token; a failed read is no token
+    async function ownedMemberToken(uid) {
+      if (typeof uid !== 'string' || !uid) return null;
+      const o = await sdkTokenAnswer();
+      if (o && (o.uid || null) !== uid) { identityMoved(o.uid || null); return null; }
+      return o && typeof o.token === 'string' && o.token ? o.token : null;
+    }
     // the overlay (MOCKUP-capp-identity-restart): the whole screen in the app's background, a small ring and one line; every tap blocked
     function swap(kind) {
       let el = $('swap');
@@ -408,7 +425,8 @@
       // the exit is confirmed: her identity ends in memory (the one hook, dropMember — every in-flight read, token and timer of hers is
       // void) BEFORE the seal and the wipe (Codex #178 #3: never before the exit is confirmed)
       if (S.member) dropMember();
-      gate = 'sealed'; wipeIdentity(keep);
+      gate = 'sealed';
+      if (rawGet(OWNER_KEY) === myStamp) wipeIdentity(keep);   // Codex #189 P2-2: re-validated after pre() — a stale tab wipes nothing
       const go = o.replace || ((u) => win.location.replace(u));
       try { go(win.location.origin + '/'); } catch (_) {}
       return true;
@@ -428,13 +446,13 @@
       // Codex G6 r1 #3: applied only if, after the token's await, nothing has changed — no sign-out / switch in between, and the
       // session is still THIS uid's
       const gen = ++memberGen, uid = p.uid; clearTokenTimers();   // a new identity: the old one's token timers are cancelled
-      let idToken = null; try { idToken = await fbAuth.idToken(); } catch (_) { idToken = null; }
+      const idToken = await ownedMemberToken(uid);
       if (dead || gen !== memberGen) return;
       const u = auth && auth.state() === 'member' && auth.user ? auth.user() : null;
       if (!u || u.uid !== uid) return;
-      // getIdToken: the transport asks the SDK at send time (cached while valid, refreshed once expired); idToken = the fallback
+      // getIdTokenOwned: the transport asks the SDK at send time, through the ONE accessor (Codex #197); idToken = the fallback
       // S-picker: with the runtime intlPhone the member's number stays E.164 (its own country); off ⇒ the local 8 digits, as before
-      S.member = { uid: p.uid, name: p.name || '', phone: runtime.intlPhone === true ? String(p.phone || '') : String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', ...(typeof p.promos === 'boolean' ? { promos: p.promos } : {}), idToken: null, getIdToken: () => fbAuth.idToken(), getIdTokenOwned: () => fbAuth.idTokenOwned(), onMoved: (nu) => identityMoved(nu), onTokenChange: onMemberToken };
+      S.member = { uid: p.uid, name: p.name || '', phone: runtime.intlPhone === true ? String(p.phone || '') : String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', ...(typeof p.promos === 'boolean' ? { promos: p.promos } : {}), idToken: null, getIdTokenOwned: () => sdkTokenAnswer(), onMoved: (nu) => identityMoved(nu), onTokenChange: onMemberToken };
       { const A = apiMod(); if (A && typeof A.acceptToken === 'function') A.acceptToken(S.member, idToken, nowMs()); }   // the ONE setter (an unusable token is refused)
       if (S.store) S.store.ui.setMember(S.member);   // §4c: back on the SAME checkout step, filled in
       identityChanged();
@@ -471,10 +489,8 @@
         const live = () => !dead && gen === memberGen && S.member && S.member.uid === uid;
         if (!live() || usable(S.member)) return;
         // Codex #193: the OWNED read — the SDK's user is checked against hers; another user (or none) is the leave, never its token on her
-        let o = null; try { o = await fbAuth.idTokenOwned(); } catch (_) { o = null; }
+        const t = await ownedMemberToken(uid);   // another SDK user (or none) ⇒ the leave inside; never its token on her
         if (!live() || usable(S.member)) return;
-        if (o && (o.uid || null) !== uid) { identityMoved(o.uid || null); return; }
-        const t = o ? o.token : null;
         const A = apiMod();
         if (!(A && A.acceptToken(S.member, t, nowMs())) && i + 1 < TOKEN_RETRY_MS.length) retryToken(gen, uid, i + 1);   // accepted ⇒ the notifier patches
       }, TOKEN_RETRY_MS[i]);
@@ -511,7 +527,7 @@
     async function togglePromos() {
       const m = S.member; if (!m || typeof m.promos !== 'boolean' || !suApi || promosOv.uid) return;
       const v = !m.promos, uid = m.uid; promosOv.uid = uid; promosOv.v = v; renderNow();   // optimistic
-      let ok = false, got = v; try { const tok = await fbAuth.idToken(); const r = tok ? await suApi.setPromos({ idToken: tok, value: v }) : null; ok = !!r && r.ok === true; if (ok && typeof r.value === 'boolean') got = r.value; } catch (_) { ok = false; }
+      let ok = false, got = v; try { const tok = await ownedMemberToken(uid); const r = tok ? await suApi.setPromos({ idToken: tok, value: v }) : null; ok = !!r && r.ok === true; if (ok && typeof r.value === 'boolean') got = r.value; } catch (_) { ok = false; }
       promosOv.uid = null; promosOv.v = null;
       if (dead || !S.member || S.member.uid !== uid) return;
       // the committed value read back by the server (contract §6) is what the switch and the cache keep
@@ -559,7 +575,7 @@
     async function tokFor(uid, { member = true } = {}) {
       const mine = () => { const u = auth && auth.user ? auth.user() : null; return !dead && !!u && u.uid === uid && (!member || (!!S.member && S.member.uid === uid)); };
       if (typeof uid !== 'string' || !uid || !fbAuth || !mine()) return null;
-      let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+      const tok = await ownedMemberToken(uid);
       return tok && mine() ? tok : null;
     }
     // the member's prefs as the server last answered (null until read) — per uid; a device that is not registered shows both off
@@ -730,7 +746,7 @@
       const syncDark = () => { host.classList.toggle('dark', app.classList.contains('dark')); host.classList.toggle('desk', app.classList.contains('desk')); };   // D-2: the sheet follows the viewport too
       syncDark();
       signup = CappSignup.createSignup({ doc, host: { addEventListener: (...a) => host.addEventListener(...a), contains: (n) => host.contains(n), querySelector: (q) => host.querySelector(q), set innerHTML(v) { syncDark(); host.classList.toggle('open', !!v); host.innerHTML = v; }, get innerHTML() { return host.innerHTML; } },
-        api: (suApi = CappSignupApi.createSignupApi({ endpoints: SU.endpoints, fetch: o.signupFetch, timers: T })), auth: fbAuth, google: o.google || null, timers: T, now: nowMs,
+        api: (suApi = CappSignupApi.createSignupApi({ endpoints: SU.endpoints, fetch: o.signupFetch, timers: T })), auth: fbAuth, memberToken: (uid) => ownedMemberToken(uid), google: o.google || null, timers: T, now: nowMs,
         ...(runtime.intlPhone === true ? { intlPhone: true, CappPhone: typeof CappPhone !== 'undefined' ? CappPhone : o.CappPhone } : {}),   // part B (b): the in-sheet country pane
         onEvent: (n, d) => { if (n === 'signed-in') signedIn(d); } });
       // Codex r1 P2-7: the push core (and its TAP listener) at startup — a cold start from a tapped push lands on Inicio and the tap
@@ -917,7 +933,7 @@
       if (!S.member || !suApi || !fbAuth) { S.ordersRead = { phase: 'ready', active: [], past: [], who }; return; }   // a guest: no history
       const uid = S.member.uid;
       S.ordersRead = { phase: 'loading', active: [], past: [], who };
-      let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+      const tok = await ownedMemberToken(uid);
       const r = tok ? await suApi.getMyOrders({ idToken: tok, limit: 20 }) : { ok: false, reason: 'unauthenticated' };
       const cur = auth && auth.user ? auth.user() : null;   // the uid it was issued for = the CURRENT admitted one AND the SDK's session
       if (dead || gen !== ordersGen || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid) return;   // another identity now: not theirs
@@ -1086,7 +1102,7 @@
       const p = payOf(od), c = p.view && p.view.consent;
       if (c && c.outcome === 'pending' && Number.isInteger(c.expires_at) && Number.isFinite(serverNow)) p.anchor = { at: mono(), left: c.expires_at - serverNow, id: c.adjustment_id };
     }
-    async function payHeaders() { if (!S.member || !fbAuth) return null; let t = null; try { t = await fbAuth.idToken(); } catch (_) { t = null; } return t ? { Authorization: `Bearer ${t}` } : null; }
+    async function payHeaders() { if (!S.member || !fbAuth) return null; const t = await ownedMemberToken(S.member.uid); return t ? { Authorization: `Bearer ${t}` } : null; }
     // §1.4: GET on the first sight of a pending consent, on every stream (re)open, when the app becomes visible and on resume; a failed
     // GET keeps the last anchor and is retried by the next of those (Codex r1 #4). A reply's timing comes WITH its view: a stale view
     // (an older seq) brings no anchor (Codex r1 #3)
@@ -1284,7 +1300,7 @@
       const gen = favGen;
       T.setTimeout(async () => {   // after paint: never awaited by a render
         if (dead || gen !== favGen) return;
-        let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+        const tok = await ownedMemberToken(uid);
         if (!tok || dead || gen !== favGen) return;
         const start = favClock;   // a write pending now, or settled after this point, may postdate the snapshot
         const r = await suApi.getMyFavorites({ idToken: tok });
@@ -1310,7 +1326,7 @@
         const p = favPend.get(rid); if (!p) return;
         const on = p.want;
         if (favConf.favorites.includes(rid) === on) { favPend.delete(rid); favShow(); return; }   // nothing left to send
-        let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+        const tok = await ownedMemberToken(favConf.who);
         if (dead || gen !== favGen || !favConf) return;   // another identity now: never dispatched under it
         const r = tok ? await suApi.setFavorite({ idToken: tok, rid, on }) : { ok: false, reason: 'unauthenticated' };
         if (dead || gen !== favGen || !favConf) return;   // a stale answer never lands on a later session (no apply, no toast)
@@ -1378,19 +1394,19 @@
     // stores) another member's book under hers (Codex #153 #1). A read that started before a pick settled never overrides that pick
     // Codex #173 #7: an owned-token wait is BOUNDED by the transport's own cap (CappSignupApi.TIMEOUT_MS): a held SDK never holds the
     // picker — on expiry it is no token (a pick settles as UNKNOWN ⇒ the owned re-read, bounded the same way); a late token lands on nothing
-    function ownedToken() {
+    function ownedToken(uid) {
       return new Promise((res) => {
         let done = false, t = null; const end = (v) => { if (done) return; done = true; if (t !== null) T.clearTimeout(t); res(v); };
         t = T.setTimeout(() => end(null), suMod && suMod.TIMEOUT_MS > 0 ? suMod.TIMEOUT_MS : 12000);
-        let p; try { p = fbAuth.idTokenOwned(); } catch (_) { p = null; }   // asked NOW (the token queue's order is the reads' order)
-        Promise.resolve(p).then(end, () => end(null));
+        ownedMemberToken(uid).then(end, () => end(null));   // asked NOW (the token queue's order is the reads' order); another user ⇒ the leave
+
       });
     }
     async function readBook(gen, uid) {
       const seq0 = bookSeq;
-      const own = await ownedToken();
-      if (dead || gen !== bookGen || !own || own.uid !== uid || !own.token) return null;
-      const r = await suApi.getMyProfile({ idToken: own.token });
+      const own = await ownedToken(uid);
+      if (dead || gen !== bookGen || !own) return null;
+      const r = await suApi.getMyProfile({ idToken: own });
       if (dead || gen !== bookGen || !S.book || S.book.who !== uid || !r || r.ok !== true) return null;
       const b = bookFrom(uid, r.book); if (!b || seq0 !== bookSeq) return b;
       S.book = b;
@@ -1417,10 +1433,10 @@
       const uid = S.book.who, gen = bookGen, body = { id, expected_rev: S.book.rev, expected_default: S.book.sel };
       S.addrErr = null; S.addrPick = { id, surface }; bookSeq++; pickPaint();
       (async () => {
-        const own = await ownedToken();
+        const own = await ownedToken(uid);
         const live = () => !dead && gen === bookGen && !!S.addrPick;   // an identity change voids it (bookGen); only ONE pick can be in flight
         let r = { ok: false, reason: 'offline' };
-        if (live() && own && own.uid === uid && own.token) r = await suApi.useMyAddress({ idToken: own.token, ...body });
+        if (live() && own) r = await suApi.useMyAddress({ idToken: own, ...body });
         if (!live()) return;
         let won = false, adopted = false;
         if (r.ok === true && r.default_address === id && Number.isSafeInteger(r.default_address_rev)) {
@@ -1588,7 +1604,7 @@
       const gen = receiptGen, uid = S.member && S.member.uid;
       if (!uid || !suApi || !fbAuth) return Promise.resolve(null);
       const p = (async () => {
-        let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+        const tok = await ownedMemberToken(uid);
         const r = tok ? await suApi.getReceipt({ idToken: tok, orderId: oid }) : { ok: false, reason: 'unauthenticated' };
         const cur = auth && auth.user ? auth.user() : null;
         if (dead || gen !== receiptGen || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid) return null;   // another identity now: not theirs
@@ -1630,7 +1646,7 @@
       if (hit && hit.who === uid) { if (hit.phase === 'ready') return Promise.resolve(hit); if (hit.phase === 'pending') return hit.p; }   // failed / queued ⇒ read
       const gen = rateGen;
       const p = (async () => {
-        let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+        const tok = await ownedMemberToken(uid);
         const r = tok ? await suApi.getMyRating({ idToken: tok, orderId: oid }) : { ok: false };
         if (dead || gen !== rateGen || rateUid() !== uid) return null;
         rateCache.set(oid, r.ok ? { phase: 'ready', who: uid, canRate: r.canRate, rating: r.rating, editableUntil: r.editableUntil } : { phase: 'failed', who: uid });
@@ -1735,7 +1751,7 @@
       const fields = CappRate.fieldsToSend(R.initial, R.value, R.dishes.map((d) => d.id)); if (!Object.keys(fields).length) return;
       R.sending = true; R.error = null; R.note = null; rerenderRate();
       const gen = rateGen;
-      let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+      const tok = await ownedMemberToken(uid);
       const r = tok ? await suApi.rateOrder({ idToken: tok, orderId: R.ctx.oid, fields }) : { ok: false, reason: 'unauthenticated' };
       if (dead || gen !== rateGen || S.rate !== R) return;
       R.sending = false;

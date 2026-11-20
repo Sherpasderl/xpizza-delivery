@@ -365,3 +365,49 @@ test('rule 20 (web sign-in): no script of the web shell puts a token in a URL qu
   assert.deepEqual(hits, [], '🔴 R20-URL: a token built into a URL query');
   assert.ok(TOKQ.test("fetch(`${base}/x.json?auth=${encodeURIComponent(tok)}`)") && TOKQ.test("u + '&token=' + t"), 'non-vacuity: the former offender\'s shape is caught');
 });
+
+// Codex #197 (P1, the CLASS): a member's ID token is read from the SDK in ONE place — the shell's sdkTokenAnswer (the token WITH the
+// user it belongs to), under ownedMemberToken(uid) for every member request and the transport's member delegate (capp-api memberToken,
+// whose sink checks the token's user). PARSED (acorn): any call of idToken / idTokenOwned / getIdToken / getIdTokenOwned — dotted,
+// computed, optional, through .call/.apply/.bind, an alias or a destructured binding — outside those places FAILS. Allowed by name: the
+// adapter's own idTokenOwned body (the SDK user's getIdToken) and the Google sign-in credential (o.google.getIdToken, not a member token).
+const acornG = createRequire(join(ROOT, 'xpizza-functions/x.js'))('acorn');
+const TOKEN_READS = new Set(['idToken', 'idTokenOwned', 'getIdToken', 'getIdTokenOwned']);
+const TOKEN_HOMES = { 'capp-shell-ui.js': ['sdkTokenAnswer'], 'capp-api.js': ['memberToken'], 'capp-auth-firebase.js': ['idTokenOwned'] };
+function tokenReadViolations(file, src) {
+  let ast; try { ast = acornG.parse(src, { ecmaVersion: 'latest', sourceType: 'script', locations: true }); } catch (_) { ast = acornG.parse(src, { ecmaVersion: 'latest', sourceType: 'module', locations: true }); }
+  const bad = [], homes = TOKEN_HOMES[file] || [];
+  const propName = (m) => (m && m.type === 'MemberExpression' ? (!m.computed && m.property.type === 'Identifier' ? m.property.name : m.computed && m.property.type === 'Literal' && typeof m.property.value === 'string' ? m.property.value : null) : null);
+  const text = (n) => src.slice(n.start, n.end);
+  const fnName = (n, parent) => (n.type === 'FunctionDeclaration' && n.id ? n.id.name : parent && parent.type === 'Property' && parent.value === n && !parent.computed && parent.key.type === 'Identifier' ? parent.key.name : parent && parent.type === 'VariableDeclarator' && parent.id.type === 'Identifier' ? parent.id.name : null);
+  (function walk(n, parent, inHome) {
+    if (/Function/.test(n.type) && homes.includes(fnName(n, parent))) inHome = true;
+    const at = () => `${file}:${n.loc.start.line} ${text(n).slice(0, 60)}`;
+    if (!inHome) {
+      const callee = n.type === 'CallExpression' ? (n.callee.type === 'ChainExpression' ? n.callee.expression : n.callee) : null;
+      const google = (m) => m && m.type === 'MemberExpression' && text(m.object) === 'o.google' && propName(m) === 'getIdToken';
+      if (callee && TOKEN_READS.has(propName(callee)) && !google(callee)) bad.push('call ' + at());
+      // a method read off as a VALUE (an alias, .call / .apply / .bind, passed along) — the cached field m.idToken is data, not a read
+      if (n.type === 'MemberExpression' && TOKEN_READS.has(propName(n)) && propName(n) !== 'idToken' && !(parent && parent.type === 'CallExpression' && parent.callee === n) && !(parent && parent.type === 'ChainExpression' && parent.expression === n) && !(parent && parent.type === 'UnaryExpression' && parent.operator === 'typeof') && !google(n)) bad.push('value ' + at());
+      if (n.type === 'MemberExpression' && propName(n) === 'idToken' && parent && parent.type === 'MemberExpression' && parent.object === n && ['call', 'apply', 'bind'].includes(propName(parent))) bad.push('value ' + at());
+      // a destructured read off a value (const / assignment); a function's parameter named idToken is the token handed IN (data)
+      if (n.type === 'ObjectPattern' && parent && (parent.type === 'VariableDeclarator' || parent.type === 'AssignmentExpression')) for (const p of n.properties) if (p.type === 'Property' && TOKEN_READS.has(p.key.type === 'Identifier' ? p.key.name : p.key.value)) bad.push('destructured ' + at());
+    }
+    for (const [k, v] of Object.entries(n)) if (k !== 'loc') for (const c of (Array.isArray(v) ? v : [v])) if (c && typeof c.type === 'string') walk(c, n, inHome);
+  })(ast, null, false);
+  return bad;
+}
+test('Codex #197 (P1): a member\'s ID token is read from the SDK ONLY through the shell\'s one owned accessor — every other read FAILS the guard (parsed)', () => {
+  const shell = readFileSync(join(ROOT, 'customer-app', 'shell.html'), 'utf8');
+  const scripts = [...shell.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]).filter((f) => !/^https?:/.test(f));
+  assert.ok(scripts.includes('capp-shell-ui.js') && scripts.includes('capp-signup.js') && scripts.includes('capp-api.js') && scripts.includes('capp-auth-firebase.js'), 'premise: the shell\'s scripts');
+  const all = [];
+  for (const f of scripts) all.push(...tokenReadViolations(f, readFileSync(join(ROOT, 'customer-app', f), 'utf8')));
+  assert.deepEqual(all, [], '🔴 C197-CENSUS: a member token read outside the one accessor');
+  // non-vacuity: the guard SEES each bypass form, planted where Codex found the instance (togglePromos)
+  const ui = readFileSync(join(ROOT, 'customer-app', 'capp-shell-ui.js'), 'utf8'), K = 'async function togglePromos() {';
+  assert.equal(ui.split(K).length, 2, 'premise: the plant point exists once');
+  for (const plant of ['fbAuth.idToken();', 'fbAuth.idTokenOwned();', "fbAuth['idTokenOwned']();", 'fbAuth?.idToken?.();', 'fbAuth.idToken.call(fbAuth);', 'const f = fbAuth.idTokenOwned; f();', 'const { idTokenOwned } = fbAuth;', 'const { idToken } = fbAuth; idToken();', 'S.member.getIdTokenOwned();'])
+    assert.ok(tokenReadViolations('capp-shell-ui.js', ui.replace(K, `${K} ${plant}`)).length > 0, `🔴 C197-CENSUS control: «${plant}» fails the guard`);
+  assert.deepEqual(tokenReadViolations('capp-signup.js', 'async function g(o) { return o.google.getIdToken({}); }'), [], 'the Google sign-in credential is allowed by name');
+});

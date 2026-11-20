@@ -42420,5 +42420,73 @@
   "kills_with": [
    "C193-SINK: a token whose user is not hers never leaves with her request"
   ]
+ },
+ {
+  "id": "r3-rs-29",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #197): the one accessor stops checking whose token it is — Ana's action carries Bob's token",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (o && (o.uid || null) !== uid) { identityMoved(o.uid || null); return null; }\n      return o && typeof o.token === 'string' && o.token ? o.token : null;",
+  "to": "      return o && typeof o.token === 'string' && o.token ? o.token : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#197 \\(P1\\) repro",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C197-promos: Ana's toggle never writes with Bob's token"
+  ]
+ },
+ {
+  "id": "r3-rs-30",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #197): a direct SDK token read planted outside the accessor — the census must see it",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    async function togglePromos() {\n",
+  "to": "    async function togglePromos() {\n      try { fbAuth && fbAuth.idTokenOwned(); } catch (_) {}\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#197",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C197-CENSUS: a member token read outside the one accessor"
+  ]
+ },
+ {
+  "id": "r3-rs-31",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #189 P2-2): the wipe no longer re-validates ownership after pre() — a stale tab deletes the current owner's data",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (rawGet(OWNER_KEY) === myStamp) wipeIdentity(keep);",
+  "to": "      wipeIdentity(keep);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#189 P2-2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C189-P2-2: the guest's cart is never wiped by a stale tab"
+  ]
+ },
+ {
+  "id": "r3-rs-32",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #189 P2-3): stampAs trusts a write that failed — the unpersisted stamp reads as another owner and the boot restarts",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      const held = rawGet(OWNER_KEY); unstamped = held !== id; myStamp = unstamped ? held : id;",
+  "to": "      myStamp = id;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#189 P2-3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C189-P2-3: a failed stamp write is never an ownership change (no restart, no overlay)"
+  ]
  }
 ]
