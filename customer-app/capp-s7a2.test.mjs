@@ -6267,6 +6267,32 @@ test('PUSH-SHELL-12c (Codex r1 P1-4): a COLD restore as another person (B\'s ses
     } finally { S.w.close(); }
   }
 });
+// r3 moved the ADMITTED sign-out into leave() (its pre forgets the token). On a COLD start, a mount that never admitted anyone,
+// these two branches are the only guard: the device still holds a previous member's live token (her own opt-in, the real writer)
+test('PUSH-SHELL-12d (cold, guest): the app opens as a GUEST (her session gone) with her live token on the device ⇒ the token is invalidated on the phone; the server step held for her', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })), srv = pushServer3a();
+  { const { S, srv: s1 } = await pushBoot({ storage: st, srv, fake: { permission: 'granted' } }); try { await optIn(S, s1); } finally { S.w.close(); } }
+  assert.equal(pushHeld(st).owner, 'u_ana', 'premise: her live token is on the device (her own opt-in)');
+  const { S, f } = await pushBoot({ storage: st, srv, fake: { permission: 'granted' }, fbOpts: { persisted: null } });
+  try {
+    await flushN();
+    assert.equal(f.of('unregister').length, 1, '🔴 PUSH-SHELL-12d: a cold guest start invalidates her token on the phone');
+    assert.deepEqual((pushHeld(st).pending || []).map((p) => p.owner), ['u_ana'], 'the server step held for her');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-12e (cold, no mark): a RESTORED session without its completion mark, on a cold start with her live token ⇒ forgotten under that still-valid session, THEN signed out', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })), srv = pushServer3a();
+  { const { S, srv: s1 } = await pushBoot({ storage: st, srv, fake: { permission: 'granted' } }); try { await optIn(S, s1); } finally { S.w.close(); } }
+  assert.equal(srv.tokens(), 1, 'premise: her token is registered (her own opt-in)');
+  st.removeItem('capp:member_complete');
+  const { S, f, fb } = await pushBoot({ storage: st, srv, fake: { permission: 'granted' }, fbOpts: { persisted: 'u_ana' } });
+  try {
+    await flushN();
+    assert.equal(srv.tokens(), 0, '🔴 PUSH-SHELL-12e: forgotten under the still-valid session on a cold start');
+    assert.equal(f.of('unregister').length, 1, 'and the phone');
+    assert.ok(fb.calls.out >= 1, 'then signed out');
+  } finally { S.w.close(); }
+});
 const p26 = () => {   // 3a's REAL handlers; the prefs read can be HELD (its answer computed first — a late, older read) or answered prefs: null
   const srv = pushServer3a(), h0 = srv.handler, ctl = { hold: null, nullPrefs: false };
   srv.handler = async (u, i) => { const r = await h0(u, i); if (/getCustomerPushPrefs/.test(u)) { if (ctl.nullPrefs) { const b = await r.json(); return { status: r.status, json: async () => ({ ...b, prefs: null }) }; } if (ctl.hold) await ctl.hold; } return r; };

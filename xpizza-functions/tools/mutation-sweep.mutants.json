@@ -38736,7 +38736,7 @@
   "label": "Codex r1 P1-1: a push call takes whatever session token is current (not the owner's)",
   "file": "../customer-app/capp-shell-ui.js",
   "from": "const tok = await tokFor(c && c.owner, { member });",
-  "to": "const tok = fbAuth ? await fbAuth.idToken() : null;",
+  "to": "const tok = await sdkTokenAnswer().then((x) => (x && x.token) || null);",
   "command": [
    "node",
    "--test",
@@ -38751,7 +38751,7 @@
  {
   "id": "push-s12",
   "slice": "capp-push",
-  "label": "Codex r1 P1-4: the SDK's own sign-out (guest) never forgets the token",
+  "label": "Codex r1 P1-4: a COLD start as a guest (her session gone) never forgets her live token (r3: the admitted sign-out is leave()'s pre)",
   "file": "../customer-app/capp-shell-ui.js",
   "from": "clearComplete(); pushAuthExit(); pushSettleSoon(); }",
   "to": "clearComplete(); pushSettleSoon(); }",
@@ -38759,17 +38759,17 @@
    "node",
    "--test",
    "--test-timeout=60000",
-   "--test-name-pattern=^PUSH-SHELL",
+   "--test-name-pattern=^PUSH-SHELL-12d",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "🔴 PUSH-SHELL-12 (guest)"
+   "🔴 PUSH-SHELL-12d: a cold guest start invalidates her token on the phone"
   ]
  },
  {
   "id": "push-s13",
   "slice": "capp-push",
-  "label": "Codex r1 P1-4: a session without its completion mark is signed out without forgetting the token",
+  "label": "Codex r1 P1-4: a COLD restored session without its completion mark is signed out without forgetting the token (r3: the admitted case is leave()'s)",
   "file": "../customer-app/capp-shell-ui.js",
   "from": "dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {}));",
   "to": "dropMember(); fbAuth.signOut().catch(() => {});",
@@ -38777,11 +38777,11 @@
    "node",
    "--test",
    "--test-timeout=60000",
-   "--test-name-pattern=^PUSH-SHELL",
+   "--test-name-pattern=^PUSH-SHELL-12e",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "🔴 PUSH-SHELL-12 (marker)"
+   "🔴 PUSH-SHELL-12e: forgotten under the still-valid session on a cold start"
   ]
  },
  {
