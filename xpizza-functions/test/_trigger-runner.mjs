@@ -71,7 +71,10 @@ export function makeTriggerRunner({ app, db, entities, background = [], maxRetri
   let lock = Promise.resolve();
   let curLabel = null, lastImage = null;
   const acquire = () => { let release; const gate = new Promise((r) => { release = r; }); const prev = lock; lock = prev.then(() => gate); return prev.then(() => release); };
-  const record = (label, pre, post) => { const ev = eventsBetween(pre, post); queue.push(...ev.map((e) => ({ ...e, from: label }))); lastImage = post; return ev.length; };
+  // asm12 (advisor, 2e): each event carries the instant its write was OBSERVED — a real CloudEvent always has `time` (RFC 3339), and
+  // handlers read it (stampRatingFulfilment: «no event time» without it; markAudienceOnStatus: the marker month). The scenes run on the
+  // real clock, so the harness clock is Date.now() at capture.
+  const record = (label, pre, post) => { const ev = eventsBetween(pre, post); const at = Date.now(); queue.push(...ev.map((e) => ({ ...e, from: label, at }))); lastImage = post; return ev.length; };
   const self = {
     onAdminWrite(m, p) { if (inStep) stepWrites += 1; else unattributed.push(`${m} ${p}`); },
     onClientWrite() { if (!inStep) throw new Error('_trigger-runner: a client write outside step()'); stepWrites += 1; },
@@ -156,9 +159,10 @@ export function makeTriggerRunner({ app, db, entities, background = [], maxRetri
   }
 
   async function runOne(e, attempt = 1) {
+    const time = new Date(Number.isFinite(e.at) ? e.at : Date.now()).toISOString();   // the CloudEvent `time` (asm12)
     const event = e.trigger.kind === 'created'
-      ? { data: snap(e.after), params: e.params }
-      : { data: { before: snap(e.before), after: snap(e.after) }, params: e.params };
+      ? { data: snap(e.after), params: e.params, time }
+      : { data: { before: snap(e.before), after: snap(e.after) }, params: e.params, time };
     const label = `${e.trigger.name}(${e.path})${attempt > 1 ? `#${attempt}` : ''}`;
     if (background.includes(e.trigger.name)) {
       const p = (async () => {
