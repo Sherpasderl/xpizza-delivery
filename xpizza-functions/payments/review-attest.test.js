@@ -1,20 +1,27 @@
 'use strict';
-// «Marcar como revisado» — owner 11-19, option B (PLAN-5f-review-action-r1): a recorded HUMAN ATTESTATION ONLY. ONE order CAS adds
-// manual_review_closed { outcome, amount_cents, note, by, at } (+ a payment_audit row); payment_status STAYS manual_review; NO payment,
-// attempt, reward or status change. The daily aged_manual_review rule and alert-prune's unresolvedMoney skip a closed review.
-//   RA-CLOSE      a REAL cancel park ⇒ attest ⇒ 200; the ONLY writes are the closed record + the audit row (whole-db diff)
-//   RA-GATE       after closing, the REAL cancel still refuses (the B.2 gate's manual_review), no claim, no void
-//   RA-REFUSE     not manual_review / already closed / scheduled_blocked / an order claim ⇒ 409 with its reason, nothing written
-//   RA-INFLIGHT   a REAL voidOrRefund in flight (attempt `reversing`, held at the provider call) or left refund_pending ⇒ 409
-//   RA-RACE       a second attestation lands right before ours (beforeTx) ⇒ ours answers already_closed; exactly one record
-//   RA-BAD        a bad outcome / amount / order id ⇒ 400, nothing written
-//   RA-AUTH       the endpoint authorizes FIRST: a refused auth ⇒ its code, the core never runs; the RECON_SECRET actor label only
-//   RA-PRUNE      alert-prune: a CLOSED manual_review is no longer unresolved money (an unclosed one still is)
-//   RA-EPISODE    Codex #217 P1: a closure belongs to ONE manual_review episode. A REAL verify-failing callback (→ manual_reconciliation) then
-//                 the REAL resolver's no-uuid refund (→ manual_review) re-enter review; the episode trigger stamps manual_review_since ⇒ the
-//                 old closure no longer counts (unresolved money again, re-closable)
-//   RA-AUDIT      Codex #217 P2-3: the audit row's write FAILS ⇒ the decision stands (audited:false, 202 audit pending); completeAudit (the
-//                 daily backstop) writes the deterministic row and flips audited — idempotent
+// «Marcar como revisado» — owner 11-19, option B, rebuilt STRUCTURALLY (owner GO 11-19 on D4c-grill/NOTE-5f-review-attest-structural.md after
+// Codex #219): a recorded HUMAN ATTESTATION ONLY, and NOTHING about it lives on the order node.
+//   · manual_review_episodes/{orderId}            the CURRENT episode (the trigger stamps every ENTRY into manual_review); dispatchers may read it
+//   · manual_review_closures/{orderId}/{episode}  ONE create-if-absent, append-only record { outcome, amount_cents, note, by, at } — the audit itself
+// The request carries the episode the person read; anything not current ⇒ 409 stale. «Closed» = the CURRENT episode has a closure
+// (closedOrderIds, computed once by reconcilePayments for its daily rule and its prune). No money, attempt, reward or order change.
+//   RA-TRIGGER     (every park) the episode trigger's body stamps the entry into manual_review in manual_review_episodes
+//   RA-CLOSE       a REAL cancel park + the episode trigger ⇒ attest ⇒ 200; the ONLY write is the closure node (whole-db diff) — the order is untouched
+//   RA-GATE        afterwards the REAL cancel still refuses (manual_review), no claim, no void
+//   RA-REFUSE      not manual_review / scheduled_blocked / an order claim / already closed / a stale episode ⇒ 409, nothing written
+//   RA-INFLIGHT    a REAL voidOrRefund in flight (reversing) or refund_pending ⇒ 409, nothing written
+//   RA-RACE        a second attestation of the same episode lands first ⇒ ours already_closed; exactly one record
+//   RA-BAD         a bad outcome / amount / episode / order id / note ⇒ 400, nothing written
+//   RA-AUTH        auth first; a dispatcher identity only (the service secret ⇒ 403); raw note + amount bounds; the verified actor
+//   RA-EPISODE     (#217 P1) close; a REAL verify-failing callback → the REAL resolver's no-uuid refund → manual_review again; the trigger stamps
+//                  a NEW episode ⇒ the old closure no longer counts (closedOrderIds), the old episode is stale, the new one closes
+//   RA-STALE-FLIGHT (#219 P1) the episode moves on WHILE the request is in flight (between its check and its write) ⇒ 409 stale_after_write;
+//                  the record stays with the episode the person reviewed and never counts for the new one
+//   RA-MALFORMED   (#219 P2-a) review fields a client wrote on the ORDER (e.g. manual_review_closed: true) mean nothing — closedness is read only
+//                  from the server-only roots
+//   RA-APPEND      (#219 P2-b) a closure is never replaced: a second close of the same episode is refused; a new episode gets its own node
+//   RA-CASH        (#219 P2-c) a cash-labelled parked order: the ONE closure write is the whole audit (no pending state, no backstop to miss it)
+//   RA-PRUNE       the prune keeps an open review's alerts and lets a CLOSED one's go (closedIds); nothing else changes
 // Run: node payments/review-attest.test.js
 process.env.PIXELPAY_MODE = 'sandbox';
 const assert = require('assert');
@@ -23,16 +30,15 @@ const { cancelOrderCore } = require('../cancel-order-core');
 const { voidOrRefund } = require('../pixelpay-cancel');
 const realClient = require('../pixelpay-client');
 const { paymentAlert } = require('../lib/payment-alert');
-const { unresolvedMoney, reviewClosed } = require('../alert-prune');
+const { unresolvedMoney, alertsToPrune } = require('../alert-prune');
 const { resolveManualReconciliationCore } = require('../resolve-manual');
 const { handleHostedCallback } = require('../pixelpay-hosted-webhook');
 const { buildMaterializeUpdates } = require('../materialize');
 const { makeHonestDb: makeDb } = require('../_honest-rtdb-model');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const OID = 'RVA1', AID = 'c0ffee00c0ffee55', NOW = 1_800_000_000_000;
+const OID = 'RVA1', AID = 'c0ffee00c0ffee55', NOW = 1_800_000_000_000, EP1 = NOW + 1;
 const quiet = async (f) => { const w = console.warn, e = console.error, l = console.log; console.warn = () => {}; console.error = () => {}; console.log = () => {}; try { return await f(); } finally { console.warn = w; console.error = e; console.log = l; } };
-// the stubbed PixelPay void (the REAL client + voidOrRefund run): 'ok' | 'decline' | a held promise
 let provider = 'decline'; let hold = null;
 globalThis.fetch = async (url) => {
   if (!String(url).endsWith('/api/v2/transaction/void')) throw new Error(`unexpected fetch ${url}`);
@@ -41,17 +47,23 @@ globalThis.fetch = async (url) => {
 };
 const ORDER = (o = {}) => ({ order_id: OID, order_type: 'pickup', status: 'new', payment_status: 'confirmed', payment_method: 'online', total: 299, total_cents: 29900,
   customer_name: 'T', items_text: 'x', restaurant_id: 'x_pizza', active_attempt_id: AID, created_at: NOW - 3600000, ...o });
-const CAPTURED_NO_UUID = { order_id: OID, hosted_state: 'paid', hosted_callback_verified: true, hosted_order_id: `${OID}-${AID}` };          // the cancel's B refusal
-const AMBIGUOUS = { order_id: OID, hosted_state: 'created', payment_uuid: 'U-1', hosted_order_id: `${OID}-${AID}` };   // the C refusal (a uuid)
-// a REAL park: cancelOrderCore refuses and parks the order at manual_review
+const CAPTURED_NO_UUID = { order_id: OID, hosted_state: 'paid', hosted_callback_verified: true, hosted_order_id: `${OID}-${AID}` };
+const AMBIGUOUS = { order_id: OID, hosted_state: 'created', payment_uuid: 'U-1', hosted_order_id: `${OID}-${AID}` };
+// the episode trigger exactly as deployed (markReviewEpisodeOnPaymentStatus): each payment_status write runs RA.onPaymentStatus
+const trig = (db, before, after, t) => RA.onPaymentStatus(db, { orderId: OID, before, after, eventTime: t });
+// a REAL park (cancelOrderCore refuses ⇒ manual_review) + the trigger's stamp of that entry
 const parked = async (att = CAPTURED_NO_UUID, ord = {}, hooks) => {
   const db = makeDb({ orders: { [OID]: ORDER(ord) }, payment_attempts: { [AID]: att } }, hooks);
+  const before = ord.payment_status || 'confirmed';
   await quiet(() => cancelOrderCore({ db, voidOrRefund: async () => { throw new Error('must not void'); }, alert: (k, d) => paymentAlert(db, k, d), serverTimestamp: 0 },
     { orderId: OID, actor: 'disp@tb', reason: 'customer', now: NOW, claimId: 'CL1' }));
   assert.strictEqual(db.getAt(`orders/${OID}/payment_status`), 'manual_review', 'premise: the real cancel parked the order');
+  await trig(db, before, 'manual_review', EP1);
+  assert.strictEqual(db.getAt(`manual_review_episodes/${OID}`), EP1, '🔴 RA-TRIGGER: the episode trigger stamps the entry into manual_review');
   return db;
 };
-const attest = (db, over = {}) => RA.attestManualReview(db, { orderId: OID, outcome: 'refunded_in_pixelpay', amountCents: 29900, note: 'anulado en PixelPay', actor: 'disp@tb', now: NOW + 5, serverTimestamp: 7, ...over });
+const attest = (db, over = {}) => RA.attestManualReview(db, { orderId: OID, episode: EP1, outcome: 'refunded_in_pixelpay', amountCents: 29900, note: 'anulado en PixelPay', actor: 'disp@tb', now: NOW + 5, ...over });
+const closed = async (db) => (await RA.closedOrderIds(db, db.getAt('orders'))).has(OID);
 const flat = (v, p = '', out = {}) => { if (v && typeof v === 'object') { for (const k of Object.keys(v)) flat(v[k], p ? `${p}/${k}` : k, out); } else out[p] = v; return out; };
 const diff = (a, b) => { const A = flat(a), B = flat(b); return [...new Set([...Object.keys(A), ...Object.keys(B)])].filter((k) => A[k] !== B[k]).sort(); };
 const snapshot = (db) => JSON.parse(JSON.stringify(db.root));
@@ -60,144 +72,156 @@ const snapshot = (db) => JSON.parse(JSON.stringify(db.root));
   {
     const db = await parked();
     const before = snapshot(db);
+    assert.strictEqual(await closed(db), false, 'RA-CLOSE premise: open');
     const r = await attest(db);
     assert.deepStrictEqual([r.status, r.body.outcome], [200, 'review_closed'], `🔴 RA-CLOSE: 200 review_closed (${JSON.stringify(r.body)})`);
-    const o = db.getAt(`orders/${OID}`);
-    assert.deepStrictEqual(o.manual_review_closed, { outcome: 'refunded_in_pixelpay', amount_cents: 29900, note: 'anulado en PixelPay', by: 'disp@tb', at: NOW + 5, audited: true }, '🔴 RA-CLOSE: the closed record (episode null: no stamp yet), audited');
-    assert.strictEqual(o.payment_status, 'manual_review', '🔴 RA-CLOSE: payment_status STAYS manual_review');
-    const changed = diff(before, snapshot(db)).map((k) => k.replace(/^payment_audit\/[^/]+\//, 'payment_audit/*/'));
-    assert.deepStrictEqual([...new Set(changed)].sort(), ['orders/RVA1/manual_review_closed/amount_cents', 'orders/RVA1/manual_review_closed/at', 'orders/RVA1/manual_review_closed/audited', 'orders/RVA1/manual_review_closed/by', 'orders/RVA1/manual_review_closed/note', 'orders/RVA1/manual_review_closed/outcome',
-      'payment_audit/*/action', 'payment_audit/*/actor', 'payment_audit/*/amount_cents', 'payment_audit/*/at', 'payment_audit/*/note', 'payment_audit/*/order_id', 'payment_audit/*/outcome'].sort(), '🔴 RA-CLOSE: NOTHING else is written (no payment / attempt / reward / status change)');
-    const audit = db.getAt(`payment_audit/review_${OID}_${NOW + 5}`);   // a DETERMINISTIC key: a retried write is idempotent
-    assert.deepStrictEqual(audit, { order_id: OID, action: 'review_attest', actor: 'disp@tb', outcome: 'refunded_in_pixelpay', amount_cents: 29900, note: 'anulado en PixelPay', at: NOW + 5 }, 'RA-CLOSE: the audit row (written from the closure itself; episode null ⇒ absent)');
-    ok('RA-CLOSE: a real park ⇒ attested; only the closed record + one audit row are written; payment_status stays manual_review');
-    // RA-GATE: the REAL cancel still refuses a closed review
+    assert.deepStrictEqual(db.getAt(`manual_review_closures/${OID}/${EP1}`), { outcome: 'refunded_in_pixelpay', amount_cents: 29900, note: 'anulado en PixelPay', by: 'disp@tb', at: NOW + 5 }, '🔴 RA-CLOSE: the closure node IS the audit');
+    assert.deepStrictEqual(diff(before, snapshot(db)), [`manual_review_closures/${OID}/${EP1}/amount_cents`, `manual_review_closures/${OID}/${EP1}/at`, `manual_review_closures/${OID}/${EP1}/by`, `manual_review_closures/${OID}/${EP1}/note`, `manual_review_closures/${OID}/${EP1}/outcome`],
+      '🔴 RA-CLOSE: the ONLY write is the closure node — the order, the attempt, rewards and payment_audit are untouched');
+    assert.strictEqual(await closed(db), true, '🔴 RA-CLOSE: closed for its current episode');
+    ok('RA-CLOSE: a real park + the trigger ⇒ attested; the only write is the closure node; the order is untouched');
     let voids = 0;
     const r2 = await quiet(() => cancelOrderCore({ db, voidOrRefund: async () => { voids += 1; return { voided: true }; }, alert: (k, d) => paymentAlert(db, k, d), serverTimestamp: 0 }, { orderId: OID, actor: 'disp@tb', reason: 'customer', now: NOW + 9, claimId: 'CL2' }));
     assert.deepStrictEqual([r2.status, r2.body.outcome, voids, db.getAt(`orders/${OID}/cancel_claim_id`) || null], [409, 'manual_review', 0, null], '🔴 RA-GATE: the real cancel still refuses; no claim, no void');
     ok('RA-GATE: after closing, the real cancel still refuses (no claim, no void)');
-    // RA-REFUSE: already closed
-    const r3 = await attest(db, { outcome: 'charge_stands' });
-    assert.deepStrictEqual([r3.status, r3.body.outcome, db.getAt(`orders/${OID}/manual_review_closed/outcome`)], [409, 'already_closed', 'refunded_in_pixelpay'], '🔴 RA-REFUSE: already closed ⇒ 409, the first record stands');
+    const b2 = snapshot(db);
+    const r3 = await attest(db, { outcome: 'charge_stands', now: NOW + 6 });
+    assert.deepStrictEqual([r3.status, r3.body.outcome, diff(b2, snapshot(db))], [409, 'already_closed', []], '🔴 RA-REFUSE: already closed ⇒ 409, the first record stands');
+    const r4 = await attest(db, { episode: EP1 - 1, now: NOW + 7 });
+    assert.deepStrictEqual([r4.status, r4.body.outcome, diff(b2, snapshot(db))], [409, 'stale', []], '🔴 RA-REFUSE: an episode that is not current ⇒ 409 stale, nothing written');
   }
   {
-    // RA-REFUSE: not manual_review / scheduled_blocked (the shape pixelpay-confirm.js:275 writes) / an order claim
     const cases = [
-      ['not_in_review', makeDb({ orders: { [OID]: ORDER() }, payment_attempts: { [AID]: CAPTURED_NO_UUID } })],
-      ['scheduled_blocked', makeDb({ orders: { [OID]: ORDER({ status: 'scheduled', payment_status: 'manual_review', scheduled_blocked: true, blocked_reason: 'confirm_slot_closed' }) }, payment_attempts: { [AID]: CAPTURED_NO_UUID } })],
-      ['claim_in_flight', makeDb({ orders: { [OID]: ORDER({ payment_status: 'manual_review', cancel_claim_id: 'CLX', resolving_action: 'cancel' }) }, payment_attempts: { [AID]: CAPTURED_NO_UUID } })],
-      ['claim_in_flight', makeDb({ orders: { [OID]: ORDER({ payment_status: 'manual_review', resolving_claim_id: 'RCL', resolving_phase: 'claimed' }) }, payment_attempts: { [AID]: CAPTURED_NO_UUID } })],
+      ['not_in_review', makeDb({ orders: { [OID]: ORDER() }, payment_attempts: { [AID]: CAPTURED_NO_UUID }, manual_review_episodes: { [OID]: EP1 } })],
+      ['scheduled_blocked', makeDb({ orders: { [OID]: ORDER({ status: 'scheduled', payment_status: 'manual_review', scheduled_blocked: true, blocked_reason: 'confirm_slot_closed' }) }, payment_attempts: { [AID]: CAPTURED_NO_UUID }, manual_review_episodes: { [OID]: EP1 } })],
+      ['claim_in_flight', makeDb({ orders: { [OID]: ORDER({ payment_status: 'manual_review', cancel_claim_id: 'CLX', resolving_action: 'cancel' }) }, payment_attempts: { [AID]: CAPTURED_NO_UUID }, manual_review_episodes: { [OID]: EP1 } })],
+      ['claim_in_flight', makeDb({ orders: { [OID]: ORDER({ payment_status: 'manual_review', resolving_claim_id: 'RCL', resolving_phase: 'claimed' }) }, payment_attempts: { [AID]: CAPTURED_NO_UUID }, manual_review_episodes: { [OID]: EP1 } })],
     ];
     for (const [why, db] of cases) {
       const before = snapshot(db);
       const r = await attest(db);
-      assert.deepStrictEqual([r.status, r.body.outcome], [409, why], `🔴 RA-REFUSE: ${why} ⇒ 409 (${JSON.stringify(r.body)})`);
-      assert.deepStrictEqual(diff(before, snapshot(db)), [], `🔴 RA-REFUSE: ${why} ⇒ nothing written`);
+      assert.deepStrictEqual([r.status, r.body.outcome, diff(before, snapshot(db))], [409, why, []], `🔴 RA-REFUSE: ${why} ⇒ 409, nothing written (${JSON.stringify(r.body)})`);
     }
-    ok('RA-REFUSE: already closed / not manual_review / scheduled_blocked / an order claim ⇒ 409 with its reason, nothing written');
+    ok('RA-REFUSE: already closed / stale episode / not manual_review / scheduled_blocked / an order claim ⇒ 409 with its reason, nothing written');
   }
   {
-    // RA-INFLIGHT: a REAL reversal in flight on the parked order's attempt (the C park: it has a uuid)
     const db = await parked(AMBIGUOUS, { status: 'new', payment_status: 'pending' });
     let release; hold = new Promise((res) => { release = res; }); provider = 'ok';
-    const inflight = voidOrRefund({ db, client: realClient, alert: (k, d) => paymentAlert(db, k, d) }, { orderId: OID, attemptId: AID, pixelpayOrderId: `${OID}-${AID}`, paymentUuid: 'U-1', reason: 'x', now: NOW + 1 });   // NOT quiet(): it stays pending across the assertion, and quiet() would swallow a failure's report
+    const inflight = voidOrRefund({ db, client: realClient, alert: (k, d) => paymentAlert(db, k, d) }, { orderId: OID, attemptId: AID, pixelpayOrderId: `${OID}-${AID}`, paymentUuid: 'U-1', reason: 'x', now: NOW + 1 });   // NOT quiet(): it stays pending across the assertion
     for (let i = 0; i < 50 && db.getAt(`payment_attempts/${AID}/status`) !== 'reversing'; i++) await new Promise((r) => setImmediate(r));
     assert.strictEqual(db.getAt(`payment_attempts/${AID}/status`), 'reversing', 'RA-INFLIGHT premise: the real reversal holds the attempt at reversing');
     const r = await attest(db);
-    assert.deepStrictEqual([r.status, r.body.outcome, db.getAt(`orders/${OID}/manual_review_closed`)], [409, 'reversal_in_flight', null], '🔴 RA-INFLIGHT: a reversal in flight (reversing) ⇒ 409, nothing written');
+    assert.deepStrictEqual([r.status, r.body.outcome, db.getAt(`manual_review_closures/${OID}`)], [409, 'reversal_in_flight', null], '🔴 RA-INFLIGHT: reversing ⇒ 409, nothing written');
     release(); hold = null; await inflight;
-    // …and a reversal the provider declined (refund_pending: the reconciler will retry it)
     const db2 = await parked(AMBIGUOUS, { status: 'new', payment_status: 'pending' });
     provider = 'decline';
     await quiet(() => voidOrRefund({ db: db2, client: realClient, alert: (k, d) => paymentAlert(db2, k, d) }, { orderId: OID, attemptId: AID, pixelpayOrderId: `${OID}-${AID}`, paymentUuid: 'U-1', reason: 'x', now: NOW + 1 }));
     assert.strictEqual(db2.getAt(`payment_attempts/${AID}/status`), 'refund_pending', 'RA-INFLIGHT premise: refund_pending');
     const r2 = await attest(db2);
-    assert.deepStrictEqual([r2.status, r2.body.outcome, db2.getAt(`orders/${OID}/manual_review_closed`)], [409, 'reversal_in_flight', null], '🔴 RA-INFLIGHT: refund_pending ⇒ 409, nothing written');
+    assert.deepStrictEqual([r2.status, r2.body.outcome, db2.getAt(`manual_review_closures/${OID}`)], [409, 'reversal_in_flight', null], '🔴 RA-INFLIGHT: refund_pending ⇒ 409, nothing written');
     ok('RA-INFLIGHT: a real reversal in flight (reversing) or refund_pending ⇒ 409, nothing written');
   }
   {
-    // RA-RACE: another reviewer's attestation lands right before our CAS
     let fired = false; let db;
-    db = await parked(CAPTURED_NO_UUID, {}, { beforeTx: async (p) => { if (!db || fired || p !== `orders/${OID}`) return; fired = true; await attest(db, { actor: 'other@tb', outcome: 'charge_stands' }); } });
+    db = await parked(CAPTURED_NO_UUID, {}, { beforeTx: async (p) => { if (!db || fired || p !== `manual_review_closures/${OID}/${EP1}`) return; fired = true; await attest(db, { actor: 'other@tb', outcome: 'charge_stands', now: NOW + 4 }); } });
     const r = await attest(db);
     assert.ok(fired, 'RA-RACE premise: the other attestation ran first');
-    assert.deepStrictEqual([r.status, r.body.outcome, db.getAt(`orders/${OID}/manual_review_closed/by`)], [409, 'already_closed', 'other@tb'], '🔴 RA-RACE: ours answers already_closed; the first record stands');
-    assert.strictEqual(Object.values(db.getAt('payment_audit')).filter((a) => a.action === 'review_attest').length, 1, '🔴 RA-RACE: exactly one audit row');
-    ok('RA-RACE: two reviewers ⇒ exactly one record + one audit row');
+    assert.deepStrictEqual([r.status, r.body.outcome, db.getAt(`manual_review_closures/${OID}/${EP1}/by`), Object.keys(db.getAt(`manual_review_closures/${OID}`)).length], [409, 'already_closed', 'other@tb', 1], '🔴 RA-RACE: ours already_closed; exactly one record, the first');
+    ok('RA-RACE: two reviewers ⇒ exactly one record');
   }
   {
     const db = await parked();
     const before = snapshot(db);
-    for (const over of [{ outcome: 'refunded' }, { amountCents: -1 }, { amountCents: 1.5 }, { amountCents: '299' }, { orderId: 'a/b' }, { note: 'x'.repeat(201) }]) {
+    for (const over of [{ outcome: 'refunded' }, { amountCents: -1 }, { amountCents: 1.5 }, { amountCents: '299' }, { orderId: 'a/b' }, { note: 'x'.repeat(201) }, { episode: -1 }, { episode: 1.5 }, { episode: '1' }, { episode: undefined }]) {
       const r = await attest(db, over);
       assert.strictEqual(r.status, 400, `🔴 RA-BAD: ${JSON.stringify(over).slice(0, 40)} ⇒ 400`);
     }
     assert.deepStrictEqual(diff(before, snapshot(db)), [], '🔴 RA-BAD: nothing written');
-    ok('RA-BAD: a bad outcome / amount / order id / note ⇒ 400, nothing written');
+    ok('RA-BAD: a bad outcome / amount / episode / order id / note ⇒ 400, nothing written');
   }
   {
-    // RA-AUTH: the endpoint (the factory index.js wires with onRequest + authorizeDispatcherAction) authorizes FIRST
     const db = await parked();
     let handler = null;
     const DISP_AUTH = { ok: true, actor: 'disp@tb', uid: 'D1', byKind: 'dispatcher' };
     const mk = (auth) => { handler = null; RA.endpoint({ onRequest: (_opts, h) => { handler = h; return h; }, authorize: async () => auth, getDatabase: () => db, sanitizeText: (s, m) => String(s || '').slice(0, m) }); return handler; };
     const call = async (h, body, method = 'POST') => { const out = {}; const res = { set() { return res; }, status(c) { out.code = c; return res; }, json(b) { out.body = b; return res; } }; await h({ method, body }, res); return out; };
     const before = snapshot(db);
-    let denied; try { denied = await call(mk({ ok: false, code: 401, msg: 'missing bearer token' }), { order_id: OID, outcome: 'charge_stands', amount_cents: 29900 }); } catch (e) { denied = { code: 'threw' }; }   // a handler that ran past a refused auth must still fail HERE
+    const BODY = { order_id: OID, episode: EP1, outcome: 'charge_stands', amount_cents: 29900 };
+    let denied; try { denied = await call(mk({ ok: false, code: 401, msg: 'missing bearer token' }), BODY); } catch (e) { denied = { code: 'threw' }; }   // a handler that ran past a refused auth must still fail HERE
     assert.deepStrictEqual([denied.code, diff(before, snapshot(db))], [401, []], '🔴 RA-AUTH: a refused auth ⇒ its code; the core never runs');
-    const get = await call(mk(DISP_AUTH), {}, 'GET');
-    assert.strictEqual(get.code, 405, 'RA-AUTH: POST only');
-    const svc = await call(mk({ ok: true, actor: 'recon_secret', uid: null, byKind: 'recon_secret' }), { order_id: OID, outcome: 'charge_stands', amount_cents: 29900, actor: 'server' });
-    assert.deepStrictEqual([svc.code, diff(before, snapshot(db))], [403, []], '🔴 RA-AUTH: a human-only action — the service secret is refused (Codex #217 P2-2)');
+    assert.strictEqual((await call(mk(DISP_AUTH), {}, 'GET')).code, 405, 'RA-AUTH: POST only');
+    const svc = await call(mk({ ok: true, actor: 'recon_secret', uid: null, byKind: 'recon_secret' }), { ...BODY, actor: 'server' });
+    assert.deepStrictEqual([svc.code, diff(before, snapshot(db))], [403, []], '🔴 RA-AUTH: a human-only action — the service secret is refused');
     for (const [body, why] of [[{ note: 7 }, 'a non-string note'], [{ note: 'x'.repeat(201) }, 'a raw note over 200 (before any sanitizing)'], [{ amount_cents: 29901 }, 'an amount above the order total']]) {
-      const r = await call(mk(DISP_AUTH), { order_id: OID, outcome: 'charge_stands', amount_cents: 29900, ...body });
-      assert.deepStrictEqual([r.code, diff(before, snapshot(db))], [400, []], `🔴 RA-AUTH: ${why} ⇒ 400, nothing written (Codex #217 P3)`);
+      const r = await call(mk(DISP_AUTH), { ...BODY, ...body });
+      assert.deepStrictEqual([r.code, diff(before, snapshot(db))], [400, []], `🔴 RA-AUTH: ${why} ⇒ 400, nothing written`);
     }
-    const spoof = await call(mk(DISP_AUTH), { order_id: OID, outcome: 'charge_stands', amount_cents: 29900, note: 'ok', actor: 'someone-else' });
-    assert.deepStrictEqual([spoof.code, db.getAt(`orders/${OID}/manual_review_closed/by`)], [200, 'disp@tb'], '🔴 RA-AUTH: a dispatcher\'s actor is its verified identity, never the body\'s');
+    const spoof = await call(mk(DISP_AUTH), { ...BODY, note: 'ok', actor: 'someone-else' });
+    assert.deepStrictEqual([spoof.code, db.getAt(`manual_review_closures/${OID}/${EP1}/by`)], [200, 'disp@tb'], '🔴 RA-AUTH: a dispatcher\'s actor is its verified identity, never the body\'s');
     ok('RA-AUTH: auth first; dispatcher identity only (no service secret); raw note + amount bounds; the actor is the verified identity');
   }
   {
-    assert.strictEqual(unresolvedMoney({ status: 'cancelled', payment_status: 'manual_review' }), true, 'RA-PRUNE: an open review is unresolved');
-    assert.strictEqual(unresolvedMoney({ status: 'cancelled', payment_status: 'manual_review', manual_review_closed: { outcome: 'refunded_in_pixelpay' } }), false, '🔴 RA-PRUNE: a CLOSED review is no longer unresolved money');
-    assert.strictEqual(unresolvedMoney({ status: 'cancelled', payment_status: 'refund_pending', manual_review_closed: { outcome: 'x' } }), true, '🔴 RA-PRUNE: the close applies to manual_review only');
-    ok('RA-PRUNE: a closed manual_review is no longer unresolved money; nothing else changes');
-  }
-  {
-    // RA-EPISODE (Codex #217 P1, its repro with the REAL writers): close, then a later verify-failing callback → manual_reconciliation, then the
-    // REAL resolver's refund finds no payment id → manual_review again. The episode trigger (RA.onPaymentStatus, run here for each payment_status
-    // write exactly as the deployed trigger is) stamps the re-entry ⇒ the old closure is stale.
+    // RA-EPISODE (#217 P1, the REAL writers): close, then a later verify-failing callback → manual_reconciliation, then the REAL resolver's
+    // no-uuid refund → manual_review again; the trigger stamps each entry ⇒ a NEW episode
     const db = await parked();
-    const ep = async (before, after, t) => RA.onPaymentStatus(db, { orderId: OID, before, after, eventTime: t });
     await attest(db);
-    assert.strictEqual(reviewClosed(db.getAt(`orders/${OID}`)), true, 'RA-EPISODE premise: closed');
+    assert.strictEqual(await closed(db), true, 'RA-EPISODE premise: closed');
     const cbDeps = { db, restaurant: { lat: 15.5, lng: -88, name: 'TB', phone: 'p' }, buildMaterializeUpdates, alert: (k, d) => paymentAlert(db, k, d), genToken: () => 'TOK', client: realClient, voidOrRefund };
     await quiet(() => handleHostedCallback(cbDeps, { order: `${OID}-${AID}`, status: 'paid', amount: 299, uuid: 'PAY-9', transaction_id: 'T9', payment_hash: 'f'.repeat(32) }, NOW + 10));
     assert.strictEqual(db.getAt(`orders/${OID}/payment_status`), 'manual_reconciliation', 'RA-EPISODE premise: the real callback queued a reconciliation');
-    await ep('manual_review', 'manual_reconciliation', NOW + 10);
+    await trig(db, 'manual_review', 'manual_reconciliation', NOW + 10);
     const rr = await quiet(() => resolveManualReconciliationCore({ db, client: realClient, alert: (k, d) => paymentAlert(db, k, d), sanitizeText: (t) => String(t), serverTimestamp: 0, voidOrRefund }, { orderId: OID, action: 'refund', actor: 'disp2@tb', note: '', now: NOW + 20, claimId: 'RC1' }));
     assert.deepStrictEqual([rr.body.outcome, db.getAt(`orders/${OID}/payment_status`)], ['manual_review', 'manual_review'], 'RA-EPISODE premise: the real resolver re-entered manual_review');
-    await ep('manual_reconciliation', 'resolving_refund', NOW + 20); await ep('resolving_refund', 'manual_review', NOW + 21);
-    const o = db.getAt(`orders/${OID}`);
-    assert.deepStrictEqual([o.manual_review_since, reviewClosed(o), unresolvedMoney(o)], [NOW + 21, false, true], '🔴 RA-EPISODE: a NEW episode — the old closure no longer counts (its alerts and the daily breach are back)');
-    const again = await attest(db, { now: NOW + 30, outcome: 'charge_stands' });
-    assert.deepStrictEqual([again.status, db.getAt(`orders/${OID}/manual_review_closed/episode`), reviewClosed(db.getAt(`orders/${OID}`))], [200, NOW + 21, true], '🔴 RA-EPISODE: the new episode can be closed, bound to its own stamp');
-    await ep('manual_review', 'manual_review', NOW + 40);   // a write that does not ENTER review (same value) starts nothing
-    assert.strictEqual(reviewClosed(db.getAt(`orders/${OID}`)), true, 'RA-EPISODE: only an ENTRY into manual_review starts an episode');
-    ok('RA-EPISODE: a re-entry into manual_review (real callback → real resolver) starts a new episode; the stale closure stops counting');
+    await trig(db, 'manual_reconciliation', 'resolving_refund', NOW + 20); await trig(db, 'resolving_refund', 'manual_review', NOW + 21);
+    assert.deepStrictEqual([db.getAt(`manual_review_episodes/${OID}`), await closed(db), unresolvedMoney(db.getAt(`orders/${OID}`))], [NOW + 21, false, true], '🔴 RA-EPISODE: a NEW episode — the old closure no longer counts');
+    assert.deepStrictEqual((await attest(db, { now: NOW + 30 })).body.outcome, 'stale', '🔴 RA-EPISODE: the OLD episode is stale');
+    const again = await attest(db, { episode: NOW + 21, now: NOW + 31, outcome: 'charge_stands' });
+    assert.deepStrictEqual([again.status, await closed(db), Object.keys(db.getAt(`manual_review_closures/${OID}`)).sort()], [200, true, [String(EP1), String(NOW + 21)]], '🔴 RA-EPISODE: the new episode closes in its OWN node; the old record is kept');
+    await trig(db, 'manual_review', 'manual_review', NOW + 40);
+    assert.strictEqual(db.getAt(`manual_review_episodes/${OID}`), NOW + 21, '🔴 RA-EPISODE: only an ENTRY into manual_review starts an episode');
+    ok('RA-EPISODE: a re-entry (real callback → real resolver) starts a new episode; the old closure stops counting and stays recorded');
   }
   {
-    // RA-AUDIT (Codex #217 P2-3): the audit row write fails right after the decision commits
-    let fail = 1;
-    const db = await parked(CAPTURED_NO_UUID, {}, { beforeWrite: async (p) => { if (p.startsWith('payment_audit/') && fail > 0) { fail -= 1; throw new Error('write failed'); } } });
-    const r = await quiet(() => attest(db));
-    assert.deepStrictEqual([r.status, r.body.outcome, r.body.audit, db.getAt(`orders/${OID}/manual_review_closed/audited`), db.getAt(`payment_audit/review_${OID}_${NOW + 5}`)], [202, 'review_closed', 'pending', false, null], '🔴 RA-AUDIT: the decision stands, the audit is pending (never a lost or half-told outcome)');
-    await RA.completeAudit(db, OID);
-    const row = db.getAt(`payment_audit/review_${OID}_${NOW + 5}`);
-    assert.deepStrictEqual([row && row.outcome, row && row.actor, db.getAt(`orders/${OID}/manual_review_closed/audited`)], ['refunded_in_pixelpay', 'disp@tb', true], '🔴 RA-AUDIT: the backstop writes the deterministic row and flips audited');
-    const before = snapshot(db); await RA.completeAudit(db, OID);
-    assert.deepStrictEqual(diff(before, snapshot(db)), [], 'RA-AUDIT: completeAudit is idempotent');
-    ok('RA-AUDIT: a failed audit write leaves audited:false (202 pending); the backstop completes it, idempotently');
+    // RA-STALE-FLIGHT (#219 P1): the order re-enters review WHILE the request is in flight — after its episode check, before its write
+    let fired = false; let db;
+    db = await parked(CAPTURED_NO_UUID, {}, { beforeTx: async (p) => { if (!db || fired || p !== `manual_review_closures/${OID}/${EP1}`) return; fired = true; await trig(db, 'manual_reconciliation', 'manual_review', NOW + 50); } });
+    const r = await attest(db);
+    assert.ok(fired, 'RA-STALE-FLIGHT premise: a new episode began mid-request');
+    assert.deepStrictEqual([r.status, r.body.outcome, await closed(db)], [409, 'stale', false], '🔴 RA-STALE-FLIGHT: never bound to the NEWER episode — the answer is stale and the order is NOT closed');
+    ok('RA-STALE-FLIGHT: an episode change mid-request ⇒ 409 stale; the new episode stays open');
+  }
+  {
+    // RA-MALFORMED (#219 P2-a): whatever a client wrote ON THE ORDER is ignored — closedness lives only in the server-only roots
+    const db = await parked();
+    await db.ref(`orders/${OID}`).update({ manual_review_closed: true, manual_review_since: EP1, manual_review_closures: { [EP1]: { by: 'forged' } } });
+    assert.deepStrictEqual([await closed(db), unresolvedMoney(db.getAt(`orders/${OID}`))], [false, true], '🔴 RA-MALFORMED: order-node fields (a `true` node, a forged copy) never close a review');
+    ok('RA-MALFORMED: review fields written on the order mean nothing; only the server-only roots count');
+  }
+  {
+    // RA-APPEND (#219 P2-b): a closure is never replaced — no pending state for a later write to overwrite
+    const db = await parked();
+    await attest(db);
+    const rec = JSON.stringify(db.getAt(`manual_review_closures/${OID}/${EP1}`));
+    await attest(db, { actor: 'other@tb', outcome: 'charge_stands', now: NOW + 8 });
+    assert.strictEqual(JSON.stringify(db.getAt(`manual_review_closures/${OID}/${EP1}`)), rec, '🔴 RA-APPEND: the episode\'s record is never replaced');
+    ok('RA-APPEND: a closure is append-only (one per episode, never replaced)');
+  }
+  {
+    // RA-CASH (#219 P2-c): a cash-labelled order parked by the real cancel ⇒ the ONE closure write is the complete audit; it counts at once
+    const db = await parked(CAPTURED_NO_UUID, { payment_method: 'cash' });
+    const r = await attest(db);
+    assert.deepStrictEqual([r.status, await closed(db), db.getAt(`manual_review_closures/${OID}/${EP1}/by`)], [200, true, 'disp@tb'], '🔴 RA-CASH: a cash-labelled order is closed and audited by the one write (nothing pending, no backstop)');
+    ok('RA-CASH: a cash-labelled parked order ⇒ closed and audited in one write');
+  }
+  {
+    // RA-PRUNE: the REAL alert-prune over the review's view of the orders (withClosedReviews, as reconcilePayments passes it)
+    const orders = { P1: { status: 'cancelled', payment_status: 'manual_review' }, P2: { status: 'cancelled', payment_status: 'refund_pending' } };
+    const alerts = { a: { type: 'payment_cancel_manual_review', detail: { orderId: 'P1' } }, b: { type: 'payment_x', detail: { orderId: 'P2' } } };
+    assert.deepStrictEqual(alertsToPrune(alerts, RA.withClosedReviews(orders, new Set())), [], 'RA-PRUNE: an open review keeps its alert');
+    assert.deepStrictEqual(alertsToPrune(alerts, RA.withClosedReviews(orders, new Set(['P1', 'P2']))), ['a'], '🔴 RA-PRUNE: a CLOSED review lets its alert go; the set applies to manual_review only (P2 refund_pending kept)');
+    assert.deepStrictEqual(orders.P1.payment_status, 'manual_review', 'RA-PRUNE: the view never changes the orders it was given');
+    assert.strictEqual(unresolvedMoney({ status: 'cancelled', payment_status: 'manual_review', manual_review_closed: { outcome: 'x' } }), true, 'RA-PRUNE: alert-prune is about the order alone again (unchanged from cancel-park)');
+    ok('RA-PRUNE: an open review keeps its alerts; a closed one (by the server-only set) lets them go; nothing else changes');
   }
   console.log(`review-attest: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -5,9 +5,10 @@
 //                && !o.manual_review_closed && age > 6 h` (an executable IfStatement of the per-order loop)
 //   RAW-EXPORT   `exports.attestManualReview = require('./payments/review-attest').endpoint({ onRequest, authorize: authorizeDispatcherAction,
 //                getDatabase, sanitizeText })` is an executable top-level statement — the dispatcher gate, never MAKE_SECRET
-//   RAW-BACKSTOP the daily pass completes a pending audit: `if (o.manual_review_closed && o.manual_review_closed.audited === false) … completeAudit(db, orderId)` (Codex #217 P2-3)
+//   RAW-CLOSED-SET `const reviewClosedIds = await require('./payments/review-attest').closedOrderIds(db, orders)` before the loop; the prune gets
+//                withClosedReviews(orders, reviewClosedIds) (structural rebuild 11-19: closedness lives in server-only roots, not on the order)
 //   RAW-EPISODE  `exports.markReviewEpisodeOnPaymentStatus = onValueWritten({ ref: '/orders/{orderId}/payment_status' … }, …onPaymentStatus(…))` (Codex #217 P1)
-// (RAW-DAILY now: `!require('./alert-prune').reviewClosed(o)` — a closure counts only in its episode; RAW-EXPORT: authorizeDispatcherActionWithUid)
+// (RAW-DAILY now: `!reviewClosedIds.has(orderId)`, no audit backstop; RAW-EXPORT: authorizeDispatcherActionWithUid)
 // Run: node payments/review-attest-wiring.guard.test.js
 const assert = require('assert');
 const fs = require('fs');
@@ -29,10 +30,16 @@ const textOf = (node) => src.slice(node.start, node.end);
   assert.ok(loopBody, 'premise: the per-order loop');
   const rule = loopBody.find((s) => s.type === 'IfStatement' && /kind: 'aged_manual_review'/.test(textOf(s.consequent)));
   assert.ok(rule, 'premise: the aged_manual_review rule is an executable statement');
-  assert.ok(/^o\.payment_status === 'manual_review' && !require\('\.\/alert-prune'\)\.reviewClosed\(o\) && age > 6 \* 3600 \* 1000$/.test(textOf(rule.test)), `🔴 RAW-DAILY: the rule skips a review closed IN ITS EPISODE (got ${textOf(rule.test)})`);
-  const backstop = loopBody.find((s) => s.type === 'IfStatement' && /completeAudit\(db, orderId\)/.test(textOf(s.consequent)));
-  assert.ok(backstop && /manual_review_closed\.audited === false/.test(textOf(backstop.test)), '🔴 RAW-BACKSTOP: the daily pass completes a pending audit (real code)');
-  ok('RAW-DAILY / RAW-BACKSTOP: the daily rule honours a closure only in its episode; the daily pass completes a pending audit (real code)');
+  assert.ok(/^o\.payment_status === 'manual_review' && !reviewClosedIds\.has\(orderId\) && age > 6 \* 3600 \* 1000$/.test(textOf(rule.test)), `🔴 RAW-DAILY: the rule skips a review closed in its CURRENT episode (got ${textOf(rule.test)})`);
+  assert.ok(!/completeAudit\(|manual_review_closed\.audited/.test(textOf(handler.body)), '🔴 RAW-DAILY: no audit backstop (the closure is the audit, written atomically)');
+  // RAW-CLOSED-SET: the set is computed ONCE, as real code, before the loop, from the server-only roots; the prune receives the same view
+  const body = handler.body.body;
+  const decl = body.findIndex((s) => s.type === 'VariableDeclaration' && s.declarations.some((d) => d.id.name === 'reviewClosedIds' && /^await require\('\.\/payments\/review-attest'\)\.closedOrderIds\(db, orders\)$/.test(textOf(d.init))));
+  const loopAt = body.findIndex((s) => /^For(Of|In)Statement$/.test(s.type) && s.body.body === loopBody);
+  assert.ok(decl >= 0 && loopAt > decl, `🔴 RAW-CLOSED-SET: \`const reviewClosedIds = await require('./payments/review-attest').closedOrderIds(db, orders)\` is a real statement before the loop (${decl} < ${loopAt})`);
+  let prune = null; walk(handler.body, (node) => { if (!prune && node.type === 'CallExpression' && textOf(node.callee) === 'alertsToPrune') prune = node; });
+  assert.ok(prune && textOf(prune.arguments[1]) === "require('./payments/review-attest').withClosedReviews(orders, reviewClosedIds)", `🔴 RAW-CLOSED-SET: the prune gets the review's view of the orders (got ${prune ? textOf(prune) : 'none'})`);
+  ok('RAW-DAILY / RAW-CLOSED-SET: the daily rule and the prune read closedness from the server-only set, computed once before the loop (real code)');
 }
 {
   const hits = [];

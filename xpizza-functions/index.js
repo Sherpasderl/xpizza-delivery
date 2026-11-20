@@ -3111,7 +3111,7 @@ exports.reconcilePayments = onSchedule(
     ]);
     const orders = ordersSnap.val() || {};
     const attempts = attemptsSnap.val() || {};
-    const breaches = [];
+    const breaches = []; const reviewClosedIds = await require('./payments/review-attest').closedOrderIds(db, orders);   // «Marcar como revisado»: reviews closed in their CURRENT episode (server-only roots)
 
     for (const orderId of Object.keys(orders)) {
       const o = orders[orderId]; if (require('./payments/sdk/flow').isSdkOrder(o)) continue;
@@ -3139,7 +3139,7 @@ exports.reconcilePayments = onSchedule(
       }
       // Aged operator-queue states.
       const age = now - (Number(o.charged_at || o.created_at) || now);
-      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' }); if (o.payment_status === 'manual_review' && !require('./alert-prune').reviewClosed(o) && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_review' }); if (o.manual_review_closed && o.manual_review_closed.audited === false) { try { await require('./payments/review-attest').completeAudit(db, orderId); } catch (e) { console.warn('reconcilePayments: review audit', orderId.slice(0, 4)); } }   // + cancel-park option A: a parked (manual_review) order is re-raised daily
+      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' }); if (o.payment_status === 'manual_review' && !reviewClosedIds.has(orderId) && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_review' });   // + cancel-park option A: a parked (manual_review) order is re-raised daily
       if (o.payment_status === 'refund_pending' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_refund_pending' });
       if (MR.isResolving(o.payment_status) && (now - (Number(o.resolving_claimed_at) || 0)) > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_resolving' }); // [D] sweep-recovery backstop
 
@@ -3169,7 +3169,7 @@ exports.reconcilePayments = onSchedule(
     // detail-referenced alerts are touched (keyed factura_/reward_ alerts have their own clearing).
     try {
       const alerts = (await db.ref('dispatcher_alerts').once('value')).val() || {};
-      const stale = alertsToPrune(alerts, orders);
+      const stale = alertsToPrune(alerts, require('./payments/review-attest').withClosedReviews(orders, reviewClosedIds));
       if (stale.length) {
         const updates = {};
         for (const k of stale) updates[`dispatcher_alerts/${k}`] = null;

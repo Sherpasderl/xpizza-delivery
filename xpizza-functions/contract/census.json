@@ -26,10 +26,10 @@
   "exemptByCategory": {
    "server access": 24,
    "server catalog": 376,
-   "server infra": 163,
+   "server infra": 162,
    "server dispatch": 217,
    "server branches": 30,
-   "server payment": 493,
+   "server payment": 494,
    "server intake": 561,
    "server marketing": 19,
    "server delivery_pricing": 57,
@@ -54,9 +54,9 @@
    "portal-marketing": 56
   },
   "sendSites": 24,
-  "fieldsWritten": 126,
+  "fieldsWritten": 124,
   "opaqueWrites": 31,
-  "opaque": 180,
+  "opaque": 181,
   "projections": 158,
   "sentinel": 41,
   "timers": {
@@ -525,21 +525,8 @@
    "exempt": true
   },
   {
-   "id": "xpizza-functions/alert-prune.js#reviewClosed#payment_status#0",
-   "line": 35,
-   "kind": "member",
-   "facts": [
-    "COLLECT",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "server:infra",
-   "exempt": true
-  },
-  {
    "id": "xpizza-functions/alert-prune.js#unresolvedMoney#payment_status#0",
-   "line": 38,
+   "line": 32,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -552,7 +539,7 @@
   },
   {
    "id": "xpizza-functions/alert-prune.js#unresolvedMoney#payment_status#1",
-   "line": 38,
+   "line": 32,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -565,7 +552,7 @@
   },
   {
    "id": "xpizza-functions/alert-prune.js#unresolvedMoney#payment_status#2",
-   "line": 38,
+   "line": 32,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -578,7 +565,7 @@
   },
   {
    "id": "xpizza-functions/alert-prune.js#orderStillFlagged#status#0",
-   "line": 42,
+   "line": 36,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -591,7 +578,7 @@
   },
   {
    "id": "xpizza-functions/alert-prune.js#orderStillFlagged#payment_status#0",
-   "line": 43,
+   "line": 37,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -604,7 +591,7 @@
   },
   {
    "id": "xpizza-functions/alert-prune.js#orderStillFlagged#payment_status#1",
-   "line": 43,
+   "line": 37,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -20962,7 +20949,7 @@
   },
   {
    "id": "xpizza-functions/payments/review-attest.js#refusal#payment_status#0",
-   "line": 30,
+   "line": 20,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -20975,7 +20962,7 @@
   },
   {
    "id": "xpizza-functions/payments/review-attest.js#refusal#scheduled_blocked#0",
-   "line": 32,
+   "line": 21,
    "kind": "member",
    "facts": [
     "SCHED"
@@ -20985,7 +20972,7 @@
   },
   {
    "id": "xpizza-functions/payments/review-attest.js#attestManualReview#order_id#0",
-   "line": 52,
+   "line": 26,
    "kind": "projection-destructure",
    "facts": [
     "NUM"
@@ -20996,7 +20983,7 @@
   },
   {
    "id": "xpizza-functions/payments/review-attest.js#attestManualReview#total_cents#0",
-   "line": 61,
+   "line": 35,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -21008,7 +20995,7 @@
   },
   {
    "id": "xpizza-functions/payments/review-attest.js#attestManualReview#total_cents#1",
-   "line": 61,
+   "line": 35,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -21020,7 +21007,7 @@
   },
   {
    "id": "xpizza-functions/payments/review-attest.js#attestManualReview#total_cents#2",
-   "line": 61,
+   "line": 35,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -21032,7 +21019,7 @@
   },
   {
    "id": "xpizza-functions/payments/review-attest.js#attestManualReview#status#0",
-   "line": 66,
+   "line": 40,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -21044,19 +21031,8 @@
    "exempt": true
   },
   {
-   "id": "xpizza-functions/payments/review-attest.js#onPaymentStatus#order_id#0",
-   "line": 88,
-   "kind": "projection-destructure",
-   "facts": [
-    "NUM"
-   ],
-   "alias": "orderId",
-   "rule": "server:payment",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/payments/review-attest.js#onPaymentStatus>anon#payment_status#0",
-   "line": 92,
+   "id": "xpizza-functions/payments/review-attest.js#closedOrderIds#payment_status#0",
+   "line": 58,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -21068,8 +21044,32 @@
    "exempt": true
   },
   {
+   "id": "xpizza-functions/payments/review-attest.js#withClosedReviews#payment_status#0",
+   "line": 70,
+   "kind": "member",
+   "facts": [
+    "COLLECT",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:payment",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/payments/review-attest.js#onPaymentStatus#order_id#0",
+   "line": 76,
+   "kind": "projection-destructure",
+   "facts": [
+    "NUM"
+   ],
+   "alias": "orderId",
+   "rule": "server:payment",
+   "exempt": true
+  },
+  {
    "id": "xpizza-functions/payments/review-attest.js#endpoint>anon#status#0",
-   "line": 103,
+   "line": 86,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -21082,7 +21082,7 @@
   },
   {
    "id": "xpizza-functions/payments/review-attest.js#endpoint>anon#status#1",
-   "line": 105,
+   "line": 88,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -21095,7 +21095,7 @@
   },
   {
    "id": "xpizza-functions/payments/review-attest.js#endpoint>anon#status#2",
-   "line": 106,
+   "line": 89,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -21108,7 +21108,7 @@
   },
   {
    "id": "xpizza-functions/payments/review-attest.js#endpoint>anon#status#3",
-   "line": 108,
+   "line": 91,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -21121,7 +21121,7 @@
   },
   {
    "id": "xpizza-functions/payments/review-attest.js#endpoint>anon#order_id#0",
-   "line": 110,
+   "line": 93,
    "kind": "member",
    "facts": [
     "NUM"
@@ -21131,7 +21131,7 @@
   },
   {
    "id": "xpizza-functions/payments/review-attest.js#endpoint>anon#status#4",
-   "line": 113,
+   "line": 96,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -21144,7 +21144,7 @@
   },
   {
    "id": "xpizza-functions/payments/review-attest.js#endpoint>anon#status#5",
-   "line": 113,
+   "line": 96,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -58611,6 +58611,14 @@
    "rule": "server:intake"
   },
   {
+   "file": "xpizza-functions/payments/review-attest.js",
+   "fn": "withClosedReviews",
+   "base": "orders",
+   "line": 69,
+   "how": "spread",
+   "rule": "server:payment"
+  },
+  {
    "file": "xpizza-functions/payments/sdk/fixtures/redact-pixelpay.js",
    "fn": "<top>",
    "base": "DATA",
@@ -60006,7 +60014,7 @@
    "file": "xpizza-functions/payments/review-attest.js",
    "alias": "orderId",
    "field": "order_id",
-   "line": 110,
+   "line": 93,
    "round": 1
   },
   {
@@ -62726,7 +62734,7 @@
   },
   {
    "key": "xpizza-functions/payments/review-attest.js:endpoint>anon:Date.now()",
-   "line": 111,
+   "line": 94,
    "class": "business-sample"
   },
   {
@@ -63605,15 +63613,6 @@
    "key": "xpizza-functions/merchant/merchant-reject.js#writeOutcome#reject_outcome#transaction-updater"
   },
   {
-   "key": "xpizza-functions/payments/review-attest.js#completeAudit#manual_review_closed#transaction"
-  },
-  {
-   "key": "xpizza-functions/payments/review-attest.js#attestManualReview#manual_review_closed#transaction-updater"
-  },
-  {
-   "key": "xpizza-functions/payments/review-attest.js#onPaymentStatus#manual_review_since#transaction-updater"
-  },
-  {
    "key": "xpizza-functions/payments/sdk/coordinator.js#decidePlacement#payment_placed#transaction-updater"
   },
   {
@@ -64392,14 +64391,6 @@
   },
   {
    "field": "manual_refund_required_at",
-   "class": "stamp"
-  },
-  {
-   "field": "manual_review_closed",
-   "class": "stamp"
-  },
-  {
-   "field": "manual_review_since",
    "class": "stamp"
   },
   {

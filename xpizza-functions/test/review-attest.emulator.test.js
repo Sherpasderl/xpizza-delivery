@@ -1,6 +1,7 @@
 'use strict';
 // «Marcar como revisado» (owner 11-19, option B) — on the RTDB emulator, the REAL writers: two already-cancelled orders parked by the
-// REAL cancel (captured money, no payment id) 7 h ago; ONE is attested through the REAL attestManualReview. The REAL reconcilePayments then:
+// REAL cancel (captured money, no payment id) 7 h ago, each episode stamped by the trigger's body; ONE is attested (its episode) through the REAL
+// attestManualReview — the closure lives in manual_review_closures, never on the order. The REAL reconcilePayments then:
 //   RAE-DAILY   raises aged_manual_review for the OPEN review only — never for the closed one
 //   RAE-PRUNE   its prune dismisses the closed (cancelled) order's alerts, and keeps the open one's
 // Run: npm run test:review-attest
@@ -11,7 +12,7 @@ process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 const app = require('../index.js');
 const { getDatabase } = require('firebase-admin/database');
 const { cancelOrderCore } = require('../cancel-order-core');
-const { attestManualReview } = require('../payments/review-attest');
+const { attestManualReview, onPaymentStatus } = require('../payments/review-attest');
 const { paymentAlert } = require('../lib/payment-alert');
 const db = getDatabase();
 let n = 0; let FINISHED = false;
@@ -29,10 +30,11 @@ const H = 3600000;
     await db.ref(`payment_attempts/${aid}`).set({ order_id: oid, hosted_state: 'paid', hosted_callback_verified: true });
     await cancelOrderCore({ db, voidOrRefund: async () => { throw new Error('must not void'); }, alert: (k, d) => paymentAlert(db, k, d), serverTimestamp: 0 }, { orderId: oid, actor: 'disp@tb', reason: 'customer', now, claimId });
     assert.strictEqual((await db.ref(`orders/${oid}/payment_status`).once('value')).val(), 'manual_review', `premise: ${oid} parked by the real cancel`);
+    await onPaymentStatus(db, { orderId: oid, before: 'confirmed', after: 'manual_review', eventTime: now });   // the episode trigger's body (the database emulator runs no functions)
   };
   await park('RAE1', 'c0ffee00c0ffee11', 'CLA1');   // will be CLOSED
   await park('RAE2', 'c0ffee00c0ffee22', 'CLA2');   // stays OPEN (control)
-  const r = await attestManualReview(db, { orderId: 'RAE1', outcome: 'refunded_in_pixelpay', amountCents: 29900, note: 'anulado', actor: 'disp@tb', now, serverTimestamp: { '.sv': 'timestamp' } });
+  const r = await attestManualReview(db, { orderId: 'RAE1', episode: now, outcome: 'refunded_in_pixelpay', amountCents: 29900, note: 'anulado', actor: 'disp@tb', now });
   assert.strictEqual(r.status, 200, `premise: the real attestation closed RAE1 (${JSON.stringify(r.body)})`);
   await app.reconcilePayments.run({});
   const all = Object.values((await db.ref('dispatcher_alerts').once('value')).val() || {});
