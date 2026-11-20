@@ -41347,7 +41347,9 @@
   ],
   "kills_with": [
    "DIR-7"
-  ]
+  ],
+  "equivalent": true,
+  "why": "since r3 (wipe + restart) a previous member's book exists only after an admission (ownBy sets seenUid), and every identity change of an admitted member goes through leave(): dropMember → identityChanged → bookIdentity removes the book, then wipeIdentity → dropUidKeyed removes it again; when P2-2 skips the wipe (a stale tab) the façade's stale() refuses the removal anyway. The other callers (auth onChange guest / no completion mark, applyMember) run with no previous member's book. DIR-7 still pins the outcome (the book leaves the device); the line is redundant with the wipe (advisor 11-20: delete it in the one-tab change if approved)"
  },
  {
   "id": "dir-05",
