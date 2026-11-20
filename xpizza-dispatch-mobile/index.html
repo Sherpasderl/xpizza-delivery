@@ -34,7 +34,6 @@
     --sky-bg:#E2EFFE; --sky-ink:#1F6BC1;
     --mint-bg:#DFF6EC; --mint-ink:#147B5C;
     --cash-bg:#EFEBE3; --cash-ink:#6F6456;
-    --sand:#74695a; --sand-soft:rgba(116,105,90,0.14); --sand-fg:#ffffff;
     --xp:#D13B6D; --lm:#9558CA;
     --shadow-s:0 1px 2px rgba(40,25,80,.07);
     --shadow-m:0 10px 22px -12px rgba(40,25,80,.34), 0 1px 2px rgba(40,25,80,.06);
@@ -56,7 +55,6 @@
       --sky-bg:#152238; --sky-ink:#79B4F2;
       --mint-bg:#11281F; --mint-ink:#5FD3A8;
       --cash-bg:#2B2A26; --cash-ink:#CFC6B8;
-      --sand:#cfc6b8; --sand-soft:rgba(207,198,184,0.16); --sand-fg:#2a2824;
       --xp:#F07CA5; --lm:#B79BF5;
       --shadow-s:0 1px 2px rgba(0,0,0,.5);
       --shadow-m:0 12px 26px -14px rgba(0,0,0,.9), 0 1px 2px rgba(0,0,0,.4);
@@ -77,7 +75,6 @@
     --sky-bg:#152238; --sky-ink:#79B4F2;
     --mint-bg:#11281F; --mint-ink:#5FD3A8;
     --cash-bg:#2B2A26; --cash-ink:#CFC6B8;
-    --sand:#cfc6b8; --sand-soft:rgba(207,198,184,0.16); --sand-fg:#2a2824;
     --xp:#F07CA5; --lm:#B79BF5;
     --shadow-s:0 1px 2px rgba(0,0,0,.5);
     --shadow-m:0 12px 26px -14px rgba(0,0,0,.9), 0 1px 2px rgba(0,0,0,.4);
@@ -2198,15 +2195,15 @@ function mdraEnsure() {
   .mdra-row{display:flex;align-items:center;gap:11px;padding:12px;border:1px solid var(--border-soft,rgba(255,255,255,.07));border-radius:11px;background:var(--surface-2,#2d323a);margin-bottom:8px}
   .mdra-row.mut{opacity:.55} .mdra-who{flex:1;min-width:0} .mdra-nm{font-size:14px;font-weight:600} .mdra-mt{font-size:12px;color:var(--text-dim,#9b9993)}
   .mdra-pill{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px}
-  .mdra-pill.ok{background:var(--success-soft,rgba(127,200,160,.16));color:var(--success,#7fc8a0)} .mdra-pill.pend{background:var(--sand-soft);color:var(--sand)}
+  .mdra-pill.ok{background:var(--success-soft,rgba(127,200,160,.16));color:var(--success,#7fc8a0)} .mdra-pill.pend{background:rgba(207,198,184,.16);color:#cfc6b8}
   .mdra-pill.susp{background:var(--surface-3,#3b4048);color:var(--text-soft,#a9aba9)} .mdra-pill.dead{background:var(--accent-soft,rgba(236,154,161,.16));color:var(--accent,#ec9aa1)} .mdra-pill.unk{background:var(--surface-3,#3b4048);color:var(--text-dim,#9b9993)}
   .mdra-act{font-size:13px;font-weight:600;padding:8px 14px;border-radius:9px;border:1px solid var(--border,rgba(255,255,255,.12));background:var(--surface-3,#3b4048);color:var(--text,#f2f4f6);margin-left:6px}
   .mdra-act.pri{background:var(--primary,#a6a0f0);color:var(--primary-fg,#201c48);border-color:transparent} .mdra-act.ok{background:var(--success-soft,rgba(127,200,160,.16));color:var(--success,#7fc8a0);border-color:transparent}
-  .mdra-act.danger{background:var(--accent-solid,#cc3a45);color:#fff;border-color:transparent} .mdra-act.warn{background:transparent;color:var(--ink,#f1effa);border-color:var(--hair,rgba(255,255,255,.2))} .mdra-act[disabled]{opacity:.45}
+  .mdra-act.danger{background:var(--accent-solid,#cc3a45);color:#fff;border-color:transparent} .mdra-act.warn{background:transparent;color:#f1effa;border-color:rgba(255,255,255,.22)} .mdra-act[disabled]{opacity:.45}
   .mdra-full{width:100%;margin:8px 0 0} .mdra-field{display:flex;flex-direction:column;gap:5px;margin-bottom:11px} .mdra-field input{background:var(--surface,#262a31);border:1px solid var(--border,rgba(255,255,255,.12));border-radius:9px;padding:11px;color:var(--text,#f2f4f6);font-size:15px}
   .mdra-inset{background:var(--surface,#262a31);border:1px solid var(--border-soft,rgba(255,255,255,.07));border-radius:11px;padding:13px;margin:11px 0}
   .mdra-check{display:flex;align-items:center;gap:10px;font-size:14px;margin-top:10px} .mdra-box{width:22px;height:22px;border-radius:6px;border:1.5px solid var(--border,rgba(255,255,255,.12));display:grid;place-items:center;color:transparent} .mdra-check.on .mdra-box{background:var(--success,#7fc8a0);color:#10331e;border-color:transparent}
-  .mdra-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim,#9b9993)} .mdra-owner{font-size:10px;font-weight:700;text-transform:uppercase;color:var(--sand)} .mdra-mut-t{font-size:12px;color:var(--text-dim,#9b9993)}
+  .mdra-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim,#9b9993)} .mdra-owner{font-size:10px;font-weight:700;text-transform:uppercase;color:#cfc6b8} .mdra-mut-t{font-size:12px;color:var(--text-dim,#9b9993)}
   .mdra-cond{display:flex;gap:9px;margin-bottom:9px} .mdra-ci{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:11px} .mdra-ci.bad{background:var(--accent-solid,#cc3a45)} .mdra-ci.good{background:var(--success,#7fc8a0)}
   .mdra-back{background:none;border:none;color:var(--text-dim,#9b9993);font-size:13px;margin-bottom:12px}`;
   document.head.appendChild(st);
@@ -2301,7 +2298,7 @@ async function mdraDeactivate(body) {
   const uid = MDRA.sel; const rec = MDRA.recs[uid] || {};
   const back = () => { MDRA.view = 'list'; MDRA.sel = null; mdraRender(); };
   if (mdraDeriveState(rec) !== 'suspended') {
-    body.innerHTML = `<button class="mdra-back" id="mdra-bk">← Volver</button><div class="mdra-inset" style="background:var(--sand-soft)"><b style="font-size:13px">Primero suspendé al repartidor</b><p class="mdra-mut-t" style="margin:6px 0 0">Solo se puede desactivar una cuenta ya suspendida.</p></div><button class="mdra-act danger mdra-full" disabled>Desactivar cuenta</button>`;
+    body.innerHTML = `<button class="mdra-back" id="mdra-bk">← Volver</button><div class="mdra-inset" style="background:rgba(207,198,184,.16)"><b style="font-size:13px">Primero suspendé al repartidor</b><p class="mdra-mut-t" style="margin:6px 0 0">Solo se puede desactivar una cuenta ya suspendida.</p></div><button class="mdra-act danger mdra-full" disabled>Desactivar cuenta</button>`;
     $('mdra-bk').addEventListener('click', back); return;
   }
   let openShift = false, openOrders = [], precheckErr = false, tasks = {};   // tasks hoisted: the Reasignar remedy reads it after the try
@@ -2317,11 +2314,11 @@ async function mdraDeactivate(body) {
   const cuadre = (MDRA.cash && !MDRA.cashErr) ? mdraLatestCuadre(MDRA.cash[uid]) : null; const cash = mdraCashDisplay(cuadre, MDRA.cashErr);
   const blockers = mdraBlockers({ openShift, openOrders, cashAttested: MDRA.attested === true }); const hard = openShift || openOrders.length > 0;
   const cond = ['open_shift', 'open_tasks'].map((r) => {
-    if (precheckErr) return `<div class="mdra-cond"><span class="mdra-ci" style="background:var(--sand);color:var(--sand-fg)"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 8v4M12 16h.01"/></svg></span><div><b style="font-size:13px">${r === 'open_shift' ? 'Turno: desconocido' : 'Entregas: desconocido'}</b></div></div>`;
+    if (precheckErr) return `<div class="mdra-cond"><span class="mdra-ci" style="background:#cfc6b8;color:#2a2824"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 8v4M12 16h.01"/></svg></span><div><b style="font-size:13px">${r === 'open_shift' ? 'Turno: desconocido' : 'Entregas: desconocido'}</b></div></div>`;
     const bad = (r === 'open_shift' && openShift) || (r === 'open_tasks' && openOrders.length); const t = r === 'open_shift' ? (bad ? 'Turno abierto' : 'Sin turno abierto') : (bad ? `${openOrders.length} entrega(s) en curso` : 'Sin entregas en curso'); const reOid = openOrders.find((oid) => !isPostPickup(STORE.orders[oid] || {}, oid, tasks)); const fix = (bad && r === 'open_tasks' && reOid) ? `<button id="mdra-reasignar" data-oid="${escapeHtml(String(reOid))}" style="background:none;border:none;padding:0;color:var(--primary,#a6a0f0);text-decoration:underline;font:inherit;cursor:pointer">Reasignar</button>` : ''; return `<div class="mdra-cond"><span class="mdra-ci ${bad ? 'bad' : 'good'}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="${bad ? 'M6 6l12 12M18 6L6 18' : 'M4 12l5 5L20 6'}"/></svg></span><div><b style="font-size:13px">${escapeHtml(t)}</b>${fix}</div></div>`; }).join('');
   const canDo = !precheckErr && blockers.length === 0; // dual-role is the server's call — its refusal surfaces via mdraErr
   body.innerHTML = `<button class="mdra-back" id="mdra-bk">← Volver</button><div style="font-size:16px;font-weight:700;margin-bottom:10px">Desactivar a ${escapeHtml(mdraName(uid, rec))}</div>`
-    + ((hard || precheckErr) ? `<div class="mdra-inset" style="background:var(--sand-soft)"><b style="font-size:13px">${precheckErr ? 'No se pudo verificar el estado' : 'Todavía no se puede desactivar'}</b><div style="margin-top:9px">${cond}</div></div>` : `<div>${cond}</div>`)
+    + ((hard || precheckErr) ? `<div class="mdra-inset" style="background:rgba(207,198,184,.16)"><b style="font-size:13px">${precheckErr ? 'No se pudo verificar el estado' : 'Todavía no se puede desactivar'}</b><div style="margin-top:9px">${cond}</div></div>` : `<div>${cond}</div>`)
     + `<div class="mdra-inset"><div style="display:flex;align-items:center"><span class="mdra-lbl">Efectivo</span><span class="mdra-owner" style="margin-left:auto">Decisión del dueño</span></div><label class="mdra-check ${MDRA.attested ? 'on' : ''}" id="mdra-ck"><span class="mdra-box"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 12l5 5L20 6"/></svg></span><span>Sin efectivo pendiente</span></label><div style="display:flex;justify-content:space-between;margin-top:10px;font-size:13px"><span class="mdra-lbl">Último cuadre</span><span style="color:${cash.available ? 'var(--text,#f2f4f6)' : 'var(--text-dim,#9b9993)'}">${escapeHtml(cash.text)}</span></div><div class="mdra-mut-t" style="margin-top:7px">Solo confirmación; no registra monto.</div></div>`
     + `<button class="mdra-act danger mdra-full" id="mdra-go" ${canDo ? '' : 'disabled'}>Desactivar cuenta</button>`;
   $('mdra-bk').addEventListener('click', back);

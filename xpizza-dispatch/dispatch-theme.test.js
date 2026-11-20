@@ -101,7 +101,12 @@ const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[
 // element can borrow the dark theme's value in light mode.
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  const themed = Object.keys(DARK);
+  // Map-marker fills (--mk-stale / --mk-move) are deliberately THEME-INDEPENDENT: the map is its own surface
+  // and the markers carry white initials + a fixed dark stroke in both themes, so they are defined once on the
+  // base :root and never redefined in light. They are read by JS (getComputedStyle), not by a theme-varying
+  // CSS element, so they can't borrow a dark value in light mode.
+  const THEME_INDEPENDENT = new Set(['--mk-stale', '--mk-move']);
+  const themed = Object.keys(DARK).filter(k => !THEME_INDEPENDENT.has(k));
   const missing = themed.filter(k => !(k in LIGHT));
   assert.deepStrictEqual(missing, [], `light theme defines every dark token (missing: ${missing.join(', ')})`);
   for (const k of ['--bg', '--surface', '--text', '--text-dim', '--primary', '--primary-fg', '--accent', '--accent-solid', '--success', '--success-fg', '--warn', '--warn-fg', '--surface-4', '--card-1', '--map-bg', '--track', '--sel'].filter(x => x in DARK)) {

@@ -40,6 +40,9 @@
     --success-hover: #8fd3ad;
     --success-soft: rgba(127,200,160,0.16);
     --sand: #cfc6b8; --sand-soft: rgba(207,198,184,0.16); --sand-glow: rgba(207,198,184,0.3); --sand-fg: #2a2824;
+    /* Map-marker fills carry WHITE initials, so they need AA-dark variants of the sand/sky dot hues (not the
+       pastel dots). Theme-independent (the map is its own surface): defined once, both themes read them. */
+    --mk-stale: #74695a; --mk-move: #35669c;
     --info: #93b6ea;
     --info-soft: rgba(147,182,234,0.16);
     --teal: #5ec2b0;
@@ -286,36 +289,6 @@
     gap: 22px;
     padding: 0 4px;
   }
-  .tb-kpi {
-    text-align: center;
-    line-height: 1;
-    padding: 4px 8px;
-    border-radius: 9px;
-    transition: background 0.2s;
-  }
-  .kdiv { width: 1px; height: 26px; background: var(--hair-top); flex: 0 0 auto; }
-  .tb-kpi b {
-    display: block;
-    font-family: 'Inter', sans-serif;
-    font-weight: 800;
-    font-size: 19px;
-    color: var(--text);
-    letter-spacing: -0.02em;
-    font-variant-numeric: tabular-nums;
-    transition: color 0.2s;
-  }
-  .tb-kpi span {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: var(--text-dim);
-    transition: color 0.2s;
-  }
-  /* live cue: unassigned orders waiting */
-  .tb-kpi.alert { background: var(--sand-soft); }
-  .tb-kpi.alert b { color: var(--sand); }
-  .tb-kpi.alert span { color: var(--sand); }
 
   /* ---- v6 right cluster (mockup .rgt) ---- */
   .tb-right {
@@ -1829,10 +1802,10 @@
   .ex { display: flex; gap: 12px; align-items: center; border-radius: 13px; padding: 12px 13px; position: relative; }
   .ex::before { content: ""; position: absolute; left: 0; top: 11px; bottom: 11px; width: 3px; border-radius: 3px; background: var(--text-dim); }
   .ex.red::before   { background: var(--accent); box-shadow: 0 0 10px var(--accent-glow); }
-  .ex.amber::before { background: var(--sand);   box-shadow: 0 0 10px var(--sand-glow); }
+  .ex.sand::before { background: var(--sand);   box-shadow: 0 0 10px var(--sand-glow); }
   .ex .exi { width: 30px; height: 30px; border-radius: 9px; background: var(--track); display: grid; place-items: center; flex: none; margin-left: 4px; color: var(--text-soft); }
   .ex.red .exi   { color: var(--accent); }
-  .ex.amber .exi { color: var(--sand); }
+  .ex.sand .exi { color: var(--sand); }
   .ex .b { flex: 1; min-width: 0; }
   .ex .t { font-weight: 600; font-size: 13px; color: var(--text); }
   .ex .d { color: var(--text-dim); font-size: 11.5px; margin-top: 2px; }
@@ -3198,7 +3171,7 @@ function renderDispatcherAlerts(alerts) {
   if (entries.length === 0) { container.innerHTML = ''; return; }
 
   const rowHtml = (e) => {
-    const sev = e.severity === 'red' ? 'red' : e.severity === 'amber' ? 'amber' : '';
+    const sev = e.severity === 'red' ? 'red' : e.severity === 'amber' ? 'sand' : '';   // §5 P3: the amber-severity cue renders the pastel .sand class (data key stays 'amber')
     const { title, detail } = alertContent(e.alert);
     const idAttr = escapeHtml(e.id);
     return `
@@ -5493,6 +5466,10 @@ function clearLookupPin() {
 // ============================================================
 function updateDriverMarkers() {
   if (!mapReady) return;   // PLAN §3.5: board renders independent of Maps; markers replay once mapReady (also guards the 5s tick)
+  // §5 no-amber: the sand/sky marker fills come from the AA-dark tokens (read once per render), never an amber literal.
+  const _mk = getComputedStyle(document.documentElement);
+  const MK_STALE = _mk.getPropertyValue('--mk-stale').trim() || '#74695a';
+  const MK_MOVE = _mk.getPropertyValue('--mk-move').trim() || '#35669c';
   const seen = new Set();
   for (const [uid, d] of Object.entries(allDrivers)) {
     if (!d.active || !d.lat || !d.lng) continue;
@@ -5501,19 +5478,19 @@ function updateDriverMarkers() {
     const initial = (d.name || '?').charAt(0).toUpperCase();
     const stale = XPD.isStalePing(d.last_ping);
     const reachable = d.active && d.status !== 'off_shift' && hasPushReachability(d);
-    // Map marker color: stale GPS = amber (still reachable),
-    // unreachable = gray. Don't gray out idle drivers; their phone just hasn't pinged.
+    // Map marker color: same mapping as the roster dots (idle-stale = sand, returning/assigned = sky), but
+    // read from the AA-dark marker tokens so the WHITE initials stay legible — no amber literal (§5 no-amber).
     let color;
     if (!reachable) {
       color = '#666';  // gray
     } else if (stale) {
-      color = '#b45309';  // amber (darkened for AA white initials) — reachable, just idle
+      color = MK_STALE;  // sand (idle but reachable)
     } else if (d.status === 'available' || d.status === 'at_restaurant') {
       color = '#15803d';  // green (darkened for AA white initials)
     } else if (d.status === 'en_route_delivery') {
       color = '#2563eb';  // blue (darkened for AA white initials)
     } else if (d.status === 'returning' || d.status === 'assigned') {
-      color = '#b45309';  // amber (darkened for AA white initials)
+      color = MK_MOVE;  // sky (returning/assigned)
     } else {
       color = '#666';
     }
