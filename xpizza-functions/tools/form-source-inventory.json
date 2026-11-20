@@ -527,6 +527,8 @@
     "xpizza-portal/envio-limit.test.mjs",
     "xpizza-portal/envio-server-parity.test.mjs",
     "xpizza-portal/envio-view.test.mjs",
+    "xpizza-portal/envio-zones-draw.test.mjs",
+    "xpizza-portal/envio-zones-view.test.mjs",
     "xpizza-portal/inicio.test.mjs",
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
@@ -931,6 +933,8 @@
     "xpizza-portal/envio-limit.test.mjs",
     "xpizza-portal/envio-server-parity.test.mjs",
     "xpizza-portal/envio-view.test.mjs",
+    "xpizza-portal/envio-zones-draw.test.mjs",
+    "xpizza-portal/envio-zones-view.test.mjs",
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
     "xpizza-portal/rend-data.test.mjs",
@@ -1452,6 +1456,8 @@
     "xpizza-portal/envio-limit.test.mjs",
     "xpizza-portal/envio-server-parity.test.mjs",
     "xpizza-portal/envio-view.test.mjs",
+    "xpizza-portal/envio-zones-draw.test.mjs",
+    "xpizza-portal/envio-zones-view.test.mjs",
     "xpizza-portal/inicio.test.mjs",
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
@@ -1865,6 +1871,8 @@
     "xpizza-portal/envio-limit.test.mjs",
     "xpizza-portal/envio-server-parity.test.mjs",
     "xpizza-portal/envio-view.test.mjs",
+    "xpizza-portal/envio-zones-draw.test.mjs",
+    "xpizza-portal/envio-zones-view.test.mjs",
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
     "xpizza-portal/rend-data.test.mjs",
@@ -2428,6 +2436,7 @@
   "xpizza-functions/tools/splice-form-bundle.js",
   "xpizza-functions/tools/verify-first-group-core.js",
   "xpizza-portal/calificaciones2-harness.mjs",
+  "xpizza-portal/envio-harness.mjs",
   "xpizza-portal/marketing-harness.mjs",
   "xpizza-portal/ref-tree.mjs",
   "xpizza-portal/stats-harness.mjs"
@@ -2951,6 +2960,7 @@
   "delivery/pricing-admin-core.js",
   "delivery/pricing-admin-functions.js",
   "delivery/zone-resume.js",
+  "delivery/zone-shape.js",
   "delivery/zones-lock.js",
   "delivery/zones.js",
   "directory/directory-deps.js",
@@ -4242,7 +4252,7 @@
   "delivery/pricing-admin-core.js": {
    "pins": [],
    "lifts": [
-    "xpizza-portal/envio-view.test.mjs"
+    "xpizza-portal/envio-harness.mjs"
    ]
   },
   "delivery/pricing-admin-functions.js": {
@@ -4250,6 +4260,10 @@
    "lifts": []
   },
   "delivery/zone-resume.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "delivery/zone-shape.js": {
    "pins": [],
    "lifts": []
   },
