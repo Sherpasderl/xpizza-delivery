@@ -2179,6 +2179,9 @@
   .q-cat-n { font-size: 11px; font-weight: 700; color: var(--text-soft); background: var(--hair); border-radius: 999px; padding: 1px 7px; min-width: 18px; text-align: center; }
   .comms-row { background: var(--surface); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: background .14s; }
   .comms-row:hover { background: var(--surface-2); }
+  .comms-seg { margin: 0 0 12px; }   /* §1: the Comms segment in the flyout pane (overrides .cola-seg's panel margin) */
+  .comms-row .comms-from .when { color: var(--text-dim); font-size: 10.5px; font-variant-numeric: tabular-nums; margin-left: auto; }
+  .comms-row .comms-from { display: flex; align-items: center; gap: 6px; }
   .comms-from { font-weight: 600; font-size: 12.5px; color: var(--text); display: flex; align-items: center; gap: 7px; }
   .comms-flag { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--warn); background: var(--warn-soft); border-radius: 999px; padding: 1px 7px; }
   .comms-body { font-size: 11.5px; color: var(--text-soft); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2210,6 +2213,10 @@
   .sh-id .nm { font-weight: 700; font-size: 14px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sh-id .su { font-size: 11px; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sh-ic { width: 34px; height: 34px; border-radius: 9px; color: var(--da); background: none; border: none; cursor: pointer; display: grid; place-items: center; transition: .14s; text-decoration: none; }
+  /* §1: «Marcar atendido» on the thread header (moved from the retired modal) */
+  .sh-attend { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; background: var(--success-soft); color: var(--success); border: none; border-radius: 99px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+  .sh-attend svg { width: 13px; height: 13px; }
+  .sh-attend:hover { filter: brightness(1.05); }
   .sh-ic svg { width: 16px; height: 16px; }
   .sh-ic.call { color: var(--da-call); }
   .sh-ic:hover { background: var(--hair); filter: brightness(1.2); }
@@ -2340,7 +2347,9 @@
     <div class="tb-kpi"><b id="stat-active">0</b><span>Activos</span></div>
     <div class="tb-kpi"><b id="stat-delivered">0</b><span>Entregados</span></div>
     <span id="topbar-user"></span>
-    <button class="msg-btn" id="msg-btn" tabindex="-1" aria-label="Mensajes de clientes"><span class="msg-icon"></span><span class="msg-badge" id="msg-badge">0</span></button>
+    <!-- §1/§9: the dead «Mensajes de clientes» button (#msg-btn) is removed — Comms is the flyout pane now.
+         The sink stays hidden only to host #topbar-user (the account email source, read by the account menu
+         + the sign-out confirm sub) and the owner-flagged, unsurfaced KPI tiles. -->
   </div>
 
   <!-- D4-c4 "Pausar pedidos": one row per effectively paused restaurant (or "no disponible"). Display-only — see renderPauseBanner. -->
@@ -2458,7 +2467,14 @@
   <div class="flyout-body">
     <div class="rtab-pane hidden" data-pane="pedidos"><div id="pedidos-list"><div class="tree-empty">Sin pedidos en fila</div></div></div>
 
-    <div class="rtab-pane hidden" data-pane="comms"><div id="comms-list"><div class="tree-empty">Sin mensajes sin atender</div></div></div>
+    <div class="rtab-pane hidden" data-pane="comms">
+      <!-- §1: the retired #msg-modal's two tabs become this segment; the pane is now the single Comms surface. -->
+      <div class="cola-seg comms-seg">
+        <button class="cola-seg-btn on" data-cseg="unhandled" type="button">Sin atender <span class="cola-seg-n" id="cseg-unhandled-n">0</span></button>
+        <button class="cola-seg-btn" data-cseg="recent" type="button">Últimas 24h <span class="cola-seg-n" id="cseg-recent-n">0</span></button>
+      </div>
+      <div id="comms-list"><div class="tree-empty">Sin mensajes sin atender</div></div>
+    </div>
 
     <div class="rtab-pane hidden" data-pane="caja">
       <div class="tree-group hidden" id="reconciliation-group">
@@ -2637,29 +2653,8 @@
 <div class="comms-scrim" id="comms-scrim"></div>
 <div class="comms-sheet" id="comms-sheet" role="dialog" aria-modal="true" aria-label="Conversación con cliente"></div>
 
-<!-- Mensajes (incoming customer messages) modal -->
-<div class="msg-modal" id="msg-modal">
-  <div class="msg-modal-card">
-    <div class="msg-modal-header">
-      <div class="msg-modal-title">Mensajes de clientes</div>
-      <button class="msg-modal-close" id="msg-modal-close" aria-label="Cerrar"></button>
-    </div>
-    <div class="msg-modal-tabs">
-      <button class="msg-tab active" id="tab-unhandled" data-tab="unhandled">
-        Sin atender
-        <span class="msg-tab-count" id="tab-unhandled-count">0</span>
-      </button>
-      <button class="msg-tab" id="tab-history" data-tab="history">
-        Últimas 24h
-        <span class="msg-tab-count" id="tab-history-count">0</span>
-      </button>
-    </div>
-    <div class="msg-modal-body">
-      <div id="msg-list-unhandled"></div>
-      <div id="msg-list-history" style="display:none"></div>
-    </div>
-  </div>
-</div>
+<!-- §1: the «Mensajes de clientes» modal is retired — the flyout Comms pane (with its «Sin atender» / «Últimas 24h»
+     segment + the thread sheet) is the single Comms surface now. -->
 
 <!-- Action menu (popover for task actions) -->
 <div id="action-menu" class="hidden"></div>
@@ -3485,28 +3480,18 @@ function renderDispatcherAlerts(alerts) {
 let allMessages = {};         // msg_id -> message record
 let lastUnhandledIds = new Set();
 let messagesInitialized = false;
-let activeMsgTab = 'unhandled';
+let commsSeg = 'unhandled';   // §1: the Comms pane segment — 'unhandled' (Sin atender) | 'recent' (Últimas 24h)
 
 function initMessagesSubscription() {
-  // Inject the icon into the topbar button
-  const iconSpan = $('msg-btn')?.querySelector('.msg-icon');
-  if (iconSpan) iconSpan.innerHTML = ICONS.messageCircle;
-
-  // Wire up button to open the modal
-  $('msg-btn')?.addEventListener('click', openMessagesModal);
-  $('msg-modal-close')?.addEventListener('click', closeMessagesModal);
-  $('msg-modal')?.addEventListener('click', (e) => {
-    // Click on backdrop closes; click inside the card doesn't
-    if (e.target.id === 'msg-modal') closeMessagesModal();
+  // §1: the single Comms surface is the flyout pane. Its segment («Sin atender» / «Últimas 24h») replaces the
+  // retired #msg-modal's two tabs — toggle the filter, flip the .on state, re-render.
+  document.querySelectorAll('.comms-seg [data-cseg]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      commsSeg = btn.dataset.cseg;
+      document.querySelectorAll('.comms-seg [data-cseg]').forEach(b => b.classList.toggle('on', b === btn));
+      renderCommsTab();
+    });
   });
-
-  // Inject close icon
-  const closeBtn = $('msg-modal-close');
-  if (closeBtn) closeBtn.innerHTML = ICONS.close;
-
-  // Tab switching
-  $('tab-unhandled')?.addEventListener('click', () => switchMsgTab('unhandled'));
-  $('tab-history')?.addEventListener('click', () => switchMsgTab('history'));
 
   // Task 12: the read-only Comms thread sheet — click scrim closes it
   $('comms-scrim')?.addEventListener('click', closeCommsThread);
@@ -3543,142 +3528,18 @@ function initMessagesSubscription() {
     lastUnhandledIds = unhandledIds;
 
     updateMessagesBadge(unhandledIds.size);
-    // Modal lists re-render only when the modal is open (fallback triage surface)…
-    if ($('msg-modal')?.classList.contains('open')) {
-      renderMessagesLists();
-    }
-    renderCommsTab();   // …but the in-tab Comms list stays live regardless (Task 10b)
+    renderCommsTab();   // §1: the single Comms surface (pane + segment counts) stays live on every inbound message
     if (commsSheetTail) renderCommsThread();  // Task 12: keep an open thread sheet live
   });
 }
 
 function updateMessagesBadge(unhandledCount) {
-  const btn = $('msg-btn');
-  const badge = $('msg-badge');
-  if (!btn || !badge) return;
-  badge.textContent = String(unhandledCount);
-  btn.classList.toggle('has-unhandled', unhandledCount > 0);
-  // D2: the nav-rail Comms badge MIRRORS the topbar unhandled count (same single source).
+  // §1: the nav-rail Comms badge mirrors the unhandled count (the topbar #msg-btn was retired).
   const navBadge = $('nav-comms-badge');
   if (navBadge) { navBadge.textContent = String(unhandledCount); navBadge.hidden = !(unhandledCount > 0); }
 }
 
-function openMessagesModal() {
-  $('msg-modal')?.classList.add('open');
-  renderMessagesLists();
-}
 
-function closeMessagesModal() {
-  $('msg-modal')?.classList.remove('open');
-}
-
-function switchMsgTab(tab) {
-  activeMsgTab = tab;
-  $('tab-unhandled')?.classList.toggle('active', tab === 'unhandled');
-  $('tab-history')?.classList.toggle('active', tab === 'history');
-  $('msg-list-unhandled').style.display = tab === 'unhandled' ? '' : 'none';
-  $('msg-list-history').style.display   = tab === 'history' ? '' : 'none';
-}
-
-function renderMessagesLists() {
-  const entries = Object.entries(allMessages).map(([id, m]) => ({ id, ...m }));
-
-  // Unhandled list — sorted by received_at desc (most recent first)
-  const unhandled = entries
-    .filter(m => m.handled !== true)
-    .sort((a, b) => (b.received_at || 0) - (a.received_at || 0));
-
-  // 24h history — all messages received in the last 24 hours, sorted desc
-  const cutoff = Date.now() - (24 * 60 * 60 * 1000);
-  const history = entries
-    .filter(m => (m.received_at || 0) > cutoff)
-    .sort((a, b) => (b.received_at || 0) - (a.received_at || 0));
-
-  // Counts on tabs
-  $('tab-unhandled-count').textContent = String(unhandled.length);
-  $('tab-history-count').textContent   = String(history.length);
-
-  // Render each list
-  $('msg-list-unhandled').innerHTML = unhandled.length
-    ? unhandled.map(renderMessageRow).join('')
-    : '<div class="msg-list-empty">No hay mensajes sin atender</div>';
-
-  $('msg-list-history').innerHTML = history.length
-    ? history.map(renderMessageRow).join('')
-    : '<div class="msg-list-empty">No hay mensajes en las últimas 24 horas</div>';
-
-  // Wire up action buttons
-  document.querySelectorAll('.msg-action-handle').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const msgId = btn.dataset.msgId;
-      try {
-        await XPD.markMessageHandled(msgId, currentUser?.uid);
-        toast('Mensaje marcado como atendido', 'success');
-      } catch (e) {
-        toast('Error al marcar mensaje', 'error');
-      }
-    });
-  });
-  document.querySelectorAll('.msg-action-unhandle').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const msgId = btn.dataset.msgId;
-      try {
-        await XPD.markMessageUnhandled(msgId);
-        toast('Mensaje marcado como pendiente', '');
-      } catch (e) {
-        toast('Error al actualizar mensaje', 'error');
-      }
-    });
-  });
-}
-
-function renderMessageRow(m) {
-  const phone = formatMsgPhone(m.from);
-  const waPhone = String(m.from || '').replace(/\D/g, '');  // strip + and spaces
-  const time = formatMsgTime(m.received_at);
-  const body = escapeHtml(m.body || '(sin contenido)');
-  const isHandled = m.handled === true;
-  // Which restaurant's number was texted (stored by onIncomingWhatsApp; legacy/absent → x_pizza). A brand
-  // chip so the dispatcher sees at a glance which line the message came in on.
-  const rid = m.restaurant_id === 'la_musa' ? 'la_musa' : 'x_pizza';
-  const brandChip = `<span class="msg-row-rest rest-${rid}">${rid === 'la_musa' ? 'La Musa' : 'X. Pizza'}</span>`;
-
-  let metaLine = '';
-  if (isHandled && m.handled_at) {
-    const handledTime = formatMsgTime(m.handled_at);
-    metaLine = `<div class="msg-row-meta">Atendido · ${handledTime}</div>`;
-  }
-
-  // Action buttons differ for handled vs unhandled
-  const actions = isHandled
-    ? `
-      <a class="msg-action-btn" href="https://wa.me/${waPhone}" target="_blank" rel="noopener">
-        <span class="btn-icon">${ICONS.externalLink}</span>
-        Abrir en WhatsApp
-      </a>
-      <button class="msg-action-btn msg-action-unhandle" data-msg-id="${m.id}">
-        Marcar pendiente
-      </button>`
-    : `
-      <a class="msg-action-btn primary" href="https://wa.me/${waPhone}" target="_blank" rel="noopener">
-        <span class="btn-icon">${ICONS.externalLink}</span>
-        Responder
-      </a>
-      <button class="msg-action-btn msg-action-handle" data-msg-id="${m.id}">
-        <span class="btn-icon">${ICONS.check}</span>
-        Marcar atendido
-      </button>`;
-
-  return `
-    <div class="msg-row${isHandled ? ' handled' : ''}">
-      <div class="msg-row-from">${phone}${brandChip}</div>
-      <div class="msg-row-time">${time}</div>
-      <div class="msg-row-body">${body}</div>
-      ${metaLine}
-      <div class="msg-row-actions">${actions}</div>
-    </div>
-  `;
-}
 
 function formatMsgPhone(from) {
   // Stored as e.g. '50494738243'. Pretty-format as +504 9473-8243.
@@ -4359,26 +4220,33 @@ function renderCommsTab() {
     const prev = byPhone.get(key);
     if (!prev || (m.received_at || 0) > (prev.received_at || 0)) byPhone.set(key, m);
   }
-  const convos = [...byPhone.values()].sort((a, b) => {
+  const all = [...byPhone.values()].sort((a, b) => {
     const au = a.handled !== true, bu = b.handled !== true;
     if (au !== bu) return au ? -1 : 1;                   // unhandled first
     return (b.received_at || 0) - (a.received_at || 0);  // then most recent
   });
-  const unhandledCount = convos.filter(m => m.handled !== true).length;
-  setTabBadge('tab-comms-n', unhandledCount);
+  const unhandledCount = all.filter(m => m.handled !== true).length;
+  setTabBadge('tab-comms-n', unhandledCount);            // the rtab + nav badges mirror the unhandled count
+  // §1: the two segments («Sin atender» / «Últimas 24h») and their live counts.
+  const su = $('cseg-unhandled-n'); if (su) su.textContent = String(unhandledCount);
+  const sr = $('cseg-recent-n'); if (sr) sr.textContent = String(all.length);
 
-  if (convos.length === 0) { el.innerHTML = '<div class="tree-empty">Sin conversaciones recientes</div>'; return; }
+  const convos = commsSeg === 'unhandled' ? all.filter(m => m.handled !== true) : all;
+  if (convos.length === 0) {
+    el.innerHTML = `<div class="tree-empty">${commsSeg === 'unhandled' ? 'Sin mensajes sin atender' : 'Sin conversaciones recientes'}</div>`;
+    return;
+  }
   el.innerHTML = convos.map(m => {
     const flag = m.handled !== true ? '<span class="comms-flag">Sin atender</span>' : '';
+    const when = Number.isFinite(m.received_at) ? `<span class="when">${escapeHtml(formatMsgTime(m.received_at))}</span>` : '';
     return `<div class="comms-row" data-comms-from="${escapeHtml(String(m.from || ''))}">
-      <div class="comms-from">${escapeHtml(formatMsgPhone(m.from))}${flag}</div>
+      <div class="comms-from">${escapeHtml(formatMsgPhone(m.from))}${flag}${when}</div>
       <div class="comms-body">${escapeHtml((m.body || '').slice(0, 90))}</div>
     </div>`;
-  }).join('') + '<button class="comms-open" id="comms-open-inbox">Abrir bandeja completa</button>';
+  }).join('');
   el.querySelectorAll('.comms-row[data-comms-from]').forEach(row => {
     row.addEventListener('click', () => openCommsThread(row.dataset.commsFrom));
   });
-  $('comms-open-inbox')?.addEventListener('click', openMessagesModal);
 }
 
 // ============================================================
@@ -4435,6 +4303,8 @@ function renderCommsThread() {
 
   // This customer's inbound messages (matched by trailing phone digits).
   const inbound = Object.values(allMessages || {}).filter(m => convoKey(m.from) === tail);
+  // §1: «Marcar atendido» moved from the retired modal onto this thread's header — the ids it marks handled.
+  const unhandledIds = Object.entries(allMessages || {}).filter(([, m]) => convoKey(m.from) === tail && m.handled !== true).map(([id]) => id);
 
   // Best-matching order (most recent) → header identity + the "Recibido" event/chip.
   const order = Object.values(allOrders || {})
@@ -4494,6 +4364,7 @@ function renderCommsThread() {
     <div class="sh-head">
       <div class="sh-av">${escapeHtml(initials)}</div>
       <div class="sh-id"><div class="nm">${escapeHtml(name)}</div><div class="su">${sub}</div></div>
+      ${unhandledIds.length ? `<button class="sh-attend" id="comms-mark-attended" type="button" title="Marcar atendido"><svg class="ic sm"><use href="#i-check"/></svg>Marcar atendido</button>` : ''}
       ${callBtn}
       <button class="sh-ic" id="comms-sheet-close" title="Cerrar" aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
     </div>
@@ -4501,6 +4372,12 @@ function renderCommsThread() {
     <div class="sh-body">${body}</div>
   `;
   $('comms-sheet-close')?.addEventListener('click', closeCommsThread);
+  $('comms-mark-attended')?.addEventListener('click', async () => {   // §1: mark this thread's unhandled messages atendido
+    try {
+      await Promise.all(unhandledIds.map(id => XPD.markMessageHandled(id, currentUser?.uid)));
+      toast('Conversación marcada como atendida', 'success');
+    } catch (e) { toast('Error al marcar como atendido', 'error'); }
+  });
 }
 
 function renderDriversSection() {
@@ -6406,7 +6283,6 @@ $('delivered-toggle').querySelector('.tree-group-toggle').innerHTML = ICONS.chev
 const OVERLAYS = [
   { name: 'flyout',      z: 151, modal: true,  transient: false, open: () => { const e = $('surface-flyout');     return !!(e && !e.hidden); },                       close: null /* set by initSurfaceFlyout */ },
   { name: 'action-menu', z: 170, modal: false, transient: false, open: () => { const e = $('action-menu');        return !!(e && !e.classList.contains('hidden')); },   close: () => closeActionMenu() },
-  { name: 'msg-modal',   z: 200, modal: true,  transient: false, open: () => { const e = $('msg-modal');          return !!(e && e.classList.contains('open')); },      close: () => closeMessagesModal() },
   { name: 'comms',       z: 206, modal: true,  transient: false, open: () => { const e = $('comms-sheet');         return !!(e && e.classList.contains('open')); },      close: () => closeCommsThread() },
   { name: 'drawer',      z: 210, modal: true,  transient: false, open: () => { const e = $('order-detail-modal');  return !!(e && e.classList.contains('open')); },      close: () => closeOrderDetailModal() },
   { name: 'picker',      z: 220, modal: true,  transient: false, open: () => { const e = $('picker-overlay');      return !!(e && !e.classList.contains('hidden')); },   close: null /* element-level focus-trapped: self-handles Esc (stopPropagation) → arbiter skips it */ },
@@ -6912,7 +6788,7 @@ function flyoutRestoreFocus(opener, doc) {
   const routes = {
     despacho() { ensureRailOpen('left-open'); ensureRailOpen('right-open'); },
     pedidos() { ensureRailOpen('right-open'); activateRtab('pedidos'); scrollTo($('pedidos-list')); },
-    comms() { openMessagesModal(); },                          // opens the shipped modal (transient — no active move)
+    comms() { activateRtab('comms'); },                        // §1: opens the flyout on the single Comms pane (modal retired)
     programados() { ensureRailOpen('right-open'); activateRtab('pedidos'); scrollTo(document.querySelector('#pedidos-list [data-cat="Programados"]')); },
     reconciliacion() { ensureRailOpen('right-open'); activateRtab('caja'); },
     repartidores() { ensureRailOpen('right-open'); scrollTo($('drivers-live-group')); },

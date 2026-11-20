@@ -230,7 +230,8 @@ const pickerJs = html.slice(openIdx, closeEnd);
   const reg = html.slice(html.indexOf('const OVERLAYS = ['), html.indexOf('const anyModalOpen ='));
   assert.ok(reg && reg.length > 0, 'canonical OVERLAYS registry present');
   // 'styled-confirm' is the CTA #1b declared delta — a new generic focus-trapped confirm overlay.
-  for (const n of ['flyout', 'action-menu', 'msg-modal', 'comms', 'drawer', 'picker', 'recon-note', 'styled-confirm', 'toast', 'account-menu'])
+  // §1: 'msg-modal' retired (the flyout Comms pane is the single surface now).
+  for (const n of ['flyout', 'action-menu', 'comms', 'drawer', 'picker', 'recon-note', 'styled-confirm', 'toast', 'account-menu'])
     assert.match(reg, new RegExp(`name: '${n}'`), `registry includes the '${n}' overlay`);
   assert.match(html, /const anyModalOpen = \(\) => OVERLAYS\.some\(o => o\.modal && o\.open\(\)\)/, 'anyModalOpen (⌘K bail) DERIVES from OVERLAYS');
   // flyout + account-menu closers attach in their IIFEs; picker + recon-note are close:null (self-handled).

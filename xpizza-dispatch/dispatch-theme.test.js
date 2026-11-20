@@ -261,13 +261,14 @@ const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[
   const regBlock = html.slice(html.indexOf('const OVERLAYS = ['), html.indexOf('const anyModalOpen ='));
   const reg = {};
   for (const m of regBlock.matchAll(/\{\s*name:\s*'([^']+)',\s*z:\s*(\d+),/g)) reg[m[1]] = Number(m[2]);
-  const canonical = ['flyout', 'action-menu', 'msg-modal', 'comms', 'drawer', 'picker', 'recon-note', 'toast', 'account-menu'];
+  // §1: 'msg-modal' retired (the flyout Comms pane is the single surface now).
+  const canonical = ['flyout', 'action-menu', 'comms', 'drawer', 'picker', 'recon-note', 'toast', 'account-menu'];
   for (const n of canonical) assert.ok(n in reg, `OVERLAYS registry (single source) includes '${n}'`);
   // Bind each registry z to the authored CSS z-index of its element (panels).
-  const cssSel = { flyout: '.surface-flyout', 'action-menu': '#action-menu', 'msg-modal': '.msg-modal', comms: '.comms-sheet', drawer: '.order-detail-modal', picker: '.overlay-bg', 'recon-note': '.overlay-bg', toast: '.toast', 'account-menu': '.rail-av-menu' };
+  const cssSel = { flyout: '.surface-flyout', 'action-menu': '#action-menu', comms: '.comms-sheet', drawer: '.order-detail-modal', picker: '.overlay-bg', 'recon-note': '.overlay-bg', toast: '.toast', 'account-menu': '.rail-av-menu' };
   for (const n of canonical) assert.strictEqual(zOf(cssSel[n]), reg[n], `CSS z-index of ${n} (${cssSel[n]}=${zOf(cssSel[n])}) matches the registry z (${reg[n]}) — CSS bound to the single source`);
   // Functional order: bottom→top, and toast above the top modal (a failed-assign toast must show over the picker).
-  assert.ok(reg.flyout < reg['action-menu'] && reg['action-menu'] < reg['msg-modal'] && reg['msg-modal'] < reg.comms && reg.comms < reg.drawer && reg.drawer < reg.picker, `canonical z-order holds (${canonical.map(n => reg[n]).join(' < ')})`);
+  assert.ok(reg.flyout < reg['action-menu'] && reg['action-menu'] < reg.comms && reg.comms < reg.drawer && reg.drawer < reg.picker, `canonical z-order holds (${canonical.map(n => reg[n]).join(' < ')})`);
   assert.ok(reg.toast > reg.picker && reg.toast > reg['recon-note'], `.toast z (${reg.toast}) must exceed the modal layer (${reg.picker}) — feedback shows OVER the picker/recon-note`);
   assert.ok(reg['account-menu'] > reg.toast, `account-menu z (${reg['account-menu']}) above the toast — topmost interactive layer`);
   // SCRIMS bound both directions: each scrim sits ABOVE the layer beneath it and BELOW its own panel — so a scrim

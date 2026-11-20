@@ -71,7 +71,7 @@ const fnSrc = (name) => { const s = html.indexOf(`function ${name}(`); const e =
   navs.despacho.classList.add('on');
   const rail = { querySelectorAll: () => navList };
   const rtab = (tab) => mkEl({ _tab: tab, click() { calls.rtabClicked.push(tab); } });
-  const rtabs = { pedidos: rtab('pedidos'), caja: rtab('caja') };
+  const rtabs = { pedidos: rtab('pedidos'), caja: rtab('caja'), comms: rtab('comms') };
   const els = { 'nav-rail': rail, app, 'pedidos-list': mkEl({ name: 'pedidos-list' }), 'drivers-live-group': mkEl({ name: 'drivers-live-group' }) };
   const $ = (id) => els[id] || null;
   const doc = {
@@ -95,11 +95,11 @@ const fnSrc = (name) => { const s = html.indexOf(`function ${name}(`); const e =
   assert.deepStrictEqual(calls.rtabClicked, ['pedidos'], 'Pedidos activates the En Fila rtab');
   assert.ok(calls.scrolled.includes('pedidos-list'), 'Pedidos scrolls the list into view');
   assert.ok(navs.pedidos.classList.contains('on') && !navs.despacho.classList.contains('on'), 'Pedidos becomes the active nav');
-  // comms → the shipped messages MODAL; active highlight must NOT move
+  // comms → §1: opens the flyout on the Comms pane (the modal is retired); active highlight must NOT move
   calls.rtabClicked = [];
   click('comms');
-  assert.strictEqual(calls.openMessages, 1, 'Comms opens the messages modal');
-  assert.ok(navs.pedidos.classList.contains('on') && !navs.comms.classList.contains('on'), 'a modal does not move the active nav');
+  assert.deepStrictEqual(calls.rtabClicked, ['comms'], 'Comms activates the Comms rtab (the single flyout pane)');
+  assert.ok(navs.pedidos.classList.contains('on') && !navs.comms.classList.contains('on'), 'opening a transient surface does not move the active nav');
   // programados → right rail + pedidos rtab + scroll the Programados subsection anchor
   calls.rtabClicked = []; calls.scrolled = []; app.classList.remove('right-open');
   click('programados');
@@ -147,14 +147,14 @@ const fnSrc = (name) => { const s = html.indexOf(`function ${name}(`); const e =
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. No new backend — the nav wiring only reuses existing handlers (togRail / rtab click / openMessagesModal /
+// 4. No new backend — the nav wiring only reuses existing handlers (togRail / rtab click / activateRtab /
 //    scrollIntoView); no DB write, subscription, or money/assign call.
 // ─────────────────────────────────────────────────────────────────────────────
 {
   const src = fnSrc('initNavRail');
   assert.doesNotMatch(src, /\bsubscribe/i, 'nav rail adds no subscription');
   assert.doesNotMatch(src, /\.ref\(|\bfirebase\b|database\(|XPD\.(set|update|write|create|delete|save|assign|resolve|cancel|refund)\w*\(/i, 'nav rail makes no DB write / money call');
-  assert.match(src, /openMessagesModal\(\)/, 'Comms reuses openMessagesModal');
+  assert.match(src, /activateRtab\('comms'\)/, 'Comms activates the Comms rtab (§1: the single flyout pane)');
   assert.match(src, /togRail\(/, 'rails reuse togRail');
   assert.match(src, /\.rtab\[data-tab=/, 'tabs reuse the existing rtab handler');
   ok('no new backend: nav rail is navigation over existing surfaces only');
