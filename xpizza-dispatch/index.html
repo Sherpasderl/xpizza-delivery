@@ -3282,14 +3282,15 @@ function subscribeAll() {
     if (autoAssignInFlight) return;                                   // ignore re-clicks while a write is in flight
     const btn = $('auto-assign-toggle');
     const isOn = btn.classList.contains('on');
+    const confirmShown = isOn;                                       // the confirm is shown only when PAUSING
     autoAssignInFlight = true;
     btn.disabled = true;
     try {
-      if (isOn && !(await styledConfirm({
+      if (confirmShown && !(await styledConfirm({
         title: 'Pausar asignación automática',
         body: 'Pausar la asignación automática. Mientras esté en pausa, los pedidos nuevos no se asignan solos — los asignás vos desde la cola.',
         confirmLabel: 'Pausar', cancelLabel: 'Cancelar', opener: btn,   // #1b P2-1: the trigger, captured before it is disabled
-      }))) return;                                                   // declined → finally re-enables + re-focuses
+      }))) return;                                                   // declined → finally re-enables + (maybe) re-focuses
       await XPD.setAutoAssignEnabled(!isOn);
       toast(isOn ? 'Auto-asignación desactivada' : 'Auto-asignación activada',
             isOn ? 'error' : 'success');
@@ -3297,8 +3298,12 @@ function subscribeAll() {
       toast('Error al cambiar configuración', 'error');
     } finally {
       autoAssignInFlight = false;
+      // #1b P2-1 / Codex #228 P2: return focus to the toggle ONLY if we showed the confirm AND the user
+      // hasn't moved focus elsewhere meanwhile (e.g. opened the picker during a slow write). Resume shows no
+      // confirm, so it never moves focus. (Checked while still disabled: focus is on body or the toggle.)
+      const restoreFocus = confirmShown && (document.activeElement === btn || document.activeElement === document.body);
       btn.disabled = false;
-      btn.focus();                                                   // #1b P2-1: restore focus AFTER re-enabling the toggle
+      if (restoreFocus) btn.focus();
     }
   });
 }
