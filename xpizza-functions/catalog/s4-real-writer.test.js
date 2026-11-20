@@ -10,7 +10,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const WRITER_REF = '71720530e';   // feat/portal-structure-s3-ui (portal-ui; S4-C «add promotes» 083d76bb7 + 1c82272e1) — replace by the repo's own xpizza-portal/editor.js once merged
+const WRITER_REF = '9a0f6d720';   // feat/portal-structure-s3-ui-main (portal-ui's tip into asm13; re-pinned 11-19 from the dangling 71720530e — same S4 writer functions; S4-C «add promotes» 083d76bb7 + 1c82272e1) — replace by the repo's own xpizza-portal/editor.js once merged
 const S = { sections: true };
 { const p = require.resolve('./platform-structure'); const real = require(p); require.cache[p] = { id: p, filename: p, loaded: true, exports: { ...real, structureCapabilities: () => ({ ...real.structureCapabilities(), sections: S.sections }) } }; }
 const ST = require('./section-transitions');
