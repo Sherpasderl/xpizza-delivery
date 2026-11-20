@@ -63268,6 +63268,9 @@
    "key": "xpizza-functions/cancel-order-core.js#recoverStaleCancel#payment_status#transaction-updater"
   },
   {
+   "key": "xpizza-functions/cancel-order-core.js#recoverStaleCancel#blocked_reason#transaction-updater"
+  },
+  {
    "key": "xpizza-functions/claim-order.js#claimOrderCore#customer_uid#transaction-updater"
   },
   {
@@ -63718,6 +63721,9 @@
    "key": "xpizza-functions/pixelpay-hosted-webhook.js#voidPaid#payment_status#update"
   },
   {
+   "key": "xpizza-functions/pixelpay-hosted-webhook.js#voidPaid#blocked_reason#update"
+  },
+  {
    "key": "xpizza-functions/resolve-manual.js#confirmAndMaterializeFromManualClaim#payment_status#transaction-updater"
   },
   {
@@ -63829,6 +63835,9 @@
    "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#payment_status#update"
   },
   {
+   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#blocked_reason#update"
+  },
+  {
    "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#status#update"
   },
   {
@@ -63857,6 +63866,9 @@
   },
   {
    "key": "xpizza-functions/resolve-manual.js#recoverStaleResolve#status#transaction-updater"
+  },
+  {
+   "key": "xpizza-functions/resolve-manual.js#recoverStaleResolve#blocked_reason#transaction-updater"
   },
   {
    "key": "xpizza-functions/scheduled-release-core.js#rollbackClaim#status#update"

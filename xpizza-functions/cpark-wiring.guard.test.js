@@ -13,7 +13,7 @@ const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf
 assert.deepStrictEqual([...FILES].sort(), ['alert-prune.js', 'cancel-order-core.js', 'cancel-order.js', 'index.js'], 'CPARK: the owned files');
 for (const F of FILES) {
   const raw = fs.readFileSync(path.join(__dirname, F), 'utf8');   // the layer's own pin: its BASE already holds D4 (as before)
-  const disk = require('./tools/ratt-module-inverse').unapplyRattModule(F, raw);   // minus the attestation (5f, newer; its lines sit inside cpark's hunks)
+  const disk = require('./tools/ratt-module-inverse').unapplyRattModule(F, require('./tools/mrr-module-inverse').unapplyMrrModule(F, raw));   // minus the manual_review reasons too (5f, newer; disjoint from cpark)   // minus the attestation (5f, newer; its lines sit inside cpark's hunks)
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
   assert.notStrictEqual(disk, base, `CPARK: non-vacuity — ${F} carries the cpark hunks`);
   assert.strictEqual(unapplyCparkModule(F, disk), base, `CPARK: 🔴 ${F} minus the cpark hunks is not ${BASE}:${F}`);

@@ -13,7 +13,7 @@ const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf
 assert.ok(FILES.length >= 1 && HUNKS.length >= 1, 'LEDGER-S1: non-vacuity — the layer owns files');
 for (const F of FILES) {
   const raw = fs.readFileSync(path.join(__dirname, F), 'utf8');   // the layer's own guard: its BASE already holds D4 (as audience-wiring's raw read)
-  const disk = require('./tools/cpark-module-inverse').unapplyCparkModule(F, require('./tools/ratt-module-inverse').unapplyRattModule(F, raw));   // minus cancel-park (5f, newer; disjoint)
+  const disk = require('./tools/mrr-module-inverse').unapplyMrrModule(F, require('./tools/cpark-module-inverse').unapplyCparkModule(F, require('./tools/ratt-module-inverse').unapplyRattModule(F, raw)));   // minus cancel-park + the manual_review reasons (5f, newer; disjoint)
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
   assert.notStrictEqual(disk, base, `LEDGER-S1: non-vacuity — ${F} carries the ledger S1 hunks`);
   assert.strictEqual(unapplyLedgerS1Module(F, disk), base, `LEDGER-S1: 🔴 ${F} minus the ledger S1 hunks is not ${BASE}:${F}`);

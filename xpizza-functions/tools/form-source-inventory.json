@@ -3346,6 +3346,7 @@
      "inverses": [
       "tools/cpark-module-inverse.js",
       "tools/h0-inverse.js",
+      "tools/mrr-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-module-inverse.js"
@@ -3355,6 +3356,7 @@
      "file": "xpizza-functions/stackseq-wiring.guard.test.js",
      "inverses": [
       "tools/cpark-module-inverse.js",
+      "tools/mrr-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-module-inverse.js"
@@ -3378,6 +3380,7 @@
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js",
     "xpizza-functions/cpark-wiring.guard.test.js",
+    "xpizza-functions/mrr-wiring.guard.test.js",
     "xpizza-functions/rewards-reversal-placement.test.js"
    ]
   },
@@ -8220,6 +8223,7 @@
       "tools/h0-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/ledgers1-module-inverse.js",
+      "tools/mrr-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -8227,6 +8231,7 @@
    ],
    "lifts": [
     "xpizza-functions/ledger-writes.guard.test.js",
+    "xpizza-functions/mrr-wiring.guard.test.js",
     "xpizza-functions/pixelpay-hosted-extra-payment.test.js"
    ]
   },
@@ -8460,6 +8465,7 @@
      "file": "xpizza-functions/brand-server-wiring.guard.test.js",
      "inverses": [
       "tools/brand-server-inverse.js",
+      "tools/mrr-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -8470,6 +8476,7 @@
       "tools/brand-server-inverse.js",
       "tools/d12-inverse.js",
       "tools/h0-inverse.js",
+      "tools/mrr-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -8479,6 +8486,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/h0-inverse.js",
+      "tools/mrr-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -8487,6 +8495,7 @@
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js",
     "xpizza-functions/materialize-hub.test.js",
+    "xpizza-functions/mrr-wiring.guard.test.js",
     "xpizza-functions/recon-close-fulfilled.test.js",
     "xpizza-functions/rewards-reversal-placement.test.js"
    ]

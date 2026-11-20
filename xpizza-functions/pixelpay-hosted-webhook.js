@@ -186,7 +186,7 @@ async function voidPaid(deps, { orderId, attemptId, hostedOrderId, uuid, amount,
       [`payment_attempts/${attemptId}/no_uuid_paid_callback`]: { at: now, hosted_order_id: hostedOrderId },
       [`payment_attempts/${attemptId}/uncertain_at`]: now,
       [`orders/${orderId}/status`]: 'cancelled',
-      [`orders/${orderId}/payment_status`]: 'manual_review',
+      [`orders/${orderId}/payment_status`]: 'manual_review', [`orders/${orderId}/blocked_reason`]: 'paid_after_cancel_no_uuid',
     });
     return { code: 200, outcome: 'cancelled_no_uuid_manual_review' };
   }
