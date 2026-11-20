@@ -129,7 +129,17 @@ function claimMoveProjection(A, D, Dp) {
 }
 
 function compareToActive(args) {
-  if (!require('./platform-structure').structureCapabilities().sections) return AP.compareToActive(args);
+  if (!require('./platform-structure').structureCapabilities().sections) {
+    // Codex #231 P2: OFF, add-product's residual accounting skips a structure field the draft does not author, so a stored draft that
+    // DROPS the staged_categories a sections-ON publish left live escaped every comparison (200, an empty review diff). The gap is the
+    // key's ABSENCE only — a draft that keeps the key is judged below (a changed value: structure_unexplained, STG-OFF-VALUE) — so
+    // ONE check: the active version carries the key and the draft does not ⇒ the same structure_changed a normal save's deletion
+    // gets (assertSameAuthoredFields). Active without the key: today's path, unchanged.
+    if (has(args.activeBuilt && args.activeBuilt.structure, 'staged_categories') && !has(args.draftBuilt && args.draftBuilt.structure, 'staged_categories')) {
+      refuse('structure_changed', "the menu's staged_categories cannot be removed while sections are off", { field: 'staged_categories' });
+    }
+    return AP.compareToActive(args);
+  }
   const A = args.activeBuilt; const D = args.draftBuilt;
   const { newIds, declared } = judgeCategories(A, D);
   judgeAuthoredRefs(D, newIds);
