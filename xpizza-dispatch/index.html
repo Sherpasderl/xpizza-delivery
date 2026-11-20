@@ -4051,6 +4051,8 @@ function wireColaHandlers(list) {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const oid = btn.dataset.assignSelf;
+      // #2: self-assign runs the SAME confirm-to-override gate as the picker — no special case.
+      if (!confirmAssignOverride(classifyDriverForAssign(currentUser.uid))) return;
       try {
         const res = await XPD.assignOrderToDriver(oid, currentUser.uid);
         if (res && res.ok === false) { toast(assignFailMsg(res.reason), 'error'); return; }
@@ -6018,13 +6020,7 @@ function openPicker(orderId, isReassign = false) {
 
     $('picker-list').querySelectorAll('[data-driver-uid]').forEach(row => {
       row.addEventListener('click', async () => {
-        if (row.dataset.full === '1') {
-          if (!confirm('Este repartidor ya tiene 2 pedidos (al límite). ¿Asignar de todas formas?')) return;
-        } else if (row.dataset.enroute === '1') {
-          if (!confirm('Este repartidor ya salió a entregar (en camino). ¿Asignar de todas formas?')) return;
-        } else if (row.dataset.unreachable === '1') {
-          if (!confirm('Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?')) return;
-        }
+        if (!confirmAssignOverride({ full: row.dataset.full === '1', enRoute: row.dataset.enroute === '1', unreachable: row.dataset.unreachable === '1' })) return;
         await assignOrder(orderId, row.dataset.driverUid);
       });
     });
@@ -6151,6 +6147,34 @@ function assignFailMsg(reason) {
     default:
       return 'No se pudo asignar';
   }
+}
+
+// The confirm-to-override gate, shared by EVERY assignment path (picker rows and «A mí») so none can
+// skip it. full → en-route → unreachable, in that priority; returns true to proceed, false if the
+// dispatcher declined a required confirmation. (CTA audit #2.)
+function confirmAssignOverride({ full, enRoute, unreachable }) {
+  if (full) return confirm('Este repartidor ya tiene 2 pedidos (al límite). ¿Asignar de todas formas?');
+  if (enRoute) return confirm('Este repartidor ya salió a entregar (en camino). ¿Asignar de todas formas?');
+  if (unreachable) return confirm('Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?');
+  return true;
+}
+
+// Classify a driver for that gate by the SAME rules the picker renders: full = 2 distinct active
+// order_ids, en-route by status, unreachable = no push reachability. Used to gate «A mí» on the current
+// user's own driver record, so self-assign cannot bypass the override confirm.
+function classifyDriverForAssign(uid) {
+  const driver = allDrivers[uid] || null;
+  const orders = new Set();
+  Object.values(allTasks).forEach((t) => {
+    if (!t || t.assigned_driver_id !== uid) return;
+    if (t.status === 'completed' || t.status === 'cancelled') return;
+    if (t.order_id) orders.add(t.order_id);
+  });
+  return {
+    full: orders.size >= 2,
+    enRoute: !!driver && driver.status === 'en_route_delivery',
+    unreachable: !hasPushReachability(driver),
+  };
 }
 
 async function assignOrder(orderId, driverId) {

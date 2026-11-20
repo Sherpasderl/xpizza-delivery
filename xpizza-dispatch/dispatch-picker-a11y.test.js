@@ -254,9 +254,7 @@ const pickerJs = html.slice(openIdx, closeEnd);
     ['distinct-order add',    'if (t.order_id) ordersByDriver[t.assigned_driver_id].add(t.order_id);'],
     ['orderCount = set.size',  'const orderCount = ordersByDriver[uid] ? ordersByDriver[uid].size : 0;'],
     ['full = count >= 2',     'const full = orderCount >= 2;'],
-    ['confirm() full',        "if (!confirm('Este repartidor ya tiene 2 pedidos (al límite). ¿Asignar de todas formas?')) return;"],
-    ['confirm() en-route',    "if (!confirm('Este repartidor ya salió a entregar (en camino). ¿Asignar de todas formas?')) return;"],
-    ['confirm() unreachable', "if (!confirm('Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?')) return;"],
+    // (the full/en-route/unreachable confirm() cascade moved into the shared confirmAssignOverride — frozen in its own block below, CTA #2)
     ['click → assignOrder',   'await assignOrder(orderId, row.dataset.driverUid);'],
     ['reassignOrder call',    'const res = await XPD.reassignOrder(orderId, driverId, pickerFromDriver);'],
     ['assignOrderToDriver',   'const res = await XPD.assignOrderToDriver(orderId, driverId);'],
@@ -271,23 +269,44 @@ const pickerJs = html.slice(openIdx, closeEnd);
   ok(`assignment-logic sites byte-identical to base (${anchors.length} anchors)`);
 }
 
-// The click LISTENER that reads data-* and calls assignOrder must be verbatim (whole block).
+// CTA audit #2 — the confirm-to-override cascade MOVED into the shared confirmAssignOverride, called by BOTH
+// the picker rows AND «A mí» (self-assign) so no assignment path can skip it. The three message texts and the
+// full→en-route→unreachable PRIORITY are preserved — frozen here in their new home, with a base-sanity check
+// that each message existed inline before. (Cascade behaviour + the «A mí» routing are proven in
+// dispatch-self-assign-gate.test.js.)
 {
+  const MSG = {
+    full: 'Este repartidor ya tiene 2 pedidos (al límite). ¿Asignar de todas formas?',
+    enRoute: 'Este repartidor ya salió a entregar (en camino). ¿Asignar de todas formas?',
+    unreachable: 'Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?',
+  };
+  for (const [k, m] of Object.entries(MSG)) assert.ok(baseHtml.includes(m), `[base sanity] base had the ${k} message inline`);
+  const gStart = html.indexOf('function confirmAssignOverride(');
+  const gate = html.slice(gStart, html.indexOf('function classifyDriverForAssign(', gStart));
+  assert.ok(gStart > -1 && gate, 'confirmAssignOverride is present');
+  assert.ok(gate.indexOf(MSG.full) > -1 && gate.indexOf(MSG.full) < gate.indexOf(MSG.enRoute)
+    && gate.indexOf(MSG.enRoute) < gate.indexOf(MSG.unreachable),
+    'confirmAssignOverride keeps the full → en-route → unreachable priority');
+  assert.match(gate, /if \(full\) return confirm\(/);
+  assert.match(gate, /if \(enRoute\) return confirm\(/);
+  assert.match(gate, /if \(unreachable\) return confirm\(/);
+  ok('override cascade preserved in the shared confirmAssignOverride (messages + priority; base-sanity it pre-existed inline)');
+}
+
+// The picker click LISTENER now routes through the shared gate, then assigns. Base had the inline cascade.
+{
+  const baseBlock = `    $('picker-list').querySelectorAll('[data-driver-uid]').forEach(row => {
+      row.addEventListener('click', async () => {
+        if (row.dataset.full === '1') {`;
+  assert.ok(baseHtml.includes(baseBlock), '[base sanity] base had the inline-cascade click listener');
   const block = `    $('picker-list').querySelectorAll('[data-driver-uid]').forEach(row => {
       row.addEventListener('click', async () => {
-        if (row.dataset.full === '1') {
-          if (!confirm('Este repartidor ya tiene 2 pedidos (al límite). ¿Asignar de todas formas?')) return;
-        } else if (row.dataset.enroute === '1') {
-          if (!confirm('Este repartidor ya salió a entregar (en camino). ¿Asignar de todas formas?')) return;
-        } else if (row.dataset.unreachable === '1') {
-          if (!confirm('Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?')) return;
-        }
+        if (!confirmAssignOverride({ full: row.dataset.full === '1', enRoute: row.dataset.enroute === '1', unreachable: row.dataset.unreachable === '1' })) return;
         await assignOrder(orderId, row.dataset.driverUid);
       });
     });`;
-  assert.ok(baseHtml.includes(block), '[base sanity] base has the click-listener block');
-  assert.ok(html.includes(block), 'confirm()-override click listener is verbatim unchanged');
-  ok('confirm()-override click listener block is byte-identical');
+  assert.ok(html.includes(block), 'picker click listener routes through confirmAssignOverride then assignOrder (CTA #2)');
+  ok('picker click listener block is the shared-gate form');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
