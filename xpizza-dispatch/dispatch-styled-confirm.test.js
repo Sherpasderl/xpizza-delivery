@@ -30,9 +30,9 @@ assert.ok(block.includes('function styledConfirm(') && block.includes('function 
 function build() {
   const els = {};
   const el = (id) => (els[id] ||= {
-    id, _cls: new Set(['hidden']), textContent: '', _ls: {},
+    id, _cls: new Set(['hidden']), textContent: '', _ls: {}, _focused: 0,
     classList: { add(c) { el(id)._cls.add(c); }, remove(c) { el(id)._cls.delete(c); }, contains(c) { return el(id)._cls.has(c); } },
-    focus() {}, querySelectorAll() { return []; },
+    focus() { this._focused++; }, querySelectorAll() { return []; },
     addEventListener(ev, fn) { (el(id)._ls[ev] ||= []).push(fn); },
   });
   const $ = (id) => el(id);
@@ -59,13 +59,25 @@ function build() {
   ok('confirm button resolves true and hides the overlay');
 }
 
-// cancel → false
+// cancel → false, and focus returns to the opener
 {
-  const { styledConfirm, fire } = build();
-  const p = styledConfirm({ title: 'T', body: 'B' });
+  const { styledConfirm, el, fire } = build();
+  const p = styledConfirm({ title: 'T', body: 'B' });   // no opener → captures document.activeElement (el('opener'))
   fire('styled-confirm-cancel', 'click');
   assert.equal(await p, false, 'cancel resolves false');
-  ok('cancel button resolves false');
+  assert.ok(el('opener')._focused >= 1, 'focus restored to the opener on cancel');
+  ok('cancel button resolves false and restores focus to the opener');
+}
+
+// an explicit opener is honoured on dismiss
+{
+  const { styledConfirm, el, fire } = build();
+  const trigger = el('my-trigger');
+  const p = styledConfirm({ title: 'T', body: 'B', opener: trigger });
+  fire('styled-confirm-cancel', 'click');
+  await p;
+  assert.ok(trigger._focused >= 1, 'focus restored to the explicitly-passed opener');
+  ok('an explicit opener is restored on dismiss');
 }
 
 // backdrop → false

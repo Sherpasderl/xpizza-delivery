@@ -25,12 +25,13 @@ assert.ok(regSrc.includes('autoAssignInFlight') && regSrc.includes('.addEventLis
   'sliced the handler registration (latch + styled-confirm pause)');
 
 function harness({ setEnabled, confirmResult = true, isOn = true } = {}) {
-  const calls = { setEnabled: [], toasts: [], confirms: 0, disabled: [], confirmOpts: null };
+  const calls = { setEnabled: [], toasts: [], confirms: 0, disabled: [], confirmOpts: null, focusedWhileDisabled: null, focused: 0 };
   const btn = {
     classList: { contains: () => isOn },
     _d: false,
     set disabled(v) { this._d = v; calls.disabled.push(v); },
     get disabled() { return this._d; },
+    focus() { calls.focused++; calls.focusedWhileDisabled = this._d; },   // record whether focus() ran while still disabled
     addEventListener: (ev, fn) => { btn._handler = fn; },
     querySelector: () => null,
   };
@@ -77,6 +78,10 @@ function harness({ setEnabled, confirmResult = true, isOn = true } = {}) {
   assert.equal(declined.calls.setEnabled.length, 0, 'declining the pause confirm writes nothing');
   assert.equal(declined.calls.disabled[declined.calls.disabled.length - 1], false, 're-enabled after a decline');
   assert.equal(declined.calls.confirmOpts.confirmLabel, 'Pausar', 'the confirm action is labelled «Pausar»');
+  assert.equal(declined.calls.confirmOpts.opener, declined.btn, 'the toggle is passed to styledConfirm as the opener (captured before disable)');
+  // P2-1: focus returns to the toggle on Esc/Cancelar, and only AFTER it is re-enabled (never while disabled).
+  assert.equal(declined.calls.focused, 1, 'focus returns to the toggle after a decline');
+  assert.equal(declined.calls.focusedWhileDisabled, false, 'focus() runs after the toggle is re-enabled, not while disabled');
 
   const accepted = harness({ isOn: true, confirmResult: true });
   await accepted.handler();

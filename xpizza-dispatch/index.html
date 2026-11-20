@@ -3288,8 +3288,8 @@ function subscribeAll() {
       if (isOn && !(await styledConfirm({
         title: 'Pausar asignación automática',
         body: 'Pausar la asignación automática. Mientras esté en pausa, los pedidos nuevos no se asignan solos — los asignás vos desde la cola.',
-        confirmLabel: 'Pausar', cancelLabel: 'Cancelar',
-      }))) return;                                                   // declined → finally re-enables, no write
+        confirmLabel: 'Pausar', cancelLabel: 'Cancelar', opener: btn,   // #1b P2-1: the trigger, captured before it is disabled
+      }))) return;                                                   // declined → finally re-enables + re-focuses
       await XPD.setAutoAssignEnabled(!isOn);
       toast(isOn ? 'Auto-asignación desactivada' : 'Auto-asignación activada',
             isOn ? 'error' : 'success');
@@ -3298,6 +3298,7 @@ function subscribeAll() {
     } finally {
       autoAssignInFlight = false;
       btn.disabled = false;
+      btn.focus();                                                   // #1b P2-1: restore focus AFTER re-enabling the toggle
     }
   });
 }
@@ -5202,9 +5203,12 @@ function settleStyledConfirm(result) {
   if (opener && document.contains(opener)) { try { opener.focus(); } catch (_) {} }
   done(result);
 }
-function styledConfirm({ title, body, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar' }) {
+function styledConfirm({ title, body, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', opener } = {}) {
   settleStyledConfirm(false);   // a newer confirm supersedes any still-open one (resolves it false)
-  styledConfirmOpener = document.activeElement;
+  // Capture the trigger to restore focus to on dismiss. Callers whose trigger gets disabled while the
+  // dialog is open (e.g. the Auto-asignar toggle) pass it explicitly AND re-focus it after re-enabling,
+  // since focus() on a disabled element is a no-op (CTA #1b P2-1).
+  styledConfirmOpener = opener || document.activeElement;
   $('styled-confirm-title').textContent = title || '';
   $('styled-confirm-body').textContent = body || '';     // textContent — plain text, no HTML injection
   $('styled-confirm-ok').textContent = confirmLabel;
