@@ -7,7 +7,7 @@
 //   · manual_review_closures/{orderId}/{episode}  ONE create-if-absent, append-only record { outcome, amount_cents, note, by, at } — the audit
 //                                                 itself (no separate row, no pending state, no backstop); no client reads or writes it
 // The request carries the episode the person read: not current ⇒ 409 stale, also when it moves WHILE the request is in flight. «Closed» =
-// the CURRENT episode has a closure (closedOrderIds — reconcilePayments' daily rule and prune). Refuses (409): not manual_review /
+// the CURRENT episode has a closure (isClosed — it ONLY skips reconcilePayments' daily reminder; it never touches an alert). Refuses (409): not manual_review /
 // scheduled_blocked (its own follow-up) / an order claim / a reversal in flight on the active attempt / already closed / stale.
 
 const OUTCOMES = new Set(['refunded_in_pixelpay', 'charge_stands']);
@@ -50,25 +50,11 @@ async function attestManualReview(db, { orderId, episode, outcome, amountCents, 
   return { status: 200, body: { ok: true, outcome: 'review_closed', order_id: orderId, episode } };
 }
 
-// The orders (of those given) whose CURRENT manual_review episode has a closure — read only for orders in manual_review (a handful), never
-// the append-only root whole. Order-node fields are never consulted (a client could have written them).
-async function closedOrderIds(db, orders) {
-  const out = new Set();
-  for (const [orderId, o] of Object.entries(orders || {})) {
-    if (!o || o.payment_status !== 'manual_review') continue;
-    const ep = await episodeOf(db, orderId);
-    if ((await db.ref(`manual_review_closures/${orderId}/${ep}`).once('value')).exists()) out.add(orderId);
-  }
-  return out;
-}
-
-// The prune's view of the orders (reconcilePayments): a review CLOSED in its current episode reads as handled — its payment_status shows
-// 'review_closed' to alert-prune ONLY (never written anywhere), so an unresolved-money keep no longer holds its alerts; everything else as is.
-function withClosedReviews(orders, closedIds) {
-  if (!closedIds || !closedIds.size) return orders;
-  const out = { ...orders };
-  for (const id of closedIds) if (out[id] && out[id].payment_status === 'manual_review') out[id] = { ...out[id], payment_status: 'review_closed' };
-  return out;
+// Is the order's review CLOSED in its CURRENT episode? Read at the moment of asking (reconcilePayments' daily reminder decides per order):
+// the episode, then that episode's closure. Never an order-node field (a client could have written one). Owner GO 11-19 (after Codex
+// #222): this ONLY skips the daily aged reminder — a closure is never an input to any alert's raising or pruning.
+async function isClosed(db, orderId) {
+  return (await db.ref(`manual_review_closures/${orderId}/${await episodeOf(db, orderId)}`).once('value')).exists();
 }
 
 // The episode trigger's body (markReviewEpisodeOnPaymentStatus): an ENTRY into manual_review (from any other value, by any writer) starts a
@@ -97,4 +83,4 @@ function endpoint({ onRequest, authorize, getDatabase, sanitizeText }) {
   });
 }
 
-module.exports = { attestManualReview, closedOrderIds, withClosedReviews, onPaymentStatus, endpoint, refusal };
+module.exports = { attestManualReview, isClosed, onPaymentStatus, endpoint, refusal };

@@ -701,8 +701,6 @@
   "payments/review-attest.js#attestManualReview": "payment",
   "payments/review-attest.js#endpoint>anon": "payment",
   "payments/review-attest.js#onPaymentStatus": "payment",
-  "payments/review-attest.js#closedOrderIds": "payment",
-  "payments/review-attest.js#withClosedReviews": "payment",
   "index.js#markReviewEpisodeOnPaymentStatus": "payment",
   "resolve-manual.js#resolveManualReconciliationCore>anon": "payment",
   "restaurant-config.js#hubSnapshot": "infra",

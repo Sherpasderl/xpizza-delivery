@@ -3271,7 +3271,8 @@
   "alert-prune.js": {
    "pins": [],
    "lifts": [
-    "xpizza-functions/cpark-wiring.guard.test.js"
+    "xpizza-functions/cpark-wiring.guard.test.js",
+    "xpizza-functions/payments/review-attest-wiring.guard.test.js"
    ]
   },
   "arrived-notify.js": {

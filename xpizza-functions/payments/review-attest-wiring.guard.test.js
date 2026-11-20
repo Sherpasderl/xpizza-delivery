@@ -5,10 +5,11 @@
 //                && !o.manual_review_closed && age > 6 h` (an executable IfStatement of the per-order loop)
 //   RAW-EXPORT   `exports.attestManualReview = require('./payments/review-attest').endpoint({ onRequest, authorize: authorizeDispatcherAction,
 //                getDatabase, sanitizeText })` is an executable top-level statement — the dispatcher gate, never MAKE_SECRET
-//   RAW-CLOSED-SET `const reviewClosedIds = await require('./payments/review-attest').closedOrderIds(db, orders)` before the loop; the prune gets
-//                withClosedReviews(orders, reviewClosedIds) (structural rebuild 11-19: closedness lives in server-only roots, not on the order)
+//   RAW-FILTER   the loop's online filter lets an order in manual_review through (owner GO 11-19 after Codex #222: cash-labelled reviews)
+//   RAW-PRUNE-BASE the prune call is `alertsToPrune(alerts, orders)` and alert-prune.js is byte-identical to the cancel-park base: a closure never
+//                touches an alert
 //   RAW-EPISODE  `exports.markReviewEpisodeOnPaymentStatus = onValueWritten({ ref: '/orders/{orderId}/payment_status' … }, …onPaymentStatus(…))` (Codex #217 P1)
-// (RAW-DAILY now: `!reviewClosedIds.has(orderId)`, no audit backstop; RAW-EXPORT: authorizeDispatcherActionWithUid)
+// (RAW-DAILY now: `!(await …isClosed(db, orderId))` per order at decision time; RAW-EXPORT: authorizeDispatcherActionWithUid)
 // Run: node payments/review-attest-wiring.guard.test.js
 const assert = require('assert');
 const fs = require('fs');
@@ -30,16 +31,20 @@ const textOf = (node) => src.slice(node.start, node.end);
   assert.ok(loopBody, 'premise: the per-order loop');
   const rule = loopBody.find((s) => s.type === 'IfStatement' && /kind: 'aged_manual_review'/.test(textOf(s.consequent)));
   assert.ok(rule, 'premise: the aged_manual_review rule is an executable statement');
-  assert.ok(/^o\.payment_status === 'manual_review' && !reviewClosedIds\.has\(orderId\) && age > 6 \* 3600 \* 1000$/.test(textOf(rule.test)), `🔴 RAW-DAILY: the rule skips a review closed in its CURRENT episode (got ${textOf(rule.test)})`);
-  assert.ok(!/completeAudit\(|manual_review_closed\.audited/.test(textOf(handler.body)), '🔴 RAW-DAILY: no audit backstop (the closure is the audit, written atomically)');
-  // RAW-CLOSED-SET: the set is computed ONCE, as real code, before the loop, from the server-only roots; the prune receives the same view
-  const body = handler.body.body;
-  const decl = body.findIndex((s) => s.type === 'VariableDeclaration' && s.declarations.some((d) => d.id.name === 'reviewClosedIds' && /^await require\('\.\/payments\/review-attest'\)\.closedOrderIds\(db, orders\)$/.test(textOf(d.init))));
-  const loopAt = body.findIndex((s) => /^For(Of|In)Statement$/.test(s.type) && s.body.body === loopBody);
-  assert.ok(decl >= 0 && loopAt > decl, `🔴 RAW-CLOSED-SET: \`const reviewClosedIds = await require('./payments/review-attest').closedOrderIds(db, orders)\` is a real statement before the loop (${decl} < ${loopAt})`);
+  assert.ok(/^o\.payment_status === 'manual_review' && age > 6 \* 3600 \* 1000 && !\(await require\('\.\/payments\/review-attest'\)\.isClosed\(db, orderId\)\)$/.test(textOf(rule.test)),
+    `🔴 RAW-DAILY: the reminder re-checks closedness PER ORDER at decision time (got ${textOf(rule.test)})`);
+  assert.ok(!/reviewClosedIds|closedOrderIds|withClosedReviews|completeAudit\(|manual_review_closed\.audited/.test(textOf(handler.body)), '🔴 RAW-DAILY: no cached closed set, no prune view, no audit backstop');
+  // RAW-FILTER (owner bar 4): the online-only filter lets an order in manual_review through (a cash-labelled review gets its reminder)
+  const filt = loopBody.find((s) => s.type === 'IfStatement' && s.consequent.type === 'ContinueStatement' && /o\.payment_method !== 'online'/.test(textOf(s.test)));
+  assert.ok(filt && textOf(filt.test) === "o.payment_method !== 'online' && o.payment_status !== 'manual_review'", `🔴 RAW-FILTER: the online filter lets manual_review through (got ${filt ? textOf(filt.test) : 'none'})`);
+  assert.ok(loopBody.indexOf(filt) < loopBody.indexOf(rule), 'RAW-FILTER: the filter precedes the aged rules');
+  // RAW-PRUNE-BASE (owner bar 1): a closure is never an input to the prune — the call is the base one and alert-prune.js is byte-identical to the
+  // cancel-park base (2c8967b1a)
   let prune = null; walk(handler.body, (node) => { if (!prune && node.type === 'CallExpression' && textOf(node.callee) === 'alertsToPrune') prune = node; });
-  assert.ok(prune && textOf(prune.arguments[1]) === "require('./payments/review-attest').withClosedReviews(orders, reviewClosedIds)", `🔴 RAW-CLOSED-SET: the prune gets the review's view of the orders (got ${prune ? textOf(prune) : 'none'})`);
-  ok('RAW-DAILY / RAW-CLOSED-SET: the daily rule and the prune read closedness from the server-only set, computed once before the loop (real code)');
+  assert.ok(prune && textOf(prune) === 'alertsToPrune(alerts, orders)', `🔴 RAW-PRUNE-BASE: the prune call is the base one (got ${prune ? textOf(prune) : 'none'})`);
+  const baseAp = require('child_process').execFileSync('git', ['show', '2c8967b1a:xpizza-functions/alert-prune.js'], { cwd: path.join(__dirname, '..'), encoding: 'utf8' });
+  assert.strictEqual(fs.readFileSync(path.join(__dirname, '..', 'alert-prune.js'), 'utf8'), baseAp, '🔴 RAW-PRUNE-BASE: alert-prune.js is byte-identical to the cancel-park base');
+  ok('RAW-DAILY / RAW-FILTER / RAW-PRUNE-BASE: a per-order re-check at decision time; manual_review passes the online filter; the prune is the base, untouched (real code)');
 }
 {
   const hits = [];

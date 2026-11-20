@@ -7,18 +7,13 @@ const BASE = '2c8967b1a';
 const HUNKS = Object.freeze([
  {
   "file": "index.js",
-  "now": "    const breaches = []; const reviewClosedIds = await require('./payments/review-attest').closedOrderIds(db, orders);   // «Marcar como revisado»: reviews closed in their CURRENT episode (server-only roots)\n",
-  "was": "    const breaches = [];\n"
+  "now": "      if (o.payment_method !== 'online' && o.payment_status !== 'manual_review') continue;   // owner 11-19: a review (cash-labelled too) gets its daily reminder\n",
+  "was": "      if (o.payment_method !== 'online') continue;\n"
  },
  {
   "file": "index.js",
-  "now": "      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' }); if (o.payment_status === 'manual_review' && !reviewClosedIds.has(orderId) && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_review' });   // + cancel-park option A: a parked (manual_review) order is re-raised daily\n",
+  "now": "      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' }); if (o.payment_status === 'manual_review' && age > 6 * 3600 * 1000 && !(await require('./payments/review-attest').isClosed(db, orderId))) breaches.push({ orderId, kind: 'aged_manual_review' });   // + cancel-park option A: a parked (manual_review) order is re-raised daily\n",
   "was": "      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' }); if (o.payment_status === 'manual_review' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_review' });   // + cancel-park option A: a parked (manual_review) order is re-raised daily\n"
- },
- {
-  "file": "index.js",
-  "now": "      const stale = alertsToPrune(alerts, require('./payments/review-attest').withClosedReviews(orders, reviewClosedIds));\n",
-  "was": "      const stale = alertsToPrune(alerts, orders);\n"
  },
  {
   "file": "index.js",

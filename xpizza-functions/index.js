@@ -3111,7 +3111,7 @@ exports.reconcilePayments = onSchedule(
     ]);
     const orders = ordersSnap.val() || {};
     const attempts = attemptsSnap.val() || {};
-    const breaches = []; const reviewClosedIds = await require('./payments/review-attest').closedOrderIds(db, orders);   // «Marcar como revisado»: reviews closed in their CURRENT episode (server-only roots)
+    const breaches = [];
 
     for (const orderId of Object.keys(orders)) {
       const o = orders[orderId]; if (require('./payments/sdk/flow').isSdkOrder(o)) continue;
@@ -3130,7 +3130,7 @@ exports.reconcilePayments = onSchedule(
         if (ov.overdue) breaches.push({ orderId, kind: ov.kind });
         if (!require('./alert-prune').unresolvedMoney(o)) continue;   // Codex #211 P2-4: an unresolved money state is never exempt — it meets the aged rules below
       }
-      if (o.payment_method !== 'online') continue;
+      if (o.payment_method !== 'online' && o.payment_status !== 'manual_review') continue;   // owner 11-19: a review (cash-labelled too) gets its daily reminder
       const a = o.active_attempt_id ? attempts[o.active_attempt_id] : null;
       // I2: a confirmed online order must have a VERIFIED payment — a verified hosted callback
       // (hosted_callback_verified) or, for legacy auth+capture orders, a captured attempt.
@@ -3139,7 +3139,7 @@ exports.reconcilePayments = onSchedule(
       }
       // Aged operator-queue states.
       const age = now - (Number(o.charged_at || o.created_at) || now);
-      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' }); if (o.payment_status === 'manual_review' && !reviewClosedIds.has(orderId) && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_review' });   // + cancel-park option A: a parked (manual_review) order is re-raised daily
+      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' }); if (o.payment_status === 'manual_review' && age > 6 * 3600 * 1000 && !(await require('./payments/review-attest').isClosed(db, orderId))) breaches.push({ orderId, kind: 'aged_manual_review' });   // + cancel-park option A: a parked (manual_review) order is re-raised daily
       if (o.payment_status === 'refund_pending' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_refund_pending' });
       if (MR.isResolving(o.payment_status) && (now - (Number(o.resolving_claimed_at) || 0)) > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_resolving' }); // [D] sweep-recovery backstop
 
@@ -3169,7 +3169,7 @@ exports.reconcilePayments = onSchedule(
     // detail-referenced alerts are touched (keyed factura_/reward_ alerts have their own clearing).
     try {
       const alerts = (await db.ref('dispatcher_alerts').once('value')).val() || {};
-      const stale = alertsToPrune(alerts, require('./payments/review-attest').withClosedReviews(orders, reviewClosedIds));
+      const stale = alertsToPrune(alerts, orders);
       if (stale.length) {
         const updates = {};
         for (const k of stale) updates[`dispatcher_alerts/${k}`] = null;

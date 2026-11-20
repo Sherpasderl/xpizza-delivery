@@ -4,7 +4,8 @@
 //   · manual_review_episodes/{orderId}            the CURRENT episode (the trigger stamps every ENTRY into manual_review); dispatchers may read it
 //   · manual_review_closures/{orderId}/{episode}  ONE create-if-absent, append-only record { outcome, amount_cents, note, by, at } — the audit itself
 // The request carries the episode the person read; anything not current ⇒ 409 stale. «Closed» = the CURRENT episode has a closure
-// (closedOrderIds, computed once by reconcilePayments for its daily rule and its prune). No money, attempt, reward or order change.
+// (isClosed — re-checked per order at the moment reconcilePayments' daily reminder decides). Owner GO 11-19 (after Codex #222): a closure
+// NEVER touches any alert — it only skips the daily aged reminder for its CURRENT episode. No money, attempt, reward or order change.
 //   RA-TRIGGER     (every park) the episode trigger's body stamps the entry into manual_review in manual_review_episodes
 //   RA-CLOSE       a REAL cancel park + the episode trigger ⇒ attest ⇒ 200; the ONLY write is the closure node (whole-db diff) — the order is untouched
 //   RA-GATE        afterwards the REAL cancel still refuses (manual_review), no claim, no void
@@ -21,7 +22,11 @@
 //                  from the server-only roots
 //   RA-APPEND      (#219 P2-b) a closure is never replaced: a second close of the same episode is refused; a new episode gets its own node
 //   RA-CASH        (#219 P2-c) a cash-labelled parked order: the ONE closure write is the whole audit (no pending state, no backstop to miss it)
-//   RA-PRUNE       the prune keeps an open review's alerts and lets a CLOSED one's go (closedIds); nothing else changes
+//   RA-NEVER-HIDE  (owner bar 1+2) a closure never deletes or suppresses an alert: the REAL prune over a fixture world is byte-identical
+//                  closed vs not closed; a NEW episode's own outcome alerts (the REAL callback's / resolver's) are raised and kept
+//   RA-DAILY       (owner bar 3) the closure only skips the daily reminder for its CURRENT episode; the worst race = one day late — the next
+//                  day's decision raises it
+//   RA-CASH-DAILY  (owner bar 4) closedness is the same for a cash-labelled review (no payment_method in the decision)
 // Run: node payments/review-attest.test.js
 process.env.PIXELPAY_MODE = 'sandbox';
 const assert = require('assert');
@@ -30,7 +35,7 @@ const { cancelOrderCore } = require('../cancel-order-core');
 const { voidOrRefund } = require('../pixelpay-cancel');
 const realClient = require('../pixelpay-client');
 const { paymentAlert } = require('../lib/payment-alert');
-const { unresolvedMoney, alertsToPrune } = require('../alert-prune');
+const { unresolvedMoney, alertsToPrune } = require('../alert-prune');   // UNCHANGED from the cancel-park base (review-attest-wiring RAW-PRUNE-BASE)
 const { resolveManualReconciliationCore } = require('../resolve-manual');
 const { handleHostedCallback } = require('../pixelpay-hosted-webhook');
 const { buildMaterializeUpdates } = require('../materialize');
@@ -63,7 +68,7 @@ const parked = async (att = CAPTURED_NO_UUID, ord = {}, hooks) => {
   return db;
 };
 const attest = (db, over = {}) => RA.attestManualReview(db, { orderId: OID, episode: EP1, outcome: 'refunded_in_pixelpay', amountCents: 29900, note: 'anulado en PixelPay', actor: 'disp@tb', now: NOW + 5, ...over });
-const closed = async (db) => (await RA.closedOrderIds(db, db.getAt('orders'))).has(OID);
+const closed = (db) => RA.isClosed(db, OID);
 const flat = (v, p = '', out = {}) => { if (v && typeof v === 'object') { for (const k of Object.keys(v)) flat(v[k], p ? `${p}/${k}` : k, out); } else out[p] = v; return out; };
 const diff = (a, b) => { const A = flat(a), B = flat(b); return [...new Set([...Object.keys(A), ...Object.keys(B)])].filter((k) => A[k] !== B[k]).sort(); };
 const snapshot = (db) => JSON.parse(JSON.stringify(db.root));
@@ -214,14 +219,51 @@ const snapshot = (db) => JSON.parse(JSON.stringify(db.root));
     ok('RA-CASH: a cash-labelled parked order ⇒ closed and audited in one write');
   }
   {
-    // RA-PRUNE: the REAL alert-prune over the review's view of the orders (withClosedReviews, as reconcilePayments passes it)
-    const orders = { P1: { status: 'cancelled', payment_status: 'manual_review' }, P2: { status: 'cancelled', payment_status: 'refund_pending' } };
-    const alerts = { a: { type: 'payment_cancel_manual_review', detail: { orderId: 'P1' } }, b: { type: 'payment_x', detail: { orderId: 'P2' } } };
-    assert.deepStrictEqual(alertsToPrune(alerts, RA.withClosedReviews(orders, new Set())), [], 'RA-PRUNE: an open review keeps its alert');
-    assert.deepStrictEqual(alertsToPrune(alerts, RA.withClosedReviews(orders, new Set(['P1', 'P2']))), ['a'], '🔴 RA-PRUNE: a CLOSED review lets its alert go; the set applies to manual_review only (P2 refund_pending kept)');
-    assert.deepStrictEqual(orders.P1.payment_status, 'manual_review', 'RA-PRUNE: the view never changes the orders it was given');
-    assert.strictEqual(unresolvedMoney({ status: 'cancelled', payment_status: 'manual_review', manual_review_closed: { outcome: 'x' } }), true, 'RA-PRUNE: alert-prune is about the order alone again (unchanged from cancel-park)');
-    ok('RA-PRUNE: an open review keeps its alerts; a closed one (by the server-only set) lets them go; nothing else changes');
+    // RA-NEVER-HIDE (owner bar 1): the REAL prune over a fixture world — open, closed, and a stale closure — returns byte-identical results;
+    // a closure is never an input to it
+    const orders = { P1: { status: 'cancelled', payment_status: 'manual_review' }, P2: { status: 'new', payment_status: 'manual_review' }, P3: { status: 'cancelled', payment_status: 'refunded' } };
+    const alerts = { a: { type: 'payment_cancel_manual_review', detail: { orderId: 'P1' } }, b: { type: 'payment_reconcile_breaches', detail: { breaches: [{ orderId: 'P2', kind: 'aged_manual_review' }] } }, c: { type: 'payment_x', detail: { orderId: 'P3' } } };
+    const open = makeDb({ orders, dispatcher_alerts: alerts, manual_review_episodes: { P1: 5, P2: 5 } });
+    const shut = makeDb({ orders, dispatcher_alerts: alerts, manual_review_episodes: { P1: 5, P2: 5 }, manual_review_closures: { P1: { 5: { by: 'd' } }, P2: { 5: { by: 'd' } } } });
+    assert.deepStrictEqual([await RA.isClosed(open, 'P1'), await RA.isClosed(shut, 'P1')], [false, true], 'RA-NEVER-HIDE premise: one world closed, one not');
+    const pruneOf = (db) => JSON.stringify(alertsToPrune(db.getAt('dispatcher_alerts'), db.getAt('orders')));
+    assert.strictEqual(pruneOf(shut), pruneOf(open), '🔴 RA-NEVER-HIDE: the prune is byte-identical with or without closures');
+    assert.deepStrictEqual(JSON.parse(pruneOf(shut)), ['c'], '🔴 RA-NEVER-HIDE: every alert on an order in manual_review is kept, closed or not (only the refunded order\'s goes)');
+    // (owner bar 2): a NEW episode's own outcome alerts — raised by the REAL callback and the REAL resolver while an OLD closure exists — are kept
+    const db = await parked();
+    await attest(db);
+    const before = new Set(Object.keys(db.getAt('dispatcher_alerts') || {}));
+    const cbDeps = { db, restaurant: { lat: 15.5, lng: -88, name: 'TB', phone: 'p' }, buildMaterializeUpdates, alert: (k, d) => paymentAlert(db, k, d), genToken: () => 'TOK', client: realClient, voidOrRefund };
+    await quiet(() => handleHostedCallback(cbDeps, { order: `${OID}-${AID}`, status: 'paid', amount: 299, uuid: 'PAY-9', transaction_id: 'T9', payment_hash: 'f'.repeat(32) }, NOW + 10));
+    await trig(db, 'manual_review', 'manual_reconciliation', NOW + 10);
+    await quiet(() => resolveManualReconciliationCore({ db, client: realClient, alert: (k, d) => paymentAlert(db, k, d), sanitizeText: (t) => String(t), serverTimestamp: 0, voidOrRefund }, { orderId: OID, action: 'refund', actor: 'disp2@tb', note: '', now: NOW + 20, claimId: 'RC1' }));
+    await trig(db, 'manual_reconciliation', 'resolving_refund', NOW + 20); await trig(db, 'resolving_refund', 'manual_review', NOW + 21);
+    const raised = Object.keys(db.getAt('dispatcher_alerts') || {}).filter((k) => !before.has(k));
+    assert.ok(raised.length >= 1, `RA-NEVER-HIDE premise: the new episode raised its own alerts (${raised.length})`);
+    const pruned = alertsToPrune(db.getAt('dispatcher_alerts'), db.getAt('orders'));
+    assert.deepStrictEqual(raised.filter((k) => pruned.includes(k)), [], `🔴 RA-NEVER-HIDE: the new episode's own alerts are all kept (${raised.map((k) => db.getAt(`dispatcher_alerts/${k}/type`)).join(', ')})`);
+    ok('RA-NEVER-HIDE: a closure never changes the prune (byte-identical); a new episode\'s own alerts are raised and kept');
+  }
+  {
+    // RA-DAILY (owner bar 3): the closure only skips the CURRENT episode's reminder; the race costs at most one day
+    const db = await parked();
+    assert.strictEqual(await RA.isClosed(db, OID), false, 'RA-DAILY premise: open ⇒ the reminder is due');
+    await attest(db);
+    assert.strictEqual(await RA.isClosed(db, OID), true, '🔴 RA-DAILY: closed in its current episode ⇒ the reminder is skipped');
+    // day 1: the decision is taken (closed ⇒ skipped) and, in the same instant, the order re-enters review (a new episode)
+    const day1 = await RA.isClosed(db, OID);
+    await trig(db, 'manual_reconciliation', 'manual_review', NOW + 60);
+    assert.strictEqual(day1, true, 'RA-DAILY: day 1 decided before the new episode (the worst-case race)');
+    assert.strictEqual(await RA.isClosed(db, OID), false, '🔴 RA-DAILY: day 2 sees the NEW episode open ⇒ its reminder is raised (one day late at most, never lost)');
+    ok('RA-DAILY: a closure skips only its current episode\'s daily reminder; a race costs at most one day — the next run raises it');
+  }
+  {
+    // RA-CASH-DAILY (owner bar 4): closedness ignores payment_method — a cash-labelled review is open / closed exactly like an online one
+    const db = await parked(CAPTURED_NO_UUID, { payment_method: 'cash' });
+    assert.strictEqual(await RA.isClosed(db, OID), false, '🔴 RA-CASH-DAILY: an open cash-labelled review is due its reminder');
+    await attest(db);
+    assert.strictEqual(await RA.isClosed(db, OID), true, '🔴 RA-CASH-DAILY: a closed cash-labelled review skips it');
+    ok('RA-CASH-DAILY: a cash-labelled review is open / closed exactly like an online one (the daily rule\'s filter: review-attest-wiring RAW-FILTER; the real run: the emulator)');
   }
   console.log(`review-attest: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });
