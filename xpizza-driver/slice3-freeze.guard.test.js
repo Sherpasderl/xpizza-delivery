@@ -105,7 +105,7 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = 'd79cce86d189a2015d4bb944f4994416d47ebb1aa5e24099074d7cc30d410f1b';
+const SLICE2_GUARD_SHA = 'a11a157a9ae869b9ebfe9f485d5889c8e3e264d64726b3328023f286beb6e85a';
 const SLICE2_GUARD_CHECKS = 18;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 16). Re-pinned 16→18: the #962+stacked-seq re-gate ADDED 2 exact-pin sensitivity cells, never removed one.
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
@@ -459,7 +459,7 @@ t('restore spans are present in the 07e5ab38 baseline (pin integrity)', () => {
 // (there 2.5.2→2.5.4 off e2266b24; here 2.5.3→2.5.4 off 07e5ab38). Any OTHER out-of-region drift still fails
 // recovery (the NEG cell below applies the same allow, so the probe line is the ONLY difference it can trip on).
 const OUT_OF_REGION_ALLOW = [
-  { from: "const SYSTEM_VERSION = '2.5.3';", to: "const SYSTEM_VERSION = '2.6.0';" },
+  { from: "const SYSTEM_VERSION = '2.5.3';", to: "const SYSTEM_VERSION = '2.6.1';" },
 ];
 const applyAllow = (html) => {
   for (const { from, to } of OUT_OF_REGION_ALLOW) {
