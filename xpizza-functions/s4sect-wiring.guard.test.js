@@ -56,18 +56,22 @@ const walk = (x, cb) => { if (!x || typeof x.type !== 'string') return; cb(x); f
 const DECLARED = { 's3-served.test.mjs': 1, 'xpizza-functions/s2bext-wiring.guard.test.js': 1, 'xpizza-functions/extrasflip-wiring.guard.test.js': 1 };
 const top = git(['rev-parse', '--show-toplevel']).trim();
 const files = git(['ls-files', '*.js', '*.mjs'], top).split('\n').filter((f) => f && !/(^|\/)tools\/[a-z0-9-]+-inverse\.js$/.test(f) && f !== 'xpizza-functions/s4sect-wiring.guard.test.js');
+// the next peel BELOW a peel: its src argument, followed THROUGH non-layer wrappers (a call that hands its last argument on —
+// e.g. keymode-wiring's peelTip(f, s)), so a chain split by a helper is still ONE peel sequence (slot 11-19: the wrap had placed
+// s4sect once per segment of keymode's chain, and this cell, reading segments, passed it)
+const below = (x) => { let a = x.arguments[1]; while (a && !peel(a) && a.type === 'CallExpression' && a.arguments.length) a = a.arguments[a.arguments.length - 1]; return peel(a) ? a : null; };
 let placed = 0; const bad = [];
 for (const f of files) {
   const src = fs.readFileSync(path.join(top, f), 'utf8');
   if (!/-inverse'\)\.unapply/.test(src)) continue;
   const ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: f.endsWith('.mjs') ? 'module' : 'script', allowHashBang: true, allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true });
   const peels = []; const inner = new Set(); let s4 = 0;
-  walk(ast, (x) => { const l = peel(x); if (!l) return; peels.push(x); if (l === 's4sect-module-inverse') s4++; if (peel(x.arguments[1])) inner.add(x.arguments[1]); });
+  walk(ast, (x) => { const l = peel(x); if (!l) return; peels.push(x); if (l === 's4sect-module-inverse') s4++; const b = below(x); if (b) inner.add(b); });
   let here = 0;
   for (const t of peels.filter((x) => !inner.has(x))) {
     const a1 = t.arguments[0];
     if (a1.type === 'Literal' && typeof a1.value === 'string' && !FILES.includes(a1.value)) continue;
-    const chain = [t]; while (peel(chain[chain.length - 1].arguments[1])) chain.push(chain[chain.length - 1].arguments[1]);
+    const chain = [t]; for (let b = below(t); b; b = below(b)) chain.push(b);
     const layers = chain.map(peel); let k = -1; layers.forEach((l, i) => { if (OWNERS.has(l)) k = i; });
     if (k < 0) continue;
     const at = layers.indexOf('s4sect-module-inverse');
