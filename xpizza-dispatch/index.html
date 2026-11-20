@@ -7034,7 +7034,7 @@ if ('serviceWorker' in navigator) {
 /* P-SELFUPDATE CP2 §3 — this app's self-update adapter: idle = none of these overlays open, no focused field, no request
    of ours in flight, no tap/key in the last 30 s, online (see SherpaClient.idleAdapter). State reloads from the
    database. Inert (unstamped) pages register nothing. */
-try { var __S = window.SherpaClient; if (__S && !__S.inert) __S.registerAdapter(__S.idleAdapter({ overlays: ["#msg-modal.open", "#comms-sheet.open", "#order-detail-modal.open", "#picker-overlay:not(.hidden)", "#recon-note-overlay:not(.hidden)", "#unassign-confirm-overlay:not(.hidden)", "#surface-flyout:not([hidden])", "#action-menu:not(.hidden)"] })); } catch (_) {}
+try { var __S = window.SherpaClient; if (__S && !__S.inert) __S.registerAdapter(__S.idleAdapter({ overlays: ["#msg-modal.open", "#comms-sheet.open", "#order-detail-modal.open", "#picker-overlay:not(.hidden)", "#recon-note-overlay:not(.hidden)", "#unassign-confirm-overlay:not(.hidden)", "#styled-confirm-overlay:not(.hidden)", "#surface-flyout:not([hidden])", "#action-menu:not(.hidden)"] })); } catch (_) {}
 </script>
 </body>
 </html>
