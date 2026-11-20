@@ -231,9 +231,19 @@ function bootSlide({ active = true } = {}) {
     document.dispatchEvent(new W.MouseEvent('mouseup', { bubbles: true }));
     await settle();
   }
+  // A TAP = pointer down on the thumb then up with NO mousemove (the knob never leaves rest). reduce:true stubs
+  // the window's matchMedia so prefers-reduced-motion resolves true (jsdom ships no matchMedia, so default = motion ON).
+  async function tap({ reduce = false } = {}) {
+    const el = api.el(); const thumb = el.querySelector('.slide-thumb');
+    el.getBoundingClientRect = () => ({ width: 300 }); thumb.getBoundingClientRect = () => ({ width: 50 });
+    if (reduce) W.matchMedia = () => ({ matches: true });
+    thumb.dispatchEvent(new W.MouseEvent('mousedown', { clientX: 6, bubbles: true }));
+    document.dispatchEvent(new W.MouseEvent('mouseup', { bubbles: true }));
+    await settle();
+  }
   async function key(k) { api.el().dispatchEvent(new W.KeyboardEvent('keydown', { key: k, bubbles: true })); await settle(); }
   function clickVolver() { document.querySelector('.cuadre-volver').dispatchEvent(new W.MouseEvent('click', { bubbles: true })); }
-  return { api, $, document, drag, key, clickVolver, get opens() { return api.opens; } };
+  return { api, $, document, drag, tap, key, clickVolver, get opens() { return api.opens; } };
 }
 t('real gesture: a completed drag runs the REAL handleEndShift and opens the cuadre exactly once', async () => {
   const h = bootSlide({ active: true });
@@ -267,16 +277,55 @@ t('P2-1 (real): «Volver al turno» re-renders a FRESH slide that accepts a new 
   assert.equal(h.opens, 2, 'the rebuilt slide is un-latched and runs a new end-shift');
 });
 
+// ---- Tap-nudge: a tap (no drag) springs the knob instead of doing nothing (owner 2026-11-20 hint-free sliders) ----
+// The hint text «deslizá» is gone, so a tap must TEACH the gesture: the knob nudges right then settles. Real gestures
+// through the lifted attachSlideConfirm (mirrors the drag harness). prefers-reduced-motion suppresses the animation.
+t('tap-nudge (real) a: a tap (no drag) adds .nudging so the knob springs right then settles', async () => {
+  const h = bootSlide({ active: true });
+  h.api.renderDisponible();
+  await h.tap();
+  assert.ok(h.api.el().classList.contains('nudging'), 'a tap nudges the knob (.nudging drives the keyframe)');
+  assert.ok(!h.api.el().classList.contains('completed'), 'a tap never latches the slide completed');
+});
+t('tap-nudge (real) b: prefers-reduced-motion suppresses the nudge (no .nudging class)', async () => {
+  const h = bootSlide({ active: true });
+  h.api.renderDisponible();
+  await h.tap({ reduce: true });
+  assert.ok(!h.api.el().classList.contains('nudging'), 'reduced-motion ⇒ no nudge animation');
+});
+t('tap-nudge (real) c: a full drag past threshold STILL confirms and never nudges (unchanged)', async () => {
+  const h = bootSlide({ active: true });
+  h.api.renderDisponible();
+  await h.drag();
+  assert.ok(h.api.el().classList.contains('completed'), 'a real swipe past 0.85 still confirms');
+  assert.ok(!h.api.el().classList.contains('nudging'), 'a real swipe confirms — it never nudges');
+  assert.equal(h.opens, 1, 'the drag fired onConfirm exactly once');
+});
+t('tap-nudge (real) d: a tap NEVER calls onConfirm (no end-shift)', async () => {
+  const h = bootSlide({ active: true });
+  h.api.renderDisponible();
+  await h.tap();
+  assert.equal(h.opens, 0, 'a tap must not fire onConfirm — the cuadre never opens');
+});
+
 // ---- Sliders: hint-free + «Aceptar» (owner 2026-11-20) — read FROM SOURCE ----
 const STACKED_SRC = readFileSync(join(__dir, 'stacked-view.js'), 'utf8');
 t('sliders carry NO «deslizá» hint node, and the accept label is «Aceptar» (owner 2026-11-20)', () => {
-  // Done this pass: start / end-shift / cuadre + both stacked sliders are hint-free. The ONE remaining index.html hint
-  // is the pickup slider (inside SLICE2:STACKED-BRANCH) — it lands with the frozen batch (SLICE3DEPS carve), see the plan.
-  assert.equal((SCRIPT.match(/class="slide-hint">deslizá/g) || []).length, 1, 'only the pickup hint remains in index.html (deferred to the SLICE3DEPS-carve batch)');
+  // All driver sliders are now hint-free, including the pickup slider (the last index.html hint, inside
+  // SLICE2:STACKED-BRANCH, now dropped via the SLICE3DEPS:PICKUP-HINT carve — slice3-freeze restores it to 07e5ab38).
+  assert.equal((SCRIPT.match(/class="slide-hint">deslizá/g) || []).length, 0, 'NO «deslizá» hint node remains in index.html (pickup carved)');
   assert.doesNotMatch(STACKED_SRC, /class="slide-hint">deslizá/, 'no .slide-hint node in stacked-view.js sliders');
   assert.doesNotMatch(SCRIPT, /slide-text">Deslizá para aceptar/, 'index accept slider label is «Aceptar», not «Deslizá para aceptar»');
   assert.doesNotMatch(STACKED_SRC, /slide-text">Deslizá para aceptar/, 'stacked accept slider label is «Aceptar»');
   assert.match(SCRIPT, /class="slide-text">Aceptar<\/div>/, 'the index accept slider shows exactly «Aceptar»');
+});
+
+t('notif banner copy is voseo: «Habilitá notificaciones» + button «Habilitá» (owner 2026-11-20)', () => {
+  // The not_enabled notification banner (renderNotifBanner). Voseo per standing rule 9; the body line is unchanged.
+  assert.match(SCRIPT, /<strong>Habilitá notificaciones<\/strong>/, 'title is voseo «Habilitá notificaciones»');
+  assert.match(SCRIPT, />Habilitá<\/button>/, 'the enable button reads «Habilitá»');
+  assert.doesNotMatch(SCRIPT, /<strong>Habilita notificaciones<\/strong>/, 'no non-voseo «Habilita notificaciones»');
+  assert.doesNotMatch(SCRIPT, />Habilitar<\/button>/, 'no non-voseo «Habilitar» button');
 });
 
 await (async () => {

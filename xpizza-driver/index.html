@@ -2306,6 +2306,16 @@
 .gn-tiny{font-size:11.5px;color:var(--text-soft,#546078)}
 </style>
 <!-- ===== SLICE3:GANANCIAS-CSS:END ===== -->
+<!-- ===== SLICE3:NUDGE-BANNER-CSS:START — owner 2026-11-20 hint-free sliders + pastel notif banner. Own trailing stylesheet so these rules win by source order at equal specificity (or by a more specific selector); no !important, zero frozen bytes. (1) the tap-nudge keyframe the slider thumb plays when a driver taps instead of dragging — prefers-reduced-motion stops it; (2) the notif banner pastel look that replaces the amber .action (wash #E8F0FB, title #0D1424, body #546078, solid #2F5FB8 button, radius 10). ===== -->
+<style>
+@keyframes slide-nudge { 0%, 100% { transform: translateX(0); } 45% { transform: translateX(8px); } }
+.slide-confirm.nudging .slide-thumb { animation: slide-nudge 0.34s ease; }
+@media (prefers-reduced-motion: reduce) { .slide-confirm.nudging .slide-thumb { animation: none; } }
+.notif-banner.action { background: #E8F0FB; color: #546078; border: 1px solid rgba(47,95,184,0.16); border-radius: 10px; }
+.notif-banner.action .text strong { color: #0D1424; }
+.notif-banner.action .enable-btn { background: #2F5FB8; color: #fff; }
+</style>
+<!-- ===== SLICE3:NUDGE-BANNER-CSS:END ===== -->
 <div id="screen-companion" class="hidden" style="height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch;"></div>
 
 <!-- SLICE2:NAV-SCREENS:START — Cuenta + «App de navegación» screen shells (R7); filled by renderCuenta/renderNavApp. Pure insert. -->
@@ -6555,7 +6565,9 @@ function renderActiveAndQueue() {
       + phaseStripHtml(stacked2.map((s, i) => ({ n: i + 1, state: i === 0 ? 'on' : '', label: 'Recoger' })), escapeHtml)
       + combinedPickupHtml(stacked2, deps2, new Set())
       + navBtnHtml(pkTarget, deps2.navPref, pkLabel, { ...deps2, navTaskId: active.pickupTask && active.pickupTask.id })
-      + `<div class="action-zone"><div class="slide-confirm pickup" id="btn-pickup"><div class="slide-fill"></div><div class="slide-text">Recogí las ${stacked2.length} bolsas</div><div class="slide-hint">deslizá</div><div class="slide-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div></div></div>`;
+      /* ===== SLICE3DEPS:PICKUP-HINT:START (registered carve-out; parent region STACKED-BRANCH) — owner 2026-11-20 hint-free sliders: drop the pickup «deslizá» hint node; slice3-freeze splices this back to the 07e5ab38 branch (WITH the hint). ===== */
+      + `<div class="action-zone"><div class="slide-confirm pickup" id="btn-pickup"><div class="slide-fill"></div><div class="slide-text">Recogí las ${stacked2.length} bolsas</div><div class="slide-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div></div></div>`;
+      /* ===== SLICE3DEPS:PICKUP-HINT:END ===== */
     queuedOrders = queue;
     queueSlot.innerHTML = '';
   } else if (active.phase === 'awaiting_acceptance' && pendingAccept.length >= 1) {
@@ -7057,9 +7069,21 @@ function attachSlideConfirm(elementId, onConfirm) {
         fill.style.width = '';
         toast(err && err._userMessage ? err._userMessage : 'Error: ' + (err?.message || err), 'error');
       }
+    /* ===== SLICE3:TAP-NUDGE:START — owner 2026-11-20 hint-free sliders: with the «deslizá» hint removed, a TAP (pointer down→up with the knob still at rest, no drag past threshold) nudges the knob right then settles to teach the gesture; a partial drag still only resets; prefers-reduced-motion ⇒ no animation; a tap NEVER fires onConfirm. REPLACE region → restores the frozen 07e5ab38 else-branch. ===== */
     } else {
       reset();
+      const tappedAtRest = currentLeft <= THUMB_OFFSET + 2;
+      const view = el.ownerDocument && el.ownerDocument.defaultView;
+      const reduceMotion = !!(view && typeof view.matchMedia === 'function'
+        && view.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      if (tappedAtRest && !reduceMotion) {
+        el.classList.remove('nudging');
+        void el.offsetWidth;                                  // restart the keyframe on a repeated tap
+        el.classList.add('nudging');
+        setTimeout(() => el.classList.remove('nudging'), 360);
+      }
     }
+    /* ===== SLICE3:TAP-NUDGE:END ===== */
 
     // #4: reset the drag-suppression on EVERY terminating path (completion-success, accept-error above, or
     // the not-completed reset) and replay a render that was deferred during the drag so a new order /
@@ -7308,10 +7332,14 @@ function renderNotifBanner(targetEl, state) {
       targetEl.innerHTML = `
         <span class="icon">${ICONS.bell}</span>
         <div class="text">
-          <strong>Habilita notificaciones</strong>
+          <!-- ===== SLICE3:NOTIF-TITLE:START — owner 2026-11-20 pastel notif banner: voseo title «Habilitá notificaciones». REPLACE region → restores the frozen 07e5ab38 title. ===== -->
+          <strong>Habilitá notificaciones</strong>
+          <!-- ===== SLICE3:NOTIF-TITLE:END ===== -->
           Para recibir alertas cuando llegue un pedido nuevo.
         </div>
-        <button class="enable-btn" id="enable-notif-btn-${Math.random().toString(36).slice(2,8)}">Habilitar</button>
+        <!-- ===== SLICE3:NOTIF-BTN:START — owner 2026-11-20 pastel notif banner: voseo button «Habilitá». REPLACE region → restores the frozen 07e5ab38 button. ===== -->
+        <button class="enable-btn" id="enable-notif-btn-${Math.random().toString(36).slice(2,8)}">Habilitá</button>
+        <!-- ===== SLICE3:NOTIF-BTN:END ===== -->
       `;
       const btn = targetEl.querySelector('.enable-btn');
       if (btn) btn.addEventListener('click', enableNotifications);

@@ -616,6 +616,33 @@
    "restore": [
     "          <div class=\"slide-text\">Deslizá para aceptar</div>"
    ]
+  },
+  {
+   "name": "TAP-NUDGE",
+   "kind": "replace",
+   "restore": [
+    "    } else {",
+    "      reset();",
+    "    }"
+   ]
+  },
+  {
+   "name": "NUDGE-BANNER-CSS",
+   "kind": "insert"
+  },
+  {
+   "name": "NOTIF-TITLE",
+   "kind": "replace",
+   "restore": [
+    "          <strong>Habilita notificaciones</strong>"
+   ]
+  },
+  {
+   "name": "NOTIF-BTN",
+   "kind": "replace",
+   "restore": [
+    "        <button class=\"enable-btn\" id=\"enable-notif-btn-${Math.random().toString(36).slice(2,8)}\">Habilitar</button>"
+   ]
   }
  ],
  "deps": [
@@ -703,6 +730,14 @@
    "restore": [
     "  ov.classList.add('open');",
     "  const done = ov.querySelector('#btn-resumen-done'); if (done) done.onclick = drv2DismissResumen;"
+   ]
+  },
+  {
+   "name": "PICKUP-HINT",
+   "kind": "slice3deps",
+   "parent": "STACKED-BRANCH",
+   "restore": [
+    "      + `<div class=\"action-zone\"><div class=\"slide-confirm pickup\" id=\"btn-pickup\"><div class=\"slide-fill\"></div><div class=\"slide-text\">Recogí las ${stacked2.length} bolsas</div><div class=\"slide-hint\">deslizá</div><div class=\"slide-thumb\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14M13 5l7 7-7 7\"/></svg></div></div></div>`;"
    ]
   }
  ]
