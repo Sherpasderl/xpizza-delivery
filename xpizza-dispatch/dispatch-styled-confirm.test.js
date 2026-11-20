@@ -100,4 +100,33 @@ function build() {
   ok('Esc resolves false and stops propagation');
 }
 
+// async onConfirm flow (§3/§6): the «do» button shows the busy label + disabled while the action runs,
+// closes + resolves true on success.
+{
+  const { styledConfirm, el, fire } = build();
+  let release; const action = () => new Promise((r) => { release = r; });
+  const p = styledConfirm({ title: 'T', body: 'B', confirmLabel: 'Cerrar sesión', busyLabel: 'Cerrando sesión…', onConfirm: action });
+  fire('styled-confirm-ok', 'click');   // starts the async flow — does not resolve yet
+  assert.equal(el('styled-confirm-ok').textContent, 'Cerrando sesión…', 'busy label shown while the action runs');
+  assert.equal(el('styled-confirm-ok').disabled, true, 'the do button is disabled while busy');
+  assert.equal(el('styled-confirm-cancel').disabled, true, 'cancel is disabled while busy');
+  assert.equal(el('styled-confirm-overlay').classList.contains('hidden'), false, 'stays open while busy');
+  release();
+  assert.equal(await p, true, 'resolves true after the action succeeds');
+  assert.equal(el('styled-confirm-overlay').classList.contains('hidden'), true, 'closes after success');
+  ok('async onConfirm: busy label + disabled while running; closes + resolves true on success');
+}
+
+// an onConfirm failure keeps the dialog OPEN and re-enables it (the action surfaces its own error).
+{
+  const { styledConfirm, el, fire } = build();
+  styledConfirm({ title: 'T', body: 'B', confirmLabel: 'Cerrar sesión', onConfirm: () => Promise.reject(new Error('net')) });
+  fire('styled-confirm-ok', 'click');
+  await new Promise((r) => setTimeout(r, 0));   // let the rejection settle
+  assert.equal(el('styled-confirm-overlay').classList.contains('hidden'), false, 'stays open on failure');
+  assert.equal(el('styled-confirm-ok').disabled, false, 're-enabled on failure');
+  assert.equal(el('styled-confirm-ok').textContent, 'Cerrar sesión', 'label restored on failure');
+  ok('async onConfirm: a failed action keeps the dialog open and re-enabled');
+}
+
 console.log(`dispatch-styled-confirm: OK (${n})`);

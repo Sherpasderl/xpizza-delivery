@@ -1818,6 +1818,19 @@ async function reactivateTestPush(){
 }
 
 // ── settings ──
+// §3 (#7): a confirm STEP before signing out — a pushed sheet inside Ajustes, so one stray tap can't drop
+// the session mid-shift. «Cancelar» / back returns to Ajustes; «Cerrar sesión» runs the existing sign-out.
+function openSignoutConfirm(){
+  openSheet(`
+    <div class="sh-nav">
+      <button class="back" type="button" data-settings="1" data-back="1" aria-label="Atrás">${IC_BACK}</button>
+      <h2 class="sh-h">¿Cerrar sesión?</h2>
+    </div>
+    <div class="panel pad" style="font-size:15px;color:var(--ink2)">Vas a salir de la Central en este teléfono. Para volver a entrar vas a necesitar tu correo y contraseña.</div>
+    <button class="btn btn-d" type="button" data-signout-commit="1" style="margin-top:0">Cerrar sesión</button>
+    <button class="btn btn-g" type="button" data-settings="1" data-back="1">Cancelar</button>
+  `);
+}
 function openSettings(){
   const sup = currentPushSupport();
   openSheet(`
@@ -1842,7 +1855,7 @@ function openSettings(){
 
 // ── delegated events ──
 document.addEventListener('click', (e) => {
-  const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],[data-chip],[data-tab],[data-settheme],[data-push],[data-testpush],[data-reactivate],[data-signout],[data-drvfocus],[data-donetoggle],[data-map],[data-back],[data-alerts],[data-alert-order],[data-alert-dismiss]');
+  const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],[data-chip],[data-tab],[data-settheme],[data-push],[data-testpush],[data-reactivate],[data-signout],[data-signout-commit],[data-settings],[data-drvfocus],[data-donetoggle],[data-map],[data-back],[data-alerts],[data-alert-order],[data-alert-dismiss]');
   if (!el) return;
   const ds = el.dataset;
 
@@ -1882,11 +1895,13 @@ document.addEventListener('click', (e) => {
   if (ds.push){ enableStaffPush(); return; }
   if (ds.testpush){ runTestPush(); return; }
   if (ds.reactivate){ reactivateTestPush(); return; }
-  if (ds.signout){
+  if (ds.signout){ sheetDir = 'push'; openSignoutConfirm(); return; }   // §3: confirm step, not an immediate sign-out
+  if (ds.signoutCommit){
     closeSheet();
     XPD.signOutUser().catch(() => toast('No se pudo cerrar sesión', true));
     return;
   }
+  if (ds.settings){ sheetDir = ds.back ? 'pop' : 'push'; openSettings(); return; }   // §3: back/Cancelar from the sign-out confirm returns to Ajustes
   if (ds.drvfocus){ showTab('mapa'); window.__focusDriverOnMap?.(ds.drvfocus); return; }
   if (ds.map){ closeSheet(); showTab('mapa'); window.__focusOrderOnMap?.(ds.map); return; }
 });

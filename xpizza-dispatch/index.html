@@ -2308,7 +2308,7 @@
   <div class="rail-av-menu" id="rail-av-menu" role="menu" aria-label="Cuenta" hidden>
     <div class="rail-av-email" id="rail-av-email"></div>
     <div class="rail-av-version" data-version-display></div>
-    <button class="rail-av-item" id="signout-btn" role="menuitem">Salir</button>
+    <button class="rail-av-item" id="signout-btn" role="menuitem">Cerrar sesión</button>
   </div>
 
   <!-- F2: topbar rebuilt to the mockup — title + search + tb-right (live · toggle · alerts · theme). The
@@ -2928,8 +2928,16 @@ $('login-btn').addEventListener('click', async () => {
 });
 
 $('signout-btn').addEventListener('click', async () => {
-  await XPD.signOutUser();
-  requestReload();   // PLAN §2.3: one-shot clean-path navigation (also reached via onAuth(null)); never a raw reload that could double-navigate
+  // §3 (#7): confirm before dropping the session mid-shift, through the generic styledConfirm.
+  await styledConfirm({
+    title: '¿Cerrar sesión?',
+    body: 'Vas a salir de la Central en este dispositivo. Para volver a entrar vas a necesitar tu correo y contraseña.',
+    confirmLabel: 'Cerrar sesión', cancelLabel: 'Cancelar', busyLabel: 'Cerrando sesión…',
+    onConfirm: async () => {
+      await XPD.signOutUser();
+      requestReload();   // PLAN §2.3: one-shot clean-path navigation (also reached via onAuth(null)); never a raw reload that could double-navigate
+    },
+  });
 });
 
 // ============================================================
@@ -5184,32 +5192,47 @@ $('recon-note-overlay').addEventListener('keydown', (e) => {
 // resolving a Promise<boolean>. Nothing operation-specific. Element-level focus-trapped: initial focus on
 // Cancel, own Tab trap, Esc = cancel with stopPropagation so the document arbiter never double-fires. Reused
 // for the Auto-asignar pause confirm; Cancelar pedido / Sacar de turno can adopt it later (noted for polish).
-let styledConfirmSettle = null, styledConfirmOpener = null;
+let styledConfirmSettle = null, styledConfirmOpener = null, styledConfirmFlow = null, styledConfirmBusy = false;
 function settleStyledConfirm(result) {
-  if (!styledConfirmSettle) return;
-  const done = styledConfirmSettle; styledConfirmSettle = null;
+  if (!styledConfirmSettle || styledConfirmBusy) return;   // never dismiss while a confirm's action is in flight
+  const done = styledConfirmSettle; styledConfirmSettle = null; styledConfirmFlow = null;
   $('styled-confirm-overlay').classList.add('hidden');
   const opener = styledConfirmOpener; styledConfirmOpener = null;
   if (opener && document.contains(opener)) { try { opener.focus(); } catch (_) {} }
   done(result);
 }
-function styledConfirm({ title, body, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', opener } = {}) {
-  settleStyledConfirm(false);   // a newer confirm supersedes any still-open one (resolves it false)
-  // Capture the trigger to restore focus to on dismiss. Callers whose trigger gets disabled while the
-  // dialog is open (e.g. the Auto-asignar toggle) pass it explicitly AND re-focus it after re-enabling,
-  // since focus() on a disabled element is a no-op (CTA #1b P2-1).
+// Generic styled confirm → Promise<boolean>. Optional async flow: pass onConfirm (+ busyLabel) and the «do»
+// button runs it with a disabled «…ando» state (like #1a's in-flight latch), closing on success and staying
+// open on failure so the action can surface its own error. Without onConfirm it is a plain yes/no.
+function styledConfirm({ title, body, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', opener, onConfirm, busyLabel } = {}) {
+  styledConfirmBusy = false; settleStyledConfirm(false);   // a newer confirm supersedes any still-open one
+  // Capture the trigger to restore focus to on dismiss (CTA #1b P2-1). A caller whose trigger gets disabled
+  // while the dialog is open passes it explicitly AND re-focuses it after re-enabling.
   styledConfirmOpener = opener || document.activeElement;
+  styledConfirmFlow = { onConfirm, busyLabel, confirmLabel };
   $('styled-confirm-title').textContent = title || '';
   $('styled-confirm-body').textContent = body || '';     // textContent — plain text, no HTML injection
-  $('styled-confirm-ok').textContent = confirmLabel;
-  $('styled-confirm-cancel').textContent = cancelLabel;
+  const okBtn = $('styled-confirm-ok'), cancelBtn = $('styled-confirm-cancel');
+  okBtn.textContent = confirmLabel; okBtn.disabled = false;
+  cancelBtn.textContent = cancelLabel; cancelBtn.disabled = false;
   $('styled-confirm-overlay').classList.remove('hidden');
   const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  $('styled-confirm-cancel').focus({ preventScroll: reduceMotion });   // default focus on the safe choice
+  cancelBtn.focus({ preventScroll: reduceMotion });   // default focus on the safe choice
   return new Promise((resolve) => { styledConfirmSettle = resolve; });
 }
 $('styled-confirm-cancel').addEventListener('click', () => settleStyledConfirm(false));
-$('styled-confirm-ok').addEventListener('click', () => settleStyledConfirm(true));
+$('styled-confirm-ok').addEventListener('click', async () => {
+  const flow = styledConfirmFlow;
+  if (flow && typeof flow.onConfirm === 'function') {
+    const okBtn = $('styled-confirm-ok'), cancelBtn = $('styled-confirm-cancel');
+    styledConfirmBusy = true; okBtn.disabled = true; cancelBtn.disabled = true;
+    if (flow.busyLabel) okBtn.textContent = flow.busyLabel;
+    try { await flow.onConfirm(); styledConfirmBusy = false; settleStyledConfirm(true); }
+    catch (_) { styledConfirmBusy = false; okBtn.disabled = false; cancelBtn.disabled = false; okBtn.textContent = flow.confirmLabel; }   // keep open; the action surfaced its own error
+    return;
+  }
+  settleStyledConfirm(true);
+});
 $('styled-confirm-overlay').addEventListener('click', (e) => { if (e.target === $('styled-confirm-overlay')) settleStyledConfirm(false); });
 $('styled-confirm-overlay').addEventListener('keydown', (e) => {
   if (!styledConfirmSettle) return;
