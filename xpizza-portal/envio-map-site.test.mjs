@@ -601,3 +601,16 @@ test('#237 a drag COMMITTED off the map (no click follows its release) does not 
   env.fire('mousedown', P(0)); env.fire('mouseup', P(0)); env.fire('click', P(0));
   assert.equal(env.kinds()[env.kinds().length - 1], 'finish', '🔴 the first click on vertex 1 after a drag released off the map acts');
 });
+// Codex #238: a drag COMMITTED off the map, then a press on EMPTY map space while drawing ⇒ that first click adds its point (the stale
+// suppression is cleared at the START of every map press, before the handle check)
+test('#238 a drag released OFF the map, then a click on EMPTY space while drawing ⇒ the first click adds its point', async () => {
+  const env = panEnv();
+  boot({ win: env.E.win, doc: env.E.doc, loadMaps: env.E.loadMaps }); await tick();
+  env.E.fromParent(v3With(DRAW())); await tick();
+  for (const q of [P(0), P(1), P(2)]) env.fire('click', q);
+  env.fire('mousedown', P(1)); env.fire('mousemove', { lat: P(1).lat + 0.002, lng: P(1).lng }); env.fireWin('pointerup'); await tick();
+  const n = env.kinds().filter((k) => k === 'draft_points').length;
+  const empty = { lat: 15.51, lng: -88.02 };
+  env.fire('mousedown', empty); env.fire('mouseup', empty); env.fire('click', empty);
+  assert.equal(env.kinds().filter((k) => k === 'draft_points').length, n + 1, '🔴 the first click on empty space adds its point');
+});

@@ -284,11 +284,12 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
     // first move, so the old switch — after 4 px of mousemove — never came: the real-browser trace). gestureHandling covers touch as well as
     // the mouse. A press elsewhere never touches it.
     st.map.addListener('mousedown', (e) => {
+      st.justDragged = false;   // Codex #237 / #238: EVERY map press starts clean — a stale suppression never swallows the next click, on a handle or not
       const v = ctl.view();
       if (!e || !e.latLng || !v || !v.editable) return;
       const i = vertexAt(e.latLng);
       if (i === -1) return;
-      st.press = { i, at: pxOf(e.latLng) }; st.justDragged = false;   // Codex #237 P2-1: a new press starts clean (no stale click suppression)
+      st.press = { i, at: pxOf(e.latLng) };
       holdPan();
     });
     st.map.addListener('mousemove', (e) => {
