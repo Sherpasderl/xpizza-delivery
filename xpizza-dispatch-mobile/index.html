@@ -2056,7 +2056,7 @@ window.__focusOrderOnMap = async (orderId) => {
   if (!mapReady) return;
   clearFocus();
   const dt = STORE.tasks[`${orderId}_delivery`];
-  const order = STORE.orders[orderId];
+  const order = STORE.orders[orderId] || STORE.scheduled[orderId];   // a scheduled (Programado) order lives in STORE.scheduled — resolve it so «Ver en mapa» focuses its destination/hub
   $('ver-todos')?.classList.remove('hidden');
   if (order?.order_type === 'pickup') {
     const hub = HUBS[order.restaurant_id] || HUBS.x_pizza;
