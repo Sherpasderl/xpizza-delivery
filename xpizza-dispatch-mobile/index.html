@@ -2184,7 +2184,7 @@ function mdraListLive() { return MDRA.view === 'list' && !MDRA.dialogOpen; }
 function mdraEnsure() {
   if ($('mdra-sheet')) return;
   const st = document.createElement('style');
-  st.textContent = `#mdra-sheet{position:fixed;inset:0;z-index:999;background:var(--bg,#1c2027);display:none;flex-direction:column;overflow:auto}
+  st.textContent = `#mdra-sheet{position:fixed;inset:0;z-index:999;background:var(--bg,#1c2027);color:#f1effa;display:none;flex-direction:column;overflow:auto}
   #mdra-sheet.open{display:flex}
   .mdra-open{background:var(--surface-2,#2d323a);border:1px solid var(--border,rgba(255,255,255,.12));color:var(--text,#f2f4f6);font-size:12px;font-weight:600;padding:7px 12px;border-radius:9px}
   .mdra-top{display:flex;align-items:center;gap:10px;padding:16px;border-bottom:1px solid var(--border-soft,rgba(255,255,255,.07));position:sticky;top:0;background:var(--bg,#1c2027)}

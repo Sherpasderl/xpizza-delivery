@@ -107,12 +107,16 @@ ok('P2-2: map markers read the AA-dark sand/sky tokens, no amber literal');
   assert.ok(sheetBg, 'located the dark-always mdra sheet background');
   const pendFg = (mob.match(/\.mdra-pill\.pend\{[^}]*color:(#[0-9a-f]{6})\}/i) || [])[1];
   const suspFg = (mob.match(/\.mdra-act\.warn\{[^}]*color:(#[0-9a-f]{6})/i) || [])[1];
-  for (const [name, fg] of [['pending pill', pendFg], ['«Suspender» button', suspFg]]) {
+  // SBS also caught: the sheet inherited the theme-aware body color (var(--ink)), so the driver names + title
+  // rendered DARK-on-dark in the light OS theme. The dark-always sheet must declare its OWN dark-scheme text color.
+  const sheetColor = (mob.match(/#mdra-sheet\{[^}]*color:(#[0-9a-f]{6})/i) || [])[1];
+  assert.ok(sheetColor, 'the mdra sheet declares an explicit dark-scheme text color (so inherited text — names, title — is legible in BOTH OS themes, not inherited from the theme-aware --ink)');
+  for (const [name, fg] of [['pending pill', pendFg], ['«Suspender» button', suspFg], ['sheet text (names/title)', sheetColor]]) {
     assert.ok(fg, `located the ${name} foreground`);
     const r = ratio(fg, sheetBg);
     assert.ok(r >= 4.5, `${name}: ${r.toFixed(2)}:1 over the mdra sheet ≥ 4.5:1 (both OS themes — sheet bg is theme-independent)`);
   }
-  ok('P2-1 cell: mdra pending pill + «Suspender» ≥ 4.5:1 on the dark-always sheet in both OS themes');
+  ok('P2-1 cell: mdra pending pill + «Suspender» + sheet text ≥ 4.5:1 on the dark-always sheet in both OS themes');
 }
 
 console.log(`dispatch-no-amber: OK (${n})`);
