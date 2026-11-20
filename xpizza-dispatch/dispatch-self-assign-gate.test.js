@@ -28,23 +28,30 @@ const fnSrc = (src, name) => {
 {
   const src = fnSrc(html, 'confirmAssignOverride');
   assert.ok(src, 'confirmAssignOverride is a top-level function');
+  // EXACT prompt text (Codex #227 P3): assert.equal on the whole message, so a mutant that appends to a
+  // prompt (e.g. + ' MUTATED COPY') produces a different argument and dies here.
+  const MSG = {
+    full: 'Este repartidor ya tiene 2 pedidos (al límite). ¿Asignar de todas formas?',
+    enRoute: 'Este repartidor ya salió a entregar (en camino). ¿Asignar de todas formas?',
+    unreachable: 'Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?',
+  };
   const calls = [];
   const make = () => new Function('confirm', `${src}\n; return confirmAssignOverride;`)((msg) => { calls.push(msg); return calls._ret; });
 
   calls.length = 0; calls._ret = false;
   assert.equal(make()({ full: true, enRoute: false, unreachable: false }), false, 'decline on full → does not proceed');
-  assert.equal(calls.length, 1); assert.match(calls[0], /2 pedidos/, 'full message');
+  assert.equal(calls.length, 1); assert.equal(calls[0], MSG.full, 'exact full-driver prompt');
 
   calls.length = 0; calls._ret = true;
   assert.equal(make()({ full: true }), true, 'accept on full → proceeds');
 
   calls.length = 0; calls._ret = false;
   make()({ enRoute: true });
-  assert.match(calls[0], /en camino/, 'en-route message');
+  assert.equal(calls[0], MSG.enRoute, 'exact en-route prompt');
 
   calls.length = 0; calls._ret = false;
   make()({ unreachable: true });
-  assert.match(calls[0], /notificaciones/, 'unreachable message');
+  assert.equal(calls[0], MSG.unreachable, 'exact unreachable prompt');
 
   calls.length = 0; calls._ret = false;
   assert.equal(make()({ full: false, enRoute: false, unreachable: false }), true, 'no flag → proceeds without asking');

@@ -287,13 +287,18 @@ const pickerJs = html.slice(openIdx, closeEnd);
   const gStart = html.indexOf('function confirmAssignOverride(');
   const gate = html.slice(gStart, html.indexOf('function classifyDriverForAssign(', gStart));
   assert.ok(gStart > -1 && gate, 'confirmAssignOverride is present');
-  assert.ok(gate.indexOf(MSG.full) > -1 && gate.indexOf(MSG.full) < gate.indexOf(MSG.enRoute)
-    && gate.indexOf(MSG.enRoute) < gate.indexOf(MSG.unreachable),
-    'confirmAssignOverride keeps the full → en-route → unreachable priority');
-  assert.match(gate, /if \(full\) return confirm\(/);
-  assert.match(gate, /if \(enRoute\) return confirm\(/);
-  assert.match(gate, /if \(unreachable\) return confirm\(/);
-  ok('override cascade preserved in the shared confirmAssignOverride (messages + priority; base-sanity it pre-existed inline)');
+  // EXACT prompt-argument freeze (Codex #227 P3): the WHOLE confirm(...) statement, terminator included, so
+  // appending text to a message — e.g. + ' MUTATED COPY' — breaks the match and the mutant dies here.
+  const stmt = {
+    full: `if (full) return confirm('${MSG.full}');`,
+    enRoute: `if (enRoute) return confirm('${MSG.enRoute}');`,
+    unreachable: `if (unreachable) return confirm('${MSG.unreachable}');`,
+  };
+  for (const [k, s] of Object.entries(stmt)) assert.ok(gate.includes(s), `confirmAssignOverride freezes the EXACT ${k} prompt statement`);
+  assert.ok(gate.indexOf(stmt.full) > -1 && gate.indexOf(stmt.full) < gate.indexOf(stmt.enRoute)
+    && gate.indexOf(stmt.enRoute) < gate.indexOf(stmt.unreachable),
+    'full → en-route → unreachable priority preserved');
+  ok('override cascade frozen EXACTLY in the shared confirmAssignOverride (whole prompt statements + priority; base-sanity it pre-existed inline)');
 }
 
 // The picker click LISTENER now routes through the shared gate, then assigns. Base had the inline cascade.
