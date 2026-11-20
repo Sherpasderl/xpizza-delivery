@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { makeBackend, installSwitches, s4Snapshot } from './real-backend.mjs';
 
 // 5f's S4 server (feat/structure-s4-5f): switch to the repo copy once both ride one train (the MC_REF pattern)
-export const S4_REF = '3f8017d02';   // 5f 11-13 tip: subcat renames by MEMBERS (290fa5baa) + choicesGeneric → row.app_only (437ce1ef4) + label_too_long (66b2b0239)
+export const S4_REF = 'f58655d67';   // 5f 11-13 tip: subcat renames by MEMBERS (290fa5baa) + choicesGeneric → row.app_only (437ce1ef4) + label_too_long (66b2b0239)
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
 const freq = s4Snapshot(S4_REF);
 const SW = { choiceEdit: false, choicesGeneric: null };
