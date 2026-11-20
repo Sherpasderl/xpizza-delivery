@@ -9238,7 +9238,7 @@
     "site": "await XPD.arriveAtRestaurant(currentUser.uid);",
     "siteSha": "0f8cf0137e7d9e23868daa9b056e8ebffe93e608e96f0c33e7a483bde9735f2a",
     "scope": "xpizza-driver/index.html<script@0>#<top>>anon",
-    "scopeSha": "c21f7a9c592df8e4d64d3d5ad0895d44aaa2bd39321c74e7d03e675132e3957d"
+    "scopeSha": "ce3466e83202d5e1a9b67bf3f70e2c123f74f36c9b9cfa070c1abc0ee38fd42c"
    },
    "guards": [
     {

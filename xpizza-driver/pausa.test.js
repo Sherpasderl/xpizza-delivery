@@ -51,7 +51,7 @@ function boot({ since = FIXED_NOW - 155000, uid = 'drv', status = 'on_break', ac
   let writes = [], toasts = 0, renders = 0;
   const fbUpdate = (ref, val) => { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); writes.push({ path: ref.path, val, resolve: res, reject: rej }); return p; };
   const body = PAUSE_SVG_LINE + '\n' + PLAY_SVG_LINE + '\n' + INFO_SVG_LINE + '\n'
-    + 'let drv2PauseWriteKind = null, drv2PausePendingIntent = false; let authGen = 1; let allTasks = {}, allOrders = {};\n'
+    + 'const DRV2_ENDSHIFT_SLIDE = false; let drv2PauseWriteKind = null, drv2PausePendingIntent = false; let authGen = 1; let allTasks = {}, allOrders = {};\n'
     + 'function renderActiveAndQueue(){ _render(); }\n'
     + liftFn('drv2PauseElapsed') + '\n' + liftFn('drv2PauseRingHtml') + '\n'
     + liftFn('drv2IsPaused') + '\n' + liftFn('drv2WritePauseState') + '\n' + liftFn('drv2PauseShift') + '\n' + liftFn('renderPausa') + '\n'

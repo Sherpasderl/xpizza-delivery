@@ -361,6 +361,8 @@
 #idle-state .pausa-resume:active { background: #24488C; }
 #idle-state .pausa-resume:disabled { opacity: .6; }
 #idle-state .pausa-resume svg { width: 20px; height: 20px; }   /* Codex r1 #6: prototype .btn svg is 20px */
+#idle-state .pausa-endshift { appearance: none; border: 0; background: none; width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px; font-family: var(--fb); font-weight: 600; font-size: 13px; color: var(--text-soft, #546078); min-height: 40px; padding: 0; cursor: pointer; }   /* OPTION A (owner 2026-11-19): the quiet secondary paused-screen end-shift = the app's .problema-btn ghost pattern */
+#idle-state .pausa-endshift svg { width: 16px; height: 16px; }
 /* the «Pausar» entry in the idle status bar (header top-right) — the prototype ib(I.pause,…): an icon-only 34px
    circle, created on demand by renderStatusBar («Pausar» is the aria-label/title, not visible text). */
 .status-bar .sb-pausar { margin-left: auto; appearance: none; width: 34px; height: 34px; flex: none; border-radius: 50%; display: grid; place-items: center; color: var(--text-soft, #546078); background: var(--surface, #fff); border: 1px solid rgba(20,30,50,.1); cursor: pointer; padding: 0; }
@@ -2901,7 +2903,7 @@ function showCierreRechazado(attemptCash) {
     footHtml: `<button class="rc-retry cuadre-reintentar" type="button">Reintentar cierre</button>`
       + `<button class="rc-volver cuadre-volver" type="button">Volver al turno</button>`,
   });
-  screen.classList.add('open');
+  setCuadreOpen(true);
 }
 
 // SLICE3:OFFER-TAKEOVER — the cross-hub 2nd-order OFFER takeover (prototype S.oferta). Wires the offer card's accept
@@ -3460,12 +3462,13 @@ function drv2SessionTeardown() {
 const DRV2_PAUSE_ENABLED = false;
 const DRV2_PAUSE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5" width="4" height="14" rx="1.3"/><rect x="13.5" y="5" width="4" height="14" rx="1.3"/></svg>';
 const DRV2_PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg>';
+const DRV2_POWER_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M6.6 6.6a8 8 0 1 0 10.8 0"/></svg>';   // = stacked-view POWER_SVG (the app's own «Terminar turno» glyph), for the paused-screen end-shift under DRV2_ENDSHIFT_SLIDE
 const DRV2_INFO_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01" stroke-linecap="round"/></svg>';   // prototype I.info (the «pedido en mano» note)
 // «Terminar turno» idle slide (owner 2026-10-27) — mirrors the offshift «Iniciar turno» slide, at the bottom of
 // disponible; the top-right duty toggle goes away when it is live. Runs the SAME end-shift path (handleEndShift → the
 // O4 «Todavía tenés N pedido(s) en camino» sheet when orders are in hand → cuadre). DARK until the gate + Codex pass;
 // false keeps today's behavior (header toggle, no slide) → no regression on the live app.
-const DRV2_ENDSHIFT_SLIDE = false;
+const DRV2_ENDSHIFT_SLIDE = true;
 const DRV2_SLIDE_ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>';
 // elapsed since break_since (server ms) → «M:SS» under an hour, «H:MM» over; tabular. Refreshed on the 30 s status tick.
 function drv2PauseElapsed(sinceMs) {
@@ -3498,7 +3501,9 @@ function renderPausa(host, helpLink, arriveBtn, offerExpired) {
     + '<div class="pr-card pausa-card"><div class="pr"><span class="pr-ic">' + DRV2_INFO_SVG + '</span>'
     + '<div class="pr-tx"><div class="pr-t">Si tenés un pedido en mano</div><div class="pr-d">La pausa empieza al entregarlo; no corta nada en curso</div></div></div></div>'
     + '</div>'
-    + '<div class="pausa-foot"><button class="pausa-resume" id="btn-reanudar">' + DRV2_PLAY_SVG + 'Reanudar turno</button></div>'
+    + '<div class="pausa-foot"><button class="pausa-resume" id="btn-reanudar">' + DRV2_PLAY_SVG + 'Reanudar turno</button>'
+    + (DRV2_ENDSHIFT_SLIDE ? '<button class="pausa-endshift" id="btn-terminar-pausa" type="button">' + DRV2_POWER_SVG + 'Terminar turno</button>' : '')   // OPTION A: with the slide live the header toggle is hidden, so end-shift lives here while paused
+    + '</div>'
     + '<span id="disp-preserve" style="display:none"></span>';
   const pres = $('disp-preserve');
   if (pres) { if (helpLink) pres.appendChild(helpLink); if (arriveBtn) pres.appendChild(arriveBtn); if (idleIcon) pres.appendChild(idleIcon); if (idleMsg) pres.appendChild(idleMsg); if (idleSub) pres.appendChild(idleSub); }
@@ -3511,6 +3516,26 @@ function renderPausa(host, helpLink, arriveBtn, offerExpired) {
     if (!currentUser || btn.disabled || drv2PauseWriteKind !== null) return;
     drv2WritePauseState('resume', btn);
   };
+  // OPTION A (owner 2026-11-19): with the end-shift slide live, the header duty toggle is hidden (renderStatusBar), so
+  // the paused screen carries the one end-shift affordance — a quiet secondary tap under «Reanudar turno». It runs the
+  // SAME end-shift path (handleEndShift → O4 → cuadre) behind the slide's own guards (shiftBusy double-fire, mount-
+  // replaced / session-changed, effectively-on-shift); handleEndShift itself ignores a re-entry while the cuadre is
+  // open (P2-2), so a second tap can't restart the close. Dark when DRV2_ENDSHIFT_SLIDE is off → the control is absent
+  // and the header toggle stays visible, so a paused driver is never left without a clock-out.
+  if (DRV2_ENDSHIFT_SLIDE) {
+    const endBtn = $('btn-terminar-pausa');
+    const endGen = (typeof authGen !== 'undefined') ? authGen : null;
+    const endUid = currentUser && currentUser.uid;
+    if (endBtn) endBtn.onclick = async () => {
+      if (shiftBusy) return;
+      if (!document.body.contains(endBtn)) return;                                                             // mount replaced / detached
+      if ((typeof authGen !== 'undefined' && authGen !== endGen) || ((currentUser && currentUser.uid) || null) !== endUid) return;   // session changed
+      const effectiveActive = optimisticShift !== null ? optimisticShift : !!(driverState && driverState.active);
+      if (!effectiveActive) return;                                                                            // only end a shift that is effectively ON
+      shiftBusy = true;
+      try { await handleEndShift(); } finally { shiftBusy = false; }
+    };
+  }
 }
 // Pause state (Codex r1 #1): the RTDB write updates the local feed OPTIMISTICALLY before the server acks, so neither
 // the pausa screen nor the «En pausa» header may trust driverState.status alone. drv2PauseWriteKind tracks an in-flight
@@ -5026,8 +5051,15 @@ async function handleStartShift() {
 
 // Clock-out now goes through the cuadre (cash handoff) screen instead of a
 // confirm() dialog. handleEndShift just shows it; the buttons drive the rest.
+/* ===== SLICE3:ENDSHIFT-REENTRY-GUARD:START — P2-2 (Codex #190): guard handleEndShift against a RE-ENTRY while the cuadre is open; a REPLACE region whose restore is the frozen 2-line opening at 07e5ab38, so the single end-shift choke point carries the guard without un-freezing the function (6b: covers the slide keyboard, a stacked stop-header tap, a double duty-toggle). ===== */
 async function handleEndShift() {
   if (!currentUser) return;
+  // A cierre is already open — ignore a RE-ENTRY so it can't restart the close from under the open cuadre
+  // (Enter-then-Space / hold-Enter on the idle slide, a stacked stop-header tap, a double duty-toggle). Re-entry here
+  // would bump closeGen and clear closeInFlight mid-submit; «Reintentar cierre» re-opens via showCuadre directly
+  // (not handleEndShift), so this never blocks a legitimate retry.
+  if (document.getElementById('cuadre-screen')?.classList.contains('open')) return;   // null-safe: handleEndShift is lifted into harnesses that may omit the cuadre DOM; `$` is not in those scopes
+/* ===== SLICE3:ENDSHIFT-REENTRY-GUARD:END ===== */
   // O4: if the driver still has orders OUT FOR DELIVERY ("en camino"), confirm before the cuadre. N = 0 falls through
   // with NO await reached → the zero-delivery clock-out runs SYNCHRONOUSLY, byte-for-byte the base path. Cancelar /
   // Esc / backdrop stays on shift and writes NOTHING; Terminar igual continues to the cuadre exactly as today.
@@ -5193,6 +5225,16 @@ function cuadreConfirmFootHtml() {
     + `<button class="rc-volver cuadre-volver" type="button">Volver al turno</button>`;
 }
 
+// P2-2 (Codex #190): the cuadre is a MODAL. While it is open the shift board underneath takes NO pointer, keyboard or
+// focus — so the idle «Terminar turno» slide can't be refired from under the cierre (Enter-then-Space / hold-Enter) and
+// nothing hidden stays focusable. ONE source of truth for "the cierre is open": toggles the overlay class AND the
+// board's inert + aria-hidden together. #cuadre-screen is a SIBLING of #screen-onshift, so inerting the board never
+// disables the cuadre's own controls.
+function setCuadreOpen(open) {
+  $('cuadre-screen').classList.toggle('open', open);
+  const board = $('screen-onshift');
+  if (board) { board.inert = open; board.setAttribute('aria-hidden', open ? 'true' : 'false'); }
+}
 function showCuadre() {
   const screen = $('cuadre-screen');
   const ident = shiftIdentity();
@@ -5211,13 +5253,13 @@ function showCuadre() {
       bodyHtml: `<div class="receipt"><div class="rc-title">Cierre de turno</div><div class="rc-date">${dateStr}</div><hr class="dash"><div class="rc-note">${note}</div></div>`,
       footHtml: `<button class="rc-volver cuadre-volver" type="button">Volver al turno</button>`,   // no slide until the receipt is real
     });
-    screen.classList.add('open');
+    setCuadreOpen(true);
     return;
   }
 
   screen._ident = ident;
   renderCuadreReceipt({ uid: currentUser.uid, shiftId: ident.shiftId, start: ident.start });
-  screen.classList.add('open');
+  setCuadreOpen(true);
 }
 
 // THE single source for the receipt: compute the cash from the CURRENT settled orders, render it into the full
@@ -5461,7 +5503,7 @@ function identityMatches(bound) {
 //                        latch and re-opens the NORMAL receipt (showCuadre recomputes from current orders, so a retry
 //                        submits the current amount — exactly the prototype's «Reintentar cierre» → cuadre).
 $('cuadre-screen').addEventListener('click', (e) => {
-  if (e.target.closest('.cuadre-volver')) { closeGen++; closeInFlight = false; $('cuadre-screen').classList.remove('open'); return; }
+  if (e.target.closest('.cuadre-volver')) { closeGen++; closeInFlight = false; setCuadreOpen(false); render(); return; }   // P2-1 (Codex #190): render() rebuilds the idle board so a completed end-shift slide isn't left latched/dead-to-touch
   if (e.target.closest('.cuadre-reintentar')) { closeInFlight = false; showCuadre(); return; }
 });
 
@@ -5483,7 +5525,7 @@ async function onCuadreConfirm(slideGen) {
   const openedUnder = $('cuadre-screen')._ident;
   if (!ident.valid || !openedUnder || openedUnder.shiftId !== ident.shiftId) {
     toast('El turno cambió — volvé a abrir el cierre', 'error');
-    $('cuadre-screen').classList.remove('open');
+    setCuadreOpen(false);
     return;
   }
   const bound = { uid: currentUser.uid, shiftId: ident.shiftId, start: ident.start };
@@ -5505,7 +5547,7 @@ async function onCuadreConfirm(slideGen) {
     if (!settled) { closeInFlight = false; toast(BLOCKED_CLOSE_TEXT, 'error'); refreshOpenCashSurfaces(); return; }   // re-render → fresh slide
   }
   // P1-3: the shift may have changed while we waited — re-validate before touching money.
-  if (!identityMatches(bound)) { closeInFlight = false; toast('El turno cambió — volvé a abrir el cierre', 'error'); $('cuadre-screen').classList.remove('open'); return; }
+  if (!identityMatches(bound)) { closeInFlight = false; toast('El turno cambió — volvé a abrir el cierre', 'error'); setCuadreOpen(false); return; }
 
   // §6/BC1: re-check COMBINED feed readiness at confirm time. If the feed re-synced (a reconnect dropped it to
   // loading) or a just-delivered order is mid-handoff, the receipt could undercount — do NOT finalize; stay on
@@ -5544,7 +5586,7 @@ async function onCuadreConfirm(slideGen) {
     if (!identityMatches(bound)) { toast('El turno cambió — no se cerró el turno.', 'error'); return; }
     shiftBusy = true;
     try {
-      $('cuadre-screen').classList.remove('open');
+      setCuadreOpen(false);
       optimisticShift = false; render();
       const closedOk = await finalizeEndShift();   // ordinary clock-out via the existing endDriverShift callable
       if (closedOk && authGen === submitAuthGen) showCerrado(cash, bound.start, closedAt, earnedAtClose);   // «Turno cerrado» ONLY on a clean clock-out of THIS still-current session (never on the revert path, never after an auth change)

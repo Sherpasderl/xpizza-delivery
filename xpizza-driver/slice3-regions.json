@@ -601,6 +601,14 @@
   {
    "name": "GANANCIAS-STAY",
    "kind": "insert"
+  },
+  {
+   "name": "ENDSHIFT-REENTRY-GUARD",
+   "kind": "replace",
+   "restore": [
+    "async function handleEndShift() {",
+    "  if (!currentUser) return;"
+   ]
   }
  ],
  "deps": [

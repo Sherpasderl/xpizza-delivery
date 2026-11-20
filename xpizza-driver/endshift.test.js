@@ -23,9 +23,25 @@ function liftFn(name) {
   throw new Error('unbalanced ' + name);
 }
 const ARROW_LINE = SCRIPT.match(/const DRV2_SLIDE_ARROW = '[^']*';/)[0];
+// Lift a top-level statement (the delegated #cuadre-screen click listener) from its start marker through its own
+// closing `\n});`. Its inner `if (…) { … }` branches are single-line, so the first `\n});` is the listener's close.
+function liftStmt(startMarker) {
+  const s = SCRIPT.indexOf(startMarker); assert.notEqual(s, -1, startMarker + ' not found');
+  const e = SCRIPT.indexOf('\n});', s); assert.notEqual(e, -1, 'no close for ' + startMarker);
+  return SCRIPT.slice(s, e + 4);
+}
 
 let passed = 0;
-const t = (name, fn) => { try { fn(); passed += 1; } catch (e) { console.error('✗ ' + name); throw e; } };
+// P3 (Codex #190): the wrapper must AWAIT async cells — a prior version called fn() without awaiting, so a rejection
+// or a post-await assertion inside an async cell never failed the suite. Register, then run sequentially under await.
+const _tests = [];
+const t = (name, fn) => { _tests.push([name, fn]); };
+
+// ---- Go-live gate (owner 2026-10-27 YES to the slide; owner chose Option A; INVERTED at the flip, read FROM SOURCE) ----
+t('production DRV2_ENDSHIFT_SLIDE is true (live) — read from the index.html source, not a supplied flag', () => {
+  assert.match(SCRIPT, /const DRV2_ENDSHIFT_SLIDE = true;/, 'the shipped constant is true (the «Terminar turno» slide + Option A are live); reverting it to false in source → RED (the go-live gate)');
+  assert.doesNotMatch(SCRIPT, /const DRV2_ENDSHIFT_SLIDE = false;/, 'no longer shipped dark');
+});
 
 // ---- renderDisponible: the slide + its wiring ----
 function bootDisp({ enabled = true, status = 'available', active = true, shiftBusy = false } = {}) {
@@ -114,4 +130,145 @@ t('dark: the duty toggle is NOT hidden (today behavior unchanged)', () => {
   assert.ok(!h.$('duty-toggle-on').classList.contains('hidden'), 'dark → the header toggle stays visible');
 });
 
+// ---- renderPausa: the Option A paused-screen end-shift (owner 2026-11-19) ----
+// With the slide live the header duty toggle is hidden (the two cells above), so the paused screen must carry the one
+// end-shift affordance — a quiet secondary «Terminar turno» under «Reanudar turno». Drives the REAL renderPausa.
+function bootPausa({ enabled = true, active = true, shiftBusy = false, paused = true } = {}) {
+  const dom = new JSDOM('<!doctype html><html><body><div id="idle-state">'
+    + '<div class="idle-check" id="idle-icon"></div><div class="idle-msg" id="idle-msg">m</div><div class="idle-sub" id="idle-sub">s</div>'
+    + '</div></body></html>', { url: 'https://driver.test/', pretendToBeVisual: true });
+  const { document } = dom.window;
+  const $ = (id) => document.getElementById(id);
+  let endCalls = 0;
+  const driverState = { status: paused ? 'on_break' : 'available', active, break_since: Date.now() - 60000, last_ping: Date.now() };
+  const body =
+    'const DRV2_ENDSHIFT_SLIDE = ' + enabled + ';\n'
+    + 'const DRV2_PAUSE_SVG = ""; const DRV2_INFO_SVG = ""; const DRV2_PLAY_SVG = ""; const DRV2_POWER_SVG = "<svg data-power=\\"1\\"></svg>";\n'
+    + 'let shiftBusy = ' + shiftBusy + '; let authGen = 1; let optimisticShift = null; let drv2PauseWriteKind = null;\n'
+    + 'function drv2PauseElapsed(){ return "0:00"; } function drv2PauseRingHtml(){ return ""; }\n'
+    + 'function drv2WritePauseState(){}\n'
+    + 'async function handleEndShift(){ _end(); }\n'
+    + liftFn('renderPausa') + '\n'
+    + 'return { renderPausa, endTap: () => { const b = document.getElementById("btn-terminar-pausa"); return b && b.onclick(); } };';
+  const names = ['document', '$', 'driverState', 'currentUser', '_end'];
+  const api = (new Function(...names, body))(document, $, driverState, { uid: 'drv' }, () => { endCalls++; });
+  return { api, $, host: $('idle-state'), get endCalls() { return endCalls; } };
+}
+t('live: the paused screen shows a quiet secondary «Terminar turno» under «Reanudar turno» (Option A)', () => {
+  const h = bootPausa({ enabled: true });
+  h.api.renderPausa(h.host);
+  const resume = h.$('btn-reanudar'), end = h.$('btn-terminar-pausa');
+  assert.ok(resume && /Reanudar turno/.test(resume.textContent), 'the primary «Reanudar turno» is present');
+  assert.ok(end, 'the secondary «Terminar turno» is present (the invariant: slide ON → a paused driver always has an end-shift path)');
+  assert.ok(end.classList.contains('pausa-endshift'), 'it uses the quiet ghost pattern (.pausa-endshift)');
+  assert.match(end.textContent, /Terminar turno/, 'the label');
+  assert.ok(end.closest('.pausa-foot') && end.closest('.pausa-foot') === resume.closest('.pausa-foot'), 'it sits in the pausa footer beside «Reanudar turno»');
+});
+t('dark: DRV2_ENDSHIFT_SLIDE off → NO paused-screen «Terminar turno» (the header duty toggle is still the clock-out)', () => {
+  const h = bootPausa({ enabled: false });
+  h.api.renderPausa(h.host);
+  assert.ok(!h.$('btn-terminar-pausa'), 'no paused end-shift control while dark');
+  assert.ok(!/Terminar turno/.test(h.host.innerHTML), 'no end-shift copy while dark');
+});
+t('live: tapping the paused «Terminar turno» runs the SAME end-shift path (handleEndShift → O4 → cuadre)', async () => {
+  const h = bootPausa({ enabled: true, active: true });
+  h.api.renderPausa(h.host);
+  await h.api.endTap();
+  assert.equal(h.endCalls, 1, 'the tap reaches handleEndShift once');
+});
+t('guards: shiftBusy OR not-effectively-on-shift → the paused end-shift tap is a no-op (mirrors the slide)', async () => {
+  const busy = bootPausa({ enabled: true, active: true, shiftBusy: true });
+  busy.api.renderPausa(busy.host);
+  await busy.api.endTap();
+  assert.equal(busy.endCalls, 0, 'shiftBusy → no end-shift (no double-fire)');
+  const off = bootPausa({ enabled: true, active: false });   // paused but the shift is not effectively active
+  off.api.renderPausa(off.host);
+  await off.api.endTap();
+  assert.equal(off.endCalls, 0, 'not effectively on-shift → no end-shift');
+});
+
+// ---- renderDisponible + attachSlideConfirm + handleEndShift: the REAL gesture + handler (Codex #190 P3) ----
+// Replaces the stubbed ON-path proof with the target's real slide, real entry handler (doEndShift → handleEndShift →
+// O4 → cuadre) and real #cuadre-screen «Volver» listener — modeled on the reviewer's own repro. getBoundingClientRect
+// is mocked (jsdom returns 0); a drag is mousedown → mousemove past the 0.85 threshold → mouseup; showCuadre counts opens.
+function bootSlide({ active = true } = {}) {
+  const dom = new JSDOM('<!doctype html><html><body>'
+    + '<div id="screen-onshift"><div id="idle-state"></div></div>'
+    + '<div id="cuadre-screen"><button class="cuadre-volver" type="button">Volver al turno</button></div>'
+    + '</body></html>', { url: 'https://driver.test/', pretendToBeVisual: true });
+  const { document } = dom.window;
+  const W = dom.window;
+  const $ = (id) => document.getElementById(id);
+  const ICONS = new Proxy({}, { get: () => '' });
+  const driverState = { status: 'available', active, last_ping: Date.now() };
+  const escapeHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const body =
+    'const DRV2_ENDSHIFT_SLIDE = true, DRV2_PAUSE_ENABLED = false;\n'
+    + ARROW_LINE + '\n'
+    + 'let drv2SoloCancel = null, optimisticShift = null, shiftBusy = false, authGen = 1, slidingEl = null, renderPending = false, closeGen = 0, closeInFlight = false;\n'
+    + 'const currentUser = { uid: "a" }, allTasks = {}, allOrders = {};\n'
+    + 'const XPD = { getDriverOrders: () => [], isStalePing: () => false, RESTAURANT: {} };\n'
+    + 'let NAVP_ICONS = {}; function navBtnHtml(){ return ""; } function drv2ReadNavPref(){ return "Waze"; }\n'
+    + 'function renderPausa(){} function renderSoloCancel(){} function drv2GetReturnTarget(){ return null; } function drv2ClearReturnTarget(){}\n'
+    + 'function toast(){}\n'
+    + 'let opens = 0; function showCuadre(){ opens += 1; setCuadreOpen(true); }\n'
+    + 'function render(){ renderDisponible(); }\n'
+    + liftFn('setCuadreOpen') + '\n'
+    + liftFn('renderDisponible') + '\n'
+    + liftFn('attachSlideConfirm') + '\n'
+    + 'async ' + liftFn('handleEndShift') + '\n'
+    + liftStmt("$('cuadre-screen').addEventListener('click'") + '\n'
+    + 'return { renderDisponible, get opens(){ return opens; }, el: () => document.getElementById("btn-end-shift-slide") };';
+  const names = ['document', '$', 'ICONS', 'driverState', 'escapeHtml', 'endShiftPrompt'];
+  const api = (new Function(...names, body))(document, $, ICONS, driverState, escapeHtml, () => null);
+  const settle = () => new Promise((r) => setImmediate(r));
+  async function drag() {
+    const el = api.el(); const thumb = el.querySelector('.slide-thumb');
+    el.getBoundingClientRect = () => ({ width: 300 }); thumb.getBoundingClientRect = () => ({ width: 50 });
+    thumb.dispatchEvent(new W.MouseEvent('mousedown', { clientX: 6, bubbles: true }));
+    document.dispatchEvent(new W.MouseEvent('mousemove', { clientX: 244, bubbles: true }));
+    document.dispatchEvent(new W.MouseEvent('mouseup', { bubbles: true }));
+    await settle();
+  }
+  async function key(k) { api.el().dispatchEvent(new W.KeyboardEvent('keydown', { key: k, bubbles: true })); await settle(); }
+  function clickVolver() { document.querySelector('.cuadre-volver').dispatchEvent(new W.MouseEvent('click', { bubbles: true })); }
+  return { api, $, document, drag, key, clickVolver, get opens() { return api.opens; } };
+}
+t('real gesture: a completed drag runs the REAL handleEndShift and opens the cuadre exactly once', async () => {
+  const h = bootSlide({ active: true });
+  h.api.renderDisponible();
+  await h.drag();
+  assert.ok(h.api.el().classList.contains('completed'), 'a full swipe latches the slide completed');
+  assert.equal(h.opens, 1, 'the real doEndShift → handleEndShift → showCuadre opened the cuadre once');
+});
+t('P2-2 (real): Enter/Space while the cuadre is OPEN does not reopen it — the handleEndShift re-entry guard', async () => {
+  const h = bootSlide({ active: true });
+  h.api.renderDisponible();
+  await h.drag();            // cuadre open, opens = 1
+  await h.key('Enter');
+  await h.key(' ');
+  assert.equal(h.opens, 1, 'the open-cuadre guard blocks the keyboard refire (pre-fix this went 2 then 3)');
+});
+t('stale session (real): a drag while not effectively on-shift is a no-op (the doEndShift guard)', async () => {
+  const h = bootSlide({ active: false });
+  h.api.renderDisponible();
+  await h.drag();
+  assert.equal(h.opens, 0, 'not effectively on-shift → no end-shift');
+});
+t('P2-1 (real): «Volver al turno» re-renders a FRESH slide that accepts a new swipe', async () => {
+  const h = bootSlide({ active: true });
+  h.api.renderDisponible();
+  await h.drag();            // opens = 1, the old slide latched completed
+  assert.equal(h.opens, 1);
+  h.clickVolver();           // the real .cuadre-volver listener → setCuadreOpen(false) + render() rebuild
+  assert.ok(!h.$('cuadre-screen').classList.contains('open'), 'Volver closed the cuadre');
+  await h.drag();            // the REBUILT slide must drive a fresh end-shift (pre-fix: stays latched → opens stays 1)
+  assert.equal(h.opens, 2, 'the rebuilt slide is un-latched and runs a new end-shift');
+});
+
+await (async () => {
+  for (const [name, fn] of _tests) {
+    try { await fn(); passed += 1; } catch (e) { console.error('✗ ' + name); throw e; }
+  }
+})();
 console.log(`✓ endshift: ${passed} tests passed`);
