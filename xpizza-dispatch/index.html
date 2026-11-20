@@ -2001,6 +2001,7 @@
   /* §1: «Marcar atendido» on the thread header (moved from the retired modal) */
   .sh-attend { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; background: var(--success-soft); color: var(--success); border: none; border-radius: 99px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
   .sh-attend svg { width: 13px; height: 13px; }
+  .sh-attend.wa, .sh-attend.pend { background: var(--surface-3); color: var(--text-soft); text-decoration: none; }   /* quieter secondary pills, not a second green action */
   .sh-attend:hover { filter: brightness(1.05); }
   .sh-ic svg { width: 16px; height: 16px; }
   .sh-ic.call { color: var(--da-call); }
@@ -3990,28 +3991,43 @@ function renderPedidosTab() {
 function renderCommsTab() {
   const el = $('comms-list'); if (!el) return;
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-  // Recent conversations — latest inbound message per customer (by phone) in the last 24h,
-  // so handled chats are still reachable (tap → thread), not just unhandled ones.
-  const byPhone = new Map();
-  for (const m of Object.values(allMessages || {})) {
-    if (!m || (m.received_at || 0) < cutoff) continue;
+  const msgs = Object.values(allMessages || {}).filter(m => m && convoKey(m.from));
+
+  // «Sin atender» — EVERY unhandled message counts (so the count matches the nav badge exactly), independent
+  // of the 24h history window. The pane shows one row per conversation with a pending message, previewing its
+  // latest unhandled message — even if that message is older than 24h, or an older one stayed unhandled while
+  // the newest was already marked (Codex #242 B-P1).
+  const unhandledMsgs = msgs.filter(m => m.handled !== true);
+  const unhandledCount = unhandledMsgs.length;              // == updateMessagesBadge(unhandledIds.size)
+  const unhandledByPhone = new Map();
+  for (const m of unhandledMsgs) {
     const key = convoKey(m.from);
-    if (!key) continue;
-    const prev = byPhone.get(key);
-    if (!prev || (m.received_at || 0) > (prev.received_at || 0)) byPhone.set(key, m);
+    const prev = unhandledByPhone.get(key);
+    if (!prev || (m.received_at || 0) > (prev.received_at || 0)) unhandledByPhone.set(key, m);
   }
-  const all = [...byPhone.values()].sort((a, b) => {
+  const unhandledRows = [...unhandledByPhone.values()].sort((a, b) => (b.received_at || 0) - (a.received_at || 0));
+
+  // «Últimas 24h» — latest message per customer (by phone) in the last 24h, so handled chats are still
+  // reachable (tap → thread), not just unhandled ones.
+  const recentByPhone = new Map();
+  for (const m of msgs) {
+    if ((m.received_at || 0) < cutoff) continue;
+    const key = convoKey(m.from);
+    const prev = recentByPhone.get(key);
+    if (!prev || (m.received_at || 0) > (prev.received_at || 0)) recentByPhone.set(key, m);
+  }
+  const recentRows = [...recentByPhone.values()].sort((a, b) => {
     const au = a.handled !== true, bu = b.handled !== true;
     if (au !== bu) return au ? -1 : 1;                   // unhandled first
     return (b.received_at || 0) - (a.received_at || 0);  // then most recent
   });
-  const unhandledCount = all.filter(m => m.handled !== true).length;
+
   setTabBadge('tab-comms-n', unhandledCount);            // the rtab + nav badges mirror the unhandled count
   // §1: the two segments («Sin atender» / «Últimas 24h») and their live counts.
   const su = $('cseg-unhandled-n'); if (su) su.textContent = String(unhandledCount);
-  const sr = $('cseg-recent-n'); if (sr) sr.textContent = String(all.length);
+  const sr = $('cseg-recent-n'); if (sr) sr.textContent = String(recentRows.length);
 
-  const convos = commsSeg === 'unhandled' ? all.filter(m => m.handled !== true) : all;
+  const convos = commsSeg === 'unhandled' ? unhandledRows : recentRows;
   if (convos.length === 0) {
     el.innerHTML = `<div class="tree-empty">${commsSeg === 'unhandled' ? 'Sin mensajes sin atender' : 'Sin conversaciones recientes'}</div>`;
     return;
@@ -4139,12 +4155,26 @@ function renderCommsThread() {
   const callBtn = waDigits
     ? `<a class="sh-ic call" href="tel:+${escapeHtml(waDigits)}" title="Llamar" aria-label="Llamar"><svg class="ic"><use href="#i-phone"/></svg></a>`
     : '';
+  // Codex #242 B-P2: restore the retired modal's WhatsApp reply route («Responder» when pending, «Abrir en
+  // WhatsApp» otherwise) + the «Marcar pendiente» undo (markMessageUnhandled) for an already-attended thread.
+  const waHref = waDigits ? `https://wa.me/${escapeHtml(waDigits)}` : '';
+  const waBtn = waHref
+    ? `<a class="sh-attend wa" href="${waHref}" target="_blank" rel="noopener">${unhandledIds.length ? 'Responder' : 'Abrir en WhatsApp'}</a>`
+    : '';
+  const latestInbound = Object.entries(allMessages || {})
+    .filter(([, m]) => convoKey(m.from) === tail)
+    .sort((a, b) => (b[1].received_at || 0) - (a[1].received_at || 0))[0];
+  const latestInboundId = latestInbound ? latestInbound[0] : '';
+  const triageBtn = unhandledIds.length
+    ? `<button class="sh-attend" id="comms-mark-attended" type="button" title="Marcar atendido"><svg class="ic sm"><use href="#i-check"/></svg>Marcar atendido</button>`
+    : (latestInboundId ? `<button class="sh-attend pend" id="comms-mark-pending" type="button" title="Marcar pendiente">Marcar pendiente</button>` : '');
 
   sheet.innerHTML = `
     <div class="sh-head">
       <div class="sh-av">${escapeHtml(initials)}</div>
       <div class="sh-id"><div class="nm">${escapeHtml(name)}</div><div class="su">${sub}</div></div>
-      ${unhandledIds.length ? `<button class="sh-attend" id="comms-mark-attended" type="button" title="Marcar atendido"><svg class="ic sm"><use href="#i-check"/></svg>Marcar atendido</button>` : ''}
+      ${triageBtn}
+      ${waBtn}
       ${callBtn}
       <button class="sh-ic" id="comms-sheet-close" title="Cerrar" aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
     </div>
@@ -4157,6 +4187,12 @@ function renderCommsThread() {
       await Promise.all(unhandledIds.map(id => XPD.markMessageHandled(id, currentUser?.uid)));
       toast('Conversación marcada como atendida', 'success');
     } catch (e) { toast('Error al marcar como atendido', 'error'); }
+  });
+  $('comms-mark-pending')?.addEventListener('click', async () => {    // Codex #242 B-P2: undo — mark the conversation pending again
+    try {
+      await XPD.markMessageUnhandled(latestInboundId);
+      toast('Conversación marcada como pendiente', 'success');
+    } catch (e) { toast('Error al marcar como pendiente', 'error'); }
   });
 }
 
@@ -4914,7 +4950,9 @@ $('styled-confirm-ok').addEventListener('click', async () => {
   if (flow && typeof flow.onConfirm === 'function') {
     const myToken = styledConfirmToken;   // Codex #241 P1: bind this completion to THIS dialog
     const okBtn = $('styled-confirm-ok'), cancelBtn = $('styled-confirm-cancel');
-    styledConfirmBusy = true; okBtn.disabled = true; cancelBtn.disabled = true;
+    styledConfirmBusy = true;
+    $('styled-confirm-overlay').querySelector('.picker-panel')?.focus();   // Codex #242 A: hold focus on the dialog BEFORE disabling — disabling the focused button blurs it (Chromium), so Tab could otherwise escape the trap
+    okBtn.disabled = true; cancelBtn.disabled = true;
     if (flow.busyLabel) okBtn.textContent = flow.busyLabel;
     try { await flow.onConfirm(); styledConfirmBusy = false; settleStyledConfirm(true, myToken); }
     catch (_) { styledConfirmBusy = false; okBtn.disabled = false; cancelBtn.disabled = false; okBtn.textContent = flow.confirmLabel; }   // keep open; the action surfaced its own error
@@ -6727,7 +6765,7 @@ if ('serviceWorker' in navigator) {
 /* P-SELFUPDATE CP2 §3 — this app's self-update adapter: idle = none of these overlays open, no focused field, no request
    of ours in flight, no tap/key in the last 30 s, online (see SherpaClient.idleAdapter). State reloads from the
    database. Inert (unstamped) pages register nothing. */
-try { var __S = window.SherpaClient; if (__S && !__S.inert) __S.registerAdapter(__S.idleAdapter({ overlays: ["#msg-modal.open", "#comms-sheet.open", "#order-detail-modal.open", "#picker-overlay:not(.hidden)", "#recon-note-overlay:not(.hidden)", "#unassign-confirm-overlay:not(.hidden)", "#styled-confirm-overlay:not(.hidden)", "#surface-flyout:not([hidden])", "#action-menu:not(.hidden)"] })); } catch (_) {}
+try { var __S = window.SherpaClient; if (__S && !__S.inert) __S.registerAdapter(__S.idleAdapter({ overlays: ["#comms-sheet.open", "#order-detail-modal.open", "#picker-overlay:not(.hidden)", "#recon-note-overlay:not(.hidden)", "#unassign-confirm-overlay:not(.hidden)", "#styled-confirm-overlay:not(.hidden)", "#surface-flyout:not([hidden])", "#action-menu:not(.hidden)"] })); } catch (_) {}
 </script>
 </body>
 </html>

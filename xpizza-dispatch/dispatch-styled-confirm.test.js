@@ -33,6 +33,7 @@ function build() {
     id, _cls: new Set(['hidden']), textContent: '', _ls: {}, _focused: 0,
     classList: { add(c) { el(id)._cls.add(c); }, remove(c) { el(id)._cls.delete(c); }, contains(c) { return el(id)._cls.has(c); } },
     focus() { this._focused++; }, querySelectorAll() { return []; },
+    querySelector() { return el('panel'); },   // the overlay's .picker-panel (focus target while busy)
     addEventListener(ev, fn) { (el(id)._ls[ev] ||= []).push(fn); },
   });
   const $ = (id) => el(id);
@@ -149,6 +150,17 @@ function build() {
   settleStyledConfirm(true, 999);                                 // a stale-token completion
   assert.equal(el('styled-confirm-overlay').classList.contains('hidden'), false, 'a stale-token completion does NOT settle the open dialog');
   ok('P1: settleStyledConfirm ignores a completion whose token is not the current dialog’s');
+}
+
+// Codex #242 Part A: on entering busy, focus moves to the dialog panel BEFORE the buttons disable — so
+// disabling the focused button (which blurs it in Chromium) can't drop focus out of the trap.
+{
+  const { styledConfirm, el, fire } = build();
+  styledConfirm({ title: 'T', body: 'B', confirmLabel: 'Cerrar sesión', busyLabel: '…', onConfirm: () => new Promise(() => {}) });
+  fire('styled-confirm-ok', 'click');   // enter busy (the action never resolves)
+  assert.ok(el('panel')._focused >= 1, 'busy moves focus to the dialog panel');
+  assert.equal(el('styled-confirm-ok').disabled, true, 'and the button is disabled (focus already parked on the panel)');
+  ok('Part A: busy parks focus on the panel before disabling, so the trap never loses focus');
 }
 
 console.log(`dispatch-styled-confirm: OK (${n})`);
