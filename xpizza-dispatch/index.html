@@ -3258,14 +3258,24 @@ function subscribeAll() {
     if (label) label.textContent = enabled ? 'Auto-asignar activo' : 'Auto-asignar pausado';
   });
 
+  // #1a: never let a double-click double-write the auto-assign toggle — a latch + disabled button until the
+  // server write settles and the subscription echo re-syncs the class. (The pause confirm is wired in #1b.)
+  let autoAssignInFlight = false;
   $('auto-assign-toggle').addEventListener('click', async () => {
-    const isOn = $('auto-assign-toggle').classList.contains('on');
+    if (autoAssignInFlight) return;                                   // ignore re-clicks while a write is in flight
+    const btn = $('auto-assign-toggle');
+    const isOn = btn.classList.contains('on');
+    autoAssignInFlight = true;
+    btn.disabled = true;
     try {
       await XPD.setAutoAssignEnabled(!isOn);
       toast(isOn ? 'Auto-asignación desactivada' : 'Auto-asignación activada',
             isOn ? 'error' : 'success');
     } catch (e) {
       toast('Error al cambiar configuración', 'error');
+    } finally {
+      autoAssignInFlight = false;
+      btn.disabled = false;
     }
   });
 }
