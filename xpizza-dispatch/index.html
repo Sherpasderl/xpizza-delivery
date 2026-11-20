@@ -1814,22 +1814,22 @@
     color: var(--text-soft);
     margin-bottom: 32px;
   }
-  .config-form, .login-form {
+  .login-form {
     width: 100%;
     max-width: 420px;
   }
-  .config-form h2, .login-form h2 {
+  .login-form h2 {
     font-family: 'Inter', sans-serif; font-weight: 800;
     font-size: 18px;
     letter-spacing: 0.05em;
     margin-bottom: 6px;
   }
-  .config-form p, .login-form p {
+  .login-form p {
     color: var(--text-soft);
     font-size: 12px;
     margin-bottom: 14px;
   }
-  .config-form textarea, .config-form input, .login-form input {
+  .login-form input {
     width: 100%;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -1839,12 +1839,6 @@
     font-family: inherit;
     font-size: 14px;
     margin-bottom: 10px;
-  }
-  .config-form textarea {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    min-height: 200px;
-    resize: vertical;
   }
   .full-screen button.primary {
     background: var(--btn-pri-bg);
@@ -2266,22 +2260,6 @@
   <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.8M20.5 19a5 5 0 0 0-3.5-4.7"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M5 5l1.8 1.8M17.2 17.2 19 19M3 12h2.5M18.5 12H21M5 19l1.8-1.8M17.2 6.8 19 5"/></symbol>
 </defs></svg>
-
-<!-- ================================ -->
-<!-- CONFIG SCREEN -->
-<!-- ================================ -->
-<div id="screen-config" class="full-screen hidden">
-  <div class="brand-large">X PIZZA</div>
-  <div class="brand-large-sub">DISPATCH</div>
-  <div class="config-form">
-    <h2>Configuración inicial</h2>
-    <p>Pega la configuración de Firebase y la API key de Google Maps. Solo una vez por dispositivo.</p>
-    <textarea id="firebase-config-input" placeholder='{ "apiKey": "...", "databaseURL": "...", ... }'></textarea>
-    <input type="text" id="maps-key-input" placeholder="Google Maps API key (AIza...)">
-    <button class="primary" id="config-save-btn">Guardar y entrar</button>
-  </div>
-  <div class="version-tag" data-version-display style="margin-top: 32px; text-align: center;"></div>
-</div>
 
 <!-- ================================ -->
 <!-- LOGIN SCREEN -->
@@ -2858,7 +2836,7 @@ function toast(msg, kind = '') {
 }
 
 function showScreen(name) {
-  ['config', 'login', 'main'].forEach(s => {
+  ['login', 'main'].forEach(s => {   // §2: the dead first-run config screen was removed (owner option A)
     $(`screen-${s}`).classList.toggle('hidden', s !== name);
   });
 }
