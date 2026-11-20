@@ -22,13 +22,8 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "pixelpay-hosted-webhook.js",
-  "now": "  if (!uuid) { const priorReason = (await db.ref(`orders/${orderId}/blocked_reason`).once('value')).val();   // a reason another writer set is kept (Codex #224)\n",
-  "was": "  if (!uuid) {\n"
- },
- {
-  "file": "pixelpay-hosted-webhook.js",
-  "now": "      [`orders/${orderId}/payment_status`]: 'manual_review', ...(priorReason ? {} : { [`orders/${orderId}/blocked_reason`]: 'paid_after_cancel_no_uuid' }),\n",
-  "was": "      [`orders/${orderId}/payment_status`]: 'manual_review',\n"
+  "now": "    await db.ref(`orders/${orderId}`).transaction((cur) => (cur === null ? null : (!cur || cur.payment_status !== 'manual_review' || cur.blocked_reason) ? undefined : { ...cur, blocked_reason: 'paid_after_cancel_no_uuid' })); return { code: 200, outcome: 'cancelled_no_uuid_manual_review' };   // the reason: ONE order tx, only if still in review AND reason-less (Codex #225)\n",
+  "was": "    return { code: 200, outcome: 'cancelled_no_uuid_manual_review' };\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

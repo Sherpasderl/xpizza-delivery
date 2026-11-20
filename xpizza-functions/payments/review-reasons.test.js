@@ -10,6 +10,9 @@
 //   RR-READERS        no reader keys on the reason's ABSENCE: the customer's poll state is identical with and without each new reason
 //   RR-KEEP-*         (Codex #224) the new reason is set ONLY when the order has none — a prior reason (e.g. the customer-facing
 //                     refunded_paid_after_close) is KEPT, decided inside the same write; Codex's repro end to end on the webhook
+//   RR-RACE           (Codex #225) the webhook's reason is ONE order transaction guarded on «still in manual_review AND no reason», so no
+//                     interleaving touches another writer's reason: written before the update / between the update and the transaction ⇒
+//                     kept; the order leaves review in between ⇒ no stray reason; a reason written after ⇒ that one stands
 // Through the REAL writers on the honest RTDB model; each records exactly ONE order write. Run: node payments/review-reasons.test.js
 process.env.PIXELPAY_MODE = 'sandbox';
 const assert = require('assert');
@@ -77,8 +80,9 @@ const reasonOf = (db) => [db.getAt(`orders/${OID}/payment_status`), db.getAt(`or
       { order: HOID, status: 'paid', amount: 299, uuid: '', transaction_id: 'T1', payment_hash: paymentHash(HOID, cfg.app_key, cfg.secret) }, NOW));
     assert.strictEqual(r.outcome, 'cancelled_no_uuid_manual_review', `RR-PAID-AFTER premise: the real webhook parked it (${r.outcome})`);
     const entering = writes.filter((w) => w.kind === 'update' && w.v && w.v[`orders/${OID}/payment_status`] === 'manual_review');
-    assert.deepStrictEqual([reasonOf(db), entering.length, entering[0] && entering[0].v[`orders/${OID}/blocked_reason`]], [['manual_review', 'paid_after_cancel_no_uuid'], 1, 'paid_after_cancel_no_uuid'], '🔴 RR-PAID-AFTER: the ONE multi-path update that enters review carries the reason');
-    ok('RR-PAID-AFTER: a paid callback for a cancelled order with no payment id ⇒ manual_review + paid_after_cancel_no_uuid, in the same update');
+    assert.deepStrictEqual([reasonOf(db), entering.length, entering[0] && Object.keys(entering[0].v).filter((k) => k.endsWith('/blocked_reason')).length, writes.filter((w) => w.kind === 'tx').length], [['manual_review', 'paid_after_cancel_no_uuid'], 1, 0, 1],
+      '🔴 RR-PAID-AFTER: the base multi-path update enters review (no reason key); ONE guarded order transaction adds the reason (Codex #225)');
+    ok('RR-PAID-AFTER: a paid callback for a cancelled order with no payment id ⇒ manual_review (the base update) + paid_after_cancel_no_uuid (one guarded order transaction)');
   }
   {
     // RR-READERS: the customer's poll state (the one client-facing reader of blocked_reason) is unchanged by every new reason
@@ -113,6 +117,35 @@ const reasonOf = (db) => [db.getAt(`orders/${OID}/payment_status`), db.getAt(`or
     assert.strictEqual(db.getAt(`orders/${OID}/payment_status`), 'refunded', 'RR-KEEP-PAID-AFTER premise: the second (uuid) callback was voided ⇒ refunded');
     assert.strictEqual(needsRefundNotifyRecovery(db.getAt(`orders/${OID}`), NOW + 3 * H, 60 * 60 * 1000), true, '🔴 RR-KEEP-PAID-AFTER: the refund-notice recovery still finds the order');
     ok('RR-KEEP: every writer keeps a prior reason (incl. Codex\'s webhook repro: closed_refunded kept, notice recovery intact)');
+  }
+  {
+    // RR-RACE (Codex #225): the paid-after-close refund finishing CONCURRENTLY (its own write, materialize-guard.js:178's shape) around the webhook
+    const HOID = `${OID}-${AID}`; const cfg = resolvePixelPayConfig();
+    const REFUND_FINISH = { payment_status: 'refunded', status: 'cancelled', blocked_reason: 'refunded_paid_after_close', refunded_at: NOW - 2 * H };
+    const run = async (label, when, inject) => {
+      let fired = false; let db;
+      db = makeDb({ orders: { [OID]: ORDER({ status: 'cancelled', payment_status: 'pending', customer_phone: '50499990000' }) }, payment_attempts: { [AID]: { order_id: OID, hosted_state: 'created', hosted_order_id: HOID } } }, {
+        beforeWrite: async (p) => { if (when === 'before-update' && !fired && p === '') { fired = true; await inject(db); } },
+        beforeTx: async (p) => { if (when === 'before-tx' && !fired && p === `orders/${OID}`) { fired = true; await inject(db); } },
+      });
+      const r = await quiet(() => handleHostedCallback({ db, restaurant: { lat: 15.5, lng: -88, name: 'TB', phone: 'p' }, buildMaterializeUpdates, alert: (k, d) => paymentAlert(db, k, d), genToken: () => 'TOK', client: realClient, voidOrRefund },
+        { order: HOID, status: 'paid', amount: 299, uuid: '', transaction_id: 'T1', payment_hash: paymentHash(HOID, cfg.app_key, cfg.secret) }, NOW));
+      assert.ok(fired && r.outcome === 'cancelled_no_uuid_manual_review', `${label} premise: the other writer ran ${when} (${fired}, ${r.outcome})`);
+      return db;
+    };
+    for (const when of ['before-update', 'before-tx']) {
+      const db = await run(`RR-RACE ${when}`, when, (d) => d.ref(`orders/${OID}`).update({ blocked_reason: 'refunded_paid_after_close' }));
+      assert.strictEqual(db.getAt(`orders/${OID}/blocked_reason`), 'refunded_paid_after_close', `🔴 RR-RACE: a reason written ${when} is KEPT (never overwritten)`);
+      assert.strictEqual(paymentPollState(db.getAt(`orders/${OID}`)), 'closed_refunded', `🔴 RR-RACE: the customer still sees closed_refunded (${when})`);
+    }
+    // the order LEAVES review between the update and the transaction ⇒ no stray reason
+    const left = await run('RR-RACE left-review', 'before-tx', (d) => d.ref(`orders/${OID}`).update({ payment_status: 'refunded' }));
+    assert.deepStrictEqual([left.getAt(`orders/${OID}/payment_status`), left.getAt(`orders/${OID}/blocked_reason`)], ['refunded', null], '🔴 RR-RACE: an order that left review gets no reason');
+    // a reason written AFTER ours stands (the other writer sets its state and reason together)
+    const after = await run('RR-RACE reason-after', 'before-update', async () => {});
+    await after.ref(`orders/${OID}`).update(REFUND_FINISH);
+    assert.deepStrictEqual([after.getAt(`orders/${OID}/blocked_reason`), paymentPollState(after.getAt(`orders/${OID}`)), needsRefundNotifyRecovery(after.getAt(`orders/${OID}`), NOW + 3 * H, H)], ['refunded_paid_after_close', 'closed_refunded', true], '🔴 RR-RACE: a reason written after ours stands; poll + notice recovery as at base');
+    ok('RR-RACE: no interleaving touches another writer\'s reason (before the update / before the transaction / left review / after)');
   }
   console.log(`review-reasons: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });
