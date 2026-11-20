@@ -69,6 +69,11 @@ const SD = require('./_serial3-delta');
 // cases only, counted, pinned (non-vacuous).
 const { preExclusiveClaimOps } = require('../catalog/_hosted-claim-delta');
 const CLAIM_DELTA = { n: 0 };
+// PLAN-3a-order-owner r1 (ecff209bb, Codex #172 P1-a): the DECLARED probe-hoist delta — a pure reorder: the ownership probe's
+// one `once orders/<oid>` moved back to its base slot before comparing (catalog/_probe-hoist-delta.js, shared with
+// d4b-charge-trace and order-exists; strict anchors, otherwise unchanged ⇒ red); CARD cases only; the base is NOT recaptured
+const { preProbeHoistOps } = require('../catalog/_probe-hoist-delta');
+const HOIST_DELTA = { n: 0 };
 let S3_KEYS = 0, S3_PROV = 0;   // §3 r3: card cases whose pending order's persisted content keys were checked
 const POST_OF = new WeakMap();
 const LEDGER_OF = new WeakMap();   // LEDGER S1: recorded result → the VERIFIED declared snapshot leaves it wrote (normalized; test/_ledger-declared)
@@ -621,7 +626,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         // codex r2 P2 — the mode is DECLARED from what the case IS (a changed cart / a vanished order stamps content it does not persist)
         const mode = /chang|VANISH/i.test(c.name) ? 'unbound' : 'bound';
         if (/FRESH/.test(c.name)) assert.ok((LEDGER_OF.get(r) || []).length > 0, `🔴 ${key}: the fresh placement writes S1's declared snapshot (non-vacuity)`);
-        const cs = SD.compareShape(c.path === 'card' ? preExclusiveClaimOps(stripLedger(stripControl(r.ops, key), r), CLAIM_DELTA) : stripLedger(stripControl(r.ops, key), r), goldOps(g.ops), { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
+        const cs = SD.compareShape(c.path === 'card' ? preExclusiveClaimOps(preProbeHoistOps(stripLedger(stripControl(r.ops, key), r), HOIST_DELTA), CLAIM_DELTA) : stripLedger(stripControl(r.ops, key), r), goldOps(g.ops), { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
         if (JSON.stringify(stripLedger(stripControl(r.ops, key), r)) !== JSON.stringify(goldOps(g.ops))) S3_DIFF += 1;
         assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${key}: the call sequence changed beyond the control read — ${RD.opsDiff(cs.expected, cs.actual)}`);
         if (/^SCHEDULED sweep release \|/.test(key)) {
@@ -717,7 +722,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         assert.deepStrictEqual(on.headers, ref.headers, `🔴 ${L}: headers`);
         assert.deepStrictEqual(on.changed, [], `🔴 ${L}: the bound reuse is READ-ONLY (nothing changed)`);
         assert.deepStrictEqual(on.holdAfter, on.holdBefore, `🔴 ${L}: the hold is untouched (still this order's, reserved)`);
-        RD.assertShortCircuit(offOps, onOps, RD.afterUidCheck(offOps, L), RD.PROBE_FULL(rid), L);
+        RD.assertShortCircuit(offOps, onOps, RD.afterOrderProbe(offOps, L), RD.PROBE_FULL(rid), L);
         companion.bound += 1;
         return;
       }
@@ -730,8 +735,8 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
       const wantChanged = [...off.changed, ...(wroteBinding ? ['orders/<oid>/charge_inputs_fp'] : [])].map(RD.contentHash).sort();
       assert.deepStrictEqual(on.changed.map(RD.contentHash).sort(), wantChanged, `🔴 ${L}: the changed-path set`);
       if (!reward) { RD.assertSameOps(offOps, onOps, L); return; }
-      const probe = steady && isHoldRelease(c) ? RD.PROBE_FULL(rid) : RD.PROBE_ABSENT();
-      RD.assertInserted(offOps, onOps, RD.afterUidCheck(offOps, L), probe, L);
+      const full = steady && isHoldRelease(c), probe = full ? RD.PROBE_FULL(rid) : RD.PROBE_ABSENT();
+      RD.assertInserted(offOps, onOps, full ? RD.afterOrderProbe(offOps, L) : RD.afterUidCheck(offOps, L), probe, L);
       companion.probed += 1;
       if (isHoldRelease(c) && !ADMIT.has(state)) assertOwnHoldReleased(on, rid, L);   // §0b.4 with render ON
       if (c.hold === 'reused' && !ADMIT.has(state)) assert.strictEqual(on.holdAfter && on.holdAfter.state, 'reserved', `🔴 ${L}: an existing payable checkout's hold stays HELD`);
@@ -854,6 +859,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
   } else {
     check(() => assert.deepStrictEqual(Object.keys(results).sort(), Object.keys(golden.cases).sort(), 'the same cases as the baseline'));
     if (!CAPTURE) check(() => assert.ok(CLAIM_DELTA.n > 0, `non-vacuity: the declared exclusive-claim delta was applied (${CLAIM_DELTA.n} mapping(s))`));
+    if (!CAPTURE) check(() => assert.strictEqual(HOIST_DELTA.n, 130, `🔴 the declared probe-hoist delta maps exactly the 130 reordered card cells (${HOIST_DELTA.n} mapping(s))`));
   }
   // collected (not thrown) so it never masks the per-cell failures that would explain it
   if (!CAPTURE) check(() => assert.ok(S3_DIFF > 0, 'non-vacuity: WITHOUT the §3 declared delta at least one UNCHANGED case differs from the baseline'));

@@ -14,6 +14,7 @@ const crypto = require('crypto');
 const { genAttemptId, orderFingerprint, centsToLempiras } = require('./pixelpay-charge');
 const { paymentBindingConflict, conflictOutcome, once, formatOf, FORMAT_CANONICAL, installFingerprint } = require('./catalog/canonical-binding');   // 1D D4-b §A.3
 const { tipBindingConflict } = require('./tip');   // S2-srv-tip §3.2: the direct stored-tip compare, BEFORE the binding check at every site
+const TV = require('./catalog/text-version');   // r1b: malformedBindingOf's text-version marker check
 
 // Hosted checkout validity window (the `expired_at` we send PixelPay). After this, the
 // old checkout is no longer payable → a fresh attempt may be created.
@@ -255,6 +256,15 @@ async function classifyHostedAttempt(db, orderId, fingerprint, now, canonicalFp 
   const f = formatOf(order, 'fp_format');
   return (order && f.ok && f.format === FORMAT_CANONICAL) ? { ...r, bindingFormat: FORMAT_CANONICAL } : r;
 }
+// PLAN-3a-order-owner r1b (advisor ruling (b)): does the order SNAPSHOT alone classify as a malformed binding tag? —
+// classifyFromOrder's own precedence (already_paid, then a changed tip, decide first; then paymentBindingConflict's first two
+// checks: the fp_format tag, the text-version marker). The charge handler applies it to the hoisted probe's snapshot so that
+// refusal reads the order ONCE; classify's own binding_format_invalid branch stays the race backstop. Parity with
+// classifyHostedAttempt: hosted-classify-parity.test.js (MALFORMED-PARITY).
+function malformedBindingOf(order, incomingTip = 0) {
+  if (!order || order.payment_status === 'confirmed' || tipBindingConflict(order, incomingTip)) return false;
+  return !formatOf(order, 'fp_format').ok || !TV.textVersionOf(order, TV.ORDER_FIELD).ok;
+}
 async function classifyFromOrder(db, order, fingerprint, now, canonicalFp, a8Fp = null, incomingTip = 0) {
   const canon = once(canonicalFp);
   const a8 = once(a8Fp);   // PLAN-A A8a step 1: compared only against a record marked 'a8'
@@ -290,4 +300,4 @@ async function classifyFromOrder(db, order, fingerprint, now, canonicalFp, a8Fp 
   return { willIssueFreshUrl: true };                                // non-money terminal → rotate (fresh URL)
 }
 
-module.exports = { freshIssueRefusal, guestForeign, acquireHostedAttempt, classifyHostedAttempt, genPollToken, HOSTED_TTL_MS, genAttemptId, orderFingerprint, centsToLempiras };
+module.exports = { freshIssueRefusal, guestForeign, acquireHostedAttempt, classifyHostedAttempt, malformedBindingOf, genPollToken, HOSTED_TTL_MS, genAttemptId, orderFingerprint, centsToLempiras };

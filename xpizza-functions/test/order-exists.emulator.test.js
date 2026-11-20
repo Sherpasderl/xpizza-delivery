@@ -56,6 +56,40 @@ const SD = require('./_serial3-delta');
 // claim is an exclusive `transaction` where the base did an `update` of the same fields; mapped for CARD cases only, counted, pinned.
 const { preExclusiveClaimOps } = require('../catalog/_hosted-claim-delta');
 const CLAIM_DELTA = { n: 0 };
+// PLAN-3a-order-owner r1 (ecff209bb, Codex #172 P1-a): the ownership probe (`once orders/<oid>`) runs right after the uid check.
+// Its DECLARED deltas against the frozen base, CARD cases only, each named and counted (the base is NOT recaptured):
+//   HOIST — a pure reorder: the probe moved back to its base slot (catalog/_probe-hoist-delta.js, shared with d4b-charge-trace);
+//   R1_EARLY — the probe now refuses BEFORE the bookkeeping («a foreign member … writes nothing»): the calls are EXACTLY the
+//     base's first `keep` calls; the changed set is EXACTLY the base's own pre-bookkeeping card refusal's (the malformed-tag
+//     cell, same rid: only the harness's `remove rate_limits` leaves — no rate-limit transaction runs), i.e. the base's minus
+//     the content stamp (recent_order_content/…), which is the one named family it may drop;
+//   (the malformed binding tag is decided on the hoisted probe's snapshot — r1b, pixelpay-hosted-charge.js malformedBindingOf —
+//     so that refusal reads the order ONCE, as in the base: its cells take NO delta)
+const { preProbeHoistOps } = require('../catalog/_probe-hoist-delta');
+const HOIST_DELTA = { n: 0 };
+const R1_EARLY = new Map([
+  ['card order of ANOTHER restaurant', { keep: 4, stamp: ['at', 'order_id', 'payment_method'] }],   // the probe refuses on sameRestaurant (409 conflict)
+  ['card order PROBE read FAILS', { keep: 3, stamp: ['at'] }],                                       // the probe throws (500); a failed read is never recorded
+  // r1b (advisor ruling (b)): the malformed tag is decided on the probe's snapshot, so the degraded (classify-failed) path refuses
+  // right after the probe — the base's first 3 calls + the base's probe (its LAST call: the base refused at the degraded check)
+  ['card malformed binding tag, CLASSIFY FAILS (degraded probe)', { keep: 3, probe: true, stamp: ['at'] }],
+]);
+const R1_SEEN = { early: 0 };
+function r1Expected(c, g, L, golden, rid) {
+  const e = R1_EARLY.get(c.name);
+  if (e) {
+    assert.ok(g.ops.length > e.keep, `${L}: premise — the base continued past the refusal point`);
+    const ref = golden.cases[`card malformed binding tag (classify snapshot) | ${rid}`];
+    assert.ok(ref && ref.changed.length > 0 && ref.changed.every((p) => /^rate_limits\//.test(p)), `${L}: premise — the base's pre-bookkeeping refusal changed only the harness's rate_limits leaves`);
+    const dropped = g.changed.filter((p) => !ref.changed.includes(p));
+    assert.deepStrictEqual(dropped.map((p) => (/^recent_order_content\/<key>\/[0-9a-f]{32}\/(\w+)$/.exec(p) || [])[1] || p), e.stamp, `${L}: the base's changes beyond the reference are EXACTLY its content-stamp leaves ${JSON.stringify(e.stamp)}`);
+    R1_SEEN.early += 1;
+    const last = g.ops[g.ops.length - 1];
+    if (e.probe) assert.ok(last && last.db === 'rtdb' && last.op === 'once' && last.path === 'orders/<oid>', `${L}: premise — the base's last call is the order probe`);
+    return { ops: [...g.ops.slice(0, e.keep), ...(e.probe ? [last] : [])], changed: ref.changed };
+  }
+  return g;
+}
 const POST_OF = new WeakMap();
 const LEDGER_OF = new WeakMap();   // LEDGER S1: recorded result → the VERIFIED declared snapshot leaves it wrote (normalized; test/_ledger-declared)
 const SENT_OF = new WeakMap();   // recorded result → the body the request POSTED (what the content stamp hashed)   // recorded result → the order record after the request (the content a stamp may bind to)
@@ -430,13 +464,15 @@ async function pageSends(dir, c, firstStatus, firstBody) {
         // it does not persist (unbound); every other case is bound to the content it POSTED (the stamp's real input — e.g.
         // ACQUIRE FAILS stamps its qty-2 cart although the order keeps qty 1)
         const mode = (c.kind === 'refusal' || /chang|VANISH/i.test(c.name)) ? 'unbound' : 'bound';
-        const rOps = c.path === 'card' ? preExclusiveClaimOps(r.ops, CLAIM_DELTA) : r.ops;   // the claim fix's declared delta (card only), then S3a's declared strip
-        const cs = SD.compareShape(DR.without(rOps, L, { ignore: OE_HARNESS }), g.ops, { mode, content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
+        const declared = c.path === 'card' && R1_EARLY.has(c.name);
+        const gx = c.path === 'card' ? r1Expected(c, g, L, golden, rid) : g;   // r1's named deltas (the base is NOT recaptured)
+        const rOps = c.path === 'card' ? preExclusiveClaimOps(declared ? r.ops : preProbeHoistOps(r.ops, HOIST_DELTA), CLAIM_DELTA) : r.ops;   // the claim fix's declared delta (card only), then S3a's declared strip
+        const cs = SD.compareShape(DR.without(rOps, L, { ignore: OE_HARNESS }), gx.ops, { mode, content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
         if (cs.bound) S3_BOUND += 1; else S3_UNBOUND += 1;
         if (JSON.stringify(DR.without(r.ops, L, { ignore: OE_HARNESS })) !== JSON.stringify(g.ops)) S3_DIFF += 1;
         assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${L}: the handler's database CALL SEQUENCE changed — a refusal must add no read and move no write — ${RD.opsDiff(cs.expected, cs.actual)}`);
         if (/ROTATE/.test(c.name)) assert.ok((LEDGER_OF.get(r) || []).length > 0, `🔴 ${L}: the rotated attempt carries S1's declared snapshot (non-vacuity)`);
-        const ch = SD.changedShape(r.changed, expectedChangedLedger(expectedChangedS1d(g.changed, { versioned: FIXTURES_VERSIONED }), r), { content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
+        const ch = SD.changedShape(r.changed, expectedChangedLedger(expectedChangedS1d(gx.changed, { versioned: FIXTURES_VERSIONED }), r), { content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
         assert.deepStrictEqual(ch.actual, ch.expected, `🔴 ${L}: the set of database paths the request changed is not the base's (cleanup / writes must be identical)`);
         if (c.kind === 'refusal') {
           assert.strictEqual(r.status, 409);
@@ -496,6 +532,7 @@ async function pageSends(dir, c, firstStatus, firstBody) {
     check(() => assert.ok(probed > 0, 'render-ON companion: premise — at least one card request carries a reward (the delta is exercised)'));
     check(() => { fill = FILL.assertBounded('render-ON companion'); });
   }
+  if (!CAPTURE) check(() => assert.deepStrictEqual({ hoist: HOIST_DELTA.n, early: R1_SEEN.early }, { hoist: 28, early: 6 }, '🔴 r1/r1b declared deltas: the hoist maps exactly the 28 reordered card cells, and 6 early refusals (r1 ×4, r1b ×2)'));
   if (!CAPTURE) check(() => assert.ok(CLAIM_DELTA.n > 0, `non-vacuity: the declared exclusive-claim delta was applied (${CLAIM_DELTA.n} mapping(s)) — the ROTATE cases claim a fresh attempt`));
   if (!CAPTURE) { check(() => assert.ok(S3_DIFF > 0, 'non-vacuity: WITHOUT the §3 declared delta at least one case differs from the base')); console.log(`  ✓ §3 r1 declared delta: ${S3_DIFF} case(s) differ only by the declared delta — ${S3_BOUND} content-bound, ${S3_UNBOUND} unbound (one key per request)`); }
   const caseFails = FAILS.length;

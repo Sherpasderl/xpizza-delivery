@@ -1691,6 +1691,10 @@ chargeOnlineApp.all('*', async (req, res) => {
     return res.status(409).json(OE.orderExistsBody('conflict', orderId));   // D4-c5 P1: no disclosure of the other restaurant
   }
   if (probeOrder && require('./order-owner').ownerOf(probeOrder, customer_uid) === 'non_owner') return res.status(409).json(OE.orderExistsBody(require('./order-owner').NON_OWNER_REASON, orderId));   // PLAN-3a-order-owner: before every admission, bookkeeping write, reserve and acquire
+  // PLAN-3a-order-owner r1b (advisor ruling (b)): a malformed binding tag is decided HERE, on this request's own probe snapshot
+  // (read above, before any write), with classify's precedence (pixelpay-hosted-charge.js malformedBindingOf) — so the refusal
+  // reads the order ONCE, as before r1, and writes nothing; classify's binding_format_invalid branch below stays the race backstop
+  if (require('./pixelpay-hosted-charge').malformedBindingOf(probeOrder, TIP.ofBody(body))) return res.status(409).json(OE.orderExistsBody('binding_format_invalid', orderId));
   if (body.redeem != null && customer_uid && groupCapabilities().render) {
     const boundAcq = await BR.probeBoundReuse(db, { orderId, uid: customer_uid, rid: restaurantId, body, now: Date.now(), probed: { order: probeOrder } });   // r2: the hoisted probe's snapshot (no second read)
     if (boundAcq) { const zr = await DW.deliveryResumeRefusal(db, boundAcq.order, dpP); if (zr) return res.status(zr.httpStatus).json({ error: zr.refusal, ...(zr.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId });   // envío step 2 (F1): a stored app delivery in a zone is not resumed

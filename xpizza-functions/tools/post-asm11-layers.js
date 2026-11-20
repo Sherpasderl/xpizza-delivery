@@ -30,9 +30,9 @@ const HUNKS = Object.freeze([
  },
  {
   "layer": "order-owner",
-  "label": "chargeOnlineOrder r1 (Codex #172 P1-a): the ONE probe read + the cross-restaurant guard + ownerOf, hoisted to the first point the verified uid is known (before every admission + bookkeeping write)",
+  "label": "chargeOnlineOrder r1 (Codex #172 P1-a): the ONE probe read + the cross-restaurant guard + ownerOf, hoisted to the first point the verified uid is known (before every admission + bookkeeping write) + chargeOnlineOrder r1b (advisor ruling (b)): the malformed binding tag decided on the hoisted probe's snapshot, with classify's precedence (one order read, as before r1)",
   "file": "index.js",
-  "now": "  // Read-only reuse probe (#3): config is read ONLY when creating a fresh pending order, so a\n  // customer reusing a live hosted checkout during a config outage is NOT failed closed. The CAS\n  // in acquireHostedAttempt stays authoritative; on a probe-fresh/CAS-reuse race the only cost is\n  // one wasted config read.\n  // PLAN-3a-order-owner r1 (Codex #172 P1-a): the SAME single read, at the first point the verified uid is known — ownership is\n  // decided BEFORE every order-dependent admission (bound reuse, the redemption prepare, the delivery context, classify) and every\n  // bookkeeping write (content stamp / prune, rate limits, the audience stamp); acquireHostedAttempt re-applies it to the records it observes\n  let probeOrder;\n  try {\n    probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();\n  } catch (e) {\n    console.error(`chargeOnlineOrder: order probe failed for ${orderId}`, e.message);\n    return res.status(500).json({ error: 'Database error', detail: e.message });\n  }\n  // Cross-restaurant reuse guard (legacy-normalized): a charge must not attach to an existing\n  // order_id owned by a different restaurant. Runs before the CAS/fingerprint in acquireHostedAttempt.\n  if (probeOrder && !sameRestaurant(probeOrder.restaurant_id, restaurantId)) {\n    console.warn(`chargeOnlineOrder: ${orderId} exists for a different restaurant — conflict`);\n    return res.status(409).json(OE.orderExistsBody('conflict', orderId));   // D4-c5 P1: no disclosure of the other restaurant\n  }\n  if (probeOrder && require('./order-owner').ownerOf(probeOrder, customer_uid) === 'non_owner') return res.status(409).json(OE.orderExistsBody(require('./order-owner').NON_OWNER_REASON, orderId));   // PLAN-3a-order-owner: before every admission, bookkeeping write, reserve and acquire\n",
+  "now": "  // Read-only reuse probe (#3): config is read ONLY when creating a fresh pending order, so a\n  // customer reusing a live hosted checkout during a config outage is NOT failed closed. The CAS\n  // in acquireHostedAttempt stays authoritative; on a probe-fresh/CAS-reuse race the only cost is\n  // one wasted config read.\n  // PLAN-3a-order-owner r1 (Codex #172 P1-a): the SAME single read, at the first point the verified uid is known — ownership is\n  // decided BEFORE every order-dependent admission (bound reuse, the redemption prepare, the delivery context, classify) and every\n  // bookkeeping write (content stamp / prune, rate limits, the audience stamp); acquireHostedAttempt re-applies it to the records it observes\n  let probeOrder;\n  try {\n    probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();\n  } catch (e) {\n    console.error(`chargeOnlineOrder: order probe failed for ${orderId}`, e.message);\n    return res.status(500).json({ error: 'Database error', detail: e.message });\n  }\n  // Cross-restaurant reuse guard (legacy-normalized): a charge must not attach to an existing\n  // order_id owned by a different restaurant. Runs before the CAS/fingerprint in acquireHostedAttempt.\n  if (probeOrder && !sameRestaurant(probeOrder.restaurant_id, restaurantId)) {\n    console.warn(`chargeOnlineOrder: ${orderId} exists for a different restaurant — conflict`);\n    return res.status(409).json(OE.orderExistsBody('conflict', orderId));   // D4-c5 P1: no disclosure of the other restaurant\n  }\n  if (probeOrder && require('./order-owner').ownerOf(probeOrder, customer_uid) === 'non_owner') return res.status(409).json(OE.orderExistsBody(require('./order-owner').NON_OWNER_REASON, orderId));   // PLAN-3a-order-owner: before every admission, bookkeeping write, reserve and acquire\n  // PLAN-3a-order-owner r1b (advisor ruling (b)): a malformed binding tag is decided HERE, on this request's own probe snapshot\n  // (read above, before any write), with classify's precedence (pixelpay-hosted-charge.js malformedBindingOf) — so the refusal\n  // reads the order ONCE, as before r1, and writes nothing; classify's binding_format_invalid branch below stays the race backstop\n  if (require('./pixelpay-hosted-charge').malformedBindingOf(probeOrder, TIP.ofBody(body))) return res.status(409).json(OE.orderExistsBody('binding_format_invalid', orderId));\n",
   "was": ""
  },
  {
@@ -48,6 +48,13 @@ const HUNKS = Object.freeze([
   "file": "index.js",
   "now": "  // (probeOrder — the read-only order probe — is read ABOVE, where ownership is decided: PLAN-3a-order-owner r1, Codex #172 P1-a)\n",
   "was": "  // Read-only reuse probe (#3): config is read ONLY when creating a fresh pending order, so a\n  // customer reusing a live hosted checkout during a config outage is NOT failed closed. The CAS\n  // in acquireHostedAttempt stays authoritative; on a probe-fresh/CAS-reuse race the only cost is\n  // one wasted config read.\n  let probeOrder;\n  try {\n    probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();\n  } catch (e) {\n    console.error(`chargeOnlineOrder: order probe failed for ${orderId}`, e.message);\n    return res.status(500).json({ error: 'Database error', detail: e.message });\n  }\n  // Cross-restaurant reuse guard (legacy-normalized): a charge must not attach to an existing\n  // order_id owned by a different restaurant. Runs before the CAS/fingerprint in acquireHostedAttempt.\n  if (probeOrder && !sameRestaurant(probeOrder.restaurant_id, restaurantId)) {\n    console.warn(`chargeOnlineOrder: ${orderId} exists for a different restaurant — conflict`);\n    return res.status(409).json(OE.orderExistsBody('conflict', orderId));   // D4-c5 P1: no disclosure of the other restaurant\n  }\n"
+ },
+ {
+  "layer": "order-owner",
+  "label": "r1b: the text-version module for malformedBindingOf",
+  "file": "pixelpay-hosted-charge.js",
+  "now": "const TV = require('./catalog/text-version');   // r1b: malformedBindingOf's text-version marker check\n",
+  "was": ""
  },
  {
   "layer": "order-owner",
@@ -76,6 +83,20 @@ const HUNKS = Object.freeze([
   "file": "pixelpay-hosted-charge.js",
   "now": "    if (memberForeign(committed, pendingOrderRecord)) return { outcome: 'conflict', reason: OWN.NON_OWNER_REASON };   // r1: before every claim / recovery write\n",
   "was": ""
+ },
+ {
+  "layer": "order-owner",
+  "label": "r1b: malformedBindingOf — classifyFromOrder's precedence on an order snapshot alone",
+  "file": "pixelpay-hosted-charge.js",
+  "now": "// PLAN-3a-order-owner r1b (advisor ruling (b)): does the order SNAPSHOT alone classify as a malformed binding tag? —\n// classifyFromOrder's own precedence (already_paid, then a changed tip, decide first; then paymentBindingConflict's first two\n// checks: the fp_format tag, the text-version marker). The charge handler applies it to the hoisted probe's snapshot so that\n// refusal reads the order ONCE; classify's own binding_format_invalid branch stays the race backstop. Parity with\n// classifyHostedAttempt: hosted-classify-parity.test.js (MALFORMED-PARITY).\nfunction malformedBindingOf(order, incomingTip = 0) {\n  if (!order || order.payment_status === 'confirmed' || tipBindingConflict(order, incomingTip)) return false;\n  return !formatOf(order, 'fp_format').ok || !TV.textVersionOf(order, TV.ORDER_FIELD).ok;\n}\n",
+  "was": ""
+ },
+ {
+  "layer": "order-owner",
+  "label": "r1b: malformedBindingOf exported",
+  "file": "pixelpay-hosted-charge.js",
+  "now": "module.exports = { freshIssueRefusal, guestForeign, acquireHostedAttempt, classifyHostedAttempt, malformedBindingOf, genPollToken, HOSTED_TTL_MS, genAttemptId, orderFingerprint, centsToLempiras };\n",
+  "was": "module.exports = { freshIssueRefusal, guestForeign, acquireHostedAttempt, classifyHostedAttempt, genPollToken, HOSTED_TTL_MS, genAttemptId, orderFingerprint, centsToLempiras };\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

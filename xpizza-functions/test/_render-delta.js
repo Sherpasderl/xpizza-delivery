@@ -9,18 +9,20 @@
  * The render-gated reads (index.js, PB-1):
  *   • chargeOnlineOrder, a reward request (body.redeem + a verified customer) — catalog/bound-reuse.js probeBoundReuse,
  *     BEFORE prepareRedemption, right after the customer's deleted_uids check:
- *       PROBE_ABSENT: the order read — no order / another customer's / no bound charge-input fingerprint / a different one
- *                     → null, the current path continues unchanged;
- *       PROBE_FULL:   the order read, classifyHostedAttempt (its order read + attempt read), the attempt read, the hold
- *                     read — the full probe; it returns null (the hold is not this order's) or answers the bound reuse.
+ *       PROBE_ABSENT: NOTHING (order-owner r2, 07a23b7f7 / Codex #175: probeBoundReuse takes the hoisted order probe's
+ *                     snapshot and reads no order of its own) — no order / another customer's / no bound charge-input
+ *                     fingerprint / a different one → null, the current path continues unchanged: ON == OFF exactly;
+ *       PROBE_FULL:   classifyHostedAttempt (its order read + attempt read), the attempt read, the hold read — the full
+ *                     probe, AFTER the hoisted order probe (r1/r2: that read is in OFF too); it returns null (the hold is not
+ *                     this order's) or answers the bound reuse.
  *   • quoteOrder — GI.groupIssues → gateReader().intakeGatesFor: the gate pointer (asserted in its suite).
  */
 const assert = require('assert');
 
 const once = (path) => ({ db: 'rtdb', op: 'once', path });
-const PROBE_ABSENT = () => [once('orders/<oid>')];
+const PROBE_ABSENT = () => [];                              // r2 (07a23b7f7 / Codex #175): bound-reuse.js reads no order — it uses the hoisted probe's snapshot
 const PROBE_FULL = (rid) => [
-  once('orders/<oid>'),                                     // bound-reuse.js: the order
+  // r2 (07a23b7f7 / Codex #175): no bound-reuse.js order read — the hoisted probe's snapshot (index.js) answers it
   once('orders/<oid>'), once('payment_attempts/<active_attempt_id>'),   // classifyHostedAttempt (pixelpay-hosted-charge.js)
   once('payment_attempts/<active_attempt_id>'),             // bound-reuse.js: the live attempt
   once(`user_rewards/<uid>/${rid}/reservations/<oid>`),     // bound-reuse.js: the hold
@@ -31,6 +33,14 @@ const isUidCheck = (e) => e.db === 'rtdb' && e.op === 'get' && e.path === 'delet
 function afterUidCheck(off, label) {
   const i = off.findIndex(isUidCheck);
   assert.ok(i > -1, `${label}: premise — the render-OFF trace carries the customer's deleted_uids read`);
+  return i + 1;
+}
+// order-owner r1/r2 (ecff209bb, 07a23b7f7): the order probe is read right after the uid check in BOTH traces, and the full
+// bound-reuse probe follows it — this is PROBE_FULL's position. The hoisted probe must be there (else the premise fails).
+function afterOrderProbe(off, label) {
+  const i = afterUidCheck(off, label);
+  const p = off[i];
+  assert.ok(!!p && p.db === 'rtdb' && p.op === 'once' && p.path === 'orders/<oid>', `${label}: premise — the hoisted order probe (once orders/<oid>) directly follows the uid check`);
   return i + 1;
 }
 
@@ -48,9 +58,10 @@ function opsDiff(want, got) {
 function assertSameOps(off, on, label) {
   assert.deepStrictEqual(on, off, `🔴 ${label}: the call sequence must equal the render-OFF one — ${opsDiff(off, on)}`);
 }
-// ON == OFF with `ops` inserted before off[at] — nothing else (the delta must be non-empty: a sensitivity of the pin)
+// ON == OFF with `ops` inserted before off[at] — nothing else. An EMPTY declared delta (PROBE_ABSENT since r2, 07a23b7f7 /
+// Codex #175) is an explicit rule of its own: ON must equal OFF exactly.
 function assertInserted(off, on, at, ops, label) {
-  assert.ok(ops.length > 0, `${label}: the declared delta is non-empty`);
+  if (ops.length === 0) return assertSameOps(off, on, `${label} (declared delta: none — ON == OFF exactly)`);
   const want = [...off.slice(0, at), ...ops, ...off.slice(at)];
   assert.deepStrictEqual(on, want, `🔴 ${label}: the render-ON trace is not the render-OFF trace + exactly ${JSON.stringify(ops)} at ${at} — ${opsDiff(want, on)}`);
 }
@@ -145,4 +156,4 @@ function makeColdOnly(rids, clock) {
 const contentHash = (s) => String(s).replace(/(recent_order_content\/[^/]+\/)[0-9a-f]{32}/g, '$1<content>');
 const normOps = (ops) => ops.map((e) => (typeof e.path === 'string' ? { ...e, path: contentHash(e.path) } : e));
 
-module.exports = { PROBE_ABSENT, PROBE_FULL, afterUidCheck, assertInserted, assertShortCircuit, assertSameOps, opsDiff, makeColdOnly, refillShapes, contentHash, normOps, CLOCKED };
+module.exports = { PROBE_ABSENT, PROBE_FULL, afterUidCheck, afterOrderProbe, assertInserted, assertShortCircuit, assertSameOps, opsDiff, makeColdOnly, refillShapes, contentHash, normOps, CLOCKED };
