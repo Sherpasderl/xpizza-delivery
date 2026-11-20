@@ -133,7 +133,9 @@ const colaJs = html.slice(colaStart, html.indexOf('\n}', colaEnd) + 2);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ONE count mirrored — Cola header meta + the four segment chips + the topbar KPI all read the same counts.
+// ONE count mirrored — Cola header meta + the four segment chips read the same counts. (§5 removed the hidden,
+// unsurfaced topbar KPI sink + updateStats; the mockup topbar shows no KPIs, so the count now surfaces only on
+// the Cola header + its segments.)
 // ─────────────────────────────────────────────────────────────────────────────
 {
   const r = html.slice(html.indexOf('function renderCola('), html.indexOf('function colaCard('));
@@ -144,16 +146,10 @@ const colaJs = html.slice(colaStart, html.indexOf('\n}', colaEnd) + 2);
   assert.match(r, /setSeg\('seg-unassigned-n', counts\.unassigned\)/, 'segment Sin asignar = counts.unassigned');
   assert.match(r, /setSeg\('seg-stalled-n', counts\.stalled\)/, 'segment Detenidos = counts.stalled');
   assert.match(r, /setSeg\('seg-atrisk-n', counts\.atrisk\)/, 'segment En riesgo = counts.atrisk');
-  const us = html.slice(html.indexOf('function updateStats('), html.indexOf('function getDotClass('));
-  assert.match(us, /const pendingCount = \(precomputed \|\| getActionQueue\(Date\.now\(\)\)\)\.counts\.all;/, 'topbar KPI stat-pending = shared queue counts.all');
-  assert.doesNotMatch(us, /getPendingOrders\(\)\.length/, 'KPI no longer the unassigned-only count');
-  // The KPI LABEL must match its count (the whole queue), not the "Sin asignar" segment — else it can read
-  // "1 En cola" while the Sin asignar segment says 0. Spec: the stat-pending KPI label is "En cola".
-  const kpiTag = html.match(/<div class="tb-kpi" id="kpi-pending">[\s\S]*?<\/div>/);
-  assert.ok(kpiTag, 'kpi-pending KPI markup located');
-  assert.match(kpiTag[0], /<span>En cola<\/span>/, 'stat-pending KPI label is "En cola" (matches the union count)');
-  assert.doesNotMatch(kpiTag[0], /Sin asignar/, 'KPI label is no longer the segment-only "Sin asignar"');
-  ok('ONE count mirrored: Cola meta + 4 segment chips + topbar KPI (labelled "En cola") all from the same counts');
+  // §5: the hidden topbar KPI sink is gone — no updateStats, no stat-pending / kpi-pending markup.
+  assert.ok(!html.includes('function updateStats('), 'updateStats removed with the hidden KPI sink');
+  assert.ok(!html.includes('id="stat-pending"') && !html.includes('id="kpi-pending"'), 'the stat-pending / kpi-pending KPI markup is removed');
+  ok('ONE count mirrored: Cola meta + 4 segment chips all from the same counts (the unsurfaced KPI sink retired)');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -255,31 +251,28 @@ const colaJs = html.slice(colaStart, html.indexOf('\n}', colaEnd) + 2);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// P1-b — the Cola header and the topbar KPI are driven by ONE shared queue per render cycle (the 5s tick can
-// never refresh one count without the other; no two-timestamp divergence).
+// P1-b — the Cola header is driven by ONE shared queue per render cycle (no two-timestamp divergence). §5
+// removed the hidden topbar KPI sink + updateStats, so the shared path now feeds the Cola header alone.
 // ─────────────────────────────────────────────────────────────────────────────
 {
   const sync = html.slice(html.indexOf('function syncActionQueueViews('), html.indexOf('function renderCola('));
   assert.match(sync, /const q = precomputed \|\| getActionQueue\(Date\.now\(\)\);/, 'shared path computes the queue ONCE');
   assert.match(sync, /renderCola\(q\);/, 'shared path feeds the Cola header the shared queue');
-  assert.match(sync, /updateStats\(q\);/, 'shared path feeds the topbar KPI the SAME shared queue');
+  assert.ok(!sync.includes('updateStats('), 'the shared path no longer feeds a KPI (updateStats removed in §5)');
   const sb = html.slice(html.indexOf('function renderSidebar('), html.indexOf('function renderSidebar(') + 500);
   assert.match(sb, /syncActionQueueViews\(\);/, 'renderSidebar routes through the shared count path');
-  assert.doesNotMatch(sb, /\brenderCola\(\)/, 'renderSidebar never refreshes the Cola alone (that would skip the KPI on a tick)');
+  assert.doesNotMatch(sb, /\brenderCola\(\)/, 'renderSidebar never refreshes the Cola alone (always via the shared path)');
   assert.match(html, /function renderCola\(precomputed\)/, 'renderCola accepts a precomputed queue');
-  assert.match(html, /function updateStats\(precomputed\)/, 'updateStats accepts a precomputed queue');
-  assert.match(html, /const pendingCount = \(precomputed \|\| getActionQueue\(Date\.now\(\)\)\)\.counts\.all;/, 'KPI reads counts.all from the shared queue');
   const tick = html.slice(html.indexOf('function startRenderTick('), html.indexOf('function startRenderTick(') + 260);
   assert.match(tick, /renderSidebar\(\);/, 'the 5s render tick calls renderSidebar (→ the shared count path)');
-  // CALLER COVERAGE (the whole-flow guard the last round missed — it proved the shared path works, not that
-  // every caller uses it): renderCola( and updateStats( each appear EXACTLY twice in the module — their own
-  // definition + the ONE call inside syncActionQueueViews. Any bare bypass caller (segment click, subscription
-  // callback) makes the count 3+ → red. Comments stripped so a commented reference can't inflate it.
+  // CALLER COVERAGE: renderCola( appears EXACTLY twice in the module — its own definition + the ONE call inside
+  // syncActionQueueViews. Any bare bypass caller (segment click, subscription callback) makes the count 3+ →
+  // red. Comments stripped so a commented reference can't inflate it.
   const modJs = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
     .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map(l => l.replace(/\/\/.*$/, '')).join('\n');
   assert.strictEqual((modJs.match(/renderCola\(/g) || []).length, 2, 'renderCola( only at its def + inside syncActionQueueViews (no bypass caller)');
-  assert.strictEqual((modJs.match(/updateStats\(/g) || []).length, 2, 'updateStats( only at its def + inside syncActionQueueViews (no bypass caller)');
-  ok('one shared queue drives Cola header + KPI; every caller routes through syncActionQueueViews (no bypass)');
+  assert.ok(!modJs.includes('updateStats('), 'updateStats is fully removed (no def, no caller)');
+  ok('one shared queue drives the Cola header; every caller routes through syncActionQueueViews (no bypass)');
 }
 
 console.log(`\ndispatch-cola: OK (${n} groups)`);

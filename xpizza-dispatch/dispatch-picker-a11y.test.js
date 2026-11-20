@@ -98,8 +98,9 @@ const pickerJs = html.slice(openIdx, closeEnd);
   assert.match(pickerJs, /requiere confirmación · lleno/, 'reason: lleno');
   assert.match(pickerJs, /requiere confirmación · en camino/, 'reason: en camino');
   assert.match(pickerJs, /requiere confirmación · sin notificaciones/, 'reason: sin notificaciones');
-  // CSS: needs-confirm is amber; the disabled opacity/not-allowed treatment is GONE; nothing blocks the click
-  assert.match(html, /\.picker-row\.needs-confirm\s*\{\s*background:\s*var\(--warn-soft\)/, 'needs-confirm amber CSS present');
+  // CSS: needs-confirm is the pastel sand caution (no-amber §5); the disabled opacity/not-allowed treatment is
+  // GONE; nothing blocks the click
+  assert.match(html, /\.picker-row\.needs-confirm\s*\{\s*background:\s*var\(--sand-soft\)/, 'needs-confirm sand (pastel) CSS present');
   assert.doesNotMatch(html, /\.picker-row\.disabled\s*\{[^}]*opacity/, 'old .picker-row.disabled opacity rule removed');
   assert.doesNotMatch(html, /\.picker-row[^{]*\{[^}]*pointer-events:\s*none/, 'no pointer-events:none on picker rows');
   assert.doesNotMatch(html, /\.picker-row\.needs-confirm[^{]*\{[^}]*cursor:\s*not-allowed/, 'needs-confirm never cursor:not-allowed');
