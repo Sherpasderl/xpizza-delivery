@@ -423,6 +423,7 @@
     async function leave(kind, keep, pre) {
       if (leaving) return true;
       leaving = true; swap(kind);
+      if (!S.member) memberGen++;   // Codex #236 P2: an admission still waiting on its token never lands in a leaving tab (a mounted member's timers stay hers until the exit is confirmed, #178 #3)
       let ok = true; try { if (pre) ok = (await pre()) !== false; } catch (_) { ok = false; }
       if (!ok) { leaving = false; swap(null); return false; }   // the sign-out was refused: nothing changed (she is still the member, every cache kept)
       // the exit is confirmed: her identity ends in memory (the one hook, dropMember — every in-flight read, token and timer of hers is

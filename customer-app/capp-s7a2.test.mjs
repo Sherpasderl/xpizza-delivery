@@ -7084,6 +7084,40 @@ test('r3 Codex #193 (P1) repro: the SDK is Bob (listener held) and her token\'s 
     assert.ok(S.q('#swap'), '🔴 C193: the app leaves (the overlay)');
   } finally { S.w.close(); }
 });
+// #236 P2's void is scoped: a MOUNTED member's token timers stay hers until the exit is confirmed (#178 #3) — a refused sign-out leaves
+// her refresh live
+test('r3 Codex #236 P2 (scope): a REFUSED sign-out keeps her token refresh live — the expiry still re-reads her token', async () => {
+  const clock = { t: T0 }, L = longTimers();
+  const fb = fakeFirebase({ persisted: 'u_ana', tokExp: T0 + 120e3, rotate: true, failSignOut: 1 });
+  const S = memberBoot({ fb, apiFetch: (u, i) => (u.startsWith('/x/q') ? quoteOk(u, i) : new Promise(() => {})), now: clock, timers: L.T });
+  try {
+    await until(() => S.ui.state.member); await flush();
+    const exp = [...L.pend.keys()]; assert.equal(exp.length, 1, 'premise: her token\'s expiry is armed');
+    await viaRow(null, S); await flush();
+    assert.deepEqual(S.replaced, [], 'premise: the sign-out was refused (no restart)');
+    assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: she is still the member');
+    const r0 = fb.calls.reads; clock.t = T0 + exp[0].ms + 1;
+    for (let i = 0; i < 3; i++) { L.fire(); await flush(); await flush(); }
+    assert.ok(fb.calls.reads > r0, '🔴 C236-P2-SCOPE: after a refused sign-out her token refresh still runs');
+  } finally { S.w.close(); }
+});
+// Codex #236 P2 (single tab, native too): an admission already waiting on its token when this tab LEAVES never lands — the SDK switched
+// (its listener held, so the auth state still names her): the owned read inside the admission is the leave; S.member stays empty
+test('r3 Codex #236 P2: her restored admission waits on its token; the SDK switches to Bob (listener held) ⇒ the owned read leaves, and the admission never lands — no member in the leaving tab', async () => {
+  const hold = { on: true, q: [] }, gate = { on: false, q: [] };
+  const { S, fb } = await pedidosBoot({}, { fbOpts: { hold, notifyGate: gate }, noFlush: true });
+  try {
+    await until(() => hold.q.length >= 1); await flush();
+    assert.equal(S.ui.state.member || null, null, 'premise: her admission waits on its token');
+    gate.on = true; hold.on = false;
+    const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush();   // the SDK is Bob's; the shell not told
+    for (const r of hold.q.splice(0)) r(); await flush(); await flush(); await flush();   // her token read answers: another user ⇒ the leave
+    assert.equal(S.replaced.length, 1, 'premise: the tab left (switch)');
+    assert.equal(S.ui.state.member || null, null, '🔴 C236-P2: an admission that resumes after the leave never repopulates the member');
+    gate.on = false; for (const e of gate.q.splice(0)) e(); await flush(); await flush();
+    assert.equal(S.ui.state.member || null, null, 'and none after the listener is told');
+  } finally { S.w.close(); }
+});
 test('r3 (re-anchor r3-rs-21) leave() ends her identity IN MEMORY before the restart (the checkout mounted): the shell holds no member, her token timers are void — a refresh due after the leave never reads the SDK', async () => {
   const { clock, L, fb, S } = c193();
   try {

@@ -42343,8 +42343,8 @@
   "slice": "r3-rs",
   "label": "r3 (Codex #178 #3): dropMember runs BEFORE the exit is confirmed (a refused sign-out loses her caches)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "      leaving = true; swap(kind);\n      let ok = true;",
-  "to": "      leaving = true; swap(kind); if (S.member) dropMember();\n      let ok = true;",
+  "from": "      leaving = true; swap(kind);\n      if (!S.member) memberGen++;",
+  "to": "      leaving = true; swap(kind); if (S.member) dropMember();\n      if (!S.member) memberGen++;",
   "command": [
    "node",
    "--test",
@@ -42540,6 +42540,40 @@
   ],
   "kills_with": [
    "PRESETTLE: a tab that left writes no stamp"
+  ]
+ },
+ {
+  "id": "r3-rs-36",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #236 P2, single tab): leave() does not void a pending admission — one waiting on its token (no member mounted yet) lands in the leaving tab",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (!S.member) memberGen++;   // Codex #236 P2",
+  "to": "      // if (!S.member) memberGen++;   // Codex #236 P2",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#236 P2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C236-P2: an admission that resumes after the leave never repopulates the member"
+  ]
+ },
+ {
+  "id": "r3-rs-37",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #236 P2 scope): leave() voids a MOUNTED member's generation too — a refused sign-out kills her token refresh",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (!S.member) memberGen++;",
+  "to": "      memberGen++;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#236 P2 \\(scope\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C236-P2-SCOPE: after a refused sign-out her token refresh still runs"
   ]
  }
 ]
