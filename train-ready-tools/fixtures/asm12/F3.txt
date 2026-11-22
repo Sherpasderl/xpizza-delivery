@@ -1,0 +1,16 @@
+deleteAccount
+pruneInactiveAccounts
+blockPublicSignup
+googleStart
+googleSignIn
+completeProfile
+getSignupConfig
+requestOtp
+verifyOtp
+redeemSignupGrant
+getMyProfile
+getMyOrders
+setMyName
+setPromos
+drainRatingRedactions
+useMyAddress
