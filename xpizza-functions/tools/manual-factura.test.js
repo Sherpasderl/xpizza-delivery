@@ -4,15 +4,19 @@
 //   MFC-AMOUNT    --total in lempiras → integer cents exactly (no float drift); base/ISV derived by the canonical 15% split
 //   MFC-PREVIEW   the default (no --apply) reads the config, prints the renderer-faithful preview with the restaurant's own name and
 //                 the número it WILL take, and writes NOTHING
-//   MFC-APPLY     --apply issues through the core; --op <opId> re-run ⇒ the SAME número (idempotent)
+//   MFC-APPLY     (Codex #252-2) the preview GENERATES the opId and prints the exact apply command; --apply REQUIRES --op; a re-run
+//                 with the same --op ⇒ the SAME número (idempotent)
+//   MFC-RECOVER   (Codex #252-4) --apply resolves an EXISTING op before any new-issuance preflight: after the last número was taken
+//                 (or the CAI expired) a crashed issue still recovers its copy through the core's idempotent branch
 //   MFC-REFUSE    a config the core would refuse (temp / expired / range) ⇒ the preview says so; --apply writes nothing
-//   MFC-VOID      void without --apply shows the state and writes nothing; --apply voids (monotonic) and the copy follows
+//   MFC-VOID      (Codex #252-3) void resolves the key (opId or short ref) ONCE and acts on that op; without --apply shows the state and writes nothing; --apply voids (monotonic) and the copy follows
 //   MFC-PIN       the CLI refuses a missing / wrong --project before touching anything (exit 2); --rid is required (exit 1)
 // Run: node tools/manual-factura.test.js
 const assert = require('assert');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const CLI = require('./manual-factura');
+const MF = require('../factura/manual-core');
 const { makeHonestDb: makeDb } = require('../_honest-rtdb-model');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -37,6 +41,11 @@ const ISSUE = { rid: RID, concept: '', total: '115', name: '', rtn: '', by: 'own
     assert.deepStrictEqual([r.ok, r.numero, r.factura_number], [true, 42, '000-001-01-00000042'], `🔴 MFC-PREVIEW: the número it WILL take (${JSON.stringify(r).slice(0, 120)})`);
     assert.ok(r.text.includes('X PIZZA') && r.text.includes('000-001-01-00000042') && r.text.includes('115.00'), '🔴 MFC-PREVIEW: the renderer-faithful preview shows the restaurant\'s own name, the número and the total');
     assert.deepStrictEqual(snap(db), before, '🔴 MFC-PREVIEW: writes NOTHING');
+    assert.ok(/^mf_[0-9a-f]{16}$/.test(r.op_id), `🔴 MFC-APPLY: the preview generates the opId BEFORE anything is written (${r.op_id})`);
+    for (const part of [`--op ${r.op_id}`, '--apply', '--project xpizza-delivery', `--rid ${RID}`, '--total 115']) assert.ok(r.apply_command.includes(part), `🔴 MFC-APPLY: the printed apply command carries ${part} (${r.apply_command})`);
+    assert.ok(r.text.includes(MF.shortRefOf(r.op_id, 8)), '🔴 MFC-APPLY: the preview shows the short ref this op will print');
+    const again = await CLI.preview(db, { ...ISSUE, op: r.op_id });
+    assert.strictEqual(again.op_id, r.op_id, 'MFC-APPLY: a preview with --op keeps it');
     ok('MFC-PREVIEW: the default is a preview (restaurant name from its config, the número it will take); nothing written');
   }
   {
@@ -47,16 +56,30 @@ const ISSUE = { rid: RID, concept: '', total: '115', name: '', rtn: '', by: 'own
     assert.strictEqual((await CLI.status(db, { rid: RID, op: a.short_ref })).numero, 42, '🔴 MFC-APPLY: status by the short ref');
     const b = await CLI.apply(db, { ...ISSUE, op: 'mf_0123456789abcdef' });
     assert.deepStrictEqual([b.ok, b.numero, b.idempotent, db.getAt(`restaurants/${RID}/factura_config/seq/last_reserved`)], [true, 42, true, 42], '🔴 MFC-APPLY: --op re-run ⇒ the same número');
-    const fresh = await CLI.apply(db, ISSUE);
-    assert.ok(fresh.ok && fresh.numero === 43 && /^mf_[0-9a-f]{16}$/.test(fresh.op_id), `MFC-APPLY: without --op a fresh opId (${fresh.op_id})`);
-    ok('MFC-APPLY: --apply issues through the core; --op re-run is idempotent; a fresh opId otherwise');
+    const before = snap(db);
+    const noOp = await CLI.apply(db, ISSUE);
+    assert.deepStrictEqual([noOp.ok, noOp.code, snap(db)], [false, 'op_required', before], '🔴 MFC-APPLY: --apply without --op ⇒ refused, nothing written');
+    ok('MFC-APPLY: the preview generates the opId + the exact apply command; --apply requires --op; a re-run is idempotent');
+  }
+  {
+    // MFC-RECOVER: the last número is taken, the copy write crashed; the range is now exhausted ⇒ the same --op still recovers
+    const db = world(CFG({ seq: { last_reserved: 7999, pending: {} } })); const OP = 'mf_00000000000000ee';
+    const a = await CLI.apply(db, { ...ISSUE, op: OP });
+    assert.deepStrictEqual([a.ok, a.numero], [true, 8000], 'MFC-RECOVER premise: issued the last número');
+    await db.ref(`facturas/${RID}/manual_${OP}`).remove();   // the crash: the copy never landed
+    const r = await CLI.apply(db, { ...ISSUE, op: OP });
+    assert.deepStrictEqual([r.ok, r.idempotent, r.numero, db.getAt(`facturas/${RID}/manual_${OP}/factura_number`)], [true, true, 8000, '000-001-01-00008000'], `🔴 MFC-RECOVER: range exhausted ⇒ the existing op still recovers its copy (${JSON.stringify(r)})`);
+    await db.ref(`restaurants/${RID}/factura_config/fecha_limite`).set('2026-01-01'); await db.ref(`facturas/${RID}/manual_${OP}`).remove();
+    const e = await CLI.apply(db, { ...ISSUE, op: OP });
+    assert.deepStrictEqual([e.ok, e.idempotent, db.getAt(`facturas/${RID}/manual_${OP}`) !== null], [true, true, true], `🔴 MFC-RECOVER: expired CAI ⇒ the existing op still recovers (${JSON.stringify(e)})`);
+    ok('MFC-RECOVER: an existing op skips the new-issuance preflight (exhausted range / expired CAI) and recovers through the core');
   }
   {
     for (const [cfg, code] of [[CFG({ is_temp: true }), 'config_temp'], [CFG({ fecha_limite: '2026-11-01' }), 'config_expired'], [CFG({ seq: { last_reserved: 8000 } }), 'range_exhausted']]) {
       const db = world(cfg); const before = snap(db);
       const p = await CLI.preview(db, ISSUE);
       assert.deepStrictEqual([p.ok, p.code], [false, code], `🔴 MFC-REFUSE: the preview refuses ${code}`);
-      const a = await CLI.apply(db, ISSUE);
+      const a = await CLI.apply(db, { ...ISSUE, op: 'mf_000000000000000a' });
       assert.deepStrictEqual([a.ok, a.code, snap(db)], [false, code, before], `🔴 MFC-REFUSE: --apply refuses ${code}, nothing written`);
     }
     const bad = await CLI.preview(world(), { ...ISSUE, rtn: '123' });
@@ -74,6 +97,12 @@ const ISSUE = { rid: RID, concept: '', total: '115', name: '', rtn: '', by: 'own
     assert.deepStrictEqual([v.ok, v.status.state, v.status.copy_void], [true, 'voided', true], '🔴 MFC-VOID: --apply voids; the print copy follows');
     const st = await CLI.status(db, { rid: RID, op: a.op_id });
     assert.deepStrictEqual([st.found, st.state, st.numero], [true, 'voided', 42], 'MFC-VOID: status reports it');
+    // by the printed short ref: resolved ONCE, the right op voided
+    const b = await CLI.apply(db, { ...ISSUE, op: 'mf_00000000000000bb' });
+    const vr = await CLI.voidCmd(db, { rid: RID, op: b.short_ref, reason: 'duplicada', by: 'owner', apply: true, now: NOW + 6 });
+    assert.deepStrictEqual([vr.ok, vr.status && vr.status.op_id, db.getAt(`restaurants/${RID}/factura_config/manual/mf_00000000000000bb/state`)], [true, 'mf_00000000000000bb', 'voided'], `🔴 MFC-VOID: void by the short ref voids THAT op (${JSON.stringify(vr).slice(0, 160)})`);
+    const ghost = await CLI.voidCmd(db, { rid: RID, op: 'M-00000000', reason: 'x', by: 'owner', apply: true, now: NOW + 7 });
+    assert.deepStrictEqual([ghost.ok, ghost.code], [false, 'not_found'], 'MFC-VOID: an unknown ref ⇒ not_found');
     ok('MFC-VOID: dry run writes nothing; --apply voids monotonically and the copy follows; status reports it');
   }
   {

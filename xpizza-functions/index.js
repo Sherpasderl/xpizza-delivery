@@ -613,7 +613,7 @@ function validateOrderPayload(body, restaurantId, tables = null) {
   }
 
   // order_id is used directly in RTDB paths — restrict to a safe charset/length.
-  if (body.order_id != null && !/^[A-Za-z0-9_-]{1,64}$/.test(String(body.order_id))) {
+  if (body.order_id != null && (!/^[A-Za-z0-9_-]{1,64}$/.test(String(body.order_id)) || String(body.order_id).startsWith('manual_'))) {   // manual_ = the manual-factura key space (PLAN-manual-factura r3 §6)
     errors.push('order_id has invalid format');
   }
 

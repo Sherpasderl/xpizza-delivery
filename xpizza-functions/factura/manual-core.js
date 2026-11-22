@@ -23,8 +23,9 @@ const crypto = require('crypto');
 const { priceBreakdown } = require('./money');
 const { buildFacturaRecord, hnDateISO } = require('./build-record');
 const { usesPlatformFactura } = require('./eligibility');
+const { printedAckFailed } = require('./print-recovery');   // the print agent's own marker test (byte-synced, factura/sync.test.js)
 
-const OP_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+const OP_ID_RE = /^mf_[0-9a-f]{16}$/;   // ONE strict format, disjoint from a short ref (M- + UPPERCASE hex) — Codex #252-3
 const RID_RE = /^[a-z0-9_]{1,40}$/;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_CONCEPT = 'Elaboración de Pizzas';
@@ -67,19 +68,21 @@ function freeShortRef(manual, opId) {
 const hashOf = (payload) => crypto.createHash('sha256').update(JSON.stringify(Object.keys(payload).sort().map((k) => [k, payload[k]]))).digest('hex');
 
 // why the config can't issue `next` (null = it can) — fail-closed
-function configRefusal(cfg, next, now) {
-  if (typeof cfg.cai_code !== 'string' || !cfg.cai_code || typeof cfg.prefix !== 'string' || !cfg.prefix
+const filled = (v) => typeof v === 'string' && v.trim() !== '';
+const realDate = (iso) => { const d = new Date(`${iso}T00:00:00Z`); return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso; };
+function configRefusal(cfg, next, today) {   // today = the Honduras-local ISO date (hnDateISO)
+  if (!filled(cfg.cai_code) || !filled(cfg.prefix) || !filled(cfg.rtn) || !filled(cfg.legal_name)   // the printed fiscal identity (Codex #252-6)
     || !cfg.seq || !Number.isSafeInteger(cfg.seq.last_reserved) || !Number.isSafeInteger(cfg.range_start) || !Number.isSafeInteger(cfg.range_end)) return 'config_invalid';
   if (cfg.is_temp === true) return 'config_temp';
-  if (typeof cfg.fecha_limite !== 'string' || !ISO_DATE_RE.test(cfg.fecha_limite)) return 'config_no_expiry';
-  if (hnDateISO(now) > cfg.fecha_limite) return 'config_expired';
+  if (typeof cfg.fecha_limite !== 'string' || !ISO_DATE_RE.test(cfg.fecha_limite) || !realDate(cfg.fecha_limite)) return 'config_no_expiry';
+  if (today > cfg.fecha_limite) return 'config_expired';
   if (next > cfg.range_end) return 'range_exhausted';
   if (next < cfg.range_start) return 'range_invalid';
   return null;
 }
 
 // The rendered record for a manual sale — the SAME builder the app uses, fed a one-line cash order. Pure (the CLI preview uses it too).
-function buildManualRecord(cfg, payload, numero, now, opId, shortRef = shortRefOf(opId, 8)) {
+function buildManualRecord(cfg, payload, numero, { now, opId, shortRef = shortRefOf(opId, 8) }) {
   const order = {
     orderId: shortRef,   // ⇒ the PEDIDO line; the record's order_id stays the manual key below
     items: [{ qty: 1, description: payload.concept, line_gross_cents: payload.total_cents }],
@@ -107,11 +110,11 @@ async function issueManual(db, { rid, opId, payload, issuedBy, now }) {
     const existing = cfg.manual && cfg.manual[opId];
     if (existing) { out = existing.payload_hash === hash ? { existing } : { code: 'op_reused' }; return cfg; }   // never abort on a value seen locally: returned unchanged, the server confirms it (or re-runs this with its own)
     const next = (cfg.seq && cfg.seq.last_reserved) + 1;
-    const why = configRefusal(cfg, next, now);
+    const why = configRefusal(cfg, next, hnDateISO(now));
     if (why) { out = { code: why }; return cfg; }   // e.g. a partial local cache after a same-process update() must not refuse a valid config
     const shortRef = freeShortRef(cfg.manual, opId);
     if (!shortRef) { out = { code: 'short_ref_exhausted' }; return cfg; }
-    const record = buildManualRecord(cfg, norm.payload, next, now, opId, shortRef);
+    const record = buildManualRecord(cfg, norm.payload, next, { now, opId, shortRef });
     const entry = { op_id: opId, short_ref: shortRef, source: 'manual', payload: norm.payload, payload_hash: hash, numero: next, factura_number: record.factura_number,
       record, issued_by: issuedBy, issued_at: now, state: 'issued' };
     out = { entry };
@@ -156,23 +159,33 @@ async function voidManual(db, { rid, opId, reason, voidedBy, now }) {
   }, undefined, false);   // applyLocally=false: no speculative local value for same-process readers
   if (!out || out.code) return refuse((out && out.code) || 'not_found');
   await repairCopy(db, { rid, opId });
+  const copy = (await db.ref(copyPath(rid, opId)).once('value')).val();
+  if (!copy || copy.void !== true) return refuse('copy_not_voided');   // success only once the printable copy shows voided (a re-run repairs it)
   return { ok: true, idempotent: !!out.idempotent };
 }
 
-// Status for one manual factura: the authority + the copy's print state, reported separately (issuance ≠ printing).
-async function statusManual(db, { rid, opId: key }) {
-  let opId = key;
-  if (typeof key === 'string' && SHORT_REF_RE.test(key)) {   // the short ref printed on the paper ⇒ its opId (low volume: one read)
-    const all = (await db.ref(`${configPath(rid)}/manual`).once('value')).val() || {};
-    opId = Object.keys(all).find((k) => all[k] && all[k].short_ref === key);
-    if (!opId) return { found: false };
-  }
-  if (typeof opId !== 'string' || !OP_ID_RE.test(opId)) return { found: false };
-  const auth = (await db.ref(manualPath(rid, opId)).once('value')).val();
-  if (!auth) return { found: false };
-  const copy = (await db.ref(copyPath(rid, opId)).once('value')).val();
-  return { found: true, op_id: opId, short_ref: auth.short_ref, state: auth.state, numero: auth.numero, factura_number: auth.factura_number, total_cents: auth.payload && auth.payload.total_cents,
-    issued_at: auth.issued_at, voided_at: auth.voided_at || null, copy: !!copy, printed: !!(copy && copy.printed), copy_void: !!(copy && copy.void) };
+// The ONE op a key names: an opId as is, or the short ref printed on the paper (one read of the low-volume manual node). null = none.
+async function resolveOp(db, { rid, key }) {
+  if (typeof key !== 'string' || typeof rid !== 'string' || !RID_RE.test(rid)) return null;
+  if (OP_ID_RE.test(key)) return (await db.ref(manualPath(rid, key)).once('value')).val() ? key : null;
+  if (!SHORT_REF_RE.test(key)) return null;
+  const all = (await db.ref(`${configPath(rid)}/manual`).once('value')).val() || {};
+  return Object.keys(all).find((k) => OP_ID_RE.test(k) && all[k] && all[k].short_ref === key) || null;
 }
 
-module.exports = { issueManual, repairCopy, voidManual, statusManual, normalizePayload, buildManualRecord, configRefusal, shortRefOf, OP_ID_RE, DEFAULT_CONCEPT, CONCEPT_MAX };
+// The copy's print state, allowlisted (never the raw print_error text).
+const printClass = (copy) => (copy && copy.printed === true ? 'printed' : printedAckFailed(copy) ? 'printed_ack_failed' : 'not_printed');
+
+// Status for one manual factura (by opId or short ref). Runs the idempotent repairCopy first (no periodic caller until the portal
+// release), then reports the authority + the copy, issuance and printing separately.
+async function statusManual(db, { rid, key }) {
+  const opId = await resolveOp(db, { rid, key });
+  if (!opId) return { found: false };
+  await repairCopy(db, { rid, opId });
+  const auth = (await db.ref(manualPath(rid, opId)).once('value')).val();
+  const copy = (await db.ref(copyPath(rid, opId)).once('value')).val();
+  return { found: true, op_id: opId, short_ref: auth.short_ref, state: auth.state, numero: auth.numero, factura_number: auth.factura_number, total_cents: auth.payload && auth.payload.total_cents,
+    issued_at: auth.issued_at, voided_at: auth.voided_at || null, copy: !!copy, print: printClass(copy), copy_void: !!(copy && copy.void) };
+}
+
+module.exports = { issueManual, repairCopy, voidManual, statusManual, resolveOp, normalizePayload, buildManualRecord, configRefusal, shortRefOf, OP_ID_RE, SHORT_REF_RE, DEFAULT_CONCEPT, CONCEPT_MAX };

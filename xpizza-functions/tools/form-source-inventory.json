@@ -2984,6 +2984,7 @@
   "factura/eligibility.js",
   "factura/manual-core.js",
   "factura/pricing.js",
+  "factura/print-recovery.js",
   "form-signal.js",
   "hosted-charge-flow.js",
   "index.js",
@@ -4376,6 +4377,10 @@
    "lifts": []
   },
   "factura/pricing.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "factura/print-recovery.js": {
    "pins": [],
    "lifts": []
   },
@@ -7431,6 +7436,7 @@
     "xpizza-functions/directory/directory-endpoint.test.js",
     "xpizza-functions/driver-callable-guard-coverage.guard.test.js",
     "xpizza-functions/factura-catalog-cutover.test.js",
+    "xpizza-functions/factura/manual-namespace.guard.test.js",
     "xpizza-functions/fail-closed-reject.test.js",
     "xpizza-functions/hosted-refusal-reused-hold.test.js",
     "xpizza-functions/identity-shadow-placement.test.js",
