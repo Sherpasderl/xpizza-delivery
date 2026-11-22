@@ -37,8 +37,8 @@ const CTRL_RE = /[\u0000-\u001f\u007f]/;
 const configPath = (rid) => `restaurants/${rid}/factura_config`;
 const manualPath = (rid, opId) => `${configPath(rid)}/manual/${opId}`;
 const COPY_PREFIX = 'manual~';   // '~' is outside every server order-id charset (/^[A-Za-z0-9_-]{1,64}$/), so no app order's factura key can be a manual copy
-// (the only other whole-order writer is the dispatcher rules grant — trusted staff, owner-only today — and hitting a REAL copy would need a 2^64 guess of a
-// never-shown opId: it cannot occur). PLAN-manual-factura §6.
+// (the only other writers of a ~-keyed order are trusted staff accounts (Central dispatcher + kitchen), via whole-order or child /status writes; colliding
+// with a REAL copy needs the never-shown 64-bit opId (facturas + factura_config are client-unreadable): it cannot occur). PLAN-manual-factura §6.
 const copyPath = (rid, opId) => `facturas/${rid}/${COPY_PREFIX}${opId}`;
 const isSafeCents = (v) => Number.isSafeInteger(v);
 const text = (v) => (v == null ? '' : typeof v === 'string' ? v.trim() : null);
