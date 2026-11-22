@@ -12,6 +12,7 @@
 cd "${1:?worktree}/xpizza-functions" || exit 9
 # every step runs under rungroup: its own process group, SIGKILLed WHOLE on the alarm (rc 124); smoke: run-group.smoke.sh
 . "$(dirname "${BASH_SOURCE[0]}")/run-group.sh" || { echo "LIGHT-CHAIN REFUSED: run-group.sh missing"; exit 3; }
+. "$(dirname "${BASH_SOURCE[0]}")/train-lib.sh" || { echo "LIGHT-CHAIN REFUSED: train-lib.sh missing"; exit 3; }
 unset NODE_OPTIONS NODE_PATH
 # ENVIRONMENT PRE-FLIGHT: an environment failure must refuse up front, never be scored as test results
 node -e "require.resolve('firebase-admin');require.resolve('acorn')" 2>/dev/null || { echo "LIGHT-CHAIN REFUSED: xpizza-functions/node_modules does not resolve ($(readlink node_modules 2>/dev/null || echo 'no link'))"; exit 3; }
@@ -24,18 +25,22 @@ node -e "require('./package.json').scripts.test.split('&&').map(s=>s.trim()).fil
 n=$(wc -l < $OUT/cmds.txt | tr -d ' '); fail=0; i=0
 [ "$n" -gt 0 ] || { echo "LIGHT-CHAIN REFUSED: no chain command derived from package.json"; exit 3; }
 F2='node tools/f2-narrow-rules.js --check'; RULES='npm run -s check:rules'; APPS='npm run -s test:apps'
-DERIVED=$OUT/derived.txt; { cat $OUT/cmds.txt; printf '%s\n' "$F2" "$RULES" "$APPS"; } > $DERIVED
-TIP=$(git rev-parse --short=8 HEAD); DIRTY=$(git status --short --untracked-files=no | grep -v database.rules.json | wc -l | tr -d ' ')
-PARTIAL=
+{ cat $OUT/cmds.txt; printf '%s\n' "$F2" "$RULES" "$APPS"; } > $OUT/derived.raw; DERIVED=$OUT/derived.txt
+dup=$(norm_list $OUT/derived.raw $DERIVED) || { echo "LIGHT-CHAIN REFUSED: the derived set names a step twice:"; echo "$dup" | sed 's/^/  /'; exit 3; }
+# every run starts AND ends on a clean tip (#254-4); the tree check has no exclusion (#254-3, tree_dirty)
+TIP=$(git rev-parse --short=8 HEAD); why=$(tip_holds .. "$TIP") || { echo "LIGHT-CHAIN REFUSED: $why"; exit 3; }
+# RUN = the ONE parse of the LIST (norm_list); the set comparison, want() and the coverage all read it (#254-1)
+PARTIAL=; RUN=$OUT/run.txt
 if [ -n "$LIST" ]; then
   [ -f "$LIST" ] || { echo "LIGHT-CHAIN REFUSED: LIST $LIST does not exist"; exit 3; }
-  bad=$(grep -v '^$' "$LIST" | grep -vxF -f $DERIVED); [ -z "$bad" ] || { echo "LIGHT-CHAIN REFUSED: LIST names step(s) not in the derived set:"; echo "$bad" | sed 's/^/  /'; exit 3; }
-  cmp -s <(grep -v '^$' "$LIST" | sort -u) <(sort -u $DERIVED) || PARTIAL=1
+  dup=$(norm_list "$LIST" $RUN) || { echo "LIGHT-CHAIN REFUSED: LIST names step(s) more than once:"; echo "$dup" | sed 's/^/  /'; exit 3; }
+  bad=$(grep -vxF -f $DERIVED $RUN); [ -z "$bad" ] || { echo "LIGHT-CHAIN REFUSED: LIST names step(s) not in the derived set:"; echo "$bad" | sed 's/^/  /'; exit 3; }
+  cmp -s <(sort $RUN) <(sort $DERIVED) || PARTIAL=1
 fi
-want(){ [ -z "$PARTIAL" ] || grep -qxF -- "$1" "$LIST"; }
-RESULTS=$OUT/results.txt; echo "TIP $TIP $([ "$DIRTY" = 0 ] && echo clean || echo dirty)" > $RESULTS
-rec(){ [ "$1" -eq 0 ] && echo "PASS $2" >> $RESULTS || echo "FAIL $2" >> $RESULTS; }
-echo "HEAD $TIP dirty=$DIRTY — $n chain commands (emulator-ports + census.negative excluded)${PARTIAL:+ — LIST: $(grep -vc '^$' "$LIST") of $((n+3)) derived steps}"
+want(){ [ -z "$PARTIAL" ] || grep -qxF -- "$1" $RUN; }
+RESULTS=$OUT/results.txt; echo "TIP $TIP" > $RESULTS
+rec(){ local t; t=$(verdict "$1" 0 124 "${3:-0}"); echo "$t $2" >> $RESULTS; }
+echo "HEAD $TIP clean — $n chain commands (emulator-ports + census.negative excluded)${PARTIAL:+ — LIST: $(wc -l < $RUN | tr -d ' ') of $((n+3)) derived steps}"
 LOADMAX=${LOADMAX:-25}; waited=0
 l1(){ uptime | sed 's/.*averages*: //' | awk '{print int($1)}'; }
 while IFS= read -r c; do
@@ -48,31 +53,31 @@ while IFS= read -r c; do
     while [ "$(l1)" -ge "$LOADMAX" ]; do sleep 30; waited=$((waited+30)); done
     rungroup 960 bash -c "$c" > "$OUT/$i.960.log" 2>&1 < /dev/null; rc=$?; al=960
   fi
-  echo "$i $(l1)" >> $OUT/load.txt; rec $rc "$c"
+  echo "$i $(l1)" >> $OUT/load.txt; rec $rc "$c" $al
   if [ $rc -ne 0 ]; then fail=$((fail+1)); if [ $rc -eq 124 ]; then echo "rc=124 TIMEOUT(${al}s) [$i] $c"; else echo "rc=$rc [$i] $c"; fi; fi
 done < $OUT/cmds.txt
 gate(){ while [ "$(l1)" -ge "$LOADMAX" ]; do sleep 30; waited=$((waited+30)); done; }
-if want "$F2"; then gate; rungroup 120 $F2 > $OUT/f2.log 2>&1 < /dev/null; rc=$?; rec $rc "$F2"; [ $rc -eq 0 ] || { fail=$((fail+1)); echo "rc=$rc f2-narrow-rules --check"; }; fi
-if want "$RULES"; then gate; rungroup 120 $RULES > $OUT/rules.log 2>&1 < /dev/null; rc=$?; rec $rc "$RULES"; [ $rc -eq 0 ] || { fail=$((fail+1)); echo "rc=$rc npm run check:rules"; }; fi
+if want "$F2"; then gate; rungroup 120 $F2 > $OUT/f2.log 2>&1 < /dev/null; rc=$?; rec $rc "$F2" 120; [ $rc -eq 0 ] || { fail=$((fail+1)); echo "rc=$rc f2-narrow-rules --check"; }; fi
+if want "$RULES"; then gate; rungroup 120 $RULES > $OUT/rules.log 2>&1 < /dev/null; rc=$?; rec $rc "$RULES" 120; [ $rc -eq 0 ] || { fail=$((fail+1)); echo "rc=$rc npm run check:rules"; }; fi
 # FULL light = + `npm run test:apps` (advisor standing rule 2026-11-08: app suites outside xpizza-functions — incl. 9 customer-app
 # suites — run ONLY there). ~280 s at ba47f627, + ~285 s for the 62 portal files (portal light chain r0, 11-16); own alarm
 # 2400 s; each file is its own verdict inside (tools/app-suites.js; a cancelled/timed-out file is RED).
 if want "$APPS"; then
-  gate; rungroup 2400 $APPS > $OUT/apps.log 2>&1 < /dev/null; rc=$?; rec $rc "$APPS"
+  gate; rungroup 2400 $APPS > $OUT/apps.log 2>&1 < /dev/null; rc=$?; rec $rc "$APPS" 2400
   if [ $rc -ne 0 ]; then fail=$((fail+1)); echo "rc=$rc npm run test:apps — $(grep -E "^app-suites:" $OUT/apps.log | tail -1)"; grep -E "^  🔴" $OUT/apps.log | sed "s/^/    /"; fi
 fi
 [ -f $OUT/load.txt ] && echo "load max (1-min, after each cmd): $(sort -k2 -n $OUT/load.txt | tail -1)"
+# the verdict is bound to the tip: HEAD unchanged and the tree still clean at the END (#254-4); never the stage-L marker otherwise
+why=$(tip_holds .. "$TIP") || { echo "LIGHT-CHAIN NOT A PASS: the tip did not hold through the run — $why (logs $OUT)"; exit 5; }
+if [ $fail -ne 0 ]; then echo "LIGHT-CHAIN FAILED: fail=$fail (logs $OUT; results $RESULTS)"; exit 1; fi
+receipt_footer $RESULTS "$TIP"   # written LAST, only for a green run whose tip held: what GREEN_FROM accepts (#254-5)
 if [ -n "$PARTIAL" ]; then
-  ran=$(grep -vc '^$' "$LIST"); covered=0
-  # resume coverage: both runs on the SAME CLEAN tip (a dirty tree's sha does not name what was tested)
-  if [ "$DIRTY" = 0 ] && [ -n "$GREEN_FROM" ] && [ -f "$GREEN_FROM" ] && [ "$(head -1 "$GREEN_FROM")" = "TIP $TIP clean" ]; then
-    covered=1; while IFS= read -r c; do grep -qxF -- "$c" "$LIST" && continue; grep -qxF -- "PASS $c" "$GREEN_FROM" || { covered=0; echo "  not covered by GREEN_FROM: $c"; }; done < $DERIVED
+  grep -vxF -f $RUN $DERIVED > $OUT/rest.txt
+  if ! receipt_covers "$GREEN_FROM" "$TIP" $OUT/rest.txt; then
+    echo "LIGHT-CHAIN PARTIAL: ran $(wc -l < $RUN | tr -d ' ') of $((n+3)) derived steps — NOT a gate pass (GREEN_FROM=<a completed green results.txt at TIP $TIP> must cover the rest; logs $OUT)"
+    exit 4
   fi
-  if [ $covered = 0 ]; then
-    echo "LIGHT-CHAIN PARTIAL: fail=$fail, ran $ran of $((n+3)) derived steps — NOT a gate pass (GREEN_FROM=<results.txt of a green run on the clean TIP $TIP> must cover the rest; logs $OUT)"
-    exit $([ $fail -eq 0 ] && echo 4 || echo 1)
-  fi
-  echo "LIGHT-CHAIN (resume): the LIST ($ran) + GREEN_FROM $GREEN_FROM cover all $((n+3)) derived steps at $TIP"
+  echo "LIGHT-CHAIN (resume): the LIST ($(wc -l < $RUN | tr -d ' ')) + GREEN_FROM $GREEN_FROM cover all $((n+3)) derived steps at $TIP"
 fi
-echo "LIGHT-CHAIN fail=$fail of $((n+3)) (logs $OUT; results $RESULTS; paused ${waited}s for load>=${LOADMAX})"
-exit $([ $fail -eq 0 ] && echo 0 || echo 1)
+echo "LIGHT-CHAIN fail=0 of $((n+3)) (logs $OUT; results $RESULTS; paused ${waited}s for load>=${LOADMAX})"
+exit 0

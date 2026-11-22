@@ -11,8 +11,10 @@
 #     not a Cloud Function in the reach any more).
 # Usage: split-batches.py <reach.json> <batches.json> [<out dir>] [--held <deploy-held.json>]
 #   batches.json = {"F1": ["name", ...], "F2": [...], ...} in deploy order. The out dir gets F*.txt + names.txt (non-new names).
+#   The out dir must NOT exist or be EMPTY (Codex #254-7: a reused dir would keep an older generation's F*.txt): the files are written
+#   to a fresh temp dir beside it and renamed into place whole, so no stale or partial batch file can survive.
 # Exit 0 = proven; exit 1 = refused (each problem printed); exit 2 = bad input.
-import json, os, sys
+import json, os, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 args = sys.argv[1:]
@@ -21,6 +23,9 @@ if '--held' in args:
     i = args.index('--held'); held_path = args[i + 1]; del args[i:i + 2]
 if len(args) not in (2, 3):
     print('usage: split-batches.py <reach.json> <batches.json> [<out dir>] [--held <deploy-held.json>]'); sys.exit(2)
+out = args[2] if len(args) == 3 else None
+if out and os.path.exists(out) and (not os.path.isdir(out) or os.listdir(out)):
+    print(f'SPLIT REFUSED: the output directory {out} exists and is not empty — a reused directory can keep an older F*.txt; give a new one'); sys.exit(2)
 
 def load(p, what):
     try:
@@ -68,11 +73,14 @@ if problems:
     print('SPLIT REFUSED:\n  ' + '\n  '.join(problems)); sys.exit(1)
 
 held_in_closure = sorted(closure & set(held))
-if len(args) == 3:
-    out = args[2]; os.makedirs(out, exist_ok=True)
+if out:
+    parent = os.path.dirname(os.path.abspath(out)); os.makedirs(parent, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix='.split-', dir=parent)
     for b, names in batches.items():
-        with open(os.path.join(out, f'{b}.txt'), 'w') as f: f.write('\n'.join(names) + '\n')
-    with open(os.path.join(out, 'names.txt'), 'w') as f: f.write('\n'.join(sorted(union - set(new))) + '\n')
+        with open(os.path.join(tmp, f'{b}.txt'), 'w') as f: f.write('\n'.join(names) + '\n')
+    with open(os.path.join(tmp, 'names.txt'), 'w') as f: f.write('\n'.join(sorted(union - set(new))) + '\n')
+    if os.path.isdir(out): os.rmdir(out)   # empty (checked above); rmdir refuses if anything appeared since
+    os.rename(tmp, out)
 for b, names in batches.items():
     print(f'{b}: {len(names)} — firebase deploy --project xpizza-delivery --only "' + ','.join(f'functions:{n}' for n in names) + '"')
 print(f'OK: {len(union)} names in {len(batches)} batches == the closure ({len(closure)}: {len(closure) - len(new)} changed + {len(new)} new'
