@@ -104,10 +104,10 @@ const appOrder = (oid) => ({ orderId: oid, items: [{ qty: 1, description: 'Pizza
     await reset();
     const a = await issue('mf_d000000000000001');
     const auth = await get(`restaurants/${RID}/factura_config/manual/mf_d000000000000001`);
-    assert.deepStrictEqual(await get(`facturas/${RID}/manual_mf_d000000000000001`), { ...auth.record, void: false }, '🔴 MFE-COPY-VOID: the copy IS the snapshot');
-    await db.ref(`facturas/${RID}/manual_mf_d000000000000001`).update({ printed: true });
+    assert.deepStrictEqual(await get(`facturas/${RID}/manual~mf_d000000000000001`), { ...auth.record, void: false }, '🔴 MFE-COPY-VOID: the copy IS the snapshot');
+    await db.ref(`facturas/${RID}/manual~mf_d000000000000001`).update({ printed: true });
     await Promise.all([MF.voidManual(db, { rid: RID, opId: 'mf_d000000000000001', reason: 'error', voidedBy: 'owner', now: NOW + 1 }), MF.voidManual(db, { rid: RID, opId: 'mf_d000000000000001', reason: 'otro', voidedBy: 'x', now: NOW + 2 })]);
-    const v = await get(`restaurants/${RID}/factura_config/manual/mf_d000000000000001`); const cp = await get(`facturas/${RID}/manual_mf_d000000000000001`);
+    const v = await get(`restaurants/${RID}/factura_config/manual/mf_d000000000000001`); const cp = await get(`facturas/${RID}/manual~mf_d000000000000001`);
     assert.deepStrictEqual([v.state, cp.void, cp.printed], ['voided', true, true], '🔴 MFE-COPY-VOID: voided once; the copy follows and keeps printed');
     const re = await issue('mf_d000000000000001');
     assert.deepStrictEqual([re.numero, re.state, (await get(`restaurants/${RID}/factura_config/manual/mf_d000000000000001/state`))], [a.numero, 'voided', 'voided'], '🔴 MFE-COPY-VOID: a re-issue never un-voids');

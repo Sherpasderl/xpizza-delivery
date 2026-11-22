@@ -13,7 +13,7 @@
  *   rendered record snapshot + { numero, payload, issued_by, issued_at, state:'issued' }.
  * One commit = número + record. seq.pending is never touched (the app's key space); /orders is never written.
  *
- * repairCopy derives the print copy facturas/{rid}/manual_{opId} ONLY from that snapshot (never the current config): create it when
+ * repairCopy derives the print copy facturas/{rid}/manual~{opId} ONLY from that snapshot (never the current config): create it when
  * missing; when the authority is voided, set the copy's void false→true; never un-void, never overwrite a copy's fields.
  * VOID = a monotonic transaction issued → voided on the authority, then repairCopy.
  * The restaurant must be a platform-factura restaurant (eligibility.usesPlatformFactura — the single fiscal authority).
@@ -36,7 +36,10 @@ const CTRL_RE = /[\u0000-\u001f\u007f]/;
 
 const configPath = (rid) => `restaurants/${rid}/factura_config`;
 const manualPath = (rid, opId) => `${configPath(rid)}/manual/${opId}`;
-const copyPath = (rid, opId) => `facturas/${rid}/manual_${opId}`;
+const COPY_PREFIX = 'manual~';   // '~' is outside every server order-id charset (/^[A-Za-z0-9_-]{1,64}$/), so no app order's factura key can be a manual copy
+// (the only other whole-order writer is the dispatcher rules grant — trusted staff, owner-only today — and hitting a REAL copy would need a 2^64 guess of a
+// never-shown opId: it cannot occur). PLAN-manual-factura §6.
+const copyPath = (rid, opId) => `facturas/${rid}/${COPY_PREFIX}${opId}`;
 const isSafeCents = (v) => Number.isSafeInteger(v);
 const text = (v) => (v == null ? '' : typeof v === 'string' ? v.trim() : null);
 
@@ -90,7 +93,7 @@ function buildManualRecord(cfg, payload, numero, { now, opId, shortRef = shortRe
     customer_name: payload.customer_name || 'Consumidor Final', razon_social: payload.customer_name, rtn_cliente: payload.rtn,
     payment_method: 'cash',
   };
-  return { ...buildFacturaRecord({ order, config: cfg, reserved: numero, now }), order_id: `manual_${opId}` };
+  return { ...buildFacturaRecord({ order, config: cfg, reserved: numero, now }), order_id: `${COPY_PREFIX}${opId}` };
 }
 
 function refuse(code) { return { ok: false, code }; }
@@ -188,4 +191,4 @@ async function statusManual(db, { rid, key }) {
     issued_at: auth.issued_at, voided_at: auth.voided_at || null, copy: !!copy, print: printClass(copy), copy_void: !!(copy && copy.void) };
 }
 
-module.exports = { issueManual, repairCopy, voidManual, statusManual, resolveOp, normalizePayload, buildManualRecord, configRefusal, shortRefOf, OP_ID_RE, SHORT_REF_RE, DEFAULT_CONCEPT, CONCEPT_MAX };
+module.exports = { COPY_PREFIX, issueManual, repairCopy, voidManual, statusManual, resolveOp, normalizePayload, buildManualRecord, configRefusal, shortRefOf, OP_ID_RE, SHORT_REF_RE, DEFAULT_CONCEPT, CONCEPT_MAX };

@@ -66,12 +66,12 @@ const ISSUE = { rid: RID, concept: '', total: '115', name: '', rtn: '', by: 'own
     const db = world(CFG({ seq: { last_reserved: 7999, pending: {} } })); const OP = 'mf_00000000000000ee';
     const a = await CLI.apply(db, { ...ISSUE, op: OP });
     assert.deepStrictEqual([a.ok, a.numero], [true, 8000], 'MFC-RECOVER premise: issued the last número');
-    await db.ref(`facturas/${RID}/manual_${OP}`).remove();   // the crash: the copy never landed
+    await db.ref(`facturas/${RID}/${MF.COPY_PREFIX}${OP}`).remove();   // the crash: the copy never landed
     const r = await CLI.apply(db, { ...ISSUE, op: OP });
-    assert.deepStrictEqual([r.ok, r.idempotent, r.numero, db.getAt(`facturas/${RID}/manual_${OP}/factura_number`)], [true, true, 8000, '000-001-01-00008000'], `🔴 MFC-RECOVER: range exhausted ⇒ the existing op still recovers its copy (${JSON.stringify(r)})`);
-    await db.ref(`restaurants/${RID}/factura_config/fecha_limite`).set('2026-01-01'); await db.ref(`facturas/${RID}/manual_${OP}`).remove();
+    assert.deepStrictEqual([r.ok, r.idempotent, r.numero, db.getAt(`facturas/${RID}/${MF.COPY_PREFIX}${OP}/factura_number`)], [true, true, 8000, '000-001-01-00008000'], `🔴 MFC-RECOVER: range exhausted ⇒ the existing op still recovers its copy (${JSON.stringify(r)})`);
+    await db.ref(`restaurants/${RID}/factura_config/fecha_limite`).set('2026-01-01'); await db.ref(`facturas/${RID}/${MF.COPY_PREFIX}${OP}`).remove();
     const e = await CLI.apply(db, { ...ISSUE, op: OP });
-    assert.deepStrictEqual([e.ok, e.idempotent, db.getAt(`facturas/${RID}/manual_${OP}`) !== null], [true, true, true], `🔴 MFC-RECOVER: expired CAI ⇒ the existing op still recovers (${JSON.stringify(e)})`);
+    assert.deepStrictEqual([e.ok, e.idempotent, db.getAt(`facturas/${RID}/${MF.COPY_PREFIX}${OP}`) !== null], [true, true, true], `🔴 MFC-RECOVER: expired CAI ⇒ the existing op still recovers (${JSON.stringify(e)})`);
     ok('MFC-RECOVER: an existing op skips the new-issuance preflight (exhausted range / expired CAI) and recovers through the core');
   }
   {

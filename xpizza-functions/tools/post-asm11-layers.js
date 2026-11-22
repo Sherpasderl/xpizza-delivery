@@ -12,16 +12,8 @@
 // always peels first (innermost of all), so per-site layers see a raw read minus only the post-asm11 hunks.
 const BASE = '31f05c8a40c35fe0c442be8839593954c3afc8b1';
 // the LANDING order of the layers (oldest → newest): a new lane APPENDS its name here and its hunks at the end of HUNKS
-const ORDER = Object.freeze(['manual-ns', 'order-owner']);   // manual-ns LANDED after order-owner, but its one hunk (validateOrderPayload) precedes every
-// order-owner hunk in index.js and HUNKS must follow the file's diff order; the hunks are disjoint, so the newest-first peel is order-independent
+const ORDER = Object.freeze(['order-owner']);
 const HUNKS = Object.freeze([
- {
-  "layer": "manual-ns",
-  "label": "validateOrderPayload: a manual_ order_id is refused (the manual-factura key space; PLAN-manual-factura r3 §6, Codex #252-1)",
-  "file": "index.js",
-  "now": "  if (body.order_id != null && (!/^[A-Za-z0-9_-]{1,64}$/.test(String(body.order_id)) || String(body.order_id).startsWith('manual_'))) {   // manual_ = the manual-factura key space (PLAN-manual-factura r3 §6)\n",
-  "was": "  if (body.order_id != null && !/^[A-Za-z0-9_-]{1,64}$/.test(String(body.order_id))) {\n"
- },
  {
   "layer": "order-owner",
   "label": "createOrder: ownerOf on the existing order, non_owner ⇒ the constant 409 (before every recompute + the classifier)",

@@ -20,6 +20,7 @@
 //   MF-FISCAL      (Codex #252-6) blank / whitespace issuer RTN, legal name, CAI, prefix and an impossible fecha_limite ⇒ refused in the transaction
 //   MF-STATUS      (Codex #252-7/8) status runs the idempotent repairCopy; the print class is allowlisted (printed / not_printed /
 //                  printed_ack_failed), never raw error text; void reports success only once the copy shows voided
+//   MF-KEY         (owner ruling 11-21) the copy key manual~{opId} is outside the deployed order-id charset ⇒ no app order can produce it
 //   MF-APP-SEQ     the app allocator (the REAL allocateFacturaNumber, child seq) and a manual issue interleave ⇒ distinct números
 // Run: node factura/manual-core.test.js
 const assert = require('assert');
@@ -48,7 +49,7 @@ const cfgOf = (db) => db.getAt(`restaurants/${RID}/factura_config`);
     assert.deepStrictEqual([c.seq.last_reserved, c.seq.pending], [42, { ORD9: 40 }], '🔴 MF-ISSUE: seq.last_reserved incremented; seq.pending untouched (the manual path never uses it)');
     const m = c.manual.mf_aaaaaaaaaaaaaaaa;
     assert.deepStrictEqual([m.state, m.numero, m.source, m.issued_by, m.issued_at, m.record.factura_number, m.record.cai_code, m.record.total_cents], ['issued', 42, 'manual', 'owner-uid', NOW, '000-001-01-00000042', 'REAL-CAI-123', 11500], '🔴 MF-ISSUE: the full rendered snapshot + state under manual/{opId}');
-    assert.deepStrictEqual(db.getAt(`facturas/${RID}/manual_mf_aaaaaaaaaaaaaaaa`), { ...m.record, void: false }, '🔴 MF-ISSUE: the print copy IS the snapshot');
+    assert.deepStrictEqual(db.getAt(`facturas/${RID}/${MF.COPY_PREFIX}mf_aaaaaaaaaaaaaaaa`), { ...m.record, void: false }, '🔴 MF-ISSUE: the print copy IS the snapshot');
     assert.strictEqual(db.getAt('orders'), null, 'MF-ISSUE: the manual path never writes /orders');
     ok('MF-ISSUE: one transaction ⇒ the next número + the full snapshot; seq.pending untouched; the copy = the snapshot; no /orders');
     const before = snap(db);
@@ -111,29 +112,29 @@ const cfgOf = (db) => db.getAt(`restaurants/${RID}/factura_config`);
     const db = world(); await issue(db);
     const rec = JSON.stringify(cfgOf(db).manual.mf_aaaaaaaaaaaaaaaa);
     await db.ref(`restaurants/${RID}/factura_config`).update({ cai_code: 'NEW-CAI', prefix: '000-002-01', range_start: 1, range_end: 50, fecha_limite: '2028-01-01', legal_name: 'OTRA' });
-    await db.ref(`facturas/${RID}/manual_mf_aaaaaaaaaaaaaaaa`).remove();
+    await db.ref(`facturas/${RID}/${MF.COPY_PREFIX}mf_aaaaaaaaaaaaaaaa`).remove();
     const rc = await MF.repairCopy(db, { rid: RID, opId: 'mf_aaaaaaaaaaaaaaaa' });
     assert.strictEqual(JSON.stringify(cfgOf(db).manual.mf_aaaaaaaaaaaaaaaa), rec, '🔴 MF-SNAPSHOT: the issued record is untouched by a renewal');
-    assert.deepStrictEqual([rc.created, db.getAt(`facturas/${RID}/manual_mf_aaaaaaaaaaaaaaaa/cai_code`), db.getAt(`facturas/${RID}/manual_mf_aaaaaaaaaaaaaaaa/legal_name`)], [true, 'REAL-CAI-123', 'SHERPA S. DE R.L.'], '🔴 MF-SNAPSHOT: a re-derived copy comes from the SNAPSHOT, never the renewed config');
+    assert.deepStrictEqual([rc.created, db.getAt(`facturas/${RID}/${MF.COPY_PREFIX}mf_aaaaaaaaaaaaaaaa/cai_code`), db.getAt(`facturas/${RID}/${MF.COPY_PREFIX}mf_aaaaaaaaaaaaaaaa/legal_name`)], [true, 'REAL-CAI-123', 'SHERPA S. DE R.L.'], '🔴 MF-SNAPSHOT: a re-derived copy comes from the SNAPSHOT, never the renewed config');
     ok('MF-SNAPSHOT: a config renewal after issuance never alters the issued document or its re-derived copy');
     // MF-COPY: an existing (printed) copy is never overwritten
-    await db.ref(`facturas/${RID}/manual_mf_aaaaaaaaaaaaaaaa`).update({ printed: true, printed_at: 5 });
-    const printed = JSON.stringify(db.getAt(`facturas/${RID}/manual_mf_aaaaaaaaaaaaaaaa`));
+    await db.ref(`facturas/${RID}/${MF.COPY_PREFIX}mf_aaaaaaaaaaaaaaaa`).update({ printed: true, printed_at: 5 });
+    const printed = JSON.stringify(db.getAt(`facturas/${RID}/${MF.COPY_PREFIX}mf_aaaaaaaaaaaaaaaa`));
     const r2 = await MF.repairCopy(db, { rid: RID, opId: 'mf_aaaaaaaaaaaaaaaa' });
-    assert.deepStrictEqual([r2.created, JSON.stringify(db.getAt(`facturas/${RID}/manual_mf_aaaaaaaaaaaaaaaa`))], [false, printed], '🔴 MF-COPY: an existing copy is never overwritten (printed stays printed)');
+    assert.deepStrictEqual([r2.created, JSON.stringify(db.getAt(`facturas/${RID}/${MF.COPY_PREFIX}mf_aaaaaaaaaaaaaaaa`))], [false, printed], '🔴 MF-COPY: an existing copy is never overwritten (printed stays printed)');
     ok('MF-COPY: repairCopy creates a missing copy from the snapshot; an existing one is never overwritten');
     // MF-VOID
     const v = await MF.voidManual(db, { rid: RID, opId: 'mf_aaaaaaaaaaaaaaaa', reason: 'error de monto', voidedBy: 'owner-uid', now: NOW + 9 });
-    const m = cfgOf(db).manual.mf_aaaaaaaaaaaaaaaa; const cp = db.getAt(`facturas/${RID}/manual_mf_aaaaaaaaaaaaaaaa`);
+    const m = cfgOf(db).manual.mf_aaaaaaaaaaaaaaaa; const cp = db.getAt(`facturas/${RID}/${MF.COPY_PREFIX}mf_aaaaaaaaaaaaaaaa`);
     assert.deepStrictEqual([v.ok, m.state, m.voided_by, m.voided_at, cp.void, cp.printed, cp.printed_at], [true, 'voided', 'owner-uid', NOW + 9, true, true, 5], '🔴 MF-VOID: voided at the authority; the copy gets void:true and keeps its print fields');
     const again = await MF.voidManual(db, { rid: RID, opId: 'mf_aaaaaaaaaaaaaaaa', reason: 'x', voidedBy: 'other', now: NOW + 99 });
     assert.deepStrictEqual([again.ok, again.idempotent, cfgOf(db).manual.mf_aaaaaaaaaaaaaaaa.voided_by], [true, true, 'owner-uid'], '🔴 MF-VOID: a second void is a no-op (the first voider stands)');
     // a stale re-issue of the same opId never un-voids
     const re = await issue(db);
-    assert.deepStrictEqual([re.ok, re.idempotent, re.state, cfgOf(db).manual.mf_aaaaaaaaaaaaaaaa.state, db.getAt(`facturas/${RID}/manual_mf_aaaaaaaaaaaaaaaa/void`)], [true, true, 'voided', 'voided', true], '🔴 MF-VOID: monotonic — a retry of the issue never brings it back');
-    await db.ref(`facturas/${RID}/manual_mf_aaaaaaaaaaaaaaaa/void`).set(false);   // a drifted copy
+    assert.deepStrictEqual([re.ok, re.idempotent, re.state, cfgOf(db).manual.mf_aaaaaaaaaaaaaaaa.state, db.getAt(`facturas/${RID}/${MF.COPY_PREFIX}mf_aaaaaaaaaaaaaaaa/void`)], [true, true, 'voided', 'voided', true], '🔴 MF-VOID: monotonic — a retry of the issue never brings it back');
+    await db.ref(`facturas/${RID}/${MF.COPY_PREFIX}mf_aaaaaaaaaaaaaaaa/void`).set(false);   // a drifted copy
     await MF.repairCopy(db, { rid: RID, opId: 'mf_aaaaaaaaaaaaaaaa' });
-    assert.strictEqual(db.getAt(`facturas/${RID}/manual_mf_aaaaaaaaaaaaaaaa/void`), true, '🔴 MF-VOID: repairCopy re-propagates the authority\'s void');
+    assert.strictEqual(db.getAt(`facturas/${RID}/${MF.COPY_PREFIX}mf_aaaaaaaaaaaaaaaa/void`), true, '🔴 MF-VOID: repairCopy re-propagates the authority\'s void');
     const missing = await MF.voidManual(db, { rid: RID, opId: 'mf_0000000000000001', reason: 'x', voidedBy: 'o', now: NOW });
     assert.deepStrictEqual([missing.ok, missing.code], [false, 'not_found'], 'MF-VOID: an unknown opId ⇒ not_found');
     ok('MF-VOID: monotonic issued → voided; the copy follows (false→true only, print fields kept); never un-voided');
@@ -150,7 +151,7 @@ const cfgOf = (db) => db.getAt(`restaurants/${RID}/factura_config`);
     const db = world(); const r = await issue(db);
     const m = cfgOf(db).manual.mf_aaaaaaaaaaaaaaaa; const ref8 = MF.shortRefOf('mf_aaaaaaaaaaaaaaaa', 8);
     assert.ok(/^M-[0-9A-F]{8}$/.test(ref8), `MF-REF premise: the format (${ref8})`);
-    assert.deepStrictEqual([r.short_ref, m.short_ref, m.record.pedido, db.getAt(`facturas/${RID}/manual_mf_aaaaaaaaaaaaaaaa/pedido`)], [ref8, ref8, ref8, ref8], '🔴 MF-REF: the short ref is stored and printed on the PEDIDO line (the copy too)');
+    assert.deepStrictEqual([r.short_ref, m.short_ref, m.record.pedido, db.getAt(`facturas/${RID}/${MF.COPY_PREFIX}mf_aaaaaaaaaaaaaaaa/pedido`)], [ref8, ref8, ref8, ref8], '🔴 MF-REF: the short ref is stored and printed on the PEDIDO line (the copy too)');
     const st = await MF.statusManual(db, { rid: RID, key: ref8 });
     assert.deepStrictEqual([st.found, st.numero, st.short_ref], [true, 42, ref8], '🔴 MF-REF: status accepts the short ref');
     // a collision: an existing record already holds this opId's 8-char ref ⇒ the new one extends, and stays unique
@@ -173,7 +174,7 @@ const cfgOf = (db) => db.getAt(`restaurants/${RID}/factura_config`);
   {
     // MF-STATUS: status repairs; the print class is allowlisted; void confirms the copy
     const db = world(); await issue(db);
-    const CP = `facturas/${RID}/manual_mf_aaaaaaaaaaaaaaaa`;
+    const CP = `facturas/${RID}/${MF.COPY_PREFIX}mf_aaaaaaaaaaaaaaaa`;
     await db.ref(CP).remove();
     const s0 = await MF.statusManual(db, { rid: RID, key: 'mf_aaaaaaaaaaaaaaaa' });
     assert.deepStrictEqual([s0.found, s0.copy, s0.print, db.getAt(CP) !== null], [true, true, 'not_printed', true], `🔴 MF-STATUS: status runs repairCopy — a missing copy is recreated (${JSON.stringify(s0)})`);
@@ -192,6 +193,23 @@ const cfgOf = (db) => db.getAt(`restaurants/${RID}/factura_config`);
     const v2 = await MF.voidManual(dbv, { rid: RID, opId: 'mf_aaaaaaaaaaaaaaaa', reason: 'error', voidedBy: 'o', now: NOW + 2 });
     assert.deepStrictEqual([v2.ok, v2.idempotent, dbv.getAt(`${CP}/void`)], [true, true, true], '🔴 MF-STATUS: a re-run repairs the copy and then reports success');
     ok('MF-STATUS: status repairs + allowlisted print class (no raw text); void succeeds only once the copy shows voided');
+  }
+  {
+    // MF-KEY (owner ruling 11-21, namespace by construction): the print-copy key can never be an app order's factura key
+    const SRC = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8');
+    const fnSrc = SRC.slice(SRC.indexOf('function validateOrderPayload('));
+    const m = /body\.order_id != null && !\/(\^\[[^\]]+\]\{1,64\}\$)\/\.test/.exec(fnSrc);
+    assert.ok(m, 'MF-KEY premise: the deployed order_id charset is read from validateOrderPayload');
+    const ORDER_ID = new RegExp(m[1]);
+    assert.ok(ORDER_ID.test('ORD_1-a') && !ORDER_ID.test('a~b'), `MF-KEY premise: the charset parsed (${m[1]})`);
+    for (let i = 0; i < 100; i++) {
+      const key = `${MF.COPY_PREFIX}mf_${require('crypto').randomBytes(8).toString('hex')}`;
+      assert.ok(!ORDER_ID.test(key), `🔴 MF-KEY: the copy key ${key} is outside the server order-id charset (no app order can produce it)`);
+      assert.ok(!/[.$#[\]/\u0000-\u001f\u007f]/.test(key), `🔴 MF-KEY: ${key} is an RTDB-legal key`);
+    }
+    const db = world(); await issue(db);
+    assert.ok(db.getAt(`facturas/${RID}/${MF.COPY_PREFIX}mf_aaaaaaaaaaaaaaaa`) !== null, 'MF-KEY: the copy lands under the prefix');
+    ok('MF-KEY: the copy key (manual~…) is outside the deployed order-id charset and RTDB-legal');
   }
   {
     // MF-APP-SEQ: the REAL app allocator reserves on the child seq; a manual issue interleaves inside it ⇒ distinct números
