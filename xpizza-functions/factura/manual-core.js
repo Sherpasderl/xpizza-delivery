@@ -105,18 +105,18 @@ async function issueManual(db, { rid, opId, payload, issuedBy, now }) {
     out = null;
     if (cfg === null) { out = { code: 'config_missing' }; return null; }   // null-first: a real config re-runs this with its value
     const existing = cfg.manual && cfg.manual[opId];
-    if (existing) { out = existing.payload_hash === hash ? { existing } : { code: 'op_reused' }; return undefined; }
+    if (existing) { out = existing.payload_hash === hash ? { existing } : { code: 'op_reused' }; return cfg; }   // never abort on a value seen locally: returned unchanged, the server confirms it (or re-runs this with its own)
     const next = (cfg.seq && cfg.seq.last_reserved) + 1;
     const why = configRefusal(cfg, next, now);
-    if (why) { out = { code: why }; return undefined; }
+    if (why) { out = { code: why }; return cfg; }   // e.g. a partial local cache after a same-process update() must not refuse a valid config
     const shortRef = freeShortRef(cfg.manual, opId);
-    if (!shortRef) { out = { code: 'short_ref_exhausted' }; return undefined; }
+    if (!shortRef) { out = { code: 'short_ref_exhausted' }; return cfg; }
     const record = buildManualRecord(cfg, norm.payload, next, now, opId, shortRef);
     const entry = { op_id: opId, short_ref: shortRef, source: 'manual', payload: norm.payload, payload_hash: hash, numero: next, factura_number: record.factura_number,
       record, issued_by: issuedBy, issued_at: now, state: 'issued' };
     out = { entry };
     return { ...cfg, seq: { ...cfg.seq, last_reserved: next }, manual: { ...(cfg.manual || {}), [opId]: entry } };
-  });
+  }, undefined, false);   // applyLocally=false: a parent-node null-first pass applied locally would blind same-process readers of factura_config (the app allocator reads it)
   if (!out || out.code) return refuse((out && out.code) || 'config_missing');
   const e = out.entry || out.existing;
   await repairCopy(db, { rid, opId });   // idempotent; a crash before it is healed by the next call / a re-run
@@ -135,8 +135,8 @@ async function repairCopy(db, { rid, opId }) {
       return { ...auth.record, void: voided, ...(voided ? { void_reason: auth.void_reason || '', voided_at: auth.voided_at } : {}) };
     }
     if (voided && cur.void !== true) { voidSet = true; return { ...cur, void: true, void_reason: auth.void_reason || '', voided_at: auth.voided_at }; }   // false → true only
-    return undefined;   // never un-void, never overwrite
-  });
+    return cur;   // never un-void, never overwrite (unchanged: the server confirms the copy we judged)
+  }, undefined, false);   // applyLocally=false: no speculative local value for same-process readers
   return { ok: true, created, void_set: voidSet };
 }
 
@@ -149,11 +149,11 @@ async function voidManual(db, { rid, opId, reason, voidedBy, now }) {
   await db.ref(manualPath(rid, opId)).transaction((cur) => {
     out = null;
     if (cur === null) { out = { code: 'not_found' }; return null; }
-    if (cur.state === 'voided') { out = { idempotent: true }; return undefined; }
-    if (cur.state !== 'issued') { out = { code: 'bad_state' }; return undefined; }
+    if (cur.state === 'voided') { out = { idempotent: true }; return cur; }
+    if (cur.state !== 'issued') { out = { code: 'bad_state' }; return cur; }
     out = { voided: true };
     return { ...cur, state: 'voided', void_reason: why, voided_by: voidedBy, voided_at: now };
-  });
+  }, undefined, false);   // applyLocally=false: no speculative local value for same-process readers
   if (!out || out.code) return refuse((out && out.code) || 'not_found');
   await repairCopy(db, { rid, opId });
   return { ok: true, idempotent: !!out.idempotent };

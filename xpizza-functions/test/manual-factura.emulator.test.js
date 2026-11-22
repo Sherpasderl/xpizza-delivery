@@ -40,12 +40,12 @@ const appOrder = (oid) => ({ orderId: oid, items: [{ qty: 1, description: 'Pizza
     for (let i = 0; i < 6; i++) await db.ref(`orders/ORD${i}`).set({ orderId: `ORD${i}`, status: 'preparing' });
     const jobs = [];
     for (let i = 0; i < 6; i++) {
-      jobs.push(allocateFacturaNumber(db, { restaurantId: RID, orderId: `ORD${i}`, order: appOrder(`ORD${i}`), now: NOW }).then((r) => ['app', r.reserved]));
-      jobs.push(issue(`op_concurrent_${i}`).then((r) => ['manual', r.numero]));
+      jobs.push(allocateFacturaNumber(db, { restaurantId: RID, orderId: `ORD${i}`, order: appOrder(`ORD${i}`), now: NOW }).then((r) => ['app', r.ok ? r.reserved : `refused:${r.reason || r.skipped}`]));
+      jobs.push(issue(`op_concurrent_${i}`).then((r) => ['manual', r.ok ? r.numero : `refused:${r.code}`]));
     }
     const got = await Promise.all(jobs);
     const nums = got.map(([, x]) => x);
-    assert.ok(nums.every(Number.isSafeInteger), `MFE-CONCURRENT premise: every issuance succeeded (${JSON.stringify(got)})`);
+    assert.ok(nums.every(Number.isSafeInteger), `🔴 MFE-CONCURRENT: every issuance succeeded — an in-flight manual issue must not blind the app allocator (${JSON.stringify(got)})`);
     assert.strictEqual(new Set(nums).size, 12, `🔴 MFE-CONCURRENT: 12 issuances ⇒ 12 DISTINCT números (${nums.sort((a, b) => a - b).join(',')})`);
     assert.strictEqual((await get(`restaurants/${RID}/factura_config/seq/last_reserved`)), 41 + 12, '🔴 MFE-CONCURRENT: the one counter advanced by exactly 12');
     ok('MFE-CONCURRENT: 6 app allocations + 6 manual issues at once ⇒ 12 distinct números, one counter');
@@ -71,13 +71,13 @@ const appOrder = (oid) => ({ orderId: oid, items: [{ qty: 1, description: 'Pizza
     await reset();
     const renew = cfgRef().update({ cai_code: 'RENEWED-CAI', prefix: '000-002-01' });
     const rs = await Promise.all([issue('op_ren_000001'), renew.then(() => null), issue('op_ren_000002'), issue('op_ren_000003')]);
+    assert.ok(rs.filter(Boolean).every((r) => r.ok), `🔴 MFE-RENEWAL: every issue succeeds — a partial local cache from the concurrent update() must not refuse a valid config (${JSON.stringify(rs)})`);
     const manual = await get(`restaurants/${RID}/factura_config/manual`);
     for (const [op, m] of Object.entries(manual)) {
       const r = m.record;
       const pair = [r.cai_code, r.factura_number.slice(0, 10)];
       assert.ok((pair[0] === 'REAL-CAI-123' && pair[1] === '000-001-01') || (pair[0] === 'RENEWED-CAI' && pair[1] === '000-002-01'), `🔴 MFE-RENEWAL: ${op} carries ONE consistent config (${pair})`);
     }
-    assert.ok(rs.filter(Boolean).every((r) => r.ok), 'MFE-RENEWAL premise: the issues succeeded');
     ok('MFE-RENEWAL: a renewal concurrent with issues ⇒ each record carries exactly the config it validated against');
   }
   {
