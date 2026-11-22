@@ -61,6 +61,17 @@ mk "PASS s1" "PASS s2"; echo "END green abcd1234 5" >> $D/r; out=$(receipt_cover
 is "a footer whose count does not match the body is refused" "$?:$out" "1:  GREEN_FROM's footer does not match its body: «END green abcd1234 5», want «END green abcd1234 2»"
 out=$(receipt_covers $D/none abcd1234 $D/want); is "a missing receipt is refused" "$?:$out" "1:  GREEN_FROM $D/none does not exist"
 
+echo "#255 close_green: the footer only for a full run or a COVERED partial run"
+printf 'a\nb\nc\n' > $D/derived; printf 'a\n' > $D/run
+{ echo "TIP abcd1234"; echo "PASS a"; echo "PASS b"; echo "PASS c"; } > $D/full; close_green $D/full abcd1234 $D/derived $D/derived "" ""
+is "a full run gets the footer" "$?:$(tail -1 $D/full)" "0:END green abcd1234 3"
+{ echo "TIP abcd1234"; echo "PASS a"; } > $D/part; close_green $D/part abcd1234 $D/run $D/derived 1 "" > /dev/null
+is "an uncovered PARTIAL run: rc 4 and NO footer" "$?:$(tail -1 $D/part)" "4:PASS a"
+{ echo "TIP abcd1234"; echo "PASS a"; } > $D/part2; close_green $D/part2 abcd1234 $D/run $D/derived 1 $D/full > /dev/null
+is "a PARTIAL run covered by a completed green receipt gets the footer" "$?:$(tail -1 $D/part2)" "0:END green abcd1234 1"
+printf 'b\nc\n' > $D/want-bc; out=$(receipt_covers $D/part abcd1234 $D/want-bc)
+is "the uncovered PARTIAL run's receipt is refused as GREEN_FROM" "$?:$out" "1:  GREEN_FROM has no «END green» footer as its last line (not a completed green run)"
+
 echo "#254-6 reap: realpath containment, never a substring"
 W=$D/tmp/worktree; mkdir -p $W/xpizza-functions $D/tmp/worktree-other $D/backup$D/tmp/worktree/x; ln -s $W $D/link
 fake_ps(){ printf '101 /usr/bin/java -jar cloud-firestore-emulator.jar\n102 /usr/bin/java -jar cloud-firestore-emulator.jar\n103 /usr/bin/java -jar cloud-firestore-emulator.jar\n104 /usr/bin/java -jar cloud-firestore-emulator.jar\n105 /usr/bin/java -jar firebase-database-emulator.jar\n'; }

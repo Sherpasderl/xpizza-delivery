@@ -66,11 +66,10 @@ echo "HEAVY fail=$fail of $n (incl. untrusted(load>45)=$untrusted); logs $OUT"
 # the verdict is bound to the tip: HEAD unchanged and the tree still clean at the END (#254-4)
 why=$(tip_holds "$W" "$TIP") || { echo "HEAVY NOT A PASS: the tip did not hold through the run — $why"; exit 5; }
 [ $fail -eq 0 ] || exit 1
-receipt_footer $RESULTS "$TIP"   # written LAST, only for a green run whose tip held: what GREEN_FROM accepts (#254-5)
-if [ -n "$PARTIAL" ]; then
-  grep -vxF -f $RUN $DERIVED > $OUT/rest.txt
-  if receipt_covers "$GREEN_FROM" "$TIP" $OUT/rest.txt; then echo "HEAVY (resume): the LIST + GREEN_FROM $GREEN_FROM cover all $(wc -l < $DERIVED | tr -d ' ') derived suites at $TIP"
-  else echo "HEAVY PARTIAL: ran $(wc -l < $RUN | tr -d ' ') of $(wc -l < $DERIVED | tr -d ' ') derived suites — NOT a gate pass (GREEN_FROM=<a completed green results.txt at TIP $TIP> must cover the rest)"; exit 4; fi
+# the footer is written only by close_green (train-lib.sh): a full run, or a PARTIAL run its GREEN_FROM covers (#254-5, #255)
+if ! close_green $RESULTS "$TIP" $RUN $DERIVED "$PARTIAL" "$GREEN_FROM"; then
+  echo "HEAVY PARTIAL: ran $(wc -l < $RUN | tr -d ' ') of $(wc -l < $DERIVED | tr -d ' ') derived suites — NOT a gate pass, and its receipt gets no footer (GREEN_FROM=<a completed green results.txt at TIP $TIP> must cover the rest)"; exit 4
 fi
+[ -n "$PARTIAL" ] && echo "HEAVY (resume): the LIST + GREEN_FROM $GREEN_FROM cover all $(wc -l < $DERIVED | tr -d ' ') derived suites at $TIP"
 echo "HEAVY GREEN at $TIP (tree clean; receipt $RESULTS)"
 exit 0

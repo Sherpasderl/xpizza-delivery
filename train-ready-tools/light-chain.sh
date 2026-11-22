@@ -70,14 +70,11 @@ fi
 # the verdict is bound to the tip: HEAD unchanged and the tree still clean at the END (#254-4); never the stage-L marker otherwise
 why=$(tip_holds .. "$TIP") || { echo "LIGHT-CHAIN NOT A PASS: the tip did not hold through the run — $why (logs $OUT)"; exit 5; }
 if [ $fail -ne 0 ]; then echo "LIGHT-CHAIN FAILED: fail=$fail (logs $OUT; results $RESULTS)"; exit 1; fi
-receipt_footer $RESULTS "$TIP"   # written LAST, only for a green run whose tip held: what GREEN_FROM accepts (#254-5)
-if [ -n "$PARTIAL" ]; then
-  grep -vxF -f $RUN $DERIVED > $OUT/rest.txt
-  if ! receipt_covers "$GREEN_FROM" "$TIP" $OUT/rest.txt; then
-    echo "LIGHT-CHAIN PARTIAL: ran $(wc -l < $RUN | tr -d ' ') of $((n+3)) derived steps — NOT a gate pass (GREEN_FROM=<a completed green results.txt at TIP $TIP> must cover the rest; logs $OUT)"
-    exit 4
-  fi
-  echo "LIGHT-CHAIN (resume): the LIST ($(wc -l < $RUN | tr -d ' ')) + GREEN_FROM $GREEN_FROM cover all $((n+3)) derived steps at $TIP"
+# the footer is written only by close_green (train-lib.sh): a full run, or a PARTIAL run its GREEN_FROM covers (#254-5, #255)
+if ! close_green $RESULTS "$TIP" $RUN $DERIVED "$PARTIAL" "$GREEN_FROM"; then
+  echo "LIGHT-CHAIN PARTIAL: ran $(wc -l < $RUN | tr -d ' ') of $((n+3)) derived steps — NOT a gate pass, and its receipt gets no footer (GREEN_FROM=<a completed green results.txt at TIP $TIP> must cover the rest; logs $OUT)"
+  exit 4
 fi
+[ -n "$PARTIAL" ] && echo "LIGHT-CHAIN (resume): the LIST ($(wc -l < $RUN | tr -d ' ')) + GREEN_FROM $GREEN_FROM cover all $((n+3)) derived steps at $TIP"
 echo "LIGHT-CHAIN fail=0 of $((n+3)) (logs $OUT; results $RESULTS; paused ${waited}s for load>=${LOADMAX})"
 exit 0

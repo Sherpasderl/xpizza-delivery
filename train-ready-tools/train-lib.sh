@@ -53,6 +53,18 @@ receipt_covers() {
   return $ok
 }
 
+# close_green <results> <tip> <run> <derived> <partial> <green_from>: the ONE place a receipt becomes usable (Codex #255). Called
+# only after a run with fail=0 whose tip held. A full run, or a PARTIAL run whose GREEN_FROM covers every derived step it skipped,
+# gets the footer (written LAST) and rc 0. An uncovered PARTIAL run gets NO footer and rc 4: it is not a gate pass, so its receipt
+# can never later stand in as GREEN_FROM.
+close_green() {
+  if [ -n "$5" ]; then
+    grep -vxF -f "$3" "$4" > "$3.rest"
+    receipt_covers "$6" "$2" "$3.rest" || return 4
+  fi
+  receipt_footer "$1" "$2"
+}
+
 # reap <worktree>: end every emulator java whose open files lie inside <worktree> (#254-6: canonical containment — the realpath of the
 # worktree, equal or prefix + '/'; never a substring). By exact pid. PS / LSOF / KILL are overridable for the fixture test only.
 reap() {

@@ -62,6 +62,11 @@ run_case "a failing step: FAILED, never the marker" 1 "LIGHT-CHAIN FAILED: fail=
 n=$((n+1)); grep -q '^END green' "$(receipt_of)" && { echo "  ✗ a failed run's receipt has a footer"; fail=$((fail+1)); } || echo "  ✓ … and its receipt has NO footer (unusable as GREEN_FROM)"
 printf 'node s/step.js a\n' > $D/one
 run_case "#254-5 resume: a completed green receipt covers the rest" 0 "LIGHT-CHAIN (resume)" "" -- env LIST=$D/one GREEN_FROM=$GREEN $L
+printf 'node s/step.js b\nnode s/step.js c\nnode tools/f2-narrow-rules.js --check\nnpm run -s check:rules\nnpm run -s test:apps\n' > $D/rest5
+run_case "#255 an uncovered PARTIAL subset run: rc 4, never the marker" 4 "its receipt gets no footer" "LIGHT-CHAIN fail=0" -- env LIST=$D/one $L
+PART=$(sed -n 's/.*; logs \([^)]*\)).*/\1/p' <<<"$out" | tail -1)/results.txt
+n=$((n+1)); grep -q '^END green' "$PART" && { echo "  ✗ the PARTIAL run's receipt has a footer"; fail=$((fail+1)); } || echo "  ✓ … its receipt has NO footer"
+run_case "#255 … and that receipt is REFUSED as GREEN_FROM for the complementary LIST" 4 "GREEN_FROM has no «END green» footer" "LIGHT-CHAIN fail=0" -- env LIST=$D/rest5 GREEN_FROM=$PART $L
 fab $GREEN 'npm run -s test:apps'
 run_case "#254-5 resume: a fabricated receipt (PASS then FAIL) is PARTIAL, never the marker" 4 "LIGHT-CHAIN PARTIAL" "LIGHT-CHAIN fail=0" -- env LIST=$D/one GREEN_FROM=$D/fab $L
 fi
@@ -80,6 +85,10 @@ run_case "a failing suite: rc 1, no green line" 1 "FAIL rc=1" "HEAVY GREEN" -- e
 n=$((n+1)); grep -q '^END green' "$(receipt_hv)" && { echo "  ✗ a failed run's receipt has a footer"; fail=$((fail+1)); } || echo "  ✓ … and its receipt has NO footer"
 printf 'test:e1\n' > $D/h-one
 run_case "#254-5 resume with a completed green receipt" 0 "HEAVY (resume)" "" -- env LIST=$D/h-one GREEN_FROM=$HGREEN $H
+printf 'test:e2\ntest:apps\ntest:kds-manifest-writer\ntest:portal\n' > $D/h-rest4
+run_case "#255 an uncovered PARTIAL subset run: rc 4" 4 "its receipt gets no footer" "HEAVY GREEN" -- env LIST=$D/h-one $H
+HPART=$(receipt_hv); n=$((n+1)); grep -q '^END green' "$HPART" && { echo "  ✗ the PARTIAL run's receipt has a footer"; fail=$((fail+1)); } || echo "  ✓ … its receipt has NO footer"
+run_case "#255 … and that receipt is REFUSED as GREEN_FROM for the complementary LIST" 4 "GREEN_FROM has no «END green» footer" "HEAVY (resume)" -- env LIST=$D/h-rest4 GREEN_FROM=$HPART $H
 fab $HGREEN test:portal
 run_case "#254-5 resume with a fabricated receipt (PASS then FAIL) is PARTIAL" 4 "HEAVY PARTIAL" "HEAVY (resume)" -- env LIST=$D/h-one GREEN_FROM=$D/fab $H
 n=$((n+1)); grep -q 'verdict \$rc' $T/heavy.sh && grep -q 'echo "\$tag rc=\$rc' $T/heavy.sh && echo "  ✓ #254-2 heavy's console line and receipt both print the verdict() tag (UNTRUSTED is unit-tested in train-lib.test)" || { echo "  ✗ heavy does not print verdict()'s tag"; fail=$((fail+1)); }
