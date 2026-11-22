@@ -110,6 +110,8 @@ const D = {
     // H1c step 0 — the owner-run hardware-gate sender (ONE data-only FCM message; no database read or write):
     // requireProject({ requireFlag: true }) before any client
     'handheld-push-probe',
+    // MANUAL FACTURA (PLAN-manual-factura r3) — the owner's issue / status / void CLI (preview unless --apply): requireProject({ requireFlag: true }) before any client
+    'manual-factura',
     // TRACKER FIXES — the owner-run flag-transition tool: requireProject({ requireFlag: true }) before any client
     'tracker-reconcile',
     // PLAN 4 r3 §8.2 — the additive menu-structure migration (dry run by default; --write is the owner's):

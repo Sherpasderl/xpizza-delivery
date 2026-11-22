@@ -270,6 +270,7 @@
   "factura/build-record.js": "R10",
   "factura/eligibility.js": "R10",
   "factura/factura-helpers.js": "R10",
+  "factura/manual-core.js": "R10",
   "stats/stats-api.js": "R11",
   "stats/stats-build.js": "R11",
   "stats/stats-classify.js": "R11",

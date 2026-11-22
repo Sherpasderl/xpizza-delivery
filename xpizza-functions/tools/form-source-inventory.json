@@ -2982,6 +2982,7 @@
   "extra-payment-repair.js",
   "factura/build-record.js",
   "factura/eligibility.js",
+  "factura/manual-core.js",
   "factura/pricing.js",
   "form-signal.js",
   "hosted-charge-flow.js",
@@ -4367,6 +4368,10 @@
    ]
   },
   "factura/eligibility.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "factura/manual-core.js": {
    "pins": [],
    "lifts": []
   },
