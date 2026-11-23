@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
 import { DIR } from './ventas-harness.mjs';
 import * as MP from './envio-map-protocol.js';
 import * as G from '../xpizza-portal-map/envio-geometry.js';
@@ -458,44 +459,7 @@ test('Z2 child: the session is painted from the child\'s own list — open: the 
 });
 
 // ── Codex #204 (child) ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// P2-1: the REAL handlers — mousedown → mouseup → click without movement on vertex 1 is a CLICK (finish), not a drag; a real drag
-// (movement past the threshold) is a drag. A fake projection (1 px per 1e-5°) and a DOM stub that paints.
-function liveEnv() {
-  const E = fakeEnv();
-  const stub = () => ({ ownerDocument: E.doc, style: { setProperty() {} }, setAttribute() {}, append() {}, replaceChildren() {}, remove() {}, textContent: '' });
-  E.doc.createElementNS = stub;
-  const num = (v) => (typeof v === 'function' ? v() : v);
-  E.maps.OverlayView.prototype.getProjection = () => ({ fromLatLngToDivPixel: (ll) => ({ x: num(ll.lng) * 1e5, y: -num(ll.lat) * 1e5 }) });
-  const ev = (q) => ({ latLng: { lat: () => q.lat, lng: () => q.lng } });
-  const fire = (t, q) => { for (const f of [...(E.maps.made[0].ls[t] || [])]) f(q ? ev(q) : undefined); };
-  const kinds = () => E.parent.posted.map(([m]) => m.kind);
-  return { E, fire, kinds };
-}
 const v3With = (drawing) => MP.renderMessage({ mount: M, view: 'keep', theme: 'light', hub: HUB, name: 'La Musa', others: [], bands: [], mapType: 'roadmap', limit: null, zones: [], drawing });
-test('#204-P2 child: an unmoved press on vertex 1 (mousedown → mouseup → click) is a CLICK — the finish, never a drag', async () => {
-  const { E, fire, kinds } = liveEnv();
-  boot({ win: E.win, doc: E.doc, loadMaps: E.loadMaps }); await tick();
-  E.fromParent(v3With(DRAW())); await tick();
-  for (const q of [P(0), P(1), P(2)]) fire('click', q);
-  assert.deepEqual(kinds().filter((k) => k === 'draft_points').length, 3, 'premise: three taps through the real click handler');
-  const jitter = { lat: P(0).lat + 0.000001, lng: P(0).lng };   // 0.1 px: a hand's tremor, far under the drag threshold
-  fire('mousedown', P(0)); fire('mousemove', jitter); fire('mouseup', jitter); fire('click', P(0));
-  assert.equal(kinds()[kinds().length - 1], 'finish', '🔴 the click on vertex 1 closes the shape (a tremor is not a drag)');
-});
-test('#204-P2b child (EDITING): an unmoved click on a vertex is nothing; a REAL drag (past the threshold) sends the finish at its end', async () => {
-  const { E, fire, kinds } = liveEnv();
-  boot({ win: E.win, doc: E.doc, loadMaps: E.loadMaps }); await tick();
-  E.fromParent(v3With(DRAW({ zone: 'z_aaaaaaaa', points: [P(0), P(1), P(2), P(3)] }))); await tick();
-  const n = kinds().length;
-  fire('mousedown', P(1)); fire('mouseup', P(1)); fire('click', P(1));
-  assert.equal(kinds().length, n, '🔴 an unmoved click on a handle is not an edit');
-  const far = { lat: P(1).lat + 0.002, lng: P(1).lng };
-  fire('mousedown', P(1)); fire('mousemove', far); fire('mouseup', far); fire('click', far);
-  const last = E.parent.posted[E.parent.posted.length - 1][0];
-  assert.deepEqual([last.kind, last.points[1]], ['finish', far], '🔴 the drag end is the finish, with the moved vertex');
-  assert.equal(kinds().filter((k) => k === 'finish').length, 1, 'and the click after the drag adds nothing');
-});
-
 // P3-1: UNCONFIRMED (and any non-editable session) shows NO handles and no close preview; the exhaustion itself repaints
 test('#204-P3 child: retries exhausted ⇒ the view says unconfirmed, the overlay draws no handles, and the change is announced (repaint)', () => {
   let changes = 0;
@@ -513,104 +477,186 @@ test('#204-P3 child: retries exhausted ⇒ the view says unconfirmed, the overla
   assert.deepEqual([m.draw.vtx.length, m.draw.closing], [0, null], '🔴 no handles, no close preview');
 });
 
-// ── Z2 fix (a), PLAN-portal-zones-z2-fixes-r0 route 1 (advisor 11-20): a press on a HANDLE switches the map's own panning off AT ONCE (Google
-// starts its pan on the first move, so a switch after 4 px of mousemove never came — the real-browser trace); panning comes back on EVERY end
-// path; a press off a handle never touches it; #204's click-vs-drag threshold unchanged
-function panEnv() {
-  const env = liveEnv();
-  const wl = {};
-  const add = env.E.win.addEventListener.bind(env.E.win);
-  env.E.win.addEventListener = (t, f, o) => { (wl[t] = wl[t] || []).push(f); add(t, f, o); };
-  const fireWin = (t) => { for (const f of [...(wl[t] || [])]) f({ type: t }); };
-  const panOf = () => { const opts = env.E.maps.made[0].calls.filter(([k]) => k === 'options').map(([, o]) => o).filter((o) => 'gestureHandling' in o); return opts.length ? opts[opts.length - 1].gestureHandling : 'cooperative'; };
-  return { ...env, fireWin, panOf };
-}
-async function editing(env) {
-  boot({ win: env.E.win, doc: env.E.doc, loadMaps: env.E.loadMaps }); await tick();
-  env.E.fromParent(v3With(DRAW({ zone: 'z_aaaaaaaa', points: [P(0), P(1), P(2), P(3)] }))); await tick();
-}
-test('Z2 fix (a): a press on a handle switches the map\'s panning off BEFORE any move; a press off a handle never does', async () => {
-  const env = panEnv(); await editing(env);
-  env.fire('mousedown', { lat: 15.6, lng: -88.1 });
-  assert.equal(env.panOf(), 'cooperative', 'a press off every handle leaves the map\'s own pan alone');
-  env.fire('mouseup', { lat: 15.6, lng: -88.1 });
-  env.fire('mousedown', P(1));
-  assert.equal(env.panOf(), 'none', '🔴 the press on a handle stops Google\'s pan at once (mouse AND touch: gestureHandling)');
-});
-for (const [path, end] of [
-  ['the release over the map', (env) => env.fire('mouseup', P(1))],
-  ['a release OFF the map (pointerup on the window)', (env) => env.fireWin('pointerup')],
-  ['pointercancel', (env) => env.fireWin('pointercancel')],
-  ['touchend', (env) => env.fireWin('touchend')],
-  ['touchcancel', (env) => env.fireWin('touchcancel')],
-  ['the window losing focus', (env) => env.fireWin('blur')],
-  ['the session ending mid-press (the parent renders no session)', (env) => env.E.fromParent(v3With(null))],
-]) {
-  test(`Z2 fix (a): panning comes back on EVERY end path — ${path}`, async () => {
-    const env = panEnv(); await editing(env);
-    env.fire('mousedown', P(1));
-    assert.equal(env.panOf(), 'none', 'premise: the press holds the pan');
-    end(env); await tick();
-    assert.equal(env.panOf(), 'cooperative', `🔴 the map is never left unpannable (${path})`);
-  });
-}
-test('Z2 fix (a): a drag released OFF the map still commits (the window\'s pointerup ends it with the last moved point)', async () => {
-  const env = panEnv(); await editing(env);
-  const far = { lat: P(1).lat + 0.002, lng: P(1).lng };
-  env.fire('mousedown', P(1)); env.fire('mousemove', far); env.fireWin('pointerup'); await tick();
-  const last = env.E.parent.posted[env.E.parent.posted.length - 1][0];
-  assert.deepEqual([last.kind, last.points[1]], ['finish', far], '🔴 the drag end is the finish');
-  assert.equal(env.panOf(), 'cooperative');
-  env.fire('mouseup', far);
-  assert.equal(env.kinds().filter((k) => k === 'finish').length, 1, 'the map\'s own late mouseup adds nothing (one end per press)');
-});
-test('Z2 fix (a): a cancelled press commits nothing (pointercancel mid-drag: the shape stays)', async () => {
-  const env = panEnv(); await editing(env);
-  const n = env.kinds().length;
-  env.fire('mousedown', P(1)); env.fire('mousemove', { lat: P(1).lat + 0.002, lng: P(1).lng }); env.fireWin('pointercancel'); await tick();
-  assert.equal(env.kinds().length, n, '🔴 nothing sent for a cancelled gesture');
-});
-// Codex #237 P2-1: a CANCELLED drag must not swallow the next intentional click — the click suppression belongs only to a drag that COMMITS
-test('#237 a drag cancelled mid-press (pointercancel / blur) leaves the next click on vertex 1 working — it closes the shape', async () => {
-  for (const cancel of ['pointercancel', 'blur']) {
-    const env = panEnv();
-    boot({ win: env.E.win, doc: env.E.doc, loadMaps: env.E.loadMaps }); await tick();
-    env.E.fromParent(v3With(DRAW())); await tick();
-    for (const q of [P(0), P(1), P(2)]) env.fire('click', q);
-    env.fire('mousedown', P(1)); env.fire('mousemove', { lat: P(1).lat + 0.002, lng: P(1).lng }); env.fireWin(cancel); await tick();
-    env.fire('mousedown', P(0)); env.fire('mouseup', P(0)); env.fire('click', P(0));
-    assert.equal(env.kinds()[env.kinds().length - 1], 'finish', `🔴 the first click on vertex 1 after a ${cancel} acts`);
+// ── Z2 route 3 (PLAN-portal-zones-z2-route3-r1, owner 11-22): the corner handles are OUR OWN DOM targets in Maps' overlayMouseTarget pane,
+// handed to OverlayView.preventMapHitsAndGesturesFrom (so Maps never sees a press on them), with pointer events + capture — mouse, pen and
+// finger the same. The slot proved route 1 undone by its own window blur capture (§0): a press ends ONLY through the handle's pointerup /
+// pointercancel / lostpointercapture, or the session ending. The fake is a JSDOM page + Maps' own contracts, never laxer:
+//   • getPanes() is null before onAdd; setMap runs onAdd then draw AFTER the call (Maps does it asynchronously);
+//   • preventMapHitsAndGesturesFrom: an element handed to it (or inside one) is invisible to Maps — no map click from it;
+//   • fromContainerPixelToLatLng takes a google.maps.Point (anything else throws, as Maps does);
+//   • pointer capture as the spec has it (jsdom has none): the captured element gets that pointer's events wherever it goes, then
+//     lostpointercapture after the up / cancel; capture on a detached element throws.
+const { JSDOM } = createRequire(join(DIR, '..', 'xpizza-functions', 'package.json'))('jsdom');
+function handleEnv() {
+  const E = fakeEnv();
+  // the frame's window listeners, so a cell can deliver what a browser delivers to them (an element's blur reaches a window CAPTURE listener)
+  const wl = {}; const add = E.win.addEventListener.bind(E.win);
+  E.win.addEventListener = (t, f, o) => { (wl[t] = wl[t] || []).push(f); add(t, f, o); };
+  const fireWin = (t, target) => { for (const f of [...(wl[t] || [])]) f({ type: t, target }); };
+  const dom = new JSDOM('<!doctype html><div id="map"></div>', { pretendToBeVisual: true });
+  const W = dom.window, d = W.document, box = d.getElementById('map');
+  E.doc = d;
+  const prevented = new Set();
+  const num = (v) => (typeof v === 'function' ? v() : v);
+  class Point { constructor(x, y) { this.x = x; this.y = y; } }
+  const proj = {
+    fromLatLngToDivPixel: (ll) => ({ x: num(ll.lng) * 1e5, y: -num(ll.lat) * 1e5 }),
+    fromContainerPixelToLatLng(p) { if (!(p instanceof Point)) throw new TypeError('not a google.maps.Point'); const lat = -p.y / 1e5, lng = p.x / 1e5; return { lat: () => lat, lng: () => lng }; },
+  };
+  E.maps.Point = Point;
+  E.maps.OverlayView = class {
+    static preventMapHitsAndGesturesFrom(el) { prevented.add(el); }
+    setMap(m) { this.map = m; Promise.resolve().then(() => { this.panes = { overlayLayer: d.createElement('div'), overlayMouseTarget: d.createElement('div') }; box.append(this.panes.overlayLayer, this.panes.overlayMouseTarget); this.onAdd(); this.draw(); }); }
+    getPanes() { return this.panes || null; }
+    getProjection() { return this.panes ? proj : null; }
+  };
+  const cap = new Map();
+  const ptr = (type, id, x = 0, y = 0, kind = 'mouse') => new W.PointerEvent(type, { bubbles: type !== 'lostpointercapture', cancelable: true, pointerId: id, pointerType: kind, isPrimary: true, clientX: x, clientY: y, button: 0, buttons: /up|cancel|lost/.test(type) ? 0 : 1 });
+  W.Element.prototype.setPointerCapture = function (id) { if (!this.isConnected) throw new W.DOMException('not connected', 'InvalidStateError'); cap.set(id, this); };
+  W.Element.prototype.releasePointerCapture = function (id) { if (cap.get(id) === this) { cap.delete(id); this.dispatchEvent(ptr('lostpointercapture', id)); } };
+  W.Element.prototype.hasPointerCapture = function (id) { return cap.get(id) === this; };
+  const px = (q) => ({ x: q.lng * 1e5, y: -q.lat * 1e5 });
+  // the element under a point: the topmost handle whose box holds it (z-index, then DOM order), else the map's own surface
+  function hit({ x, y }) {
+    const hs = [...d.querySelectorAll('.vh')].filter((h) => h.style.display !== 'none').map((h, k) => ({ h, k, z: Number(h.style.zIndex) || 0 }))
+      .filter(({ h }) => { const l = parseFloat(h.style.left), t = parseFloat(h.style.top), w = parseFloat(h.style.width), ht = parseFloat(h.style.height); return x >= l && x <= l + w && y >= t && y <= t + ht; });
+    hs.sort((a, b) => b.z - a.z || b.k - a.k);
+    return hs.length ? hs[0].h : box;
   }
+  const hidden = (el) => { for (let n = el; n; n = n.parentNode) if (prevented.has(n)) return true; return false; };
+  const downs = {};
+  // ONE pointer event at a lat/lng, routed as a browser would; Maps hears it only when it reaches its surface (an unmoved press-release = a map click)
+  function pointer(type, q, { id = 1, kind = 'mouse' } = {}) {
+    const at = px(q), target = cap.get(id) || hit(at);
+    target.dispatchEvent(ptr(type, id, at.x, at.y, kind));
+    if (/up|cancel/.test(type) && cap.has(id)) { const c = cap.get(id); cap.delete(id); c.dispatchEvent(ptr('lostpointercapture', id)); }
+    if (hidden(target)) return;
+    if (type === 'pointerdown') downs[id] = at;
+    if (type === 'pointerup' && downs[id] && downs[id].x === at.x && downs[id].y === at.y) { for (const f of [...(E.maps.made[0].ls.click || [])]) f({ latLng: { lat: () => q.lat, lng: () => q.lng } }); }
+    if (/up|cancel/.test(type)) delete downs[id];
+  }
+  const tap = (q, o) => { pointer('pointerdown', q, o); pointer('pointerup', q, o); };
+  const drag = (from, to, o, end = 'pointerup') => { pointer('pointerdown', from, o); for (let k = 1; k <= 8; k++) pointer('pointermove', { lat: from.lat + ((to.lat - from.lat) * k) / 8, lng: from.lng + ((to.lng - from.lng) * k) / 8 }, o); pointer(end, to, o); };
+  const kinds = () => E.parent.posted.map(([m]) => m.kind);
+  const last = () => E.parent.posted[E.parent.posted.length - 1][0];
+  async function start(drawing) { boot({ win: E.win, doc: d, loadMaps: E.loadMaps }); await tick(); E.fromParent(v3With(drawing)); await tick(); await tick(); }
+  return { E, W, d, box, prevented, fireWin, pointer, tap, drag, kinds, last, start, handles: () => [...d.querySelectorAll('.vh')] };
+}
+const EDIT4 = () => DRAW({ zone: 'z_aaaaaaaa', points: [P(0), P(1), P(2), P(3)] });
+const R6 = (x) => Math.round(x * 1e6) / 1e6;   // the child sends points at 6 decimals (ptOf)
+const FAR = (q, by = 0.002) => ({ lat: R6(q.lat + by), lng: R6(q.lng + (by > 0.002 ? by : 0)) });   // 200 px away: a real drag
+
+test('route 3 (1): the handle container is handed to preventMapHitsAndGesturesFrom; one transparent, unfocusable handle per vertex, only while editable', async () => {
+  const H = handleEnv();
+  await H.start(EDIT4());
+  const hs = H.handles();
+  assert.equal(hs.length, 4, '🔴 one handle per vertex');
+  assert.ok(hs.every((h) => H.prevented.has(h.parentNode)), '🔴 their container is hidden from Maps (Google\'s own API)');
+  assert.ok(hs.every((h) => h.getAttribute('tabindex') === '-1' && h.getAttribute('aria-hidden') === 'true'), 'input targets, not new controls (§5 parity)');
+  assert.ok(hs.every((h) => parseFloat(h.style.width) >= 44 && parseFloat(h.style.height) >= 44), 'a finger-sized hit box');
+  H.E.fromParent(v3With(null)); await tick();
+  assert.equal(H.handles().filter((h) => h.style.display !== 'none').length, 0, '🔴 no session ⇒ no live handle');
 });
-test('#237 after a CANCELLED drag the next tap OFF the handles adds its point (the commit-only rule — this press never reaches the reset)', async () => {
-  const env = panEnv();
-  boot({ win: env.E.win, doc: env.E.doc, loadMaps: env.E.loadMaps }); await tick();
-  env.E.fromParent(v3With(DRAW())); await tick();
-  for (const q of [P(0), P(1), P(2)]) env.fire('click', q);
-  env.fire('mousedown', P(1)); env.fire('mousemove', { lat: P(1).lat + 0.002, lng: P(1).lng }); env.fireWin('pointercancel'); await tick();
-  const n = env.kinds().filter((k) => k === 'draft_points').length;
-  env.fire('click', { lat: 15.51, lng: -88.02 });
-  assert.equal(env.kinds().filter((k) => k === 'draft_points').length, n + 1, '🔴 the tap after a cancelled drag adds its point');
+
+test('route 3 (1b): UNCONFIRMED (retries exhausted) shows no handle to press', async () => {
+  const H = handleEnv();
+  await H.start(DRAW({ points: [P(0), P(1), P(2)], seq: 3 }));
+  assert.equal(H.handles().length, 3, 'premise: three live handles');
+  H.tap(P(0));   // close ⇒ finish, then no ack: the retries run out
+  assert.equal(H.last().kind, 'finish');
+  await new Promise((r) => setTimeout(r, 500 * 11 + 200));
+  assert.equal(H.handles().filter((h) => h.style.display !== 'none').length, 0, '🔴 an inert session has no handles');
 });
-test('#237 a drag COMMITTED off the map (no click follows its release) does not swallow the next click on a handle (the new-press reset)', async () => {
-  const env = panEnv();
-  boot({ win: env.E.win, doc: env.E.doc, loadMaps: env.E.loadMaps }); await tick();
-  env.E.fromParent(v3With(DRAW())); await tick();
-  for (const q of [P(0), P(1), P(2)]) env.fire('click', q);
-  env.fire('mousedown', P(1)); env.fire('mousemove', { lat: P(1).lat + 0.002, lng: P(1).lng }); env.fireWin('pointerup'); await tick();
-  env.fire('mousedown', P(0)); env.fire('mouseup', P(0)); env.fire('click', P(0));
-  assert.equal(env.kinds()[env.kinds().length - 1], 'finish', '🔴 the first click on vertex 1 after a drag released off the map acts');
+
+test('route 3 (2): EDITING — a real drag sends exactly ONE finish with the moved vertex; an unmoved press-release sends nothing', async () => {
+  const H = handleEnv();
+  await H.start(EDIT4());
+  const n = H.kinds().length;
+  H.tap(P(1));
+  assert.equal(H.kinds().length, n, '🔴 an unmoved press on a handle is not an edit');
+  H.drag(P(1), FAR(P(1)));
+  assert.equal(H.kinds().filter((k) => k === 'finish').length, 1, '🔴 one finish for one drag');
+  assert.deepEqual([H.last().kind, H.last().points[1]], ['finish', FAR(P(1))], '🔴 the drag end is the finish, with the moved vertex');
 });
-// Codex #238: a drag COMMITTED off the map, then a press on EMPTY map space while drawing ⇒ that first click adds its point (the stale
-// suppression is cleared at the START of every map press, before the handle check)
-test('#238 a drag released OFF the map, then a click on EMPTY space while drawing ⇒ the first click adds its point', async () => {
-  const env = panEnv();
-  boot({ win: env.E.win, doc: env.E.doc, loadMaps: env.E.loadMaps }); await tick();
-  env.E.fromParent(v3With(DRAW())); await tick();
-  for (const q of [P(0), P(1), P(2)]) env.fire('click', q);
-  env.fire('mousedown', P(1)); env.fire('mousemove', { lat: P(1).lat + 0.002, lng: P(1).lng }); env.fireWin('pointerup'); await tick();
-  const n = env.kinds().filter((k) => k === 'draft_points').length;
+
+test('route 3 (3): DRAWING — a handle drag sends ONE draft_points at its end; vertex 1 tapped closes; vertex 2 tapped is nothing', async () => {
+  const H = handleEnv();
+  await H.start(DRAW());
+  for (const q of [P(0), P(2), P(4)]) H.tap(q);
+  assert.equal(H.kinds().filter((k) => k === 'draft_points').length, 3, 'premise: three map taps (Maps\' own click) add three points');
+  H.drag(P(2), FAR(P(2)));
+  assert.equal(H.kinds().filter((k) => k === 'draft_points').length, 4, '🔴 one list at the drag end — never one per move');
+  assert.deepEqual(H.last().points[1], FAR(P(2)));
+  const before = H.kinds().length;
+  H.tap(FAR(P(2)));
+  assert.equal(H.kinds().length, before, '🔴 a tap on vertex 2 is nothing (owner 11-19)');
+  H.tap(P(0));
+  assert.equal(H.last().kind, 'finish', '🔴 a tap on vertex 1 closes the shape');
+});
+
+test('route 3 (4): a tremor under 4 px on vertex 1 while drawing is still the close tap', async () => {
+  const H = handleEnv();
+  await H.start(DRAW());
+  for (const q of [P(0), P(2), P(4)]) H.tap(q);
+  H.drag(P(0), { lat: P(0).lat + 0.00002, lng: P(0).lng });   // 2 px
+  assert.equal(H.last().kind, 'finish', '🔴 a hand\'s tremor is not a drag');
+});
+
+test('route 3 (5): pointercancel mid-drag sends nothing and the shape stays; the next tap on vertex 1 closes; the next empty tap adds a point', async () => {
+  const H = handleEnv();
+  await H.start(DRAW());
+  for (const q of [P(0), P(2), P(4)]) H.tap(q);
+  const n = H.kinds().length;
+  H.drag(P(2), FAR(P(2)), undefined, 'pointercancel');
+  assert.equal(H.kinds().length, n, '🔴 nothing for a cancelled gesture');
   const empty = { lat: 15.51, lng: -88.02 };
-  env.fire('mousedown', empty); env.fire('mouseup', empty); env.fire('click', empty);
-  assert.equal(env.kinds().filter((k) => k === 'draft_points').length, n + 1, '🔴 the first click on empty space adds its point');
+  H.tap(empty);
+  assert.equal(H.kinds().length, n + 1, '🔴 the first empty tap after a cancel adds its point');
+  assert.deepEqual(H.last().points[1], P(2), 'the cancelled vertex stayed where it was');
+  H.tap(P(0));
+  assert.equal(H.last().kind, 'finish', '🔴 the first tap on vertex 1 after a cancel closes');
+});
+
+test('route 3 (5b, slot §0): an element blur — and a window blur — mid-drag does NOT end it; the release commits the moved vertex', async () => {
+  const H = handleEnv();
+  await H.start(EDIT4());
+  H.pointer('pointerdown', P(1));
+  H.pointer('pointermove', FAR(P(1)));
+  H.fireWin('blur', H.box);     // a Maps div losing focus at the press (what a window capture listener hears in Chrome)
+  H.fireWin('blur', H.E.win);   // and the window itself
+  H.pointer('pointerup', FAR(P(1)));
+  assert.deepEqual([H.last().kind, H.last().points[1]], ['finish', FAR(P(1))], '🔴 the drag survives a blur (route 1 died of one)');
+});
+
+test('route 3 (6): the session ending mid-press commits nothing; the late release is nothing', async () => {
+  const H = handleEnv();
+  await H.start(EDIT4());
+  const n = H.kinds().length;
+  H.pointer('pointerdown', P(1)); H.pointer('pointermove', FAR(P(1)));
+  H.E.fromParent(v3With(null)); await tick();
+  H.pointer('pointerup', FAR(P(1)));
+  assert.equal(H.kinds().length, n, '🔴 an ended session sends nothing');
+});
+
+test('route 3 (7): the handle CAPTURES its pointer — a drag released far outside the handle still commits, with the release point', async () => {
+  const H = handleEnv();
+  await H.start(EDIT4());
+  H.drag(P(1), FAR(P(1), 0.01));   // 1000 px off, far outside the 44 px handle
+  assert.deepEqual([H.last().kind, H.last().points[1]], ['finish', FAR(P(1), 0.01)], '🔴 the moves and the release stay with the handle');
+});
+
+test('route 3 (8): the map\'s own click path is untouched — empty taps add points while drawing, a tap inside a zone asks to edit it', async () => {
+  const H = handleEnv();
+  const Z = { id: 'z_aaaaaaaa', name: 'Centro', points: [{ lat: 15.49, lng: -88.05 }, { lat: 15.49, lng: -88.03 }, { lat: 15.51, lng: -88.03 }, { lat: 15.51, lng: -88.05 }] };
+  boot({ win: H.E.win, doc: H.d, loadMaps: H.E.loadMaps }); await tick();
+  H.E.fromParent(MP.renderMessage({ mount: M, view: 'keep', theme: 'light', hub: HUB, name: 'La Musa', others: [], bands: [], mapType: 'roadmap', limit: null, zones: [Z], drawing: null })); await tick(); await tick();
+  H.tap({ lat: 15.5, lng: -88.04 });
+  assert.deepEqual(H.E.parent.posted.map(([m]) => m.kind).slice(-1), ['edit_request'], '🔴 a tap inside a zone asks to edit it');
+});
+
+test('route 3 (9): a finger is the same as a mouse (pointerType touch)', async () => {
+  const H = handleEnv();
+  await H.start(EDIT4());
+  H.drag(P(1), FAR(P(1)), { id: 7, kind: 'touch' });
+  assert.deepEqual([H.last().kind, H.last().points[1]], ['finish', FAR(P(1))], '🔴 a finger drag commits like the mouse');
 });

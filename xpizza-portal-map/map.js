@@ -202,11 +202,10 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
   const box = doc.getElementById('map');
   const send = (kind, cause) => { try { parent.postMessage(MP.childMessage(kind, mount, cause), MP.PORTAL_ORIGIN); } catch (_) { /* the portal is gone */ } };
   const st = { latest: null, maps: null, map: null, layer: null, failed: false, ready: false, userMoved: false, programmatic: false, width: 0, type: null,
-    cursor: null, press: null, drag: null, justDragged: false, panHeld: false };   // Z2: the drawing cursor, a handle being dragged, the click that ends a drag
+    cursor: null, press: null, drag: null };   // Z2: the drawing cursor, a handle pressed / being dragged
   const fail = (cause) => { if (st.failed || st.ready) return; st.failed = true; send('failed', cause); };
   // Z2: the map's v2 messages (hello, draft_points, finish, edit_request) — the exact portal origin, never '*'
   const sendMap = (kind, body) => { try { parent.postMessage(MP.mapMessage(kind, mount, body), MP.PORTAL_ORIGIN); } catch (_) { /* the portal is gone */ } };
-  const BASE_GESTURE = 'cooperative';   // the map's own gestures — held to 'none' only while a handle is pressed (holdPan / endPress)
   const ctl = drawController({ send: sendMap, onChange: () => { if (st.layer) st.layer.draw(); cursor(); } });
   st.ctl = ctl;
 
@@ -215,7 +214,7 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
     if (!m) return;
     st.latest = m;
     ctl.onRender(m.v === 3 ? m.drawing : null);   // a v1 / v2 render: no session (the parent never sent v3 to this document)
-    { const v = ctl.view(); if (!v || !v.editable) endPress(false); }   // the session ended / went inert mid-press: the pan back, nothing committed
+    { const v = ctl.view(); if (!v || !v.editable) endPress(false); }   // the session ended / went inert mid-press: nothing committed
     apply();
   });
   win.gm_authFailure = () => fail('auth_failure');
@@ -255,13 +254,6 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
   }
   const r6 = (x) => Math.round(x * 1e6) / 1e6;
   const ptOf = (ll) => ({ lat: r6(ll.lat()), lng: r6(ll.lng()) });
-  // the vertex under a press (≤ 12 mockup px), from the overlay's projection — -1 when none
-  function vertexAt(ll) {
-    const v = ctl.view(), proj = st.layer && st.layer.getProjection && st.layer.getProjection();
-    if (!v || !proj) return -1;
-    const at = proj.fromLatLngToDivPixel(ll), u = W() / G.MOCK.w;
-    return v.points.findIndex((q) => { const p = proj.fromLatLngToDivPixel(new st.maps.LatLng(q.lat, q.lng)); return Math.hypot(p.x - at.x, p.y - at.y) <= 12 * u; });
-  }
   // the drawn zone under a tap (ray casting on lat / lng)
   function zoneAt(pt) {
     const zs = st.latest && st.latest.v === 3 ? st.latest.zones : [];
@@ -270,53 +262,46 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
     return z ? z.id : null;
   }
   function wireDrawing() {
+    // taps on the map itself (DRAWING: a new vertex; no session: a tap inside a zone asks to edit it). A press on a handle never gets here:
+    // the handles are hidden from Maps (RingLayer.onAdd), so vertex taps and drags arrive only through the handle listeners below.
     st.map.addListener('click', (e) => {
-      if (!e || !e.latLng || st.justDragged) { st.justDragged = false; return; }
-      if (ctl.view()) { const i = vertexAt(e.latLng); if (i !== -1) ctl.tapVertex(i); else ctl.tap(ptOf(e.latLng)); }
+      if (!e || !e.latLng) return;
+      if (ctl.view()) ctl.tap(ptOf(e.latLng));
       else { const z = zoneAt(ptOf(e.latLng)); if (z) ctl.tapZone(z); }
       st.layer.draw(); cursor();
     });
-    // a handle drag: the map's own pointer events; the session hears only the END (r1 §5: never on every move). Codex #204 P2-1: a press
-    // becomes a DRAG only once the pointer moves past DRAG_PX (mockup px) — an unmoved press is a CLICK, left to the click handler
-    const DRAG_PX = 4;
-    const pxOf = (ll) => { const proj = st.layer && st.layer.getProjection && st.layer.getProjection(); return proj ? proj.fromLatLngToDivPixel(ll) : null; };
-    // PLAN-portal-zones-z2-fixes-r0 (a) route 1: a press on a HANDLE switches the map's own panning off AT ONCE (Google starts its pan on the
-    // first move, so the old switch — after 4 px of mousemove — never came: the real-browser trace). gestureHandling covers touch as well as
-    // the mouse. A press elsewhere never touches it.
-    st.map.addListener('mousedown', (e) => {
-      st.justDragged = false;   // Codex #237 / #238: EVERY map press starts clean — a stale suppression never swallows the next click, on a handle or not
-      const v = ctl.view();
-      if (!e || !e.latLng || !v || !v.editable) return;
-      const i = vertexAt(e.latLng);
-      if (i === -1) return;
-      st.press = { i, at: pxOf(e.latLng) };
-      holdPan();
-    });
-    st.map.addListener('mousemove', (e) => {
-      if (!st.press || !e || !e.latLng) return;
-      if (!st.drag) {
-        const now = pxOf(e.latLng), u = W() / G.MOCK.w;
-        if (!now || !st.press.at || Math.hypot(now.x - st.press.at.x, now.y - st.press.at.y) <= DRAG_PX * u) return;
-        st.drag = { i: st.press.i, pt: ptOf(e.latLng) };
-      }
-      st.drag.pt = ptOf(e.latLng); st.layer.draw();
-    });
-    st.map.addListener('mouseup', () => endPress(true));
-    // EVERY other end path gives the pan back (advisor 11-20): a release OFF the map or a finger lift commits the drag; a cancel or the window
-    // losing focus commits nothing (the shape stays)
-    for (const t of ['pointerup', 'touchend', 'mouseup']) win.addEventListener(t, () => endPress(true), true);
-    for (const t of ['pointercancel', 'touchcancel', 'blur']) win.addEventListener(t, () => endPress(false), true);
   }
-  // the pan, held while a handle is pressed — restored to the map's base on EVERY end (endPress, the session ending)
-  function holdPan() { if (st.panHeld || !st.map) return; st.panHeld = true; st.map.setOptions({ gestureHandling: 'none' }); }
-  // ONE end for a press (idempotent: the first end path wins, a later one finds nothing): the pan back; a drag committed only if `commit`
+  // PLAN-portal-zones-z2-route3-r1: the corner handles are OUR OWN buttons in Maps' overlayMouseTarget pane (hidden from Maps by
+  // preventMapHitsAndGesturesFrom), driven by pointer events with capture — mouse, pen and finger alike. The session hears only the END
+  // (r1 §5: never on every move). Codex #204 P2-1: a press becomes a DRAG only past DRAG_PX (mockup px); an unmoved press is the vertex TAP.
+  // A press ends ONLY through the handle's own pointerup / pointercancel / lostpointercapture or the session ending — never a window blur
+  // (slot §0: an element's blur reached route 1's window capture listener at every press and undid it).
+  const DRAG_PX = 4;
+  function wireHandles(hbox) {
+    hbox.addEventListener('pointerdown', (e) => {
+      const h = e.target.closest && e.target.closest('.vh'), v = ctl.view();
+      if (!h || st.press || !v || !v.editable || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      e.preventDefault();
+      h.setPointerCapture(e.pointerId);
+      st.press = { i: Number(h.dataset.i), id: e.pointerId, x: e.clientX, y: e.clientY };
+    });
+    hbox.addEventListener('pointermove', (e) => {
+      if (!st.press || e.pointerId !== st.press.id) return;
+      if (!st.drag && Math.hypot(e.clientX - st.press.x, e.clientY - st.press.y) <= DRAG_PX * (W() / G.MOCK.w)) return;
+      const r = box.getBoundingClientRect();   // the map's own div: container pixels
+      st.drag = { i: st.press.i, pt: ptOf(st.layer.getProjection().fromContainerPixelToLatLng(new st.maps.Point(e.clientX - r.left, e.clientY - r.top))) };
+      st.layer.draw();
+    });
+    hbox.addEventListener('pointerup', (e) => { if (st.press && e.pointerId === st.press.id) endPress(true); });
+    for (const t of ['pointercancel', 'lostpointercapture']) hbox.addEventListener(t, (e) => { if (st.press && e.pointerId === st.press.id) endPress(false); });
+  }
+  // ONE end for a press (idempotent: the first end wins — lostpointercapture follows every up): a moved press commits its drag, an unmoved
+  // one is the vertex tap; `commit` false (cancel, capture lost, the session ending) commits nothing
   function endPress(commit) {
-    const d = st.drag;
+    const p = st.press, d = st.drag;
     st.press = null; st.drag = null;
-    if (st.panHeld) { st.panHeld = false; st.map.setOptions({ gestureHandling: BASE_GESTURE }); }
-    if (!d) return;   // no movement: a click (the click handler decides)
-    // Codex #237 P2-1: only a drag that COMMITS swallows the click its release produces; a cancelled one leaves the next click alone
-    if (commit) { st.justDragged = true; ctl.dragEnd(d.i, d.pt); }
+    if (!p || !commit) { if (d) st.layer.draw(); return; }
+    if (d) ctl.dragEnd(d.i, d.pt); else ctl.tapVertex(p.i);
     st.layer.draw(); cursor();
   }
   function build() {
@@ -325,7 +310,7 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
     const look = styleFor(st.type);
     st.map = new maps.Map(box, {
       center: G.cameraCenter(hub), zoom: G.zoomFor(W(), hub.lat), isFractionalZoomEnabled: true,
-      disableDefaultUI: true, zoomControl: true, gestureHandling: BASE_GESTURE, clickableIcons: false, keyboardShortcuts: false,
+      disableDefaultUI: true, zoomControl: true, gestureHandling: 'cooperative', clickableIcons: false, keyboardShortcuts: false,
       styles: look.styles, mapTypeId: look.mapTypeId,
     });
     box.setAttribute('data-maptype', look.mapTypeId);
@@ -334,13 +319,34 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
     st.map.addListener('zoom_changed', () => { if (!st.programmatic) st.userMoved = true; });
     const once = st.map.addListener('tilesloaded', () => { if (once && once.remove) once.remove(); if (st.failed || st.ready) return; st.ready = true; send('ready'); });
     class RingLayer extends maps.OverlayView {
-      constructor() { super(); this.model = null; this.svg = doc.createElementNS(NS, 'svg'); this.svg.setAttribute('class', 'rings'); }
+      constructor() { super(); this.model = null; this.svg = doc.createElementNS(NS, 'svg'); this.svg.setAttribute('class', 'rings'); this.hbox = null; }
       setModel(m) { this.model = m; this.draw(); }
-      onAdd() { this.getPanes().overlayLayer.append(this.svg); }
-      onRemove() { this.svg.remove(); }
+      onAdd() {
+        this.getPanes().overlayLayer.append(this.svg);
+        // route 3: the handles' ONE container, in the pane that takes input, hidden from Maps' own clicks and gestures
+        this.hbox = doc.createElement('div'); this.hbox.className = 'vhandles';
+        maps.OverlayView.preventMapHitsAndGesturesFrom(this.hbox);
+        wireHandles(this.hbox);
+        this.getPanes().overlayMouseTarget.append(this.hbox);
+      }
+      onRemove() { this.svg.remove(); if (this.hbox) this.hbox.remove(); }
+      // one transparent button per vertex of an EDITABLE session (the rule that paints .vtx), laid out in place (a captured handle is never
+      // replaced mid-drag); the SVG still paints the approved look. Vertex 1 on top, so a close tap always finds it.
+      handles(proj, live) {
+        if (!this.hbox) return;
+        const pts = live && live.editable ? live.points : [], u = W() / G.MOCK.w, size = Math.max(24 * u, 44);
+        while (this.hbox.children.length > pts.length) this.hbox.lastChild.remove();
+        pts.forEach((q, i) => {
+          let b = this.hbox.children[i];
+          if (!b) { b = doc.createElement('button'); b.type = 'button'; b.className = 'vh'; b.setAttribute('tabindex', '-1'); b.setAttribute('aria-hidden', 'true'); b.dataset.i = String(i); this.hbox.append(b); }
+          const p = proj.fromLatLngToDivPixel(new maps.LatLng(q.lat, q.lng));
+          Object.assign(b.style, { left: `${p.x - size / 2}px`, top: `${p.y - size / 2}px`, width: `${size}px`, height: `${size}px`, zIndex: i === 0 ? '2' : '1' });
+          b.classList.toggle('dragging', !!st.drag && st.drag.i === i);
+        });
+      }
       draw() {
         const proj = this.getProjection && this.getProjection();
-        if (!proj || !this.model || !this.model.hub) { this.svg.replaceChildren(); return; }
+        if (!proj || !this.model || !this.model.hub) { this.svg.replaceChildren(); if (this.hbox) this.hbox.replaceChildren(); return; }
         const h = proj.fromLatLngToDivPixel(new maps.LatLng(this.model.hub.lat, this.model.hub.lng));
         const left = h.x - SPAN, top = h.y - SPAN;
         Object.assign(this.svg.style, { position: 'absolute', left: `${left}px`, top: `${top}px`, width: `${2 * SPAN}px`, height: `${2 * SPAN}px`, overflow: 'visible' });
@@ -349,6 +355,7 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
         let live = ctl.view();
         if (live && st.drag) live = { ...live, points: live.points.map((q, i) => (i === st.drag.i ? st.drag.pt : q)) };   // the handle follows the pointer
         paint(this.svg, overlayModel(this.model, project, u, live), u);
+        this.handles(proj, live);
       }
     }
     st.layer = new RingLayer();
