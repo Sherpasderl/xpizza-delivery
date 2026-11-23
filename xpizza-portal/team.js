@@ -17,6 +17,7 @@ import { getMyBranches, memberList, memberInvite, memberReissueInvite, memberCan
 import { sendInviteLink } from './invite-mail.js';
 import { el, svg, icon, button, pill, topBlock, errBox, skeleton, OFFLINE } from './ops-dom.js';
 import * as TL from './team-logic.js';
+import { trapTab, inertBehind, focusKey, refocus } from './marketing-focus.js';   // Codex #279: the portal's ONE focus helper
 
 const ICON_D = 'M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0zM4 21a8 8 0 0 1 16 0';
 const S = {
@@ -227,9 +228,24 @@ function closePerson({ fromBack = false } = {}) {
 }
 window.addEventListener('popstate', () => { if (S.person) closePerson({ fromBack: true }); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.person && !S.modal) closePerson(); });
+// Codex #279 P2-1: the sheet and the shipped modals stacked on it are REAL modals. The topmost one (a modal over the sheet, else the
+// sheet) keeps Tab / Shift+Tab, and everything behind it is inert — re-synced whenever either layer is painted or cleared (one observer,
+// so no paint path can forget it); closed, exactly what was inert before is inert again.
+const topLayer = () => (S.layer && S.layer.firstChild ? S.layer : (S.sheet && S.sheet.firstChild ? S.sheet : null));
+const topDialog = () => { const l = topLayer(); return l ? l.querySelector('[role="dialog"]') : null; };
+let unInert = null;
+function syncInert() {
+  if (unInert) { unInert(); unInert = null; }
+  const l = topLayer();
+  if (l && l.isConnected) unInert = inertBehind(l);
+}
+const MO = globalThis.MutationObserver;   // read as availability.js does (portal-wiring: a page global, never a bare call)
+const layersWatch = typeof MO === 'function' ? new MO(syncInert) : null;
+document.addEventListener('keydown', (e) => { if (e.key === 'Tab') { const d = topDialog(); if (d) trapTab(e, d); } });
 
 function paintSheet(focus) {
   if (!S.sheet) return;
+  const kept = focus ? null : focusKey(S.sheet);   // Codex #279 P2-2: the control that had focus before this repaint (a refresh)
   if (!S.person || S.status !== 'ready') { S.sheet.replaceChildren(); return; }
   const r = TL.rowsFrom(S.list, S.branches, Date.now()).find((x) => x.key === S.person.key);
   if (!r) { closePerson(); return; }   // removed / cancelled: the person is gone from the list
@@ -274,6 +290,7 @@ function paintSheet(focus) {
   sh.append(hd, body);
   S.sheet.replaceChildren(scrim, sh);
   if (focus && x.focus) x.focus();
+  else if (kept && !refocus(S.sheet, kept) && x.focus) x.focus();   // the same action again; gone ⇒ ×, never the page
 }
 
 const busy = new Set();
@@ -526,6 +543,7 @@ registerView({
     S.layer = el('div');   // the modal layer: a sibling of the body, so a list re-render never touches an open form
     wrap.append(S.body, S.sheet, S.layer);
     host.replaceChildren(wrap);
+    if (layersWatch) { layersWatch.disconnect(); for (const l of [S.sheet, S.layer]) layersWatch.observe(l, { childList: true }); }   // Codex #279
     S.status = 'idle'; S.list = null; S.inviteError = false; S.opError = false; S.modal = null; S.person = null;
     const key = keyOf();
     if (S.kept && S.kept.key === key) { S.modal = S.kept.modal; }
@@ -544,6 +562,8 @@ registerView({
     if (S.body) S.body.replaceChildren();
     S.list = null; S.branches = [];
     S.host = null; S.body = null; S.sheet = null; S.layer = null;
+    if (layersWatch) layersWatch.disconnect();
+    syncInert();   // Codex #279: leaving the view releases whatever the sheet / a modal made inert, at once
   },
   canLeave: () => true,
 });

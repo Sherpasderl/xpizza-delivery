@@ -553,3 +553,44 @@ test('D1 styles: below 920 px the phone list replaces the table; one-line rows, 
   assert.match(rule(media, '.teamv .scrim.tp-cfscrim') || '', /align-items:flex-end/, 'the confirmation docks at the bottom on the phone');
   assert.match(rule(media, '.teamv .modal.tp-cf .mf .btn') || '', /flex:1/, 'its two buttons side by side');
 });
+
+// ── Codex #279 (a11y): the sheet is a REAL modal — Tab / Shift+Tab stay in the TOPMOST dialog (the sheet, or the shipped modal stacked
+// on it), everything behind it is inert while it is open (restored exactly on close), and a refresh keeps the focused action ──
+const tab = (p, shift = false) => { const e = new p.w.KeyboardEvent('keydown', { key: 'Tab', shiftKey: shift, bubbles: true, cancelable: true }); p.d.activeElement.dispatchEvent(e); return e; };
+const tabbables = (n) => [...n.querySelectorAll('button, input, select, textarea, a[href], [tabindex]')].filter((x) => !x.disabled && x.getAttribute('tabindex') !== '-1');
+const inertNow = (p) => [...p.d.querySelectorAll('[inert]')];
+test('Codex #279 P2-1: Tab / Shift+Tab cycle inside the sheet; the list and the portal\'s nav are inert behind it; a stacked modal takes the trap; close restores exactly', async () => {
+  const p = await page();
+  await p.signIn(); await p.open();
+  const before = inertNow(p);
+  prow(p, 'Jorge Ayala').click(); await settle();
+  const s = sheet(p); const f = tabbables(s);
+  assert.ok(f.length >= 3, 'premise: × + Editar + Quitar acceso');
+  f[f.length - 1].focus(); tab(p);
+  assert.equal(p.d.activeElement, f[0], '🔴 Tab past the last control wraps to the first — focus never leaves the sheet');
+  tab(p, true);
+  assert.equal(p.d.activeElement, f[f.length - 1], '🔴 Shift+Tab before the first wraps to the last');
+  assert.ok(prow(p, 'Jorge Ayala').closest('[inert]'), '🔴 the list behind the sheet is inert');
+  assert.ok(p.d.getElementById('navprod').closest('[inert]'), '🔴 the portal\'s nav behind the sheet is inert');
+  assert.equal(s.closest('[inert]'), null, 'the sheet itself is live');
+  p.btn('Editar', s).click(); await settle();
+  const m = dlg(p); const g = tabbables(m);
+  g[g.length - 1].focus(); tab(p);
+  assert.equal(p.d.activeElement, g[0], '🔴 the stacked modal takes the trap');
+  assert.ok(s.closest('[inert]'), '🔴 the sheet is inert under the modal');
+  p.btn('Cancelar', dlg(p)).click(); await settle();
+  assert.equal(sheet(p).closest('[inert]'), null, '🔴 the modal closed: the sheet is live again');
+  const f2 = tabbables(sheet(p)); f2[f2.length - 1].focus(); tab(p);
+  assert.equal(p.d.activeElement, f2[0], 'and the trap is the sheet\'s again');
+  sheet(p).querySelector('.tp-x').click(); await settle();
+  assert.deepEqual(inertNow(p), before, '🔴 closed: exactly what was inert before is inert now');
+});
+test('Codex #279 P2-2: «Reenviar» refreshes the sheet and focus stays on «Reenviar» — never dropped to the page', async () => {
+  const p = await page({ on: { memberReissueInvite: () => okJson({ ok: true, inviteId: INV(9), email: 'ana@m.hn', name: 'Ana Reyes' }) } });
+  await p.signIn(); await p.open();
+  prow(p, 'Ana Reyes').click(); await settle();
+  const re = p.btn('Reenviar', sheet(p)); re.focus(); re.click(); await settle(60);
+  assert.ok(sheet(p), 'premise: the sheet is still open after the refresh');
+  assert.notEqual(p.d.activeElement, p.d.body, '🔴 focus is not dropped to the body');
+  assert.ok(sheet(p).contains(p.d.activeElement) && p.d.activeElement.textContent === 'Reenviar', '🔴 the focused action keeps focus across the repaint');
+});

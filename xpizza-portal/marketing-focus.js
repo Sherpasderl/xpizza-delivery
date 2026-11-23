@@ -5,6 +5,7 @@
 //   layered(state, root, levels, top)   — one call after each redraw: a NEW layer (sheet / calendar) takes focus; a CLOSED one gives
 //                                         it back to the control that opened it; otherwise focus stays where it was
 //   trapTab(e, dialog)                  — Tab / Shift+Tab cycle inside the topmost dialog
+//   inertBehind(node)                   — everything behind a modal layer is inert; the returned release restores exactly (Codex #279)
 const TABBABLE = 'button, input, select, textarea, a[href], [tabindex]';   // filtered in tabbable(): not disabled, not tabindex -1
 const tabbable = (n) => !n.disabled && n.getAttribute('tabindex') !== '-1';
 
@@ -49,4 +50,18 @@ export function trapTab(e, dialog) {
   if (!f.length) { e.preventDefault(); return; }
   const i = f.indexOf(document.activeElement);
   if (e.shiftKey ? i <= 0 : i < 0 || i === f.length - 1) { e.preventDefault(); (e.shiftKey ? f[f.length - 1] : f[0]).focus(); }
+}
+// Codex #279 (the team sheet): a modal's background must not take focus or clicks. Every sibling along `node`'s path up to <body> gets
+// `inert` — except a live region (the shell's toast, a status line): what an action announces while the sheet is open must still be
+// heard. The returned release removes exactly what this call set (an element already inert stays inert).
+const live = (n) => n.hasAttribute('aria-live') || /^(status|alert)$/.test(n.getAttribute('role') || '');
+export function inertBehind(node) {
+  const set = [];
+  for (let n = node; n && n.parentElement && n !== document.body; n = n.parentElement) {
+    for (const s of n.parentElement.children) {
+      if (s === n || s.hasAttribute('inert') || s.tagName === 'SCRIPT' || s.tagName === 'STYLE' || live(s)) continue;
+      s.setAttribute('inert', ''); set.push(s);
+    }
+  }
+  return () => { for (const s of set) s.removeAttribute('inert'); };
 }
