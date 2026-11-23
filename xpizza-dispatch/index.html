@@ -1976,6 +1976,14 @@
   .sh-attend svg { width: 13px; height: 13px; }
   .sh-attend.wa, .sh-attend.pend { background: var(--surface-3); color: var(--text-soft); text-decoration: none; }   /* quieter secondary pills, not a second green action */
   .sh-attend:hover { filter: brightness(1.05); }
+  /* Owner Option B (SBS 11-23): the thread header is two rows so the customer name never competes with the
+     action pills. A single flex row (avatar + name + «Marcar atendido» + «Responder» + call + close) starved
+     the identity (.sh-id is flex:1;min-width:0) to «M…» at the 430px sheet and off-screen at 390px (16b/16c).
+     Identity row (avatar · name/sub · close) over an actions row (pills · call). No logic change — same controls. */
+  .sh-head.two-row { display: block; padding: 12px 12px 11px 15px; }
+  .sh-head.two-row .sh-idrow { display: flex; align-items: center; gap: 11px; }
+  .sh-head.two-row .sh-actrow { display: flex; align-items: center; gap: 8px; margin-top: 11px; }
+  .sh-head.two-row .sh-actspacer { flex: 1; min-width: 0; }
   .sh-ic svg { width: 16px; height: 16px; }
   .sh-ic.call { color: var(--da-call); }
   .sh-ic:hover { background: var(--hair); filter: brightness(1.2); }
@@ -4142,14 +4150,22 @@ function renderCommsThread() {
     ? `<button class="sh-attend" id="comms-mark-attended" type="button" title="Marcar atendido"><svg class="ic sm"><use href="#i-check"/></svg>Marcar atendido</button>`
     : (latestInboundId ? `<button class="sh-attend pend" id="comms-mark-pending" type="button" title="Marcar pendiente">Marcar pendiente</button>` : '');
 
+  // Owner Option B (SBS 11-23): two-row header — identity row (avatar · name/sub · close) over an actions row
+  // (pills · call). Same controls as before (triageBtn/waBtn/callBtn/close are unchanged); only the layout moves,
+  // so the name keeps a full-width budget instead of being starved by the pills. See .sh-head.two-row CSS.
   sheet.innerHTML = `
-    <div class="sh-head">
-      <div class="sh-av">${escapeHtml(initials)}</div>
-      <div class="sh-id"><div class="nm">${escapeHtml(name)}</div><div class="su">${sub}</div></div>
-      ${triageBtn}
-      ${waBtn}
-      ${callBtn}
-      <button class="sh-ic" id="comms-sheet-close" title="Cerrar" aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
+    <div class="sh-head two-row">
+      <div class="sh-idrow">
+        <div class="sh-av">${escapeHtml(initials)}</div>
+        <div class="sh-id"><div class="nm">${escapeHtml(name)}</div><div class="su">${sub}</div></div>
+        <button class="sh-ic" id="comms-sheet-close" title="Cerrar" aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
+      </div>
+      <div class="sh-actrow">
+        ${triageBtn}
+        ${waBtn}
+        <span class="sh-actspacer"></span>
+        ${callBtn}
+      </div>
     </div>
     ${recibido ? `<div class="sh-recibido">${recibido}</div>` : ''}
     <div class="sh-body">${body}</div>

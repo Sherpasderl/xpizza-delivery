@@ -138,4 +138,32 @@ const navUnhandled = (allMessages) => Object.values(allMessages).filter(m => m &
   ok('the obsolete #msg-modal.open is dropped from the idle-adapter list');
 }
 
+// Owner Option B (SBS 11-23): the thread header is split into an identity row + an actions row, so the customer
+// name never competes with the «Marcar atendido»+«Responder» pills. A single flex row with min-width:0 starved
+// the name to «M…» at the 430px sheet (off-screen at 390px) — jsdom has no layout, so the fit is asserted at the
+// SOURCE level, fix-agnostic: PASS iff .sh-id carries a non-zero min-width (icon option) OR the header is two-row.
+{
+  const headerFitsOK = (src) => {
+    const start = src.indexOf('.sh-head');
+    const end = src.indexOf('.sh-recibido', start);
+    const headCss = src.slice(start, end > start ? end : start + 2000);
+    const shIdMinWidth = /\.sh-id\s*\{[^}]*min-width:\s*(?:[1-9]\d*px|[1-9]\d*%|[1-9]\d*rem|\d*\.\d+rem)/.test(headCss);
+    const twoRow = /class="sh-head[^"]*\btwo-row\b/.test(src) || /\.sh-head\.two-row\b/.test(headCss);
+    return shIdMinWidth || twoRow;
+  };
+  assert.ok(headerFitsOK(html), 'the thread header guarantees the name a readable budget (two-row header, or a non-zero .sh-id min-width)');
+  // mutant: the retired one-row header (both pills, min-width:0) MUST be rejected by the same predicate — proves
+  // the guard is not vacuous (it dies on exactly the defect the SBS found).
+  const MUTANT = `<style>.sh-head{display:flex}.sh-id{flex:1;min-width:0}.sh-recibido{}</style>` +
+    `<div class="sh-head"><div class="sh-av">MF</div><div class="sh-id"><div class="nm">María Fernanda Alvarenga</div></div>` +
+    `<button class="sh-attend">Marcar atendido</button><a class="sh-attend wa">Responder</a></div>`;
+  assert.ok(!headerFitsOK(MUTANT), 'mutant killed: a single-row header with both pills and min-width:0 fails the fit guard');
+  // the live markup actually ships the two-row structure (identity row before the actions row)
+  const t = fnSrc('renderCommsThread');
+  assert.match(t, /class="sh-head two-row"/, 'renderCommsThread renders the two-row header');
+  assert.match(t, /sh-idrow[\s\S]*?sh-actrow/, 'the identity row precedes the actions row');
+  assert.match(t, /sh-idrow[\s\S]*?comms-sheet-close/, 'the close button lives in the identity row');
+  ok('thread header fit (Option B): two-row structure present; fit guard passes the real file and kills the one-row mutant');
+}
+
 console.log(`dispatch-comms-consolidation: OK (${n})`);
