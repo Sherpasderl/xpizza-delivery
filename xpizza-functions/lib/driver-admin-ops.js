@@ -249,6 +249,7 @@ async function inviteDriver(params, deps) {
   let existing = null;
   try { existing = await auth.getUserByEmail(email); } catch (e) { existing = null; }
   if (existing) {
+    if (!isPathUid(existing.uid)) throw new HttpsError('failed-precondition', 'La cuenta de autenticación no es válida — revisá la invitación.');   // Codex #270: the looked-up uid builds a path too
     const rec = (await db.ref(`driver_accounts/${existing.uid}`).once('value')).val();
     if (rec && rec.invited_by && normEmail(rec.email) === email &&
         (rec.onboarding_state === 'pending' || rec.onboarding_state === 'profile_submitted')) {

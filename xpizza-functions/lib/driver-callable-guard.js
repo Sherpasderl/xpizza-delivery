@@ -17,8 +17,11 @@
 // after the fact), so a session minted BEFORE the cutoff must be refused here immediately — even after a reactivation
 // has cleared `deactivated` and re-enabled Auth. An absent `revoke_after` is inert (no new rejection), so accounts
 // that were never deactivated behave exactly as in S1a.
+const { isPathUid } = require('../access/membership');   // the ONE path-safe uid rule (no ASCII control, none of / . # $ [ ])
+
 async function assertDriverCallerActive(uid, authToken, { db, auth, HttpsError }) {
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+  if (!isPathUid(uid)) throw new HttpsError('permission-denied', 'Tu cuenta no es válida.');   // Codex #270 P1: a '/'-bearing uid would alias driver_accounts/<another uid>
   const [deactSnap, revokeAfterSnap, user] = await Promise.all([
     db.ref(`driver_accounts/${uid}/deactivated`).once('value'),
     db.ref(`driver_accounts/${uid}/revoke_after`).once('value'),

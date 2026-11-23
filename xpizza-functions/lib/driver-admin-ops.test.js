@@ -546,7 +546,7 @@ const rejects = (p, code, re) => assert.rejects(p, (e) => e.code === code && (!r
 
   // ---- UID-PATH admission (Codex C 11-23): a uid that is not path-safe ALIASES another node (`driver_accounts/p/` ≡ `driver_accounts/p`)
   // and reached createUser with that foreign uid — every op refuses it BEFORE any read, Auth call or write; the caller gate likewise ----
-  const BAD_UIDS = ['pend/', 'pend/x', 'pe.nd', 'pe#nd', 'pe$nd', 'pe[nd', 'pe]nd', 'pe nd', ''];
+  const BAD_UIDS = ['pend/', 'pend/x', 'pe.nd', 'pe#nd', 'pe$nd', 'pe[nd', 'pe]nd', 'pe\x00nd', 'pe\nnd', 'pe\x7fnd', ''];   // a space is a LEGITIMATE uid character (Codex #270)
   const spied = (initial, users) => {
     const db = makeDb(initial); const auth = makeAuth(users || {}, () => clockNow); const touched = [];
     const sdb = { ref: (p) => { touched.push(`db:${p}`); return db.ref(p); }, _get: db._get };
@@ -579,6 +579,13 @@ const rejects = (p, code, re) => assert.rejects(p, (e) => e.code === code && (!r
       assert.deepStrictEqual(w.touched, [], `🔴 UIDPATH-CALLER: ${JSON.stringify(bad)} touched ${w.touched.join(',')}`);
     }
   });
+  await t('UIDPATH-EMAIL: a NEW invite whose email maps to an Auth uid that is not path-safe is refused before any path is built', async () => {
+    for (const bad of ['pend/', 'pe.nd', 'pe\x00nd']) {
+      const w = spied({ ...seedBase(), driver_accounts: { pend: { enabled: false, onboarding_state: 'pending', version: 1, email: 'p@x.hn', invited_by: 'disp1' } } }, { [bad]: { uid: bad, email: 'p@x.hn', disabled: true } });
+      await assert.rejects(ops.inviteDriver({ name: 'N', phone: '9999', email: 'p@x.hn', actorUid: 'disp1' }, { db: w.db, auth: w.auth, HttpsError, now: clockNow }), (e) => e.code === 'failed-precondition', `🔴 UIDPATH-EMAIL: Auth uid ${JSON.stringify(bad)} must be refused`);
+      assert.deepStrictEqual(w.touched, ['auth:getUserByEmail'], `🔴 UIDPATH-EMAIL: Auth uid ${JSON.stringify(bad)} touched ${w.touched.join(',')}`);
+    }
+  });
   await t('UIDPATH-LEGIT: a path-safe uid still re-invites (and a new invite without uid still works) through the admission', async () => {
     const w = spied({ ...seedBase(), driver_accounts: { pend: { enabled: false, onboarding_state: 'pending', version: 1, email: 'p@x.hn', invited_by: 'disp1' } } }, { pend: { uid: 'pend', email: 'p@x.hn', disabled: true } });
     const r = await ops.inviteDriver({ uid: 'pend', actorUid: 'disp1' }, { db: w.db, auth: w.auth, HttpsError, now: clockNow });
@@ -586,6 +593,9 @@ const rejects = (p, code, re) => assert.rejects(p, (e) => e.code === code && (!r
     await ops.assertDispatcherCaller('disp1', {}, { db: w.db, auth: makeAuth({ disp1: { uid: 'disp1', email: 'd@x.hn' } }, () => clockNow), HttpsError });
     const n = await ops.inviteDriver({ name: 'Nuevo', phone: '99990000', email: 'nuevo@x.hn', actorUid: 'disp1' }, { db: w.db, auth: w.auth, HttpsError, now: clockNow });
     assert.strictEqual(n.ok, true, '🔴 UIDPATH-LEGIT: a new invite (no uid) still works');
+    const ws = spied({ ...seedBase(), driver_accounts: { 'pe nd': { enabled: false, onboarding_state: 'pending', version: 1, email: 's@x.hn', invited_by: 'disp1' } } }, { 'pe nd': { uid: 'pe nd', email: 's@x.hn', disabled: true } });
+    const rs = await ops.inviteDriver({ uid: 'pe nd', actorUid: 'disp1' }, { db: ws.db, auth: ws.auth, HttpsError, now: clockNow });
+    assert.deepStrictEqual([rs.ok, rs.uid], [true, 'pe nd'], '🔴 UIDPATH-LEGIT: a space-bearing uid is legitimate and still re-invites');
   });
 
   console.log(`\ndriver-admin-ops: ${passed} tests passed`);

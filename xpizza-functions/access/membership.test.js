@@ -167,3 +167,18 @@ test('cores gate on CAPABILITIES with today\'s error bodies: a manager-only call
   const sd = await getSalesStatsCore({ authorize: disp, getKeyer: boom }, { method: 'GET', query: { restaurantId: 'tb_centro' } });
   assert.deepStrictEqual([sd.status, sd.body.error], [403, 'not_owner'], 'a dispatcher is still refused stats as today');
 });
+
+// Codex #270 P2: isPathUid is the ONE path-safe uid rule — the RTDB key rules: no ASCII control (\x00–\x1F, \x7F), none of / . # $ [ ],
+// length 1–128. Spaces (and any other printable / non-ASCII character) are legitimate in a Firebase uid and stay accepted.
+test('isPathUid: every ASCII control refused, spaces accepted, the forbidden punctuation and the length bound kept', () => {
+  for (let c = 0; c <= 0x1f; c += 1) for (const at of ['', 'a', 'ab']) {
+    const u = `${at}${String.fromCharCode(c)}z`;
+    assert.strictEqual(M.isPathUid(u), false, `🔴 PATHUID-CONTROL: \\x${c.toString(16).padStart(2, '0')} in ${JSON.stringify(u)} must be refused`);
+  }
+  assert.strictEqual(M.isPathUid('a\x7fz'), false, '🔴 PATHUID-CONTROL: DEL (\\x7f) must be refused');
+  for (const u of ['a b', ' ab', 'ab ', 'a  b', ' ', 'dueño x', 'a b', 'tb_owner', 'some-uid', 'U1'])
+    assert.strictEqual(M.isPathUid(u), true, `🔴 PATHUID-SPACE: ${JSON.stringify(u)} is a legitimate uid`);
+  for (const u of ['a/b', 'a.b', 'a#b', 'a$b', 'a[b', 'a]b', '', 'x'.repeat(129), null, undefined, 7, {}])
+    assert.strictEqual(M.isPathUid(u), false, `🔴 PATHUID-PUNCT: ${JSON.stringify(u)} must be refused`);
+  assert.strictEqual(M.isPathUid('x'.repeat(128)), true, '🔴 PATHUID-PUNCT: 128 characters is the bound, inclusive');
+});

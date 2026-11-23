@@ -240,7 +240,7 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
   // Codex C 11-23: a verified uid that is not path-safe ALIASED platform_admins/<admin> (`platform_admins/tbowner/` ≡ the admin's flag) —
   // refused 403 before the admin read; the path-safe admins (incl. '_', '-' and non-ASCII uids) keep working
   await cell('DPW-UIDPATH', async (L) => {
-    for (const bad of ['tbowner/', 'tbowner/x', 'tb.owner', 'tb#owner', 'tb$owner', 'tb[owner', 'tb]owner', 'tb owner']) {
+    for (const bad of ['tbowner/', 'tbowner/x', 'tb.owner', 'tb#owner', 'tb$owner', 'tb[owner', 'tb]owner', 'tb\x00owner', 'tb\nowner', 'tb\x7fowner']) {
       TOKENS[`alias:${bad}`] = { uid: bad };
       const w = world(); const reads = []; const ref = w.db.ref; w.db.ref = (p) => { reads.push(String(p)); return ref.call(w.db, p); };
       const r = await w.set(body(), `alias:${bad}`); const g = await w.get(`alias:${bad}`);
@@ -248,6 +248,8 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
       assert.deepStrictEqual(reads, [], `${L}: 🔴 ${JSON.stringify(bad)} read ${reads.join(',')}`);
     }
     for (const tok of ['admin', 'dash', 'under', 'uni']) { const g = await world().get(tok); assert.strictEqual(g.status, 200, `${L}: 🔴 the legit admin ${tok} still reads (${g.status})`); }
+    TOKENS.spaced = { uid: 'tb owner' };   // a space is a LEGITIMATE uid character (Codex #270: 403 here was a regression)
+    { const g = await world({ platform_admins: { 'tb owner': true } }).get('spaced'); assert.strictEqual(g.status, 200, `${L}: 🔴 a space-bearing admin still reads (${g.status})`); }
   });
 
   if (fails.length) { console.log(`FAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }

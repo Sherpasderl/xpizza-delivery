@@ -48,5 +48,17 @@ const rejects = (p, code, re) => assert.rejects(p, (e) => e.code === code && (!r
   await t('S1b: cutoff with a deactivated marker still refuses as desactivada (marker wins first)', () =>
     rejects(assertDriverCallerActive('u1', { auth_time: 1_760_000_000 }, deps(true, ACTIVE, 1_760_000_050_000)), 'permission-denied', /desactivada/));
 
+  // Codex #270 P1: a uid that is not path-safe ALIASES driver_accounts/<another>/… (and is looked up in Auth as itself) — refused before
+  // ANY read or Auth call; a space-bearing uid is legitimate and passes through to the normal checks
+  await t('GUARD-UIDPATH: an aliasing / control-char uid is refused before any read or Auth call; a space uid is admitted', async () => {
+    for (const bad of ['u1/', 'u1/x', 'u.1', 'u#1', 'u$1', 'u[1', 'u]1', 'u\x001', 'u\n1', 'u\x7f1']) {
+      const touched = [];
+      const d = { db: { ref: (p) => { touched.push(`db:${p}`); return { once: async () => ({ val: () => null }) }; } }, auth: { getUser: async (u) => { touched.push(`auth:${u}`); return ACTIVE; } }, HttpsError };
+      await assert.rejects(assertDriverCallerActive(bad, { auth_time: 1_760_000_000 }, d), (e) => e.code === 'permission-denied', `🔴 GUARD-UIDPATH: ${JSON.stringify(bad)} must be refused`);
+      assert.deepStrictEqual(touched, [], `🔴 GUARD-UIDPATH: ${JSON.stringify(bad)} touched ${touched.join(',')}`);
+    }
+    await assertDriverCallerActive('u 1', { auth_time: 1_760_000_000 }, deps(null, ACTIVE));
+  });
+
   console.log(`\ndriver-callable-guard: ${passed} tests passed`);
 })().catch((e) => { console.error('driver-callable-guard FAILED:', e && e.stack || e); process.exit(1); });
