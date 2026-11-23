@@ -2,7 +2,7 @@
 // frames is the next Chrome turn's. RED first.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -60,4 +60,57 @@ test('Codex P3: logoFallback returns its cleanup and the shell\'s destroy() remo
   d.querySelector('img').dispatchEvent(new d.defaultView.Event('error'));
   assert.ok(d.querySelector('img'), 'removed ⇒ inert');
   assert.ok(/logoOff\(\)/.test(readFileSync(join(HERE, 'capp-shell-ui.js'), 'utf8')), '🔴 P3: the shell\'s destroy() calls it');
+});
+
+// SBS DIR3 slot 11-22 (16b; OWNER «fix everywhere»): a row subtitle never leaves its last word alone on a line («Portón de metal
+// / negro»). ONE helper (capp-text.js, shared by capp-home + capp-push) glues the last two words with a no-break space AFTER
+// escaping; the CSS keeps balance + pretty. The census below makes every `.rowbtn .t` subtitle go through it.
+test('ORPHAN-1 (16b): noOrphan glues the last two words with U+00A0 — on ESCAPED text, entities intact, never markup', () => {
+  const T = require('./capp-text.js');
+  assert.equal(T.noOrphan('Portón de metal negro'), 'Portón de metal\u00a0negro', '🔴 ORPHAN-1: the last word never stands alone');
+  assert.equal(T.noOrphan('Casa &amp; Jardín'), 'Casa &amp;\u00a0Jardín', '🔴 ORPHAN-1: an escaped entity stays whole');
+  assert.ok(!/&nbsp;|</.test(T.noOrphan('a b c')), 'ORPHAN-1: a character, never an entity or markup');
+  assert.equal(T.noOrphan('Pedidos'), 'Pedidos', 'one word: unchanged');
+  assert.equal(T.noOrphan(''), '', 'empty: unchanged');
+  assert.equal(T.noOrphan('Calle Supercalifragilística Espialidosa'), 'Calle Supercalifragilística Espialidosa', '🔴 ORPHAN-1: two long words are never glued into one unbreakable run (it would overflow a 320 px phone)');
+});
+
+test('ORPHAN-2 (16b, the real writer): the «Direcciones» row of the SBS frame renders «… metal\u00a0negro»', () => {
+  const H = require('./capp-home.js');
+  const d = dom(H.addressesHtml({ dir: { rows: [{ id: 'a1', label: 'Casa', detected: 'Col. Palmira, Calle 5', details: 'Portón de metal negro' }], sel: 'a1' } }));
+  const sub = d.querySelector('.rowbtn[data-id="a1"] .t > span');
+  assert.equal(sub.textContent, 'Col. Palmira, Calle 5 · Portón de metal\u00a0negro', '🔴 ORPHAN-2: the address subtitle is glued');
+  assert.ok(/\.rowbtn \.t span\{[^}]*text-wrap:balance;text-wrap:pretty/.test(CSS), '🔴 ORPHAN-2: balance, then pretty where the WebView has it');
+});
+
+// CONSENT text is never glued (advisor 11-23): push's offers sub-line (PUSH_OFFERS_COPY_VERSION) and G7's email + WhatsApp consent
+// line render byte-identical. The ONLY census exemptions; push's `row()` subtitle is glued at its NON-consent caller (ORPHAN-CONSENT).
+const CONSENT_SITES = { 'capp-push.js': ['${sub}</span>', '${COPY.promosSub}</span>'] };
+test('ORPHAN-CENSUS (16b): EVERY `.rowbtn .t` subtitle in the app goes through noOrphan — a new row cannot skip it', () => {
+  const files = readdirSync(HERE).filter((f) => f.endsWith('.js') && /class=\\?"rowbtn/.test(readFileSync(join(HERE, f), 'utf8')));
+  assert.deepEqual(files.sort(), ['capp-home.js', 'capp-push.js'], 'ORPHAN-CENSUS: the files that draw a .rowbtn (a new one joins this census)');
+  const skipped = [];
+  let n = 0;
+  for (const f of files) {
+    const src = readFileSync(join(HERE, f), 'utf8');
+    for (const m of src.matchAll(/<span class="t">/g)) {
+      const opens = [...src.slice(0, m.index).matchAll(/<(?:button|div) class="([^"]*)"/g)];
+      if (!opens.length || !/(^| )rowbtn( |$)/.test(opens[opens.length - 1][1])) continue;   // the row this .t sits in
+      const end = src.slice(m.index).search(/<\/button>|<\/div>/), seg = src.slice(m.index, m.index + end);
+      for (const s of seg.matchAll(/<span>/g)) { n++; const e = seg.slice(s.index + 6); if (!e.startsWith('${noOrphan(') && !(CONSENT_SITES[f] || []).some((c) => e.startsWith(c))) skipped.push(`${f}: ${seg.slice(s.index, s.index + 60)}`); }
+    }
+  }
+  assert.ok(n >= 13, `premise: the census sees the subtitles (${n})`);
+  assert.deepEqual(skipped, [], '🔴 ORPHAN-CENSUS: a .rowbtn subtitle that skips noOrphan');
+});
+
+test('ORPHAN-CONSENT (advisor 11-23): consent text renders BYTE-IDENTICAL — never glued — while the other «Notificaciones» sub-lines are', () => {
+  const P = require('./capp-push.js');
+  const sub = (h, sel) => [...dom(h).querySelectorAll(`${sel} .t > span`)].map((x) => x.textContent);
+  for (const vm of [{ app: true, granted: true, pedidos: true, promociones: false, promos: true, settled: true }, { app: true, denied: true, promos: false, settled: true }, { app: true, granted: true }]) {
+    const subs = sub(P.screenHtml(vm), '.rowbtn');
+    assert.ok(subs.includes(P.COPY.offersSub), '🔴 ORPHAN-CONSENT: the push-offers consent text, byte-identical');
+    assert.ok(subs.includes(P.COPY.promosSub), '🔴 ORPHAN-CONSENT: the email + WhatsApp consent text, byte-identical');
+    assert.ok(subs.includes('Cuando cambie el\u00a0estado') && subs.includes('Siempre activo: es como te\u00a0avisamos'), '🔴 ORPHAN-CONSENT: the non-consent sub-lines are glued (the census exempts push\'s row() — its orders caller glues)');
+  }
 });

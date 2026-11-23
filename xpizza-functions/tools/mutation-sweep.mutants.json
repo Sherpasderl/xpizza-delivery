@@ -38701,8 +38701,8 @@
   "slice": "capp-push",
   "label": "the Cuenta row placed before Direcciones",
   "file": "../customer-app/capp-home.js",
-  "from": "      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${vm.dir.labels || (vm.addr && vm.addr.line) ? `<span>${esc(vm.dir.labels || vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>`}\n      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n",
-  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${vm.dir.labels || (vm.addr && vm.addr.line) ? `<span>${esc(vm.dir.labels || vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>`}\n",
+  "from": "      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${vm.dir.labels || (vm.addr && vm.addr.line) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}\n      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n",
+  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${vm.dir.labels || (vm.addr && vm.addr.line) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}\n",
   "command": [
    "node",
    "--test",
@@ -38950,8 +38950,8 @@
   "slice": "capp-notifs",
   "label": "the Cuenta keeps a separate «Promociones» row beside «Notificaciones»",
   "file": "../customer-app/capp-home.js",
-  "from": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n",
-  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n      <button class=\"rowbtn\" data-act=\"promos\">${IC.bell}<span class=\"t\">Promociones<span>Ofertas por correo y WhatsApp</span></span></button>\n",
+  "from": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n",
+  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n      <button class=\"rowbtn\" data-act=\"promos\">${IC.bell}<span class=\"t\">Promociones<span>Ofertas por correo y WhatsApp</span></span></button>\n",
   "command": [
    "node",
    "--test",
@@ -42593,6 +42593,91 @@
   ],
   "kills_with": [
    "C236-P2-SCOPE: after a refused sign-out her token refresh still runs"
+  ]
+ },
+ {
+  "id": "r3-c-01",
+  "slice": "r3-c",
+  "label": "16b orphan: noOrphan joins the last two words with a plain space (the last word can wrap alone again)",
+  "file": "../customer-app/capp-text.js",
+  "from": "m[1] + '\\u00a0' + m[2]",
+  "to": "m[1] + ' ' + m[2]",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ORPHAN-1",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "ORPHAN-1: the last word never stands alone"
+  ]
+ },
+ {
+  "id": "r3-c-02",
+  "slice": "r3-c",
+  "label": "16b orphan: two long words are glued anyway (one unbreakable run overflows a 320 px phone)",
+  "file": "../customer-app/capp-text.js",
+  "from": ".length > GLUE_MAX) return s",
+  "to": ".length > 999) return s",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ORPHAN-1",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "ORPHAN-1: two long words are never glued into one unbreakable run"
+  ]
+ },
+ {
+  "id": "r3-c-03",
+  "slice": "r3-c",
+  "label": "16b orphan: the «Direcciones» address subtitle skips noOrphan (the SBS DIR3 «negro» row)",
+  "file": "../customer-app/capp-home.js",
+  "from": "<span>${noOrphan(esc(a.details ? `${a.detected} · ${a.details}` : a.detected))}</span>",
+  "to": "<span>${esc(a.details ? `${a.detected} · ${a.details}` : a.detected)}</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ORPHAN-CENSUS",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "ORPHAN-CENSUS: a .rowbtn subtitle that skips noOrphan"
+  ]
+ },
+ {
+  "id": "r3-c-04",
+  "slice": "r3-c",
+  "label": "consent: the push-offers consent text (PUSH_OFFERS_COPY_VERSION) is glued by the 16b helper — no longer byte-identical",
+  "file": "../customer-app/capp-push.js",
+  "from": "row('promociones', COPY.offersSub, x.promociones)",
+  "to": "row('promociones', noOrphan(COPY.offersSub), x.promociones)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ORPHAN-CONSENT",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "ORPHAN-CONSENT: the push-offers consent text, byte-identical"
+  ]
+ },
+ {
+  "id": "r3-c-05",
+  "slice": "r3-c",
+  "label": "16b orphan: the «Pedidos» phone row (push row(), census-exempt for consent) skips the glue",
+  "file": "../customer-app/capp-push.js",
+  "from": "row('pedidos', noOrphan(COPY.ordersSub), x.pedidos)",
+  "to": "row('pedidos', COPY.ordersSub, x.pedidos)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ORPHAN-CONSENT",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "ORPHAN-CONSENT: the non-consent sub-lines are glued"
   ]
  }
 ]

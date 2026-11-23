@@ -135,6 +135,8 @@
   const opensText = (cfg, now) => { const c = clockOf(now), o = rangeOf(cfg, c.day); if (o && c.min < o[0]) return 'Abre hoy ' + fmtMin(o[0]); for (let d = 1; d <= 7; d++) { const oo = rangeOf(cfg, (c.day + d) % 7); if (oo) return 'Abre ' + (d === 1 ? 'mañana' : 'el ' + DAYS[(c.day + d) % 7]) + ' ' + fmtMin(oo[0]); } return 'Cerrado por ahora'; };
   // S4 (read only under schedulingLive): «Programar pedido» only when the SERVED schedule offers a slot — the picker's own generator
   // (CappSchedule), so the cue never promises a slot the picker would not show
+  const textMod = () => (typeof self !== 'undefined' && self.CappText) || require('./capp-text.js');   // 16b: the shared no-orphan glue (capp-text.js)
+  const noOrphan = (s) => textMod().noOrphan(s);
   const schedMod = () => (typeof self !== 'undefined' && self.CappSchedule) || require('./capp-schedule.js');
   const hasSlot = (cfg, now) => { const K = schedMod(), ms = typeof now === 'number' ? now : now.getTime(); return !!cfg && (K.slots(cfg.schedule, ms, 'pickup').length > 0 || K.slots(cfg.schedule, ms, 'delivery').length > 0); };
 
@@ -461,7 +463,7 @@
     <div class="guestcard"${known ? '' : ' style="visibility:hidden" aria-hidden="true"'}><h2>Tu cuenta</h2>
       <ul><li>${IC.check}<span>Opción de pago en efectivo y tarjeta</span></li><li>${IC.check}<span>Recompensas y promos</span></li><li>${IC.check}<span>Programá pedidos y guardá tu dirección</span></li></ul>
       ${known ? '<button class="primary" data-act="signin" data-ctx="account">Entrá o creá tu cuenta</button>' : '<span class="primary" aria-hidden="true">Entrá o creá tu cuenta</span>'}</div>
-    <div class="rows">${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>Los de este teléfono</span></span>${IC.chev}</button>` : ''}${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}</div></div>`);
+    <div class="rows">${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>${noOrphan('Los de este teléfono')}</span></span>${IC.chev}</button>` : ''}${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}</div></div>`);
   }
 
   // G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27, frames 1 / 4a / 4b): the MEMBER's Cuenta — .acct-hero (name, phone and
@@ -509,14 +511,14 @@
     return shellWrap(vm, `<div class="flow"><div class="flowbar plain"><h1>Cuenta</h1></div>
     <div style="height:12px"></div>${hero}<div class="rows">
       ${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos</span>${IC.chev}</button>` : ''}
-      ${vm.dir ? `<button class="rowbtn" data-act="addresses">${IC.pin}<span class="t">Direcciones${vm.dir.labels || (vm.addr && vm.addr.line) ? `<span>${esc(vm.dir.labels || vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */
-        : `<button class="rowbtn" data-act="addr">${IC.pin}<span class="t">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>`}
-      ${vm.notifRow && vm.notifRow.title ? `<button class="rowbtn" data-act="sub-notifs">${IC.bell}<span class="t">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}
+      ${vm.dir ? `<button class="rowbtn" data-act="addresses">${IC.pin}<span class="t">Direcciones${vm.dir.labels || (vm.addr && vm.addr.line) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */
+        : `<button class="rowbtn" data-act="addr">${IC.pin}<span class="t">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}
+      ${vm.notifRow && vm.notifRow.title ? `<button class="rowbtn" data-act="sub-notifs">${IC.bell}<span class="t">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}
       ${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}
-      ${vm.updateRow ? `<button class="rowbtn" data-act="app-update-row">${IC.update}<span class="t">Actualizar la app<span>Hay una versión nueva en ${esc(vm.updateRow)}</span></span>${IC.chev}</button>` : ''}</div>
+      ${vm.updateRow ? `<button class="rowbtn" data-act="app-update-row">${IC.update}<span class="t">Actualizar la app<span>${noOrphan(`Hay una versión nueva en ${esc(vm.updateRow)}`)}</span></span>${IC.chev}</button>` : ''}</div>
     <div class="rows sess">
       <button class="rowbtn" data-act="signout">${IC.out}<span class="t">Cerrar sesión</span></button>
-      <button class="rowbtn" data-act="forget">${IC.phone}<span class="t">Olvidar este teléfono<span>Cierra tu sesión y deja de recordar tu número</span></span></button></div>
+      <button class="rowbtn" data-act="forget">${IC.phone}<span class="t">Olvidar este teléfono<span>${noOrphan('Cierra tu sesión y deja de recordar tu número')}</span></span></button></div>
     <div class="credit ver">v${esc(a.version || '')}</div></div>`);
   }
   // C-DIR-1 (v6 :2170, rulings 11-13): «Direcciones» — a step of Cuenta: v6's top bar, one row per saved address «{label}» (+ « · en uso»
@@ -524,9 +526,9 @@
   // dirección» (v6's pin-only step). dir: { rows, sel } — the shell's per-open frozen book (no row inserted while it shows)
   function addressesHtml(vm) {
     const d = vm.dir || { rows: [], sel: null };
-    const rows = d.rows.map((a) => `<button class="rowbtn" data-act="addr-use" data-id="${esc(a.id)}"${pickAttr(d, a.id)}>${IC.pin}<span class="t"><b>${esc(a.label)}${d.sel === a.id ? ' · en uso' : ''}</b><span>${esc(a.details ? `${a.detected} · ${a.details}` : a.detected)}</span></span>${d.pend === a.id ? SPIN : IC.edit.replace('class="i"', 'class="i chev"')}</button>`).join('');
+    const rows = d.rows.map((a) => `<button class="rowbtn" data-act="addr-use" data-id="${esc(a.id)}"${pickAttr(d, a.id)}>${IC.pin}<span class="t"><b>${esc(a.label)}${d.sel === a.id ? ' · en uso' : ''}</b><span>${noOrphan(esc(a.details ? `${a.detected} · ${a.details}` : a.detected))}</span></span>${d.pend === a.id ? SPIN : IC.edit.replace('class="i"', 'class="i chev"')}</button>`).join('');
     return shellWrap(vm, `<div class="flow"><div class="topbar"><button class="iconbtn" data-act="addresses-back" aria-label="Volver">${IC.back}</button><h1>Direcciones</h1><span class="sp"></span></div>
-    ${d.err ? SANDLINE : ''}<div class="rows addrlist">${rows}<button class="rowbtn" data-act="addr-new"${pickAttr(d)}>${IC.plus}<span class="t">Agregar dirección<span>Poné el pin en tu puerta y describí la referencia</span></span></button></div></div>`);
+    ${d.err ? SANDLINE : ''}<div class="rows addrlist">${rows}<button class="rowbtn" data-act="addr-new"${pickAttr(d)}>${IC.plus}<span class="t">Agregar dirección<span>${noOrphan('Poné el pin en tu puerta y describí la referencia')}</span></span></button></div></div>`);
   }
   // G7 frame 2: «Olvidar este teléfono» — the shell's .errsheet, the calm icon, two exits
   const forgetSheetHtml = () => `<div class="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Olvidar este teléfono"><div class="grab"></div>

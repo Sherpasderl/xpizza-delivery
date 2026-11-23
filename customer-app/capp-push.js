@@ -15,6 +15,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
+  const noOrphan = (s) => ((typeof self !== 'undefined' && self.CappText) || require('./capp-text.js')).noOrphan(s);   // 16b: the shared no-orphan glue (capp-text.js)
   const KEY = 'capp:push:v1';
   const SNOOZE_MS = 30 * 864e5;
   const RETURNS_MAX = 2;   // owner Q2 (MOCKUP-capp-push r1): the card comes back after «Ahora no» at most twice
@@ -213,8 +214,8 @@
       : `<div class="rowbtn" data-row="promos">${ICON.mailChat}<span class="t">${COPY.promosTitle}<span>${COPY.promosSub}</span></span><button class="switch" role="switch" aria-checked="${x.promos}" aria-label="${COPY.promosTitle}" data-act="promos"></button></div>`;
     const quiet = dn ? `<div class="px-quiet"><span class="ic">${ICON.off}</span><div class="t"><b>${COPY.deniedTitle}</b><span>${COPY.deniedSub}</span><button class="lnk" data-act="push-settings">${COPY.deniedAct}</button></div></div>` : '';
     return `<div class="topbar"><button class="iconbtn" data-act="notifs-back" aria-label="Volver">${ICON.back}</button><h1>${COPY.screenTitle}</h1><span class="sp"></span></div><div class="scroller ntf">${quiet}`
-      + `<h2 class="gh">${COPY.groupOrders}</h2><div class="rows">${app ? row('pedidos', COPY.ordersSub, x.pedidos) : ''}<div class="rowbtn ntf-info">${ICON.chat}<span class="t">${COPY.waTitle}<span>${COPY.waSub}</span></span></div></div>`
-      + `<h2 class="gh">${COPY.groupOffers}</h2><div class="rows">${app ? row('promociones', COPY.offersSub, x.promociones) : ''}${promos}</div></div>`;
+      + `<h2 class="gh">${COPY.groupOrders}</h2><div class="rows">${app ? row('pedidos', noOrphan(COPY.ordersSub), x.pedidos) : ''}<div class="rowbtn ntf-info">${ICON.chat}<span class="t">${COPY.waTitle}<span>${noOrphan(COPY.waSub)}</span></span></div></div>`
+      + `<h2 class="gh">${COPY.groupOffers}</h2><div class="rows">${app ? row('promociones', COPY.offersSub, x.promociones)   /* CONSENT text (offersSub, promosSub): drawn byte-identical, never glued (advisor 11-23; ORPHAN-CONSENT) */ : ''}${promos}</div></div>`;
   }
   return { createPush, KEY, SNOOZE_MS, RETURNS_MAX, COPY, COPY_PENDING, ICON, askHtml, rowSub, screenHtml };
 });
