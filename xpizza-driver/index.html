@@ -339,17 +339,17 @@
 #idle-state .disp-cancel-banner .dcb-chip { display: inline-block; font: 700 12px 'Red Hat Text', sans-serif; background: transparent; border: 1px solid currentColor; border-radius: 999px; padding: 4px 10px; }   /* proto .chip.err transparent + border */
 #idle-state .disp-cancel-ack { appearance: none; border: 0; width: 100%; font-family: 'Red Hat Display', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -.01em; border-radius: 14px; padding: 15px 14px; min-height: 52px; background: #2F5FB8; color: #fff; cursor: pointer; }   /* proto .btn.primary «Entendido» */
 #idle-state .disp-cancel-ack:active { background: #24488C; }
-/* slice 3-P — manual pause (prototype S.pausa): a FULL amber ring (the pause never ends on its own), the amber «No
+/* slice 3-P — manual pause (prototype S.pausa): a FULL lavender ring (the pause never ends on its own), the lavender «No
    recibís pedidos» pill, «Pausa manual» copy, the «pedido en mano» note (reuses .pr-card/.pr), and the «Reanudar turno»
-   foot button. Amber hex inlined per the app's --p-* convention (--p-warn #8A5A00 / --p-warnwash #FBF1DC; ring track
-   --p-surface2 #E7ECF4). */
+   foot button. Lavender hex inlined per the app's --p-* convention (owner 2026-11-20, retire amber: --p-pause #5B4F9E /
+   --p-pausewash #EDEBF7; ring track --p-surface2 #E7ECF4). */
 #idle-state .pausa-body { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; text-align: center; gap: 16px; padding-top: 2px; }   /* prototype top-aligns the content (its .sp spacer pushes it up); the foot button sits at the bottom */
 #idle-state .pausa-ring { position: relative; width: 128px; height: 128px; margin: 0 auto; }
 #idle-state .pausa-ring svg { transform: rotate(-90deg); width: 100%; height: 100%; }
 #idle-state .pausa-ring-c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 #idle-state .pausa-ring-c b { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 34px; letter-spacing: -.02em; line-height: 1; font-variant-numeric: tabular-nums; color: var(--text, #0D1424); }
 #idle-state .pausa-ring-c small { font-size: 11px; color: var(--text-soft, #546078); font-weight: 600; }   /* Codex r1 #6: prototype .ring .c small has no caption margin */
-#idle-state .pausa-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; line-height: 1.2; white-space: nowrap; background: #FBF1DC; color: #8A5A00; }
+#idle-state .pausa-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; line-height: 1.2; white-space: nowrap; background: #EDEBF7; color: #5B4F9E; }
 #idle-state .pausa-chip svg { width: 13px; height: 13px; }
 #idle-state .pausa-copy .pausa-h { font-family: 'Red Hat Display', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -.02em; line-height: 1.15; color: var(--text, #0D1424); }   /* prototype .h */
 #idle-state .pausa-copy .pausa-sub { margin: 6px 0 0; font-size: 13px; color: var(--text-soft, #546078); }   /* prototype .sub (13px) */
@@ -361,6 +361,8 @@
 #idle-state .pausa-resume:active { background: #24488C; }
 #idle-state .pausa-resume:disabled { opacity: .6; }
 #idle-state .pausa-resume svg { width: 20px; height: 20px; }   /* Codex r1 #6: prototype .btn svg is 20px */
+#idle-state .pausa-endshift { appearance: none; border: 0; background: none; width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px; font-family: var(--fb); font-weight: 600; font-size: 13px; color: var(--text-soft, #546078); min-height: 40px; padding: 0; cursor: pointer; }   /* OPTION A (owner 2026-11-19): the quiet secondary paused-screen end-shift = the app's .problema-btn ghost pattern */
+#idle-state .pausa-endshift svg { width: 16px; height: 16px; }
 /* the «Pausar» entry in the idle status bar (header top-right) — the prototype ib(I.pause,…): an icon-only 34px
    circle, created on demand by renderStatusBar («Pausar» is the aria-label/title, not visible text). */
 .status-bar .sb-pausar { margin-left: auto; appearance: none; width: 34px; height: 34px; flex: none; border-radius: 50%; display: grid; place-items: center; color: var(--text-soft, #546078); background: var(--surface, #fff); border: 1px solid rgba(20,30,50,.1); cursor: pointer; padding: 0; }
@@ -2304,6 +2306,16 @@
 .gn-tiny{font-size:11.5px;color:var(--text-soft,#546078)}
 </style>
 <!-- ===== SLICE3:GANANCIAS-CSS:END ===== -->
+<!-- ===== SLICE3:NUDGE-BANNER-CSS:START — owner 2026-11-20 hint-free sliders + pastel notif banner. Own trailing stylesheet so these rules win by source order at equal specificity (or by a more specific selector); no !important, zero frozen bytes. (1) the tap-nudge keyframe the slider thumb plays when a driver taps instead of dragging — prefers-reduced-motion stops it; (2) the notif banner pastel look that replaces the amber .action (wash #E8F0FB, title #0D1424, body #546078, solid #2F5FB8 button, radius 10). ===== -->
+<style>
+@keyframes slide-nudge { 0%, 100% { transform: translateX(0); } 45% { transform: translateX(8px); } }
+.slide-confirm.nudging .slide-thumb { animation: slide-nudge 0.34s ease; }
+@media (prefers-reduced-motion: reduce) { .slide-confirm.nudging .slide-thumb { animation: none; } }
+.notif-banner.action { background: #E8F0FB; color: #546078; border: 1px solid rgba(47,95,184,0.16); border-radius: 10px; }
+.notif-banner.action .text strong { color: #0D1424; }
+.notif-banner.action .enable-btn { background: #2F5FB8; color: #fff; }
+</style>
+<!-- ===== SLICE3:NUDGE-BANNER-CSS:END ===== -->
 <div id="screen-companion" class="hidden" style="height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch;"></div>
 
 <!-- SLICE2:NAV-SCREENS:START — Cuenta + «App de navegación» screen shells (R7); filled by renderCuenta/renderNavApp. Pure insert. -->
@@ -2903,7 +2915,7 @@ function showCierreRechazado(attemptCash) {
     footHtml: `<button class="rc-retry cuadre-reintentar" type="button">Reintentar cierre</button>`
       + `<button class="rc-volver cuadre-volver" type="button">Volver al turno</button>`,
   });
-  screen.classList.add('open');
+  setCuadreOpen(true);
 }
 
 // SLICE3:OFFER-TAKEOVER — the cross-hub 2nd-order OFFER takeover (prototype S.oferta). Wires the offer card's accept
@@ -3344,7 +3356,7 @@ function renderOffshift() {
       <div class="off2-stats ${earnStat ? 'two' : 'one'}">${cashStat}${earnStat}</div>
       <div style="flex:1"></div>
     </div>
-    <div class="off2-foot"><div class="slide-confirm start" id="btn-start-shift"><div class="slide-fill"></div><div class="slide-text">Iniciar turno</div><div class="slide-hint">deslizá</div><div class="slide-thumb">${ARROW}</div></div></div>
+    <div class="off2-foot"><div class="slide-confirm start" id="btn-start-shift"><div class="slide-fill"></div><div class="slide-text">Iniciar turno</div><div class="slide-thumb">${ARROW}</div></div></div>
     <button class="duty-toggle hidden" id="duty-toggle-off" aria-hidden="true"></button>`;
   const nm = $('off-driver-name'); if (nm) nm.textContent = first;
   const cb = $('cuenta-btn'); if (cb) cb.addEventListener('click', openCuenta);
@@ -3373,12 +3385,7 @@ function renderOffshift() {
     const held = optimisticShift !== null ? optimisticShift : !!(driverState && driverState.active);
     if (held && startSlideEl) { startSlideEl.style.pointerEvents = 'none'; startSlideEl.setAttribute('aria-disabled', 'true'); startSlideEl.tabIndex = -1; }
   };
-  attachSlideConfirm('btn-start-shift', doStartShift);
-  // Keyboard activation through the SAME guarded path — the slide is a div, not a button (Codex P2.6).
-  if (startSlideEl) {
-    startSlideEl.setAttribute('role', 'button'); startSlideEl.tabIndex = 0; startSlideEl.setAttribute('aria-label', 'Iniciar turno');
-    startSlideEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doStartShift(); } });
-  }
+  attachSlideConfirm('btn-start-shift', doStartShift);   // Codex #278 P2: focus + Enter/Space a11y now lives ONCE in attachSlideConfirm's shared commit() gate — no per-slider keydown
   companionSyncSuspendedNotice();   // re-apply the suspend state on the fresh notice
   updateNotifBanners();             // re-populate the fresh notif banner (async)
 }
@@ -3462,12 +3469,13 @@ function drv2SessionTeardown() {
 const DRV2_PAUSE_ENABLED = true;
 const DRV2_PAUSE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5" width="4" height="14" rx="1.3"/><rect x="13.5" y="5" width="4" height="14" rx="1.3"/></svg>';
 const DRV2_PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg>';
+const DRV2_POWER_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M6.6 6.6a8 8 0 1 0 10.8 0"/></svg>';   // = stacked-view POWER_SVG (the app's own «Terminar turno» glyph), for the paused-screen end-shift under DRV2_ENDSHIFT_SLIDE
 const DRV2_INFO_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01" stroke-linecap="round"/></svg>';   // prototype I.info (the «pedido en mano» note)
 // «Terminar turno» idle slide (owner 2026-10-27) — mirrors the offshift «Iniciar turno» slide, at the bottom of
 // disponible; the top-right duty toggle goes away when it is live. Runs the SAME end-shift path (handleEndShift → the
 // O4 «Todavía tenés N pedido(s) en camino» sheet when orders are in hand → cuadre). DARK until the gate + Codex pass;
 // false keeps today's behavior (header toggle, no slide) → no regression on the live app.
-const DRV2_ENDSHIFT_SLIDE = false;
+const DRV2_ENDSHIFT_SLIDE = true;
 const DRV2_SLIDE_ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>';
 // elapsed since break_since (server ms) → «M:SS» under an hour, «H:MM» over; tabular. Refreshed on the 30 s status tick.
 function drv2PauseElapsed(sinceMs) {
@@ -3482,7 +3490,7 @@ function drv2PauseRingHtml(big) {
   const C = (2 * Math.PI * 56).toFixed(2);
   return '<div class="pausa-ring">'
     + '<svg viewBox="0 0 128 128" aria-hidden="true"><circle cx="64" cy="64" r="56" fill="none" stroke="#E7ECF4" stroke-width="9"/>'
-    + '<circle cx="64" cy="64" r="56" fill="none" stroke="#8A5A00" stroke-width="9" stroke-linecap="round" stroke-dasharray="' + C + '" stroke-dashoffset="0"/></svg>'
+    + '<circle cx="64" cy="64" r="56" fill="none" stroke="#5B4F9E" stroke-width="9" stroke-linecap="round" stroke-dasharray="' + C + '" stroke-dashoffset="0"/></svg>'
     + '<div class="pausa-ring-c"><b>' + escapeHtml(big) + '</b><small>en pausa</small></div></div>';
 }
 // renderPausa — the S.pausa takeover of #idle-state (mirrors renderSoloCancel: overwrite + preserve the bound controls
@@ -3500,7 +3508,9 @@ function renderPausa(host, helpLink, arriveBtn, offerExpired) {
     + '<div class="pr-card pausa-card"><div class="pr"><span class="pr-ic">' + DRV2_INFO_SVG + '</span>'
     + '<div class="pr-tx"><div class="pr-t">Si tenés un pedido en mano</div><div class="pr-d">La pausa empieza al entregarlo; no corta nada en curso</div></div></div></div>'
     + '</div>'
-    + '<div class="pausa-foot"><button class="pausa-resume" id="btn-reanudar">' + DRV2_PLAY_SVG + 'Reanudar turno</button></div>'
+    + '<div class="pausa-foot"><button class="pausa-resume" id="btn-reanudar">' + DRV2_PLAY_SVG + 'Reanudar turno</button>'
+    + (DRV2_ENDSHIFT_SLIDE ? '<button class="pausa-endshift" id="btn-terminar-pausa" type="button">' + DRV2_POWER_SVG + 'Terminar turno</button>' : '')   // OPTION A: with the slide live the header toggle is hidden, so end-shift lives here while paused
+    + '</div>'
     + '<span id="disp-preserve" style="display:none"></span>';
   const pres = $('disp-preserve');
   if (pres) { if (helpLink) pres.appendChild(helpLink); if (arriveBtn) pres.appendChild(arriveBtn); if (idleIcon) pres.appendChild(idleIcon); if (idleMsg) pres.appendChild(idleMsg); if (idleSub) pres.appendChild(idleSub); }
@@ -3513,6 +3523,26 @@ function renderPausa(host, helpLink, arriveBtn, offerExpired) {
     if (!currentUser || btn.disabled || drv2PauseWriteKind !== null) return;
     drv2WritePauseState('resume', btn);
   };
+  // OPTION A (owner 2026-11-19): with the end-shift slide live, the header duty toggle is hidden (renderStatusBar), so
+  // the paused screen carries the one end-shift affordance — a quiet secondary tap under «Reanudar turno». It runs the
+  // SAME end-shift path (handleEndShift → O4 → cuadre) behind the slide's own guards (shiftBusy double-fire, mount-
+  // replaced / session-changed, effectively-on-shift); handleEndShift itself ignores a re-entry while the cuadre is
+  // open (P2-2), so a second tap can't restart the close. Dark when DRV2_ENDSHIFT_SLIDE is off → the control is absent
+  // and the header toggle stays visible, so a paused driver is never left without a clock-out.
+  if (DRV2_ENDSHIFT_SLIDE) {
+    const endBtn = $('btn-terminar-pausa');
+    const endGen = (typeof authGen !== 'undefined') ? authGen : null;
+    const endUid = currentUser && currentUser.uid;
+    if (endBtn) endBtn.onclick = async () => {
+      if (shiftBusy) return;
+      if (!document.body.contains(endBtn)) return;                                                             // mount replaced / detached
+      if ((typeof authGen !== 'undefined' && authGen !== endGen) || ((currentUser && currentUser.uid) || null) !== endUid) return;   // session changed
+      const effectiveActive = optimisticShift !== null ? optimisticShift : !!(driverState && driverState.active);
+      if (!effectiveActive) return;                                                                            // only end a shift that is effectively ON
+      shiftBusy = true;
+      try { await handleEndShift(); } finally { shiftBusy = false; }
+    };
+  }
 }
 // Pause state (Codex r1 #1): the RTDB write updates the local feed OPTIMISTICALLY before the server acks, so neither
 // the pausa screen nor the «En pausa» header may trust driverState.status alone. drv2PauseWriteKind tracks an in-flight
@@ -3698,7 +3728,7 @@ function renderDisponible() {
     // «Terminar turno» idle slide (owner 2026-10-27), at the bottom above the tabs — mirrors the offshift «Iniciar
     // turno» slide. Dark until DRV2_ENDSHIFT_SLIDE flips (then the header duty toggle is hidden; see renderStatusBar).
     + (DRV2_ENDSHIFT_SLIDE
-        ? '<div class="disp-endshift-foot"><div class="slide-confirm endshift" id="btn-end-shift-slide" role="button" tabindex="0" aria-label="Terminar turno"><div class="slide-fill"></div><div class="slide-text">Terminar turno</div><div class="slide-hint">deslizá</div><div class="slide-thumb">' + DRV2_SLIDE_ARROW + '</div></div></div>'
+        ? '<div class="disp-endshift-foot"><div class="slide-confirm endshift" id="btn-end-shift-slide" role="button" tabindex="0" aria-label="Terminar turno"><div class="slide-fill"></div><div class="slide-text">Terminar turno</div><div class="slide-thumb">' + DRV2_SLIDE_ARROW + '</div></div></div>'
         : '');
   const helpSlot = $('disp-help-slot'); if (helpLink && helpSlot) helpSlot.replaceWith(helpLink);   // re-insert the bound controls
   const arriveSlot = $('disp-arrive-slot'); if (arriveBtn && arriveSlot) arriveSlot.replaceWith(arriveBtn);
@@ -3720,8 +3750,7 @@ function renderDisponible() {
       try { await handleEndShift(); } finally { shiftBusy = false; }                                          // O4 sheet (orders in hand) → cuadre; its overlay then covers the slide
     };
     if (endSlideEl) {
-      attachSlideConfirm('btn-end-shift-slide', doEndShift);
-      endSlideEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doEndShift(); } });
+      attachSlideConfirm('btn-end-shift-slide', doEndShift);   // Codex #278 P2: keyboard a11y now in attachSlideConfirm's shared gate — no per-slider keydown
     }
   }
 }
@@ -3962,7 +3991,7 @@ function renderNavApp() {
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '2.6.0';
+const SYSTEM_VERSION = '2.6.1';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -5028,8 +5057,15 @@ async function handleStartShift() {
 
 // Clock-out now goes through the cuadre (cash handoff) screen instead of a
 // confirm() dialog. handleEndShift just shows it; the buttons drive the rest.
+/* ===== SLICE3:ENDSHIFT-REENTRY-GUARD:START — P2-2 (Codex #190): guard handleEndShift against a RE-ENTRY while the cuadre is open; a REPLACE region whose restore is the frozen 2-line opening at 07e5ab38, so the single end-shift choke point carries the guard without un-freezing the function (6b: covers the slide keyboard, a stacked stop-header tap, a double duty-toggle). ===== */
 async function handleEndShift() {
   if (!currentUser) return;
+  // A cierre is already open — ignore a RE-ENTRY so it can't restart the close from under the open cuadre
+  // (Enter-then-Space / hold-Enter on the idle slide, a stacked stop-header tap, a double duty-toggle). Re-entry here
+  // would bump closeGen and clear closeInFlight mid-submit; «Reintentar cierre» re-opens via showCuadre directly
+  // (not handleEndShift), so this never blocks a legitimate retry.
+  if (document.getElementById('cuadre-screen')?.classList.contains('open')) return;   // null-safe: handleEndShift is lifted into harnesses that may omit the cuadre DOM; `$` is not in those scopes
+/* ===== SLICE3:ENDSHIFT-REENTRY-GUARD:END ===== */
   // O4: if the driver still has orders OUT FOR DELIVERY ("en camino"), confirm before the cuadre. N = 0 falls through
   // with NO await reached → the zero-delivery clock-out runs SYNCHRONOUSLY, byte-for-byte the base path. Cancelar /
   // Esc / backdrop stays on shift and writes NOTHING; Terminar igual continues to the cuadre exactly as today.
@@ -5190,11 +5226,21 @@ function cuadreConfirmFootHtml() {
   // .slide-thumb/.slide-fill, not the class, so the mechanics are unaffected. role="button" tabindex="0" per the
   // prototype .slide (keyboard Enter/Space confirms through the same gates — wired in renderCuadreReceipt).
   return `<div class="cuadre-slide" id="cuadre-confirm" role="button" tabindex="0" aria-label="Confirmar entrega de efectivo"><div class="slide-fill"></div>`
-    + `<div class="slide-text">Confirmar entrega de efectivo</div><div class="slide-hint">deslizá</div>`
+    + `<div class="slide-text">Confirmar entrega de efectivo</div>`
     + `<div class="slide-thumb">${CUADRE_ARROW_SVG}</div></div>`
     + `<button class="rc-volver cuadre-volver" type="button">Volver al turno</button>`;
 }
 
+// P2-2 (Codex #190): the cuadre is a MODAL. While it is open the shift board underneath takes NO pointer, keyboard or
+// focus — so the idle «Terminar turno» slide can't be refired from under the cierre (Enter-then-Space / hold-Enter) and
+// nothing hidden stays focusable. ONE source of truth for "the cierre is open": toggles the overlay class AND the
+// board's inert + aria-hidden together. #cuadre-screen is a SIBLING of #screen-onshift, so inerting the board never
+// disables the cuadre's own controls.
+function setCuadreOpen(open) {
+  $('cuadre-screen').classList.toggle('open', open);
+  const board = $('screen-onshift');
+  if (board) { board.inert = open; board.setAttribute('aria-hidden', open ? 'true' : 'false'); }
+}
 function showCuadre() {
   const screen = $('cuadre-screen');
   const ident = shiftIdentity();
@@ -5213,13 +5259,13 @@ function showCuadre() {
       bodyHtml: `<div class="receipt"><div class="rc-title">Cierre de turno</div><div class="rc-date">${dateStr}</div><hr class="dash"><div class="rc-note">${note}</div></div>`,
       footHtml: `<button class="rc-volver cuadre-volver" type="button">Volver al turno</button>`,   // no slide until the receipt is real
     });
-    screen.classList.add('open');
+    setCuadreOpen(true);
     return;
   }
 
   screen._ident = ident;
   renderCuadreReceipt({ uid: currentUser.uid, shiftId: ident.shiftId, start: ident.start });
-  screen.classList.add('open');
+  setCuadreOpen(true);
 }
 
 // THE single source for the receipt: compute the cash from the CURRENT settled orders, render it into the full
@@ -5257,11 +5303,7 @@ function renderCuadreReceipt(bound) {
   // Stamp THIS mount with a fresh slide generation; the pointer slide AND the keyboard path both carry it, so a
   // release/keypress from a slide that a refresh has replaced is rejected by onCuadreConfirm (Codex r2 P2).
   const slideGen = ++cuadreSlideGen;
-  attachSlideConfirm('cuadre-confirm', () => onCuadreConfirm(slideGen));
-  const slideEl = $('cuadre-confirm');
-  if (slideEl) slideEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); onCuadreConfirm(slideGen); }
-  });
+  attachSlideConfirm('cuadre-confirm', () => onCuadreConfirm(slideGen));   // Codex #278 P2: keyboard a11y now in attachSlideConfirm's shared gate — no per-slider keydown
   return cash;
 }
 /* ===== SLICE3:CUADRE-RENDER:END ===== */
@@ -5463,7 +5505,7 @@ function identityMatches(bound) {
 //                        latch and re-opens the NORMAL receipt (showCuadre recomputes from current orders, so a retry
 //                        submits the current amount — exactly the prototype's «Reintentar cierre» → cuadre).
 $('cuadre-screen').addEventListener('click', (e) => {
-  if (e.target.closest('.cuadre-volver')) { closeGen++; closeInFlight = false; $('cuadre-screen').classList.remove('open'); return; }
+  if (e.target.closest('.cuadre-volver')) { closeGen++; closeInFlight = false; setCuadreOpen(false); render(); return; }   // P2-1 (Codex #190): render() rebuilds the idle board so a completed end-shift slide isn't left latched/dead-to-touch
   if (e.target.closest('.cuadre-reintentar')) { closeInFlight = false; showCuadre(); return; }
 });
 
@@ -5485,7 +5527,7 @@ async function onCuadreConfirm(slideGen) {
   const openedUnder = $('cuadre-screen')._ident;
   if (!ident.valid || !openedUnder || openedUnder.shiftId !== ident.shiftId) {
     toast('El turno cambió — volvé a abrir el cierre', 'error');
-    $('cuadre-screen').classList.remove('open');
+    setCuadreOpen(false);
     return;
   }
   const bound = { uid: currentUser.uid, shiftId: ident.shiftId, start: ident.start };
@@ -5507,7 +5549,7 @@ async function onCuadreConfirm(slideGen) {
     if (!settled) { closeInFlight = false; toast(BLOCKED_CLOSE_TEXT, 'error'); refreshOpenCashSurfaces(); return; }   // re-render → fresh slide
   }
   // P1-3: the shift may have changed while we waited — re-validate before touching money.
-  if (!identityMatches(bound)) { closeInFlight = false; toast('El turno cambió — volvé a abrir el cierre', 'error'); $('cuadre-screen').classList.remove('open'); return; }
+  if (!identityMatches(bound)) { closeInFlight = false; toast('El turno cambió — volvé a abrir el cierre', 'error'); setCuadreOpen(false); return; }
 
   // §6/BC1: re-check COMBINED feed readiness at confirm time. If the feed re-synced (a reconnect dropped it to
   // loading) or a just-delivered order is mid-handoff, the receipt could undercount — do NOT finalize; stay on
@@ -5546,7 +5588,7 @@ async function onCuadreConfirm(slideGen) {
     if (!identityMatches(bound)) { toast('El turno cambió — no se cerró el turno.', 'error'); return; }
     shiftBusy = true;
     try {
-      $('cuadre-screen').classList.remove('open');
+      setCuadreOpen(false);
       optimisticShift = false; render();
       const closedOk = await finalizeEndShift();   // ordinary clock-out via the existing endDriverShift callable
       if (closedOk && authGen === submitAuthGen) showCerrado(cash, bound.start, closedAt, earnedAtClose);   // «Turno cerrado» ONLY on a clean clock-out of THIS still-current session (never on the revert path, never after an auth change)
@@ -6515,7 +6557,9 @@ function renderActiveAndQueue() {
       + phaseStripHtml(stacked2.map((s, i) => ({ n: i + 1, state: i === 0 ? 'on' : '', label: 'Recoger' })), escapeHtml)
       + combinedPickupHtml(stacked2, deps2, new Set())
       + navBtnHtml(pkTarget, deps2.navPref, pkLabel, { ...deps2, navTaskId: active.pickupTask && active.pickupTask.id })
-      + `<div class="action-zone"><div class="slide-confirm pickup" id="btn-pickup"><div class="slide-fill"></div><div class="slide-text">Recogí las ${stacked2.length} bolsas</div><div class="slide-hint">deslizá</div><div class="slide-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div></div></div>`;
+      /* ===== SLICE3DEPS:PICKUP-HINT:START (registered carve-out; parent region STACKED-BRANCH) — owner 2026-11-20 hint-free sliders: drop the pickup «deslizá» hint node; slice3-freeze splices this back to the 07e5ab38 branch (WITH the hint). ===== */
+      + `<div class="action-zone"><div class="slide-confirm pickup" id="btn-pickup"><div class="slide-fill"></div><div class="slide-text">Recogí las ${stacked2.length} bolsas</div><div class="slide-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div></div></div>`;
+      /* ===== SLICE3DEPS:PICKUP-HINT:END ===== */
     queuedOrders = queue;
     queueSlot.innerHTML = '';
   } else if (active.phase === 'awaiting_acceptance' && pendingAccept.length >= 1) {
@@ -6612,7 +6656,9 @@ function renderIncomingBanners(pending) {
         ${scheduledBadge(order)}
         <div class="slide-confirm accept" id="btn-accept-inc-${escapeHtml(o.orderId)}">
           <div class="slide-fill"></div>
-          <div class="slide-text">Deslizá para aceptar</div>
+          <!-- ===== SLICE3:ACCEPT-INC-LABEL:START — owner 2026-11-20 (hint-free sliders): the incoming-accept slider label «Deslizá para aceptar» → «Aceptar»; REPLACE region, restores the frozen 07e5ab38 baseline line. ===== -->
+          <div class="slide-text">Aceptar</div>
+          <!-- ===== SLICE3:ACCEPT-INC-LABEL:END ===== -->
           <div class="slide-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div>
         </div>
       </div>
@@ -6997,27 +7043,26 @@ function attachSlideConfirm(elementId, onConfirm) {
     const currentLeft = parseFloat(thumb.style.left) || THUMB_OFFSET;
     const completion = (currentLeft - THUMB_OFFSET) / (maxLeft - THUMB_OFFSET);
 
-    if (completion >= COMPLETE_THRESHOLD && !confirmed) {
-      confirmed = true;
-      el.classList.remove('dragging');
-      el.classList.add('completed');
-      thumb.style.left = `${maxLeft}px`;
-      fill.style.width = '100%';
-
-      try {
-        await onConfirm();
-        // Success: parent re-render replaces this slider with the next phase's slider
-      } catch (err) {
-        // Reset so driver can retry
-        confirmed = false;
-        el.classList.remove('completed');
-        thumb.style.left = '';
-        fill.style.width = '';
-        toast(err && err._userMessage ? err._userMessage : 'Error: ' + (err?.message || err), 'error');
-      }
+    /* ===== SLICE3:SLIDE-COMMIT-CALL:START — Codex #278 P2 a11y: route the drag-complete through the shared single-fire commit() gate (defined at the bind tail) so a swipe and keyboard Enter/Space share ONE confirm path and never double-fire. REPLACE region → restores the frozen 07e5ab38 inline completion block. ===== */
+    if (completion >= COMPLETE_THRESHOLD) {
+      await commit();
+    /* ===== SLICE3:SLIDE-COMMIT-CALL:END ===== */
+    /* ===== SLICE3:TAP-NUDGE:START — owner 2026-11-20 hint-free sliders: with the «deslizá» hint removed, a TAP (pointer down→up with the knob still at rest, no drag past threshold) nudges the knob right then settles to teach the gesture; a partial drag still only resets; prefers-reduced-motion ⇒ no animation; a tap NEVER fires onConfirm. REPLACE region → restores the frozen 07e5ab38 else-branch. ===== */
     } else {
       reset();
+      const tappedAtRest = currentLeft <= THUMB_OFFSET + 2;
+      const view = el.ownerDocument && el.ownerDocument.defaultView;
+      const reduceMotion = !!(view && typeof view.matchMedia === 'function'
+        && view.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      if (tappedAtRest && !reduceMotion) {
+        const nudgeGen = (el._nudgeGen = (el._nudgeGen || 0) + 1);   // Codex #278 P3: a later tap supersedes earlier settle timers so a stale timer can't cut a fresh nudge short
+        el.classList.remove('nudging');
+        void el.offsetWidth;                                  // restart the keyframe on a repeated tap
+        el.classList.add('nudging');
+        setTimeout(() => { if (el._nudgeGen === nudgeGen) el.classList.remove('nudging'); }, 360);
+      }
     }
+    /* ===== SLICE3:TAP-NUDGE:END ===== */
 
     // #4: reset the drag-suppression on EVERY terminating path (completion-success, accept-error above, or
     // the not-completed reset) and replay a render that was deferred during the drag so a new order /
@@ -7048,9 +7093,47 @@ function attachSlideConfirm(elementId, onConfirm) {
     if (e.cancelable) e.preventDefault();
   }
 
+  /* ===== SLICE3:SLIDE-A11Y:START — Codex #278 P2: with the «deslizá» hint removed, make every slide-confirm keyboard-operable + screen-reader-instructed. One shared single-fire commit() gate (hoisted) backs BOTH a swipe and Enter/Space — no per-slider handlers, so stacked-view's sliders (which bind through this function) inherit it too. REPLACE region → restores the frozen 07e5ab38 bind tail. ===== */
+  async function commit() {
+    if (confirmed) return;
+    confirmed = true;
+    el.classList.remove('dragging');
+    el.classList.add('completed');
+    if (!(maxLeft > 0)) {   // keyboard path: no prior drag measured the track
+      trackWidth = el.getBoundingClientRect().width;
+      thumbWidth = thumb.getBoundingClientRect().width;
+      maxLeft = trackWidth - thumbWidth - THUMB_OFFSET;
+    }
+    if (maxLeft > 0) thumb.style.left = `${maxLeft}px`;
+    fill.style.width = '100%';
+    try {
+      await onConfirm();
+      // Success: parent re-render replaces this slider with the next phase's slider
+    } catch (err) {
+      // Reset so driver can retry
+      confirmed = false;
+      el.classList.remove('completed');
+      thumb.style.left = '';
+      fill.style.width = '';
+      toast(err && err._userMessage ? err._userMessage : 'Error: ' + (err?.message || err), 'error');
+    }
+  }
+
+  el.tabIndex = 0;
+  el.setAttribute('role', 'button');
+  const slideLabel = (el.querySelector('.slide-text')?.textContent || 'Confirmar').trim();
+  el.setAttribute('aria-label', `${slideLabel}. Deslizá o presioná Enter para confirmar.`);
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault();
+      commit();
+    }
+  });
+
   thumb.addEventListener('mousedown', onDown);
   thumb.addEventListener('touchstart', onDown, { passive: false });
 }
+  /* ===== SLICE3:SLIDE-A11Y:END ===== */
 
 function renderQueue(orders) {
   if (orders.length === 0) return '';
@@ -7266,10 +7349,14 @@ function renderNotifBanner(targetEl, state) {
       targetEl.innerHTML = `
         <span class="icon">${ICONS.bell}</span>
         <div class="text">
-          <strong>Habilita notificaciones</strong>
+          <!-- ===== SLICE3:NOTIF-TITLE:START — owner 2026-11-20 pastel notif banner: voseo title «Habilitá notificaciones». REPLACE region → restores the frozen 07e5ab38 title. ===== -->
+          <strong>Habilitá notificaciones</strong>
+          <!-- ===== SLICE3:NOTIF-TITLE:END ===== -->
           Para recibir alertas cuando llegue un pedido nuevo.
         </div>
-        <button class="enable-btn" id="enable-notif-btn-${Math.random().toString(36).slice(2,8)}">Habilitar</button>
+        <!-- ===== SLICE3:NOTIF-BTN:START — owner 2026-11-20 pastel notif banner: voseo button «Habilitá». REPLACE region → restores the frozen 07e5ab38 button. ===== -->
+        <button class="enable-btn" id="enable-notif-btn-${Math.random().toString(36).slice(2,8)}">Habilitá</button>
+        <!-- ===== SLICE3:NOTIF-BTN:END ===== -->
       `;
       const btn = targetEl.querySelector('.enable-btn');
       if (btn) btn.addEventListener('click', enableNotifications);

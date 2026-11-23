@@ -309,7 +309,6 @@ function slideConfirmHtml(id, cls, label) {
   return `<div class="slide-confirm ${cls}" id="${id}">
       <div class="slide-fill"></div>
       <div class="slide-text">${label}</div>
-      <div class="slide-hint">deslizá</div>
       <div class="slide-thumb">${SLIDE_ARROW}</div>
     </div>`;
 }
@@ -688,7 +687,7 @@ export function incomingBannerHtml(pending, deps = {}) {
         ${scheduledBadge(order)}
         <div class="slide-confirm accept" id="btn-accept-inc-${esc(o.orderId)}">
           <div class="slide-fill"></div>
-          <div class="slide-text">Deslizá para aceptar</div>
+          <div class="slide-text">Aceptar</div>
           <div class="slide-thumb">${SLIDE_ARROW}</div>
         </div>
       </div>
@@ -1093,7 +1092,7 @@ export function offerScreenHtml(offers, deps = {}, opts = {}) {
       <div class="of-list">${rows}</div>
       ${pickupLine ? `<div class="of-note">${pickupLine}</div>` : ''}
     </div>
-    <div class="action-zone"><div class="slide-confirm accept" id="btn-accept"><div class="slide-fill"></div><div class="slide-text">Aceptar los ${esc(n)} pedidos</div><div class="slide-hint">deslizá</div><div class="slide-thumb">${SLIDE_ARROW}</div></div></div>`;
+    <div class="action-zone"><div class="slide-confirm accept" id="btn-accept"><div class="slide-fill"></div><div class="slide-text">Aceptar los ${esc(n)} pedidos</div><div class="slide-thumb">${SLIDE_ARROW}</div></div></div>`;
 }
 
 /**

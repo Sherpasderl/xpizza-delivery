@@ -230,15 +230,22 @@ await t('suspendida: an absent/invalid dispatch number hides the contact card (n
   assert.ok(/Despacho pausó tu cuenta/.test(h.host().innerHTML), 'the banner still shows');
 });
 
-await t('keyboard: Enter on the «Iniciar turno» slide reaches handleStartShift (the slide is a div — Codex P2.6)', async () => {
-  const h = boot();
-  h.api.renderOffshift();
-  const el = h.host().querySelector('#btn-start-shift');
-  assert.equal(el.tabIndex, 0, 'the slide is focusable (tabindex 0)');
-  assert.equal(el.getAttribute('role'), 'button', 'the slide is a button for AT');
-  el.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-  await new Promise((r) => setTimeout(r, 0));
-  assert.equal(h.calls.start, 1, 'Enter reaches handleStartShift through the guarded path');
+// Codex #278 P2: the start slide's OWN keydown was removed; keyboard a11y now comes solely from attachSlideConfirm's
+// shared single-fire gate. Enter AND Space must each reach handleStartShift exactly once, and a repeat key must not refire.
+await t('keyboard: Enter AND Space each reach handleStartShift once through attachSlideConfirm\'s shared gate — no per-slider keydown (Codex #278 P2)', async () => {
+  for (const key of ['Enter', ' ']) {
+    const h = boot();
+    h.api.renderOffshift();
+    const el = h.host().querySelector('#btn-start-shift');
+    assert.equal(el.tabIndex, 0, `[${key}] the slide is focusable (tabindex 0 from the shared gate)`);
+    assert.equal(el.getAttribute('role'), 'button', `[${key}] the slide is a button for AT`);
+    el.dispatchEvent(new h.window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(h.calls.start, 1, `[${key}] reaches handleStartShift once through the shared gate`);
+    el.dispatchEvent(new h.window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(h.calls.start, 1, `[${key}] the shared single-fire gate blocks a repeat (no second shift)`);
+  }
 });
 
 await t('a stale release after the mount is detached does NOT start a shift (Codex P2 guard)', async () => {

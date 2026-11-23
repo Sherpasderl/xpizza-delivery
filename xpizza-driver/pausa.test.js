@@ -51,7 +51,7 @@ function boot({ since = FIXED_NOW - 155000, uid = 'drv', status = 'on_break', ac
   let writes = [], toasts = 0, renders = 0;
   const fbUpdate = (ref, val) => { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); writes.push({ path: ref.path, val, resolve: res, reject: rej }); return p; };
   const body = PAUSE_SVG_LINE + '\n' + PLAY_SVG_LINE + '\n' + INFO_SVG_LINE + '\n'
-    + 'let drv2PauseWriteKind = null, drv2PausePendingIntent = false; let authGen = 1; let allTasks = {}, allOrders = {};\n'
+    + 'const DRV2_ENDSHIFT_SLIDE = false; let drv2PauseWriteKind = null, drv2PausePendingIntent = false; let authGen = 1; let allTasks = {}, allOrders = {};\n'
     + 'function renderActiveAndQueue(){ _render(); }\n'
     + liftFn('drv2PauseElapsed') + '\n' + liftFn('drv2PauseRingHtml') + '\n'
     + liftFn('drv2IsPaused') + '\n' + liftFn('drv2WritePauseState') + '\n' + liftFn('drv2PauseShift') + '\n' + liftFn('renderPausa') + '\n'
@@ -265,6 +265,14 @@ t('Codex r2 P2: a deferred intent bound to a PRIOR session is cleared + never wr
 t('production DRV2_PAUSE_ENABLED is true (live) — read from the index.html source, not a supplied flag', () => {
   assert.match(INDEX, /const DRV2_PAUSE_ENABLED = true;/, 'the shipped constant is true (Pausa live); reverting it to false in source → RED (the go-live gate)');
   assert.doesNotMatch(INDEX, /const DRV2_PAUSE_ENABLED = false;/, 'no longer shipped dark');
+});
+
+// ---- Pausa colours: lavender, no amber (owner 2026-11-20) — read FROM SOURCE ----
+t('pausa ring + chip are lavender (#5B4F9E / #EDEBF7), never amber (#8A5A00 / #FBF1DC)', () => {
+  assert.match(SCRIPT, /stroke="#5B4F9E"/, 'the ring progress stroke is lavender ink #5B4F9E');
+  assert.doesNotMatch(SCRIPT, /stroke="#8A5A00"/, 'no amber ring stroke survives');
+  assert.match(INDEX, /\.pausa-chip \{[^}]*background: #EDEBF7;[^}]*color: #5B4F9E;/, 'the chip is the lavender wash + ink');
+  assert.doesNotMatch(INDEX, /\.pausa-chip \{[^}]*#FBF1DC/, 'no amber chip wash survives');
 });
 
 await (async () => {
