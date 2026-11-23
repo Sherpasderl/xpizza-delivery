@@ -4153,6 +4153,9 @@ function renderCommsThread() {
   // Owner Option B (SBS 11-23): two-row header — identity row (avatar · name/sub · close) over an actions row
   // (pills · call). Same controls as before (triageBtn/waBtn/callBtn/close are unchanged); only the layout moves,
   // so the name keeps a full-width budget instead of being starved by the pills. See .sh-head.two-row CSS.
+  // Focus/DOM order is intentionally Close → triage → WhatsApp → call (Codex #264 ruling): it follows the VISUAL
+  // reading order of the two rows (close sits in the top identity row), which is what WCAG 2.4.3 wants — do NOT
+  // reorder the DOM to the old single-row order; that would make tab order disagree with what's seen.
   sheet.innerHTML = `
     <div class="sh-head two-row">
       <div class="sh-idrow">

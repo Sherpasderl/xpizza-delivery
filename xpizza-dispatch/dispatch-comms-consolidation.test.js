@@ -139,31 +139,67 @@ const navUnhandled = (allMessages) => Object.values(allMessages).filter(m => m &
 }
 
 // Owner Option B (SBS 11-23): the thread header is split into an identity row + an actions row, so the customer
-// name never competes with the «Marcar atendido»+«Responder» pills. A single flex row with min-width:0 starved
-// the name to «M…» at the 430px sheet (off-screen at 390px) — jsdom has no layout, so the fit is asserted at the
-// SOURCE level, fix-agnostic: PASS iff .sh-id carries a non-zero min-width (icon option) OR the header is two-row.
+// name never competes with the «Marcar atendido»+«Responder» pills (a single flex row with min-width:0 starved
+// the name to «M…» at 430px, off-screen at 390px). jsdom has no layout, so the guard verifies — at the SOURCE
+// level — the CSS that actually BUILDS the two rows (Codex #264: a class name alone is not enough) + row
+// containment, and dies on realistic layout regressions mutated into the REAL source.
 {
+  // (a) fit predicate — fix-agnostic: a readable name budget comes from a two-row header OR a non-zero .sh-id min-width
   const headerFitsOK = (src) => {
-    const start = src.indexOf('.sh-head');
-    const end = src.indexOf('.sh-recibido', start);
-    const headCss = src.slice(start, end > start ? end : start + 2000);
+    const i = src.indexOf('.sh-head'); const e = src.indexOf('.sh-recibido', i);
+    const headCss = src.slice(i, e > i ? e : i + 2000);
     const shIdMinWidth = /\.sh-id\s*\{[^}]*min-width:\s*(?:[1-9]\d*px|[1-9]\d*%|[1-9]\d*rem|\d*\.\d+rem)/.test(headCss);
     const twoRow = /class="sh-head[^"]*\btwo-row\b/.test(src) || /\.sh-head\.two-row\b/.test(headCss);
     return shIdMinWidth || twoRow;
   };
+  // (b) rows-CSS predicate — the FOUR layout declarations that actually create the two rows must be present + correct
+  const rowsCssOK = (src) => {
+    const i = src.indexOf('.sh-head.two-row'); if (i < 0) return false;
+    const css = src.slice(i, i + 600);
+    return /\.sh-head\.two-row\s*\{[^}]*display:\s*block/.test(css)
+        && /\.sh-head\.two-row\s+\.sh-idrow\s*\{[^}]*display:\s*flex/.test(css)
+        && /\.sh-head\.two-row\s+\.sh-actrow\s*\{[^}]*display:\s*flex/.test(css)
+        && /\.sh-head\.two-row\s+\.sh-actspacer\s*\{[^}]*flex:\s*1/.test(css);
+  };
   assert.ok(headerFitsOK(html), 'the thread header guarantees the name a readable budget (two-row header, or a non-zero .sh-id min-width)');
-  // mutant: the retired one-row header (both pills, min-width:0) MUST be rejected by the same predicate — proves
-  // the guard is not vacuous (it dies on exactly the defect the SBS found).
-  const MUTANT = `<style>.sh-head{display:flex}.sh-id{flex:1;min-width:0}.sh-recibido{}</style>` +
+  assert.ok(rowsCssOK(html), 'the two-row layout CSS is present + correct: .sh-head.two-row display:block + .sh-idrow/.sh-actrow display:flex + .sh-actspacer flex:1');
+
+  // (c) row containment — the name (.nm) + close live in the identity row; the pills + call live in the actions row
+  const t = fnSrc('renderCommsThread');
+  const pIdrow = t.indexOf('class="sh-idrow"'), pActrow = t.indexOf('class="sh-actrow"');
+  const pNm = t.indexOf('class="nm"'), pClose = t.indexOf('comms-sheet-close');
+  const pTriage = t.indexOf('${triageBtn}'), pWa = t.indexOf('${waBtn}'), pCall = t.indexOf('${callBtn}');
+  assert.ok(pIdrow > -1 && pActrow > pIdrow, 'the identity row precedes the actions row');
+  assert.ok(pIdrow < pNm && pNm < pActrow, 'the name (.nm) is contained in the identity row');
+  assert.ok(pIdrow < pClose && pClose < pActrow, 'close is contained in the identity row');
+  assert.ok(pActrow < pTriage && pActrow < pWa && pActrow < pCall, 'the pills + call are contained in the actions row');
+
+  // (d) mutants on the REAL source (Codex #264) — both realistic layout regressions must die, plus the one-row header
+  const mFlex = html.replace(/(\.sh-head\.two-row\s*\{[^}]*display:\s*)block/, '$1flex');            // display:block → flex
+  assert.ok(mFlex !== html && !rowsCssOK(mFlex), 'mutant killed: .sh-head.two-row display:block→flex fails the rows-CSS guard');
+  const mDel = html.replace(/\n\s*\.sh-head\.two-row\s*\{[^}]*\}\s*\.sh-head\.two-row\s+\.sh-idrow\s*\{[^}]*\}\s*\.sh-head\.two-row\s+\.sh-actrow\s*\{[^}]*\}\s*\.sh-head\.two-row\s+\.sh-actspacer\s*\{[^}]*\}/, '\n');   // delete all 4 layout rules
+  assert.ok(mDel !== html && !rowsCssOK(mDel), 'mutant killed: deleting the four two-row layout rules fails the rows-CSS guard');
+  const ONE_ROW = `<style>.sh-head{display:flex}.sh-id{flex:1;min-width:0}.sh-recibido{}</style>` +
     `<div class="sh-head"><div class="sh-av">MF</div><div class="sh-id"><div class="nm">María Fernanda Alvarenga</div></div>` +
     `<button class="sh-attend">Marcar atendido</button><a class="sh-attend wa">Responder</a></div>`;
-  assert.ok(!headerFitsOK(MUTANT), 'mutant killed: a single-row header with both pills and min-width:0 fails the fit guard');
-  // the live markup actually ships the two-row structure (identity row before the actions row)
+  assert.ok(!headerFitsOK(ONE_ROW), 'mutant killed: the retired one-row header (both pills, min-width:0) fails the fit guard');
+  ok('thread header fit (Option B): rows-CSS + containment verified; three mutants (display:block→flex, delete-4-rules, one-row) all die');
+}
+
+// WCAG 2.4.3 (focus order) — the header's DOM/tab order is intentionally Close → triage → WhatsApp → call: it
+// follows the VISUAL reading order of the two rows (close sits in the top identity row, the actions are below),
+// which is what 2.4.3 wants (advisor ruling on Codex #264). Pin it so a reshuffle can't regress it — holds for
+// BOTH pending and attended, since the triage/WA slots only swap labels+ids by state, not their position.
+{
   const t = fnSrc('renderCommsThread');
-  assert.match(t, /class="sh-head two-row"/, 'renderCommsThread renders the two-row header');
-  assert.match(t, /sh-idrow[\s\S]*?sh-actrow/, 'the identity row precedes the actions row');
-  assert.match(t, /sh-idrow[\s\S]*?comms-sheet-close/, 'the close button lives in the identity row');
-  ok('thread header fit (Option B): two-row structure present; fit guard passes the real file and kills the one-row mutant');
+  const pClose = t.indexOf('comms-sheet-close');
+  const pTriage = t.indexOf('${triageBtn}'), pWa = t.indexOf('${waBtn}'), pCall = t.indexOf('${callBtn}');
+  assert.ok(pClose > -1 && pTriage > pClose && pWa > pTriage && pCall > pWa,
+    'header DOM/focus order = Close → triage → WhatsApp → call (matches the visual reading order; WCAG 2.4.3)');
+  // the triage/WA slots carry the right controls per state, so the pinned order holds pending AND attended
+  assert.match(t, /unhandledIds\.length[\s\S]*?comms-mark-attended[\s\S]*?comms-mark-pending/, 'triage slot: «Marcar atendido» (pending) / «Marcar pendiente» (attended)');
+  assert.match(t, /unhandledIds\.length \? 'Responder' : 'Abrir en WhatsApp'/, 'WA slot: «Responder» (pending) / «Abrir en WhatsApp» (attended)');
+  ok('focus order pinned: Close → triage → WhatsApp → call for both pending and attended (WCAG 2.4.3)');
 }
 
 console.log(`dispatch-comms-consolidation: OK (${n})`);
