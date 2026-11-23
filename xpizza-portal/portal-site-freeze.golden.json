@@ -107,6 +107,7 @@
   "portal-no-amber.test.mjs",
   "portal-request-ids.test.mjs",
   "portal-site-freeze.golden.json",
+  "portal-text-fit.test.mjs",
   "portal-time.js",
   "portal-wiring.test.mjs",
   "portalui-guards.t1-hunks.json",
@@ -220,8 +221,8 @@
    "bytes": 841
   },
   "styles.css": {
-   "sha256": "b9db3d66356f4b834394e9308693e33ce8d0e5cb4ad12b090cd5bc01e3c1cc40",
-   "bytes": 229535
+   "sha256": "0e4cdd0cf988648013d267ac0ad3bc901c111ea001e83b5462db178344549c01",
+   "bytes": 236795
   }
  },
  "diff_aid": {
@@ -6886,6 +6887,138 @@
     ".teamv .togrow .bt span",
     "color",
     "var(--tmute)"
+   ],
+   [
+    "",
+    ".teamv .tp-av",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".teamv .tp-av",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".teamv .tp-cnt",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".teamv .tp-dl",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".teamv .tp-dn",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".teamv .tp-quiet p",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".teamv .tp-quiet summary",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".teamv .tp-row .tp-dot",
+    "background",
+    "var(--sand-text)"
+   ],
+   [
+    "",
+    ".teamv .tp-row .tp-r",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".teamv .tp-row",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".teamv .tp-row",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".teamv .tp-row:hover .tp-n",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".teamv .tp-scrim",
+    "background",
+    "rgba(8,7,6,.38)"
+   ],
+   [
+    "",
+    ".teamv .tp-sdot",
+    "background",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".teamv .tp-sdot.tp-mint",
+    "background",
+    "var(--mint-text)"
+   ],
+   [
+    "",
+    ".teamv .tp-sdot.tp-sand",
+    "background",
+    "var(--sand-text)"
+   ],
+   [
+    "",
+    ".teamv .tp-sheet",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".teamv .tp-st",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".teamv .tp-sub",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".teamv .tp-x",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".teamv .tp-x",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".teamv .tp-x:hover",
+    "background",
+    "var(--line2)"
    ],
    [
     "",

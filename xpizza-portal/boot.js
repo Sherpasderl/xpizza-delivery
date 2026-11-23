@@ -132,8 +132,11 @@
     if (inn) {
       showError('');
       $('pass').value = '';                   // do not leave a password sitting in the DOM
-      $('whoami').textContent = user.email || user.uid;
-      $('whoami').title = user.email || '';   // the footer truncates a long email: the full one in the tooltip
+      // D3 = A (OWNER 11-14): the email in FULL; a long one breaks at the «@» — the local part, a <wbr>, «@domain», as TEXT nodes
+      const em = user.email || '', at = em.lastIndexOf('@');
+      if (at > 0) $('whoami').replaceChildren(em.slice(0, at), document.createElement('wbr'), em.slice(at));
+      else $('whoami').textContent = em || user.uid;
+      $('whoami').title = em;   // the full address in the tooltip too
       $('avatar').textContent = (user.email || '?').slice(0, 1).toUpperCase();
       document.dispatchEvent(new CustomEvent('portal:signed-in'));   // Task 5 listens for this
     }

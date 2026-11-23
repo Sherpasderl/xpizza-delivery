@@ -62,7 +62,7 @@ const COPY = Object.freeze({
   cTramos: 'Tarifas · iguales para todos los restaurantes', cLimits: 'Distancia máxima por restaurante', cBack: 'Volver', cSave: 'Guardar cambios', saved: 'Envío guardado',
   // ENVÍO v3 — the restaurant's maximum distance (A1 / A4; copy table «New»)
   maxLab: 'Distancia máxima de ', maxHelp: 'Este restaurante entrega hasta esta distancia. Las tarifas son las mismas para todos.',
-  maxMulti: (n) => ` Aplica a sus ${n} sucursales, desde el pin de cada una.`, maxCapPh: (top) => ` Máximo ${top} km.`,
+  maxMulti: (n) => ` Aplica a sus ${n} sucursales, desde el pin de cada una.`, maxCapPh: (top) => ` Máximo ${top}\u00a0km.`,   /* the number and its unit stay on one line (slot-1114 D4) */
   maxCap: 'máximo ', maxLess: '0.5 km menos', maxMore: '0.5 km más', maxAria: 'Distancia máxima, en km',
   capped: (top, km) => `Hoy entrega hasta ${top} km: la tabla no llega más lejos. Si la tabla vuelve a crecer, recupera sus ${km} km.`,
   conflictT: 'Alguien más cambió las tarifas, recargá', conflictP: 'Tus cambios no se guardaron. Recargá para ver la versión actual y volvé a editar sobre ella.', reload: 'Recargar',

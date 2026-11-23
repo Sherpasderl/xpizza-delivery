@@ -269,10 +269,11 @@ test('functional declarations the read-only portal depends on survive a re-skin'
     ['.price', 'font-variant-numeric', 'tabular figures — prices in a column must align digit-for-digit'],
     ['.price', 'white-space', 'no-wrap — "Sin precio" must not break across lines mid-row'],
     ['.price', 'color', 'the read-only price is ink, not the wrapper default'],
-    ['.sfoot .sinfo', 'min-width', 'min-width:0 — without it a flex child refuses to shrink and cannot ellipsize'],
+    ['.sfoot .sinfo', 'min-width', 'min-width:0 — without it a flex child refuses to shrink and the email cannot wrap'],
     ['.sfoot .sinfo', 'flex', 'the account block takes the free space between avatar and logout'],
-    ['.sfoot .sinfo b', 'text-overflow', 'ellipsis — a long merchant email otherwise overruns the logout button'],
-    ['.sfoot .sinfo b', 'overflow', 'hidden, or text-overflow has nothing to clip'],
+    // slot-1114 D3 (advisor 11-14, rule 16b): the email is shown in FULL, never «dueno@ejemplo.t…» — it breaks onto a second line
+    ['.sfoot .sinfo b', 'overflow-wrap', 'anywhere — a long merchant email breaks onto its second line instead of overrunning the logout button'],
+    ['.sfoot .sinfo', 'min-height', 'two email lines + the role reserved — a wrapping email never makes the footer jump'],
     ['.switch .chev', 'opacity', 'the base state the carried `.switch.multi .chev{opacity:1}` overrides — without it the chevron shows for single-restaurant accounts'],
     ['.empty b', 'display', 'block — the empty-state heading and its body otherwise run together on one line'],
   ];

@@ -104,7 +104,8 @@ test('team-logic: rows, labels, relative time, validation, modal copy — verbat
     ['pending', 'Ana Reyes', 'Gerente de sucursal', 'Col. Trejo', 'Edita y publica', 'Invitación pendiente']]);
   assert.equal(rows[2].sub, 'Invitación enviada a ana@m.hn · hace 2 h · sin usar');
   assert.equal(TL.rowsFrom(LIST({ uses_platform_factura: true }, now), brs, now)[2].editLabel, 'Edita · el dueño publica', 'factura comes from the server flag');
-  assert.equal(TL.teamCount(rows), '3 persona(s)');
+  assert.equal(TL.teamCount(rows), '3 personas', 'a proper plural (D2, slot-1114 sweep)');
+  assert.equal(TL.teamCount(rows.slice(0, 1)), '1 persona', 'and the singular');
   for (const [ms, t] of [[0, 'ahora'], [59e3, 'ahora'], [12 * 60e3, 'hace 12 min'], [3 * 3600e3, 'hace 3 h'], [864e5, 'hace 1 día'], [4 * 864e5, 'hace 4 días']]) assert.equal(TL.relTime(now - ms, now), t);
   for (const e of ['a@b.co', 'nombre.apellido@correo.com.hn']) assert.ok(TL.emailOk(e), e);
   for (const e of ['', 'a@b', 'a b@c.com', 'a@@b.com', 'a@b.c']) assert.ok(!TL.emailOk(e), e);
@@ -144,7 +145,7 @@ test('normal: the table — owner «Sos vos», a manager (Editar / Quitar acceso
   const p = await page({ list: LIST({ managers: [{ uid: 'mgrT0001', name: '<img src=x onerror=alert(1)>', email: 'jorge@m.hn', rids: ['r_cen'], can_edit_menu: false }] }) });
   await p.signIn(); await p.open();
   const t = p.text();
-  for (const s of ['Equipo de trabajo', TL.TEAM_LEDE, 'Personas', '3 persona(s)', 'Marcela Pineda', 'Sos vos', 'Gerente de sucursal', 'Centro', 'Solo agotados',
+  for (const s of ['Equipo de trabajo', TL.TEAM_LEDE, 'Personas', '3 personas', 'Marcela Pineda', 'Sos vos', 'Gerente de sucursal', 'Centro', 'Solo agotados',
     'Invitación enviada a ana@m.hn · hace 2 h · sin usar', 'Invitación pendiente', TL.TEAM_QUIET]) assert.ok(t.includes(s), s);
   for (const b of ['Invitar gerente', 'Editar', 'Quitar acceso', 'Reenviar', 'Cancelar invitación']) assert.ok(p.btn(b), b);
   assert.equal(p.host().querySelectorAll('img').length, 0, 'a name is text, never markup');
@@ -420,4 +421,135 @@ test('P2: Editar shows an EXISTING retired-branch assignment as a removable chip
   await q.signIn(); await q.open();
   q.btn('Invitar gerente').click(); await settle();
   assert.ok(!q.btn('Centro', q.modal()) && q.btn('Col. Trejo', q.modal()), 'a new invite offers member branches only');
+});
+
+// ── D1 (owner-approved 11-14, MOCKUP-portal-equipo-phone): below 920 px one row per person + the person sheet ──────────────
+test('D1 logic: the phone row line and the person sheet view — shipped copy only, plus the two new strings', () => {
+  const now = Date.UTC(2026, 10, 14, 12);
+  const brs = [{ rid: 'r_cen', name: 'Centro' }, { rid: 'r_tre', name: 'Col. Trejo' }];
+  const list = LIST({ managers: [{ uid: 'mgrT0001', name: 'Jorge Ayala', email: 'jorge@m.hn', rids: ['r_cen'], can_edit_menu: false },
+    { uid: 'mgrT0002', name: 'María Fernanda Villanueva Castellanos', email: 'mf@m.hn', rids: ['r_cen', 'r_tre'], can_edit_menu: true }] }, now);
+  const rows = TL.rowsFrom(list, brs, now);
+  assert.deepEqual(rows.map((r) => TL.phoneRow(r)), [
+    { initial: 'M', name: 'Marcela Pineda', line: 'Dueño · Sos vos', pending: false },
+    { initial: 'J', name: 'Jorge Ayala', line: 'Gerente de sucursal', pending: false },
+    { initial: 'M', name: 'María Fernanda Villanueva Castellanos', line: 'Gerente de sucursal', pending: false },
+    { initial: 'A', name: 'Ana Reyes', line: 'Invitación pendiente · hace 2 h', pending: true }], 'one line per row: «Activo» is the default, never printed');
+  const [own, jorge, maria, ana] = rows.map((r) => TL.personView(r, brs, false));
+  assert.deepEqual(own, { initial: 'M', name: 'Marcela Pineda', sub: ['duena@m.hn'], status: { text: 'Activo', tone: 'mint' }, role: 'Dueño',
+    roleNote: 'Hay un solo dueño por marca: sos vos.', branches: ['Todas'], edit: 'Edita y publica', editNote: '' }, 'the owner: read-only facts');
+  assert.deepEqual([jorge.sub, jorge.roleNote, jorge.branches, jorge.edit, jorge.editNote], [['jorge@m.hn'], TL.ROLE_SUB, ['Centro'], 'Solo agotados',
+    'Edita productos y precios de toda la marca y los publica directo, igual que vos. Apagado: solo marca agotados.']);
+  assert.deepEqual(maria.branches, ['Centro', 'Col. Trejo'], 'one branch per line');
+  assert.deepEqual([ana.sub, ana.status], [['Invitación enviada a ana@m.hn', 'hace 2 h', 'sin usar'], { text: 'Invitación pendiente', tone: 'sand' }],
+    'the pending sub split at its separators; a sand dot');
+  assert.equal(TL.personView(rows[1], brs, true).editNote, TL.inviteView(TL.newDraft(), brs, true).canEditNote, 'the factura note is the shipped one');
+  assert.deepEqual([TL.QUIET_HEAD, TL.CLOSE], ['Qué puede hacer un gerente', 'Cerrar'], 'the two new strings, verbatim');
+});
+
+const tphone = (p) => p.host().querySelector('.tp-phone');
+const prow = (p, name) => [...tphone(p).querySelectorAll('button.tp-row')].find((b) => b.querySelector('.tp-n').textContent === name);
+const sheet = (p) => p.host().querySelector('.tp-sheet');
+const dlg = (p) => [...p.host().querySelectorAll('[role="dialog"]')].find((x) => !x.classList.contains('tp-sheet')) || null;   // the shipped modal, above the sheet
+test('D1 phone list: one row per person (name + one line), the pending sand dot, the disclosure; the desktop table unchanged beside it', async () => {
+  const p = await page();
+  await p.signIn(); await p.open();
+  const ph = tphone(p);
+  assert.ok(ph, 'the phone list is rendered (shown below 920 px by CSS)');
+  assert.deepEqual([...ph.querySelectorAll('button.tp-row')].map((b) => [b.querySelector('.tp-n').textContent, b.querySelector('.tp-r').textContent]),
+    [['Marcela Pineda', 'Dueño · Sos vos'], ['Jorge Ayala', 'Gerente de sucursal'], ['Ana Reyes', 'Invitación pendiente · hace 2 h']]);
+  assert.deepEqual([...ph.querySelectorAll('.tp-dot')].map((d) => d.closest('button.tp-row').querySelector('.tp-n').textContent), ['Ana Reyes'], 'the sand dot only on the pending row');
+  assert.equal(ph.querySelectorAll('button:not(.tp-row), table, .pill').length, 0, 'no inline buttons, no table, no pills on the phone list');
+  assert.deepEqual([ph.querySelector('.tp-sect h2').textContent, ph.querySelector('.tp-cnt').textContent], ['Personas', '3 personas']);
+  const q = ph.querySelector('details.tp-quiet');
+  assert.deepEqual([q.querySelector('summary').textContent, q.querySelector('p').textContent, q.open], [TL.QUIET_HEAD, TL.TEAM_QUIET, false], 'the shipped note behind the disclosure, closed');
+  const desk = p.host().querySelector('.tp-desk');
+  assert.ok(desk.querySelector('table') && desk.querySelector('.quiet'), 'the desktop table + quiet note, as shipped');
+});
+
+test('D1 person sheet: a manager — facts, Editar / Quitar acceso (the shipped modals), × «Cerrar» and Escape close it, focus returns to the row', async () => {
+  const p = await page({ on: { memberRevoke: () => okJson({ ok: true }) } });
+  await p.signIn(); await p.open();
+  const row = prow(p, 'Jorge Ayala');
+  row.click(); await settle();
+  const s = sheet(p);
+  assert.ok(s && s.getAttribute('role') === 'dialog' && s.getAttribute('aria-modal') === 'true', 'a modal dialog');
+  assert.equal(p.d.getElementById(s.getAttribute('aria-labelledby')).textContent, 'Jorge Ayala');
+  assert.deepEqual([...s.querySelectorAll('.tp-sub > span')].map((x) => [x.textContent, x.className]), [['jorge@m.hn', ''], ['Activo', 'tp-st']]);
+  assert.equal(s.querySelector('.tp-st .tp-sdot').className, 'tp-sdot tp-mint', 'the mint status dot');
+  assert.deepEqual([...s.querySelectorAll('.tp-sec .tp-dl')].map((x) => x.textContent), ['Rol', 'Sucursales', 'Menú y precios']);
+  assert.deepEqual([...s.querySelectorAll('.tp-brl li')].map((x) => x.textContent), ['Centro']);
+  assert.ok(s.textContent.includes(TL.ROLE_SUB) && s.textContent.includes('Solo agotados'));
+  assert.deepEqual([...s.querySelectorAll('.tp-acts button')].map((b) => [b.textContent, b.className]), [['Editar', 'btn'], ['Quitar acceso', 'btn danger']]);
+  assert.equal(p.d.activeElement, s.querySelector('.tp-x'), 'focus moves into the sheet');
+  assert.equal(s.querySelector('.tp-x').getAttribute('aria-label'), 'Cerrar');
+  p.btn('Editar', s).click(); await settle();
+  assert.equal(dlg(p).querySelector('.mt').textContent, 'Editar a Jorge Ayala', 'Editar opens the shipped edit modal');
+  p.btn('Cancelar', dlg(p)).click(); await settle();
+  assert.ok(sheet(p), 'closing the modal keeps the sheet');
+  s.querySelector('.tp-x').click(); await settle();
+  assert.equal(sheet(p), null, '× closes it');
+  assert.equal(p.d.activeElement, prow(p, 'Jorge Ayala'), 'focus returns to the row');
+  prow(p, 'Jorge Ayala').click(); await settle();
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape' })); await settle();
+  assert.equal(sheet(p), null, 'Escape closes it');
+  prow(p, 'Jorge Ayala').click(); await settle();
+  p.w.dispatchEvent(new p.w.PopStateEvent('popstate', { state: null })); await settle();
+  assert.equal(sheet(p), null, 'the Android back (popstate) closes it');
+  prow(p, 'Jorge Ayala').click(); await settle();
+  p.btn('Quitar acceso', sheet(p)).click(); await settle();
+  const m = dlg(p);
+  assert.equal(m.querySelector('.mt').textContent, '¿Quitar el acceso a Jorge Ayala?', 'the shipped confirmation');
+  assert.ok(m.classList.contains('tp-cf') && m.closest('.scrim').classList.contains('tp-cfscrim'), 'tagged for the phone bottom sheet');
+  p.btn('Quitar acceso', m).click(); await settle(60);
+  assert.deepEqual(p.n('memberRevoke').map((c) => c.body), [{ brandId: 'marca_t', uid: 'mgrT0001' }], 'the write happens only on the red button');
+  assert.equal(p.d.getElementById('opstoast').textContent, 'Acceso quitado');
+});
+
+test('D1 person sheet: the owner is read-only («Sos vos»); a pending invite splits its sub, Reenviar / Cancelar invitación; a gone person closes the sheet', async () => {
+  let gone = false;
+  const p = await page({ on: { memberCancelInvite: (b, st) => { gone = true; st.list = { ...st.list, pending: [] }; return okJson({ ok: true }); } } });
+  await p.signIn(); await p.open();
+  prow(p, 'Marcela Pineda').click(); await settle();
+  let s = sheet(p);
+  assert.deepEqual([[...s.querySelectorAll('.tp-acts button')].length, s.querySelector('.tp-acts').textContent], [0, 'Sos vos'], 'no actions on the owner');
+  assert.ok(s.textContent.includes('Hay un solo dueño por marca: sos vos.') && s.querySelector('.tp-brl li').textContent === 'Todas');
+  s.querySelector('.tp-x').click(); await settle();
+  prow(p, 'Ana Reyes').click(); await settle();
+  s = sheet(p);
+  assert.deepEqual([...s.querySelectorAll('.tp-sub > span')].map((x) => x.textContent), ['Invitación enviada a ana@m.hn', 'hace 2 h', 'sin usar', 'Invitación pendiente']);
+  assert.equal(s.querySelector('.tp-st .tp-sdot').className, 'tp-sdot tp-sand', 'the sand status dot');
+  assert.deepEqual([...s.querySelectorAll('.tp-acts button')].map((b) => [b.textContent, b.className]), [['Reenviar', 'btn'], ['Cancelar invitación', 'btn danger']]);
+  p.btn('Cancelar invitación', s).click(); await settle();
+  const m = dlg(p);
+  assert.equal(m.querySelector('.mt').textContent, '¿Cancelar la invitación de Ana Reyes?');
+  p.btn('Cancelar invitación', m).click(); await settle(60);
+  assert.ok(gone, 'memberCancelInvite sent');
+  assert.equal(sheet(p), null, 'the invite is gone after the reload: the sheet closes');
+});
+
+test('D1 capabilities gate the sheet\'s buttons exactly as the table\'s; a sign-out removes the sheet at once', async () => {
+  const caps = OWNER_CAPS.filter((c) => c !== 'team.invite');
+  const p = await page({ e1: E1({ branches: [branch('r_cen', 'Centro', caps), branch('r_tre', 'Col. Trejo', caps)] }) });
+  await p.signIn(); await p.open();
+  prow(p, 'Jorge Ayala').click(); await settle();
+  assert.deepEqual([...sheet(p).querySelectorAll('.tp-acts button')].map((b) => b.textContent), ['Quitar acceso'], 'no team.invite: no Editar');
+  sheet(p).querySelector('.tp-x').click(); await settle();
+  prow(p, 'Ana Reyes').click(); await settle();
+  assert.deepEqual([...sheet(p).querySelectorAll('.tp-acts button')].map((b) => b.textContent), ['Cancelar invitación'], 'no team.invite: no Reenviar');
+  p.d.dispatchEvent(new p.w.CustomEvent('portal:auth', { detail: { uid: 'someoneElse' } })); await settle();
+  assert.equal(sheet(p), null, 'a sign-out / account change removes the sheet and its name / email');
+});
+
+test('D1 styles: below 920 px the phone list replaces the table; one-line rows, the long name balanced; the confirmation docks as a bottom sheet', () => {
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const rule = (src, sel) => { const m = src.match(new RegExp(`(?:^|[}\\s])${sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\{([^}]*)\\}`)); return m ? m[1] : null; };
+  const media = (css.match(/@media\(max-width:920px\)\{\s*\/?\*?[^@]*?\.teamv \.tp-desk\{display:none\}[\s\S]*?\n  \}/) || [''])[0];
+  assert.match(rule(css, '.teamv .tp-phone') || '', /display:none/, 'desktop: no phone list');
+  assert.match(rule(media, '.teamv .tp-phone') || '', /display:block/, '≤ 920 px: the phone list');
+  assert.match(rule(media, '.teamv .tp-desk') || '', /display:none/, '≤ 920 px: no table');
+  assert.match(rule(css, '.teamv .tp-row .tp-n') || '', /text-wrap:balance/, 'a long name wraps balanced, never clipped');
+  assert.match(rule(css, '.teamv .tp-row .tp-r') || '', /white-space:nowrap/, 'the role line stays one line');
+  assert.match(rule(media, '.teamv .scrim.tp-cfscrim') || '', /align-items:flex-end/, 'the confirmation docks at the bottom on the phone');
+  assert.match(rule(media, '.teamv .modal.tp-cf .mf .btn') || '', /flex:1/, 'its two buttons side by side');
 });

@@ -360,6 +360,7 @@ const PINNED_LITERALS = [
   // (the .phov family: a dark veil in both themes)
   ['.mk-cfscrim', 'background', 'rgba(10,10,11,.34)'],
   ['.mk5b-scrim', 'background', 'rgba(8,7,6,.5)'], ['.mk5r-scrim', 'background', 'rgba(8,7,6,.6)'],   // Ofertas O2: the builder + review backdrops, MOCKUP-portal-marketing v5 .scrim.bld / .scrim (owner-approved 11-14)
+  ['.teamv .tp-scrim', 'background', 'rgba(8,7,6,.38)'],   // D1 person sheet backdrop, MOCKUP-portal-equipo-phone .drsc (owner-approved 11-14)
 ];
 const PINNED_ICON_RULES = {
   top: [':root[data-theme="dark"] .tbtn .moon,:root[data-theme="dark"] .miconbtn .moon', ':root[data-theme="dark"] .tbtn .sun,:root[data-theme="dark"] .miconbtn .sun'],

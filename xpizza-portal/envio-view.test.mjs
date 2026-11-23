@@ -936,7 +936,7 @@ test('V1 — A1: «Distancia máxima de {restaurante}», the stored value (none 
   assert.equal(maxIn(P).value, '4.5', 'the stored value');
   assert.equal(f.querySelector('.stepcap').textContent.replace(/\s+/g, ' ').trim(), 'máximo 6 km');
   assert.equal(f.querySelector('.efnote .dk').textContent, 'Este restaurante entrega hasta esta distancia. Las tarifas son las mismas para todos.');
-  assert.equal(f.querySelector('.efnote .ph').textContent, 'Este restaurante entrega hasta esta distancia. Las tarifas son las mismas para todos. Máximo 6 km.', 'phone: the top in the help line (the chip is desktop)');
+  assert.equal(f.querySelector('.efnote .ph').textContent, 'Este restaurante entrega hasta esta distancia. Las tarifas son las mismas para todos. Máximo 6\u00a0km.', 'phone: the top in the help line (the chip is desktop); «6 km» never splits (D4, slot-1114)');
   assert.match(P.host().querySelector('.pick').textContent, /1 sucursal · hasta 4\.5 km/);
   stepBtn(P, '0.5 km más').click(); await settle(5);
   assert.equal(maxIn(P).value, '5');

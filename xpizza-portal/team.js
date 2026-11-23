@@ -21,6 +21,9 @@ import * as TL from './team-logic.js';
 const ICON_D = 'M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0zM4 21a8 8 0 0 1 16 0';
 const S = {
   gen: 0, uid: null, sel: null, host: null, body: null, layer: null,
+  sheet: null,        // D1: the person sheet's layer (between the body and the modal layer, so a confirmation stacks above it)
+  person: null,       // D1: the open person sheet → { key, from (the row that opened it), pushed (a history entry for the back button) }
+  quietOpen: false,   // D1: the «Qué puede hacer un gerente» disclosure, kept across a list re-render
   status: 'idle', list: null, branches: [], inviteError: false, opError: false,
   modal: null,        // null | { kind: 'invite', draft } | { kind: 'remove', row }
   busy: null,         // the modal object whose write is in flight — the submission lock, held until THAT write settles (closing never frees it)
@@ -57,6 +60,8 @@ function release(mine) { if (S.busy === mine) { S.busy = null; if (S.resync) S.r
 // remove every rendered row / modal / name / email from the DOM now (a generation bump that also ends the session)
 function wipe() {
   S.list = null; S.branches = []; S.modal = null; S.kept = null; S.inviteError = false; S.opError = false; S.status = 'idle';
+  S.person = null; S.quietOpen = false;
+  if (S.sheet) S.sheet.replaceChildren();
   if (S.layer) S.layer.replaceChildren();
   if (S.body) S.body.replaceChildren();
   clearToast();
@@ -107,10 +112,14 @@ function render() {
         box.append(button('btn', 'Entendido', () => { S.inviteError = false; render(); }));
         out.push(box);
       }
-      out.push(table(), el('div', 'quiet', TL.TEAM_QUIET));
+      const rows = TL.rowsFrom(S.list, S.branches, Date.now());
+      const desk = el('div', 'tp-desk');   // ≥ 920 px: the shipped table + quiet note, unchanged
+      desk.append(table(rows), el('div', 'quiet', TL.TEAM_QUIET));
+      out.push(phoneList(rows), desk);
     }
   }
   S.body.replaceChildren(...out);
+  paintSheet(false);   // an open person sheet follows the fresh rows (and closes when its person is gone)
 }
 
 function inviteBtn() {   // the prototype's top action: a plus icon + «Invitar gerente» — enabled once the team data is here
@@ -129,8 +138,7 @@ function emptyBlock() {
   return d;
 }
 
-function table() {
-  const rows = TL.rowsFrom(S.list, S.branches, Date.now());
+function table(rows) {
   const wrap = el('div', 'tbl');
   const head = el('div', 'dhead');
   const right = el('div', 'dright');
@@ -169,6 +177,103 @@ function rowEl(r) {
   const act = el('td'); act.append(a);
   tr.append(who, el('td', null, r.role), el('td', null, r.branches), editP, stP, act);
   return tr;
+}
+
+// ── D1 · the phone list and the person sheet (owner-approved 11-14, MOCKUP-portal-equipo-phone; CSS shows it below 920 px) ─────
+const CHEV = 'M9 6l6 6-6 6', DOWN = 'M6 9l6 6 6-6', X = 'M6 6l12 12M18 6L6 18';
+function phoneList(rows) {
+  const ph = el('div', 'tp-phone');
+  const sect = el('div', 'tp-sect');
+  sect.append(el('h2', null, 'Personas'), el('span', 'tp-cnt', TL.teamCount(rows)));
+  const list = el('div', 'tp-list');
+  for (const r of rows) {
+    const v = TL.phoneRow(r);
+    const b = el('button', 'tp-row'); b.type = 'button'; b.dataset.key = r.key;
+    const c = el('span', 'tp-c');
+    const line = el('span', 'tp-r');
+    if (v.pending) line.append(el('i', 'tp-dot'));
+    line.append(document.createTextNode(v.line));
+    c.append(el('span', 'tp-n', v.name), line);
+    const chv = svg(CHEV); chv.setAttribute('class', 'tp-chv');
+    b.append(el('span', 'tp-av', v.initial), c, chv);
+    b.addEventListener('click', () => openPerson(r.key, b));
+    list.append(b);
+  }
+  const q = el('details', 'tp-quiet');
+  q.open = S.quietOpen;
+  const sum = el('summary', null, TL.QUIET_HEAD);
+  sum.append(svg(DOWN));
+  q.append(sum, el('p', null, TL.TEAM_QUIET));
+  q.addEventListener('toggle', () => { S.quietOpen = q.open; });
+  ph.append(sect, list, q);
+  return ph;
+}
+
+function openPerson(key, from) {
+  let pushed = false;
+  try { history.pushState({ sherpaTeamPerson: true }, ''); pushed = true; } catch (_) { /* no history: the × and Escape still close it */ }
+  S.person = { key, from, pushed };
+  paintSheet(true);
+}
+function closePerson({ fromBack = false } = {}) {
+  const p = S.person;
+  if (!p) return;
+  S.person = null;
+  if (S.sheet) S.sheet.replaceChildren();
+  if (p.pushed && !fromBack) { try { history.back(); } catch (_) { /* nothing to pop */ } }
+  const back = p.from && p.from.isConnected ? p.from
+    : [...((S.body && S.body.querySelectorAll('button.tp-row')) || [])].find((b) => b.dataset.key === p.key);
+  if (back && back.focus) back.focus();
+}
+window.addEventListener('popstate', () => { if (S.person) closePerson({ fromBack: true }); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.person && !S.modal) closePerson(); });
+
+function paintSheet(focus) {
+  if (!S.sheet) return;
+  if (!S.person || S.status !== 'ready') { S.sheet.replaceChildren(); return; }
+  const r = TL.rowsFrom(S.list, S.branches, Date.now()).find((x) => x.key === S.person.key);
+  if (!r) { closePerson(); return; }   // removed / cancelled: the person is gone from the list
+  const v = TL.personView(r, S.branches, factura());
+  const scrim = el('div', 'tp-scrim');
+  scrim.addEventListener('click', () => closePerson());
+  const sh = el('aside', 'tp-sheet');
+  sh.setAttribute('role', 'dialog'); sh.setAttribute('aria-modal', 'true'); sh.setAttribute('aria-labelledby', 'tp-t');
+  const hd = el('div', 'tp-hd');
+  const who = el('div', 'tp-who');
+  const wt = el('div', 'tp-wt');
+  const h = el('h2', null, v.name); h.id = 'tp-t';
+  const sub = el('div', 'tp-sub');
+  for (const part of v.sub) sub.append(el('span', null, part));
+  const st = el('span', 'tp-st');
+  st.append(el('i', `tp-sdot tp-${v.status.tone}`), document.createTextNode(v.status.text));
+  sub.append(st);
+  wt.append(h, sub);
+  who.append(el('span', 'tp-av', v.initial), wt);
+  const x = button('tp-x', null, () => closePerson(), { aria: TL.CLOSE });
+  x.append(svg(X));
+  hd.append(who, x);
+  const body = el('div', 'tp-body');
+  const sec = (label, ...kids) => { const d = el('div', 'tp-sec'); d.append(el('div', 'tp-dl', label), ...kids); return d; };
+  const brl = el('ul', 'tp-brl');
+  for (const b of v.branches) brl.append(el('li', null, b));
+  const editSec = sec('Menú y precios', el('div', 'tp-dv', v.edit));
+  if (v.editNote) editSec.append(el('div', 'tp-dn', v.editNote));
+  body.append(sec('Rol', el('div', 'tp-dv', v.role), el('div', 'tp-dn', v.roleNote)), sec('Sucursales', brl), editSec);
+  // the same actions the table row has, gated by the same capabilities
+  const acts = el('div', 'tp-acts');
+  if (r.pending) {
+    if (can('team.invite')) acts.append(busyBtn('btn', 'Reenviar', `re:${r.inviteId}`, () => resend(r)));
+    if (can('team.revoke')) acts.append(button('btn danger', 'Cancelar invitación', () => openRemove(r)));
+  }
+  if (r.active) {
+    if (can('team.invite')) acts.append(button('btn', 'Editar', () => openEdit(r)));
+    if (can('team.revoke')) acts.append(button('btn danger', 'Quitar acceso', () => openRemove(r)));
+  }
+  if (r.self) acts.append(el('span', 'tp-dn', 'Sos vos'));
+  if (acts.firstChild) { const d = el('div', 'tp-sec'); d.append(acts); body.append(d); }
+  sh.append(hd, body);
+  S.sheet.replaceChildren(scrim, sh);
+  if (focus && x.focus) x.focus();
 }
 
 const busy = new Set();
@@ -369,6 +474,7 @@ function paintRemove() {
   const row = S.modal.row;
   const v = TL.removeView(row, S.branches);
   const { scrim, m } = shell('rm-t', true);
+  scrim.classList.add('tp-cfscrim'); m.classList.add('tp-cf');   // D1: a bottom sheet below 920 px (CSS); the centred dialog above
   const mh = el('div', 'mh');
   const title = el('div', 'mt', v.title); title.id = 'rm-t';
   mh.append(title, el('div', 'ms', v.email));
@@ -416,10 +522,11 @@ registerView({
     S.host = host;
     const wrap = el('div', 'teamv');
     S.body = el('div');
+    S.sheet = el('div');   // D1: the person sheet's layer
     S.layer = el('div');   // the modal layer: a sibling of the body, so a list re-render never touches an open form
-    wrap.append(S.body, S.layer);
+    wrap.append(S.body, S.sheet, S.layer);
     host.replaceChildren(wrap);
-    S.status = 'idle'; S.list = null; S.inviteError = false; S.opError = false; S.modal = null;
+    S.status = 'idle'; S.list = null; S.inviteError = false; S.opError = false; S.modal = null; S.person = null;
     const key = keyOf();
     if (S.kept && S.kept.key === key) { S.modal = S.kept.modal; }
     S.kept = null;
@@ -431,11 +538,12 @@ registerView({
     S.kept = S.modal && S.modal.kind === 'invite' && S.modal.draft.mode !== 'sent' && S.busy !== S.modal ? { key: keyOf(), modal: S.modal } : null;
     bump();
     clearToast();
-    S.modal = null; S.resync = null;
+    S.modal = null; S.resync = null; S.person = null;
+    if (S.sheet) S.sheet.replaceChildren();
     if (S.layer) S.layer.replaceChildren();
     if (S.body) S.body.replaceChildren();
     S.list = null; S.branches = [];
-    S.host = null; S.body = null; S.layer = null;
+    S.host = null; S.body = null; S.sheet = null; S.layer = null;
   },
   canLeave: () => true,
 });
