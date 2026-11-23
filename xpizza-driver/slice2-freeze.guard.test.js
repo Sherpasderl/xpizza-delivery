@@ -45,8 +45,8 @@ const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 // — a tampered shared module (widened/dropped restore, added/removed region, changed kind) is caught HERE too, not
 // just in slice3-freeze. Mirror of slice3-freeze's SLICE3_PINS; both must agree with the byte-frozen contract file.
 const SLICE3_PINS = {
-  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'RENDER-BOARD-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER', 'PRESENTATION-INICIO', 'INICIO-LOGIN', 'INICIO-ESPERANDO', 'INICIO-CHECKLIST-FLAG', 'INICIO-POSTACT-ROUTE', 'INICIO-PERFIL', 'INICIO-CHECKLIST', 'INICIO-PRACTICA', 'INICIO-DEMO', 'INICIO-DEMO-TEARDOWN', 'TABBAR-SHOW', 'TABBAR-BOARD', 'DISP-HEADER', 'RETURN-TARGET-CAPTURE', 'SOLO-CANCEL', 'ARRIVAL-ACTION', 'PAUSE-BOARD', 'PRESENTATION-REVERIFY', 'CUENTA-CARD', 'INICIO-DESACTIVADA', 'MONEY-VUELTO', 'MONEY-TERMINAR', 'MONEY-CERRADO', 'MONEY-FINALIZE-RET', 'MONEY-RATE', 'MONEY-RATE-SUB', 'PAYRATE-SCRIPT', 'GANANCIAS-CSS', 'GANANCIAS-DOM', 'GANANCIAS-SHOW', 'GANANCIAS-REFRESH', 'GANANCIAS-STAY', 'ENDSHIFT-REENTRY-GUARD', 'ACCEPT-INC-LABEL', 'TAP-NUDGE', 'NUDGE-BANNER-CSS', 'NOTIF-TITLE', 'NOTIF-BTN'],
-  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace', 'insert', 'replace', 'replace', 'replace', 'replace', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'insert', 'replace', 'insert', 'replace', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace'],
+  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'RENDER-BOARD-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER', 'PRESENTATION-INICIO', 'INICIO-LOGIN', 'INICIO-ESPERANDO', 'INICIO-CHECKLIST-FLAG', 'INICIO-POSTACT-ROUTE', 'INICIO-PERFIL', 'INICIO-CHECKLIST', 'INICIO-PRACTICA', 'INICIO-DEMO', 'INICIO-DEMO-TEARDOWN', 'TABBAR-SHOW', 'TABBAR-BOARD', 'DISP-HEADER', 'RETURN-TARGET-CAPTURE', 'SOLO-CANCEL', 'ARRIVAL-ACTION', 'PAUSE-BOARD', 'PRESENTATION-REVERIFY', 'CUENTA-CARD', 'INICIO-DESACTIVADA', 'MONEY-VUELTO', 'MONEY-TERMINAR', 'MONEY-CERRADO', 'MONEY-FINALIZE-RET', 'MONEY-RATE', 'MONEY-RATE-SUB', 'PAYRATE-SCRIPT', 'GANANCIAS-CSS', 'GANANCIAS-DOM', 'GANANCIAS-SHOW', 'GANANCIAS-REFRESH', 'GANANCIAS-STAY', 'ENDSHIFT-REENTRY-GUARD', 'ACCEPT-INC-LABEL', 'SLIDE-COMMIT-CALL', 'TAP-NUDGE', 'SLIDE-A11Y', 'NUDGE-BANNER-CSS', 'NOTIF-TITLE', 'NOTIF-BTN'],
+  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace', 'insert', 'replace', 'replace', 'replace', 'replace', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'insert', 'replace', 'insert', 'replace', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace'],
   restoreSha: {
     'MONEY-RATE-SUB': 'bfcbeacaa4e570679a4e0adfb7657042c6eeb08cb514359942411c9ab00a17b7',
     'MONEY-FINALIZE-RET': '33ab550ff1959a13738616ffca3ba50824b94b949a1179b1978e8e89124ed333',
@@ -69,10 +69,12 @@ const SLICE3_PINS = {
     'ENDSHIFT-REENTRY-GUARD': '3190cd7069f375499b541a08144266b4aa4f2a02eca1fde85dfd66d92043f0bf',
     'ACCEPT-INC-LABEL': 'acb7b52cc61296c0ffb107274a8ad67dbf443cce058fabffbf1a37516b756e36',
     'TAP-NUDGE': 'fe667aeedb0196d1e6a289c66a42861f163c1f4d478a02a6eb28469e2f7d690e',
+    'SLIDE-COMMIT-CALL': '100672ea2e119f6217a6137028c3fc64563f80e9b8a7c4fe1ee206604ccb2f62',
+    'SLIDE-A11Y': '10c8cc65d399c5f104303393ea4c3d7718146dc2bf2ccf97cae88bceb144dc76',
     'NOTIF-TITLE': 'd97bc59d42d169fcbead3466f4da568a8cf3ef715230ceb11702065b3d60b9f7',
     'NOTIF-BTN': 'b073b6f9efa43c3f78955eacb9abe50d662c8c1034f14a27e4246265b21a7983',
   },
-  fileSha: 'f16f6361542ce6a5a00031cc6fc7372281d9fb8a51c825b9e8a013f3218eabe4',
+  fileSha: 'f7ba14f000ccd695bbfbb191eba0f09b14b9bbfe0d900b396db891c4e5099624',
 };
 // Load the contract as DATA: read bytes → verify the sha256 pin FIRST → only then JSON.parse (Codex r2 P1). No
 // require/import of editable code; a tampered or executable contract fails the sha (and JSON.parse) before use.

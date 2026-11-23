@@ -3383,12 +3383,7 @@ function renderOffshift() {
     const held = optimisticShift !== null ? optimisticShift : !!(driverState && driverState.active);
     if (held && startSlideEl) { startSlideEl.style.pointerEvents = 'none'; startSlideEl.setAttribute('aria-disabled', 'true'); startSlideEl.tabIndex = -1; }
   };
-  attachSlideConfirm('btn-start-shift', doStartShift);
-  // Keyboard activation through the SAME guarded path — the slide is a div, not a button (Codex P2.6).
-  if (startSlideEl) {
-    startSlideEl.setAttribute('role', 'button'); startSlideEl.tabIndex = 0; startSlideEl.setAttribute('aria-label', 'Iniciar turno');
-    startSlideEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doStartShift(); } });
-  }
+  attachSlideConfirm('btn-start-shift', doStartShift);   // Codex #278 P2: focus + Enter/Space a11y now lives ONCE in attachSlideConfirm's shared commit() gate — no per-slider keydown
   companionSyncSuspendedNotice();   // re-apply the suspend state on the fresh notice
   updateNotifBanners();             // re-populate the fresh notif banner (async)
 }
@@ -3753,8 +3748,7 @@ function renderDisponible() {
       try { await handleEndShift(); } finally { shiftBusy = false; }                                          // O4 sheet (orders in hand) → cuadre; its overlay then covers the slide
     };
     if (endSlideEl) {
-      attachSlideConfirm('btn-end-shift-slide', doEndShift);
-      endSlideEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doEndShift(); } });
+      attachSlideConfirm('btn-end-shift-slide', doEndShift);   // Codex #278 P2: keyboard a11y now in attachSlideConfirm's shared gate — no per-slider keydown
     }
   }
 }
@@ -5307,11 +5301,7 @@ function renderCuadreReceipt(bound) {
   // Stamp THIS mount with a fresh slide generation; the pointer slide AND the keyboard path both carry it, so a
   // release/keypress from a slide that a refresh has replaced is rejected by onCuadreConfirm (Codex r2 P2).
   const slideGen = ++cuadreSlideGen;
-  attachSlideConfirm('cuadre-confirm', () => onCuadreConfirm(slideGen));
-  const slideEl = $('cuadre-confirm');
-  if (slideEl) slideEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); onCuadreConfirm(slideGen); }
-  });
+  attachSlideConfirm('cuadre-confirm', () => onCuadreConfirm(slideGen));   // Codex #278 P2: keyboard a11y now in attachSlideConfirm's shared gate — no per-slider keydown
   return cash;
 }
 /* ===== SLICE3:CUADRE-RENDER:END ===== */
@@ -7051,24 +7041,10 @@ function attachSlideConfirm(elementId, onConfirm) {
     const currentLeft = parseFloat(thumb.style.left) || THUMB_OFFSET;
     const completion = (currentLeft - THUMB_OFFSET) / (maxLeft - THUMB_OFFSET);
 
-    if (completion >= COMPLETE_THRESHOLD && !confirmed) {
-      confirmed = true;
-      el.classList.remove('dragging');
-      el.classList.add('completed');
-      thumb.style.left = `${maxLeft}px`;
-      fill.style.width = '100%';
-
-      try {
-        await onConfirm();
-        // Success: parent re-render replaces this slider with the next phase's slider
-      } catch (err) {
-        // Reset so driver can retry
-        confirmed = false;
-        el.classList.remove('completed');
-        thumb.style.left = '';
-        fill.style.width = '';
-        toast(err && err._userMessage ? err._userMessage : 'Error: ' + (err?.message || err), 'error');
-      }
+    /* ===== SLICE3:SLIDE-COMMIT-CALL:START — Codex #278 P2 a11y: route the drag-complete through the shared single-fire commit() gate (defined at the bind tail) so a swipe and keyboard Enter/Space share ONE confirm path and never double-fire. REPLACE region → restores the frozen 07e5ab38 inline completion block. ===== */
+    if (completion >= COMPLETE_THRESHOLD) {
+      await commit();
+    /* ===== SLICE3:SLIDE-COMMIT-CALL:END ===== */
     /* ===== SLICE3:TAP-NUDGE:START — owner 2026-11-20 hint-free sliders: with the «deslizá» hint removed, a TAP (pointer down→up with the knob still at rest, no drag past threshold) nudges the knob right then settles to teach the gesture; a partial drag still only resets; prefers-reduced-motion ⇒ no animation; a tap NEVER fires onConfirm. REPLACE region → restores the frozen 07e5ab38 else-branch. ===== */
     } else {
       reset();
@@ -7077,10 +7053,11 @@ function attachSlideConfirm(elementId, onConfirm) {
       const reduceMotion = !!(view && typeof view.matchMedia === 'function'
         && view.matchMedia('(prefers-reduced-motion: reduce)').matches);
       if (tappedAtRest && !reduceMotion) {
+        const nudgeGen = (el._nudgeGen = (el._nudgeGen || 0) + 1);   // Codex #278 P3: a later tap supersedes earlier settle timers so a stale timer can't cut a fresh nudge short
         el.classList.remove('nudging');
         void el.offsetWidth;                                  // restart the keyframe on a repeated tap
         el.classList.add('nudging');
-        setTimeout(() => el.classList.remove('nudging'), 360);
+        setTimeout(() => { if (el._nudgeGen === nudgeGen) el.classList.remove('nudging'); }, 360);
       }
     }
     /* ===== SLICE3:TAP-NUDGE:END ===== */
@@ -7114,9 +7091,47 @@ function attachSlideConfirm(elementId, onConfirm) {
     if (e.cancelable) e.preventDefault();
   }
 
+  /* ===== SLICE3:SLIDE-A11Y:START — Codex #278 P2: with the «deslizá» hint removed, make every slide-confirm keyboard-operable + screen-reader-instructed. One shared single-fire commit() gate (hoisted) backs BOTH a swipe and Enter/Space — no per-slider handlers, so stacked-view's sliders (which bind through this function) inherit it too. REPLACE region → restores the frozen 07e5ab38 bind tail. ===== */
+  async function commit() {
+    if (confirmed) return;
+    confirmed = true;
+    el.classList.remove('dragging');
+    el.classList.add('completed');
+    if (!(maxLeft > 0)) {   // keyboard path: no prior drag measured the track
+      trackWidth = el.getBoundingClientRect().width;
+      thumbWidth = thumb.getBoundingClientRect().width;
+      maxLeft = trackWidth - thumbWidth - THUMB_OFFSET;
+    }
+    if (maxLeft > 0) thumb.style.left = `${maxLeft}px`;
+    fill.style.width = '100%';
+    try {
+      await onConfirm();
+      // Success: parent re-render replaces this slider with the next phase's slider
+    } catch (err) {
+      // Reset so driver can retry
+      confirmed = false;
+      el.classList.remove('completed');
+      thumb.style.left = '';
+      fill.style.width = '';
+      toast(err && err._userMessage ? err._userMessage : 'Error: ' + (err?.message || err), 'error');
+    }
+  }
+
+  el.tabIndex = 0;
+  el.setAttribute('role', 'button');
+  const slideLabel = (el.querySelector('.slide-text')?.textContent || 'Confirmar').trim();
+  el.setAttribute('aria-label', `${slideLabel}. Deslizá o presioná Enter para confirmar.`);
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault();
+      commit();
+    }
+  });
+
   thumb.addEventListener('mousedown', onDown);
   thumb.addEventListener('touchstart', onDown, { passive: false });
 }
+  /* ===== SLICE3:SLIDE-A11Y:END ===== */
 
 function renderQueue(orders) {
   if (orders.length === 0) return '';

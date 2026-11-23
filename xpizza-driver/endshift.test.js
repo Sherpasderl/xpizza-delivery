@@ -15,7 +15,8 @@ import { createRequire } from 'node:module';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const { JSDOM } = createRequire(join(__dir, '..', 'xpizza-functions', 'package.json'))('jsdom');
-const SCRIPT = readFileSync(join(__dir, 'index.html'), 'utf8').match(/<script type="module">([\s\S]*?)<\/script>/)[1];
+const FULL = readFileSync(join(__dir, 'index.html'), 'utf8');
+const SCRIPT = FULL.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
 function liftFn(name) {
   let s = SCRIPT.indexOf('function ' + name + '('); assert.notEqual(s, -1, name + ' not found');
   let d = 0, seen = false;
@@ -286,6 +287,11 @@ t('tap-nudge (real) a: a tap (no drag) adds .nudging so the knob springs right t
   await h.tap();
   assert.ok(h.api.el().classList.contains('nudging'), 'a tap nudges the knob (.nudging drives the keyframe)');
   assert.ok(!h.api.el().classList.contains('completed'), 'a tap never latches the slide completed');
+  // Codex #278 P3: .nudging only springs the knob if the keyframes + animation wiring exist — assert the ACTUAL CSS so
+  // a mutant that deletes the @keyframes or the animation (leaving .nudging inert) fails here, not just the class toggle.
+  assert.match(FULL, /@keyframes slide-nudge\b/, 'the slide-nudge keyframes rule must exist (CSS-delete mutant dies)');
+  assert.match(FULL, /\.slide-confirm\.nudging \.slide-thumb\s*\{[^}]*animation:\s*slide-nudge\b/,
+    'the .nudging thumb must be wired to the slide-nudge animation (class→keyframe mutant dies)');
 });
 t('tap-nudge (real) b: prefers-reduced-motion suppresses the nudge (no .nudging class)', async () => {
   const h = bootSlide({ active: true });
@@ -306,6 +312,64 @@ t('tap-nudge (real) d: a tap NEVER calls onConfirm (no end-shift)', async () => 
   h.api.renderDisponible();
   await h.tap();
   assert.equal(h.opens, 0, 'a tap must not fire onConfirm — the cuadre never opens');
+});
+t('tap-nudge (real) e: a later tap supersedes the earlier settle timer — a stale timer cannot cut a fresh nudge short (Codex #278 P3)', async () => {
+  const h = bootSlide({ active: true });
+  h.api.renderDisponible();
+  const timers = [];
+  const realST = globalThis.setTimeout;
+  globalThis.setTimeout = (fn) => { timers.push(fn); return timers.length; };   // capture settle timers (settle() uses setImmediate, so awaits still flush)
+  try {
+    await h.tap();                                                 // tap 1 → gen 1, .nudging on, schedules timers[0]
+    assert.ok(h.api.el().classList.contains('nudging'), 'tap 1 nudges');
+    await h.tap();                                                 // tap 2 → gen 2, re-nudges, schedules timers[1]
+    assert.ok(h.api.el().classList.contains('nudging'), 'tap 2 re-nudges');
+    assert.equal(timers.length, 2, 'each tap scheduled exactly its own settle timer');
+    timers[0]();                                                   // the STALE tap-1 timer fires (simulated +360 ms)
+    assert.ok(h.api.el().classList.contains('nudging'),
+      'the stale tap-1 timer must NOT strip tap-2 nudge — generation guard (pre-fix: the bare remove kills it → RED)');
+    timers[1]();                                                   // tap-2 own timer fires → settles
+    assert.ok(!h.api.el().classList.contains('nudging'), 'tap-2 own timer settles its nudge');
+  } finally {
+    globalThis.setTimeout = realST;
+  }
+});
+t('a11y (real) f: the end-shift slide is a labelled button; Enter AND Space each end the shift once through attachSlideConfirm\'s shared gate — no per-slider keydown (Codex #278 P2)', async () => {
+  for (const key of ['Enter', ' ']) {
+    const h = bootSlide({ active: true });
+    h.api.renderDisponible();
+    assert.equal(h.api.el().getAttribute('role'), 'button', `[${key}] the slide-confirm is exposed as a button`);
+    assert.equal(h.api.el().tabIndex, 0, `[${key}] the slide-confirm is focusable (keyboard reachable)`);
+    assert.match(h.api.el().getAttribute('aria-label') || '', /Enter/, `[${key}] the accessible instruction names the Enter activation (the removed «deslizá» replaced for AT)`);
+    await h.key(key);
+    assert.equal(h.opens, 1, `[${key}] runs the REAL end-shift once through the shared single-fire gate`);
+    await h.key(key);
+    assert.equal(h.opens, 1, `[${key}] the shared gate blocks any repeat key activation (no double end-shift)`);
+  }
+});
+t('a11y (real) g: a slider with NO per-slider handler (pickup / per-phase) is keyboard-operable PURELY via attachSlideConfirm\'s shared gate — Enter AND Space each fire onConfirm once (Codex #278 P2)', async () => {
+  for (const key of ['Enter', ' ']) {
+    const dom = new JSDOM('<!doctype html><body><div class="slide-confirm" id="pk"><div class="slide-fill"></div><div class="slide-text">Recoger pedido</div><div class="slide-thumb"></div></div></body>', { url: 'https://driver.test/', pretendToBeVisual: true });
+    const document = dom.window.document, W = dom.window;
+    const $ = (id) => document.getElementById(id);
+    const body = 'let slidingEl = null, renderPending = false;\n'
+      + 'function renderActiveAndQueue(){}\n'
+      + 'function toast(){}\n'
+      + liftFn('attachSlideConfirm') + '\n'
+      + 'return { attach: (cb) => attachSlideConfirm("pk", cb) };';
+    const api = (new Function('document', '$', body))(document, $);
+    let fired = 0;
+    api.attach(async () => { fired += 1; });
+    const el = $('pk');
+    assert.equal(el.tabIndex, 0, `[${key}] a gap slider becomes focusable PURELY from the shared gate`);
+    assert.equal(el.getAttribute('role'), 'button', `[${key}] a gap slider becomes a button PURELY from the shared gate`);
+    el.dispatchEvent(new W.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    await new Promise((r) => setImmediate(r));
+    assert.equal(fired, 1, `[${key}] the shared gate fires onConfirm once for a slider that had NO keydown of its own`);
+    el.dispatchEvent(new W.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    await new Promise((r) => setImmediate(r));
+    assert.equal(fired, 1, `[${key}] single-fire blocks a repeat`);
+  }
 });
 
 // ---- Sliders: hint-free + «Aceptar» (owner 2026-11-20) — read FROM SOURCE ----

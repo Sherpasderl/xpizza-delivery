@@ -142,14 +142,23 @@ await t('a 2nd drag while a close is in flight → still ONE recordCuadre (close
   h.resolveRecord();
 });
 
-await t('keyboard Enter confirms through the SAME gates (one submission path)', async () => {
-  const h = build();
-  h.api.showCuadre();
-  const slide = h.$('cuadre-confirm');
-  slide.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-  await tick();
-  assert.equal(h.calls.recordCuadre, 1, 'Enter submits exactly once');
-  h.resolveRecord();
+// Codex #278 P2: the cuadre slide's OWN keydown was removed; keyboard a11y now comes solely from attachSlideConfirm's
+// shared single-fire gate. Enter AND Space must each submit exactly once, and a repeat key must not resubmit.
+await t('keyboard: Enter AND Space each confirm the cuadre once through attachSlideConfirm\'s shared gate — no per-slider keydown (Codex #278 P2)', async () => {
+  for (const key of ['Enter', ' ']) {
+    const h = build();
+    h.api.showCuadre();
+    const slide = h.$('cuadre-confirm');
+    assert.equal(slide.tabIndex, 0, `[${key}] cuadre slide focusable via the shared gate`);
+    assert.equal(slide.getAttribute('role'), 'button', `[${key}] cuadre slide is a button`);
+    slide.dispatchEvent(new h.window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    await tick();
+    assert.equal(h.calls.recordCuadre, 1, `[${key}] submits exactly once through the shared gate`);
+    slide.dispatchEvent(new h.window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    await tick();
+    assert.equal(h.calls.recordCuadre, 1, `[${key}] the shared single-fire gate blocks a repeat`);
+    h.resolveRecord();
+  }
 });
 
 await t('server REJECTION shows cierreRechazado (no finalize) with the ATTEMPT amount, not a refreshed one', async () => {
