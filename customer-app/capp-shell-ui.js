@@ -988,7 +988,7 @@
       return { updateLine: hidden !== dayOf(Number(nowMs())), updateRow: runtime.store.name };
     }
     // the top bar's two live facts — ONE source for Inicio's vm and the store page's bar (C-6c)
-    const addrVm = () => { const sv = savedInUse(), busy = !!S.addrPick || gate === 'held'; return sv ? { short: sv.label, line: `${sv.label} · ${sv.detected}`, busy } : { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección', busy }; };   // r3: busy = a pick in flight (the pill waits)   // v6 :1507-1508
+    const addrVm = () => { const sv = savedInUse(), busy = !!S.addrPick || gate === 'held'; return sv ? { short: sv.label, line: `${sv.label} · ${sv.detected}`, busy } : { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : bookLoad() === 'pending' ? 'cargando tu dirección' : 'Agregá tu dirección', busy }; };   /* book-state Q4 (a): the SPOKEN label while the book loads — nothing changes on screen */   // r3: busy = a pick in flight (the pill waits)   // v6 :1507-1508
     const memberInitial = () => (authNow() === 'member' && S.member && S.member.name ? String(S.member.name).trim().charAt(0).toUpperCase() || null : null);
     // C-6c (D-3 r3 frame 2a): the desktop store page carries the shell's top bar — no tab is current there
     const storeChrome = () => CappHome.desknavHtml({ tab: 'store', q: '', addr: addrVm(), memberInitial: memberInitial() });
@@ -1375,8 +1375,8 @@
     const savedInUse = () => (S.member && S.locPick === 'saved' ? bookSel() : null);
     const savedSelId = () => { const a = savedInUse(); return a ? a.id : null; };
     const locNow = () => { const a = savedInUse(); return a ? { lat: a.lat, lng: a.lng, confirmed: true, source: 'saved' } : S.loc; };
-    const dirVm = () => (S.member && S.book ? { labels: S.book.addresses.map((a) => a.label).join(' · ') } : null);   // v6 :2162
-    const pickVm = (surface) => ({ pend: S.addrPick ? S.addrPick.id : null, err: S.addrErr === surface });
+    const dirVm = () => (S.member && S.book ? { labels: S.book.addresses.map((a) => a.label).join(' · '), load: S.book.load || null } : null);   // v6 :2162
+    const pickVm = (surface) => ({ pend: S.addrPick ? S.addrPick.id : null, err: S.addrErr === surface, load: bookLoad() });
     // C-DIR-1 seed (advisor ruling (A), 11-14): the store's checkout is seeded from the SAVED address in use (its pin confirmed, its label /
     // detected / details) so it agrees with the pill; otherwise from the device location, exactly as before (guests unchanged). Read LIVE
     // at checkout entry: after a sign-out / switch there is no book, so nothing of the previous member can seed
@@ -1409,13 +1409,27 @@
     async function readBook(gen, uid) {
       const seq0 = bookSeq;
       const own = await ownedToken(uid);
-      if (dead || gen !== bookGen || !own) return null;
+      if (dead || gen !== bookGen) return null;
+      if (!own) return bookFailed(uid);
       const r = await suApi.getMyProfile({ idToken: own });
-      if (dead || gen !== bookGen || !S.book || S.book.who !== uid || !r || r.ok !== true) return null;
-      const b = bookFrom(uid, r.book); if (!b || seq0 !== bookSeq) return b;
+      if (dead || gen !== bookGen || !S.book || S.book.who !== uid) return null;
+      const b = r && r.ok === true ? bookFrom(uid, r.book) : null; if (!b) return bookFailed(uid);
+      if (seq0 !== bookSeq) return b;
+      const filling = !!S.book.load;   // Q5: a list opened while the book was not known fills in place ONCE (a KNOWN list stays frozen)
       S.book = b;
+      if (filling && dirShown) dirShown = CappHome.bookOrder(b.addresses, b.sel);
       if (S.locPick !== 'device') S.locPick = S.book.sel ? 'saved' : null;
-      bookSave(); schedule(); return b;
+      bookSave(); bookPaint(); return b;
+    }
+    // book-state (PLAN-capp-book-state r0, owner 11-23): S.book.load — 'pending' (the first read in flight) | 'failed' (it ended without a
+    // book) — exists ONLY on the placeholder of a book never known on this phone; a KNOWN book (a v2 copy or a served read) has none, so a
+    // failed re-read after a pick never marks a known book. Every renderer reads it through bookLoad(); none decides it
+    const bookLoad = () => (S.member && S.book && S.book.load) || null;
+    const bookPaint = () => { if (S.layer === 'addr') renderLayer(); schedule(); };
+    function bookFailed(uid) { if (S.book && S.book.who === uid && S.book.load) { S.book.load = 'failed'; bookPaint(); } return null; }
+    function bookRetry() {   // Q3: «Reintentar» — ONE read per tap; no timer, no loop
+      if (!S.book || S.book.load !== 'failed') return;
+      S.book.load = 'pending'; bookPaint(); readBook(bookGen, S.book.who);
     }
     function bookIdentity() {
       const uid = S.member && S.member.uid ? S.member.uid : null;
@@ -1424,7 +1438,7 @@
       bookGen++; S.book = null; dirShown = null; S.locPick = null; S.addrPick = null; S.addrErr = null;
       if (!uid || !suApi || !fbAuth || !suMod || typeof suMod.bookOf !== 'function') return;
       const c = readJ(ADDR_KEY(uid)), cb = c && c.v === 2 ? bookFrom(uid, suMod.bookOf(c)) : null;   // a v1 copy (no revision) waits for the read
-      S.book = cb || { who: uid, addresses: [], sel: null, rev: null };
+      S.book = cb || { who: uid, addresses: [], sel: null, rev: null, load: 'pending' };   // book-state: NOT LOADED YET — never drawn as an empty book
       if (S.book.sel) S.locPick = 'saved';
       const gen = bookGen;
       T.setTimeout(() => { if (!dead && gen === bookGen) readBook(gen, uid); }, 0);   // after paint: never awaited by a render
@@ -2089,7 +2103,8 @@
       if (a === 'neutral-home') { S.neutral = null; return renderNow(); }
       if (a === 'addr') return openLayer('addr');
       if (a === 'lclose') return closeLayer();   // «Cancelar» on the pin editor: the guest location is unchanged
-      if (a === 'addr-new') return openLayer('pin');
+      if (a === 'addr-new') { if (bookLoad()) return; return openLayer('pin'); }   // book-state Q2: no add while the book is not known (a duplicate)
+      if (a === 'book-retry') return void bookRetry();
       if (a === 'addresses') return void nav.go({ name: 'addresses' });   // C-DIR-1: the member's «Direcciones» (v6 :2170)
       if (a === 'addresses-back') return void nav.back();
       if (a === 'addr-use') return void selectAddr(t.dataset.id, S.layer === 'addr' ? 'inicio' : 'dir');   // v6 :2264 — r3: confirm-first

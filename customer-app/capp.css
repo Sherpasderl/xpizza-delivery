@@ -220,6 +220,12 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .navrow[aria-disabled="true"][aria-busy="true"],.rowbtn[aria-disabled="true"][aria-busy="true"]{opacity:1}   /* r3 confirm-first prototype: the row whose pick is in flight keeps full strength (Codex #258: the dim above weighs 0,3,0 — this matches it and comes later) */
 .sandline{margin:10px 16px 2px;padding:10px 14px;border-radius:12px;background:var(--sand-bg);color:var(--sand);box-shadow:inset 0 0 0 1px var(--sand-line);font-size:13.5px;font-weight:500;line-height:1.4;text-wrap:pretty}
 .sheet .sandline{margin:0 20px 8px}
+.aload{padding:26px 2px;text-align:center;border-bottom:1px solid var(--line)}   /* book-state Q1 (a): the list's loading line (MOCKUP-capp-book-state B1) */
+.sheet nav .aload{padding:18px 20px;border-top:1px solid var(--line);border-bottom:0}
+.sandline.act{display:flex;align-items:center;gap:10px}   /* book-state Q3 (a): the unreadable book + «Reintentar» (frames C / E2) */
+.sandline.act>span{min-width:0}
+.sandline .retry{position:relative;margin-left:auto;flex:none;border:0;background:transparent;color:var(--sand);font:700 13.5px var(--sans);padding:6px 0 6px 8px;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
+.sandline .retry::after{content:'';position:absolute;inset:-8px -10px}   /* a 44 px tap target without growing the line */
 .rlist{padding:6px 16px 24px;display:flex;flex-direction:column;gap:22px}
 .rlist h2{font:600 13px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--mute);margin:8px 0 -8px}
 .rcard{border:0;background:transparent;padding:0;text-align:left;display:flex;flex-direction:column;gap:9px;width:100%;color:var(--ink)}

@@ -1029,7 +1029,9 @@ test('G7 frame 1 / 4a: the member\'s Cuenta from the cached profile — the init
   assert.equal(txt(S.q('.acct-hero .av')), 'A');
   assert.deepEqual([...S.qa('.acct-hero .t > *')].map((x) => x.textContent), ['Ana Pérez', '+504 9612-3344', 'ana.perez@gmail.com'], '🔴 G7-hero: name, phone, email on three lines');
   // owner 11-01: «Pedidos» in scope ⇒ its row first (v6)
-  assert.deepEqual(g7Rows(S), ['Pedidos', 'Direcciones Agregá tu dirección', 'Notificaciones Pedidos y ofertas', 'Ayuda', 'Cerrar sesión', 'Olvidar este teléfono Cierra tu sesión y deja de recordar tu número'], '🔴 NOTIFS-ONE-ROW: the web member\'s Cuenta — ONE «Notificaciones» row, no «Promociones»');   // + «Direcciones» (C-6a, D-3 r3 DECIDED)
+  // book-state (PLAN-capp-book-state r0 §3, owner 11-23): the cached-first Cuenta paints before the book is read ⇒ «Direcciones» carries no
+  // sub-line while the book LOADS (a KNOWN empty book keeps the approved «Agregá tu dirección» — BOOK-LOAD-4)
+  assert.deepEqual(g7Rows(S), ['Pedidos', 'Direcciones', 'Notificaciones Pedidos y ofertas', 'Ayuda', 'Cerrar sesión', 'Olvidar este teléfono Cierra tu sesión y deja de recordar tu número'], '🔴 NOTIFS-ONE-ROW: the web member\'s Cuenta — ONE «Notificaciones» row, no «Promociones»');   // + «Direcciones» (C-6a, D-3 r3 DECIDED)
   assert.equal(S.qa('.flow [data-act="sub-notifs"]').length, 1, '🔴 NOTIFS-ONE-ROW: one row'); assert.equal(S.q('.flow [data-act="promos"], .flow [data-row="promos"]'), null, '🔴 NOTIFS-ONE-ROW: the consent is not on the Cuenta');
   assert.equal(S.qa('.flow .rows').length, 2); assert.ok(S.q('.flow .rows.sess'));
   const pref = S.q('.flow').textContent;
@@ -5191,14 +5193,14 @@ const ADDR_RE = /^a_[a-f0-9]{6,32}$/;
 const addrBodyOk = (b) => !!b && typeof b === 'object' && !Array.isArray(b) && Object.keys(b).length === 3 && typeof b.id === 'string' && ADDR_RE.test(b.id)
   && Number.isSafeInteger(b.expected_rev) && b.expected_rev >= 0 && 'expected_default' in b && (b.expected_default === null || (typeof b.expected_default === 'string' && ADDR_RE.test(b.expected_default)));
 function addrServer({ profile = 'profile_default_casa', reads = null, uses = ['use_trabajo'], pgate = null, ugate = null } = {}) {
-  const calls = [], problems = []; let prof = profile; const rq = reads ? [...reads] : null, uq = [...uses]; let wn = 0;
+  const calls = [], problems = []; let prof = profile; const rq = reads ? [...reads] : null, uq = [...uses]; let wn = 0, rn = 0;
   const whoOf = (i) => { const tk = (i.headers || {})['x-firebase-id-token'] || ''; try { return JSON.parse(Buffer.from(tk.split('.')[1], 'base64url').toString()).sub; } catch (_) { return null; } };
   const reply = (sc) => ({ status: sc.status, json: async () => J(sc.body) });
   const handler = async (u, i = {}) => {
     const ep = u.split('?')[0].split('/').pop(), body = i.body ? JSON.parse(i.body) : null, who = whoOf(i);
     calls.push({ ep, u, method: i.method || 'GET', body, headers: i.headers || {}, who });
     if (ep === 'getMyProfile') {
-      if (pgate) await pgate;
+      if (pgate) await (typeof pgate === 'function' ? pgate(rn++) : pgate);   // book-state: a gate per read (n = 0, 1, …); a rejection = the transport fails (offline)
       if (who && who !== 'u_ana') return reply(ADX.scenarios.profile_empty);
       return reply(ADX.scenarios[rq ? (rq.length > 1 ? rq.shift() : rq[0]) : prof]);
     }
@@ -5275,16 +5277,32 @@ test('C-DIR-1 (16b, owed SBS 11-14): the «Entregar en» note never leaves «dir
     assert.equal(note.textContent, 'La zona de cada restaurante se revisa con esta dirección.', '🔴 DIR-NOTE: «esta» and «dirección.» held together (no-break space)');
   } finally { S.w.close(); }
 });
-test('C-DIR-1 (rule 7): «Direcciones» opened BEFORE the read lands inserts nothing when it lands; the next open shows the book', async () => {
+// SUPERSEDED by the owner's Q5 (MOCKUP-capp-book-state, 11-23): a list opened BEFORE the read lands is a book NOT LOADED YET — it draws the
+// loading line (never «Agregar dirección» alone, which read as an empty book) and fills in place ONCE when the book lands; rule 7 (frozen
+// per open) holds for a list opened on a KNOWN book. The next open shows the same book
+test('C-DIR-1 (rule 7 + book-state Q5): «Direcciones» opened BEFORE the read lands is LOADING, fills in place once when it lands; the next open shows the book', async () => {
   const G = deferred();
   const { S } = await dirBoot({ pgate: G.p });
   try {
     await toDirecciones(S);
-    assert.deepEqual(dirRows(S).map((r) => r[0]), ['addr-new'], 'premise: no book yet — only «Agregar dirección»');
+    assert.deepEqual([dirRows(S).map((r) => r[0]), txt(S.q('.addrlist .aload'))], [['addr-new'], 'Cargando tus direcciones…'], 'premise: no book yet — the loading line');
     G.resolve(); await flush(); await flush();
-    assert.deepEqual(dirRows(S).map((r) => r[0]), ['addr-new'], '🔴 DIR-6: nothing inserted into the visible list');
+    assert.deepEqual(dirRows(S).map((r) => r[0]), ['addr-use', 'addr-use', 'addr-new'], '🔴 DIR-6 (Q5): the loading list fills in place once');
     S.click('.topbar [data-act="addresses-back"]'); await flush(); S.click('[data-act="addresses"]'); await flush();
     assert.deepEqual(dirRows(S).map((r) => r[0]), ['addr-use', 'addr-use', 'addr-new'], '🔴 DIR-6: the next open shows it');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (rule 7) KNOWN: a list opened on a KNOWN book never changes while open — a re-read that drops Casa leaves the visible rows; the next open shows the server\'s book', async () => {
+  const { S, addr } = await dirBoot({ reads: ['m3_profile_trabajo', 'm3_profile_nocasa'], uses: ['m3_use_casa_gone'] });
+  try {
+    await toDirecciones(S);
+    const before = dirRows(S).map((r) => r[1]);
+    assert.ok(before.includes(AID.casa), 'premise: Casa is listed');
+    S.click(`.addrlist [data-act="addr-use"][data-id="${AID.casa}"]`); await flush(); await flush();
+    assert.equal(addrReads(addr).length, 2, 'premise: the re-read (Casa gone) landed');
+    assert.deepEqual(dirRows(S).map((r) => r[1]), before, '🔴 DIR-6b: nothing removed from (or inserted into) a visible KNOWN list');
+    S.click('.topbar [data-act="addresses-back"]'); await flush(); S.click('[data-act="addresses"]'); await flush();
+    assert.ok(!dirRows(S).some((r) => r[1] === AID.casa), 'the next open shows the server\'s book');
   } finally { S.w.close(); }
 });
 test('C-DIR-1 (isolation): SIGN-OUT removes the member\'s book from the device and every surface; a guest\'s sheet is today\'s (no saved rows)', async () => {
@@ -7312,5 +7330,111 @@ test('r3 Codex #178 #5 (P2): a recovery that adopts ANOTHER saved address at the
     assert.equal(ui.state.flow.saved && ui.state.flow.saved.label, 'Mamá', '🔴 C178-5: the checkout names Mamá (same pin as Casa)');
     assert.equal(ui.state.flow.details, m4.details, '🔴 C178-5: and carries Mamá\'s instructions');
     noProblems(addr);
+  } finally { S.w.close(); }
+});
+
+// ── BOOK-STATE (PLAN-capp-book-state r0, OWNER-APPROVED 11-23, MOCKUP-capp-book-state Q1–Q5 all (a)): the book is KNOWN, LOADING or
+// UNREADABLE — never «empty» by default. ONE state on the shell's book (S.book.load) read by every renderer. Only a phone WITHOUT a
+// usable copy (first sign-in here, a v1 copy) ever loads; the real getMyProfile fixture (3a's handler) answers, held or failed ──
+const LOADLINE = 'Cargando tus direcciones…', FAILLINE = 'No pudimos cargar tus direcciones. Reintentar';
+const offlineOnce = (held) => (n) => (n === 0 ? Promise.reject(new Error('offline')) : held ? held.p : undefined);
+test('BOOK-LOAD-1 (Q1 a, Q2 a, Q5 a): a book still loading draws «Cargando tus direcciones…» with «Agregar dirección» disabled — never an empty book; it fills in place ONCE when the book lands', async () => {
+  const held = deferred(), { S, addr } = await dirBoot({ pgate: held.p });
+  try {
+    await toDirecciones(S);
+    assert.equal(txt(S.q('.addrlist .aload')), LOADLINE, '🔴 BOOK-LOAD-1: the loading line in the list\'s place');
+    assert.equal(S.qa('.addrlist [data-act="addr-use"]').length, 0, 'no rows yet');
+    assert.equal(S.q('.addrlist [data-act="addr-new"]').getAttribute('aria-disabled'), 'true', '🔴 BOOK-LOAD-1: «Agregar dirección» waits while the book loads (no duplicate add)');
+    S.click('.addrlist [data-act="addr-new"]'); await flush();
+    assert.ok(!S.q('[data-act="pin-done"]'), '🔴 BOOK-LOAD-1: a tap on the disabled «Agregar dirección» opens nothing');
+    held.resolve(); await flush(); await flush(); await flush();
+    assert.deepEqual(dirRows(S).map((r) => r[2]), ['Casa · en uso', 'Trabajo', 'Agregar dirección Poné el pin en tu puerta y describí la referencia'], '🔴 BOOK-LOAD-1 (Q5): the open list fills in place once');
+    assert.equal(S.q('.addrlist .aload'), null, 'the loading line leaves');
+    assert.equal(S.q('.addrlist [data-act="addr-new"]').getAttribute('aria-disabled'), null, '«Agregar dirección» is live again');
+    assert.equal(addrReads(addr).length, 1, 'ONE read');
+  } finally { S.w.close(); }
+});
+test('BOOK-LOAD-1b (Q1 a, Q2 a, owner: «Usar mi ubicación actual» stays live): Inicio\'s «Entregar en» sheet while loading — the line in the rows\' place, «Agregar dirección» disabled, the location row LIVE; it fills in place', async () => {
+  const held = deferred(), { S } = await dirBoot({ pgate: held.p });
+  try {
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush();
+    assert.equal(txt(S.q('#layer nav .aload')), LOADLINE, '🔴 BOOK-LOAD-1b: the sheet\'s loading line');
+    assert.equal(S.q('#layer [data-act="addr-new"]').getAttribute('aria-disabled'), 'true', '🔴 BOOK-LOAD-1b: «Agregar dirección» waits');
+    assert.equal(S.q('#layer [data-act="loc-use"]').getAttribute('aria-disabled'), null, '🔴 BOOK-LOAD-1b: «Usar mi ubicación actual» never waits for the book');
+    held.resolve(); await flush(); await flush(); await flush();
+    assert.deepEqual(S.qa('#layer [data-act="addr-use"]').map((b) => b.dataset.id), [AID.casa, AID.trabajo], '🔴 BOOK-LOAD-1b (Q5): the open sheet fills in place');
+    assert.equal(S.q('#layer nav .aload'), null, 'the line leaves');
+  } finally { S.w.close(); }
+});
+test('BOOK-LOAD-2 (Q3 a): a read that FAILS draws «No pudimos cargar tus direcciones.» + «Reintentar» — never the empty book; ONE tap = ONE read, and the list appears', async () => {
+  const held = deferred(), { S, addr } = await dirBoot({ pgate: offlineOnce(held) });
+  try {
+    await toDirecciones(S); await flush();
+    assert.equal(txt(S.q('.sandline.act')), FAILLINE, '🔴 BOOK-LOAD-2: the calm line + «Reintentar»');
+    assert.equal(S.q('.addrlist .aload'), null, 'not «loading» forever');
+    assert.equal(S.q('.addrlist [data-act="addr-new"]').getAttribute('aria-disabled'), 'true', '🔴 BOOK-LOAD-2: «Agregar dirección» waits while the book is unreadable');
+    assert.equal(addrReads(addr).length, 1, 'premise: the one failed read — no retry loop');
+    S.click('[data-act="book-retry"]'); await flush();
+    assert.equal(addrReads(addr).length, 2, '🔴 BOOK-LOAD-2: «Reintentar» = ONE read');
+    assert.equal(txt(S.q('.addrlist .aload')), LOADLINE, 'loading again while it runs'); assert.equal(S.q('.sandline.act'), null);
+    held.resolve(); await flush(); await flush(); await flush();
+    assert.deepEqual(dirRows(S).map((r) => r[1]), [AID.casa, AID.trabajo, null], '🔴 BOOK-LOAD-2: the book, in place');
+  } finally { S.w.close(); }
+});
+test('BOOK-LOAD-3: a v1 device copy (no revision) is LOADING — never drawn as an empty book', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })), body = ADX.scenarios.profile_default_casa.body;
+  st.setItem('capp:addr:u_ana', JSON.stringify({ v: 1, addresses: body.addresses, default_address: body.default_address }));
+  const held = deferred(), { S } = await dirBoot({ storage: st, pgate: held.p });
+  try {
+    await toDirecciones(S);
+    assert.equal(txt(S.q('.addrlist .aload')), LOADLINE, '🔴 BOOK-LOAD-3: a v1 copy waits for the read');
+  } finally { held.resolve(); S.w.close(); }
+});
+test('BOOK-LOAD-4: a KNOWN empty book (the server said zero addresses) is the REAL empty state — no loading line, no sand line, «Agregar dirección» live', async () => {
+  const { S } = await dirBoot({ reads: ['profile_empty'] });
+  try {
+    await toDirecciones(S);
+    assert.deepEqual(dirRows(S).map((r) => r[0]), ['addr-new'], 'premise: no saved address');
+    assert.equal(S.q('.aload'), null, '🔴 BOOK-LOAD-4: not «loading»'); assert.equal(S.q('.sandline.act'), null, '🔴 BOOK-LOAD-4: not «unreadable»');
+    assert.equal(S.q('.addrlist [data-act="addr-new"]').getAttribute('aria-disabled'), null, '🔴 BOOK-LOAD-4: «Agregar dirección» is live');
+    await toAccount(S);
+    assert.equal(txt(S.q('.rows [data-act="addresses"] .t')), 'Direcciones Agregá tu dirección', '🔴 BOOK-LOAD-4: a KNOWN empty book keeps Cuenta\'s approved line «Agregá tu dirección»');
+  } finally { S.w.close(); }
+});
+test('BOOK-LOAD-5 (Q4 a): while the book loads, the Inicio pill SAYS so to a screen reader — never «Agregá tu dirección»; nothing changes on screen', async () => {
+  const held = deferred(), { S } = await dirBoot({ pgate: held.p });
+  try {
+    S.click('.tabbar [data-tab="home"]'); await flush();
+    const pill = S.q('.addr-btn');
+    assert.equal(pill.getAttribute('aria-label'), 'Dirección de entrega: cargando tu dirección', '🔴 BOOK-LOAD-5: the spoken label');
+    assert.equal(txt(pill), 'Entregar en Tu ubicación', 'the visible pill is unchanged (zero shift)');
+    await toAccount(S);
+    assert.equal(txt(S.q('.rows [data-act="addresses"] .t')), 'Direcciones', '🔴 BOOK-LOAD-5: Cuenta\'s «Direcciones» row has no sub-line while the book loads (never the spoken label as text)');
+    S.click('.tabbar [data-tab="home"]'); await flush();
+    held.resolve(); await flush(); await flush(); await flush();
+    assert.equal(S.q('.addr-btn').getAttribute('aria-label'), 'Dirección de entrega: Casa · Col. Trejo, San Pedro Sula', 'the book landed: the address in use');
+  } finally { S.w.close(); }
+});
+// why the checkout's own sheet carries no book state (6c): its «Cambiar» exists ONLY on a flow seeded from a SAVED address (capp-ui
+// addrRow), i.e. from a KNOWN book, and a book never becomes unknown again under a mounted checkout (only an identity change resets it,
+// and that leaves the checkout). This cell pins that premise: while the book is not known the checkout offers the pin step, no sheet
+test('BOOK-LOAD-6 (premise): while the book is loading or unreadable the checkout offers NO «Cambiar» — its «Entregar en» sheet only ever opens on a KNOWN book', async () => {
+  for (const pgate of [deferred().p, offlineOnce(null)]) {
+    const { S } = await seedCheckout({ pgate });
+    try {
+      assert.equal(S.q('[data-act="co-addr"]'), null, '🔴 BOOK-LOAD-6: no «Cambiar» over a book that is not known');
+      assert.ok(S.q('.urow[data-act="pin"]'), 'the pin step instead (the guest-shaped row)');
+    } finally { S.w.close(); }
+  }
+});
+test('BOOK-LOAD-7: a KNOWN book never turns «unreadable» — a pick whose write AND owned re-read both fail keeps the list (the pick\'s own sand line only)', async () => {
+  const { S } = await dirBoot({ pgate: (n) => (n === 1 ? Promise.reject(new Error('offline')) : undefined), ugate: () => 'OFFLINE' });
+  try {
+    await toDirecciones(S);
+    S.click(`.addrlist [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush(); await flush(); await flush(); await flush();
+    assert.equal(txt(S.q('.sandline')), 'No pudimos cambiar la dirección. Probá de nuevo.', 'premise: the pick failed (its own sand line)');
+    assert.equal(S.q('.sandline.act'), null, '🔴 BOOK-LOAD-7: a known book is never drawn «unreadable»');
+    assert.equal(S.q('.addrlist [data-act="addr-new"]').getAttribute('aria-disabled'), null, '🔴 BOOK-LOAD-7: a known book is never drawn «unreadable» — «Agregar dirección» stays live');
+    assert.deepEqual(dirRows(S).map((r) => r[1]), [AID.casa, AID.trabajo, null], 'the list stays');
   } finally { S.w.close(); }
 });

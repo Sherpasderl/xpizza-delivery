@@ -38701,8 +38701,8 @@
   "slice": "capp-push",
   "label": "the Cuenta row placed before Direcciones",
   "file": "../customer-app/capp-home.js",
-  "from": "      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${vm.dir.labels || (vm.addr && vm.addr.line) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}\n      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n",
-  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${vm.dir.labels || (vm.addr && vm.addr.line) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}\n",
+  "from": "      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${!vm.dir.load && (vm.dir.labels || (vm.addr && vm.addr.line)) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}\n      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n",
+  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${!vm.dir.load && (vm.dir.labels || (vm.addr && vm.addr.line)) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}\n",
   "command": [
    "node",
    "--test",
@@ -41356,7 +41356,7 @@
  {
   "id": "dir-05",
   "slice": "c-dir-1",
-  "label": "the visible «Direcciones» list re-renders LIVE (a row inserted when the read lands — pop-in)",
+  "label": "the visible «Direcciones» list re-renders LIVE (a KNOWN list changes while open — rule 7)",
   "file": "../customer-app/capp-shell-ui.js",
   "from": "dir: { rows: dirShown || [], sel: savedSelId(), ...pickVm('dir') } }) :",
   "to": "dir: { rows: S.book.addresses, sel: savedSelId(), ...pickVm('dir') } }) :",
@@ -41367,7 +41367,7 @@
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "DIR-6"
+   "DIR-6b: nothing removed from (or inserted into) a visible KNOWN list"
   ]
  },
  {
@@ -41817,8 +41817,8 @@
   "slice": "r3-b",
   "label": "r3: the re-read is NOT owned (any token — another member's after a switch)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "      const own = await ownedToken(uid);\n      if (dead || gen !== bookGen || !own) return null;",
-  "to": "      const own = await sdkTokenAnswer().then((x) => (x && x.token) || null);\n      if (dead || gen !== bookGen || !own) return null;",
+  "from": "      const own = await ownedToken(uid);\n      if (dead || gen !== bookGen) return null;",
+  "to": "      const own = await sdkTokenAnswer().then((x) => (x && x.token) || null);\n      if (dead || gen !== bookGen) return null;",
   "command": [
    "node",
    "--test",
@@ -41902,8 +41902,8 @@
   "slice": "r3-b",
   "label": "r3: a read that started before a pick landed overrides it",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "const b = bookFrom(uid, r.book); if (!b || seq0 !== bookSeq) return b;",
-  "to": "const b = bookFrom(uid, r.book); if (!b) return b;",
+  "from": "      if (seq0 !== bookSeq) return b;\n      const filling",
+  "to": "      const filling",
   "command": [
    "node",
    "--test",
@@ -42729,6 +42729,204 @@
   ],
   "kills_with": [
    "ORPHAN-2 (Codex #260 P2-2): a glued pair wider than the line breaks inside the word, never overflows"
+  ]
+ },
+ {
+  "id": "r3-d-01",
+  "slice": "r3-d",
+  "label": "book-state: the placeholder of a never-known book carries no load ⇒ drawn as an empty book",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "rev: null, load: 'pending' };",
+  "to": "rev: null };",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-1 ",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-1: the loading line in the list's place"
+  ]
+ },
+ {
+  "id": "r3-d-02",
+  "slice": "r3-d",
+  "label": "book-state: a failed first read leaves the book «loading» forever (no unreadable line, no retry)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "S.book.load = 'failed'; bookPaint();",
+  "to": "bookPaint();",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-2: the calm line + «Reintentar»"
+  ]
+ },
+ {
+  "id": "r3-d-03",
+  "slice": "r3-d",
+  "label": "book-state: «Reintentar» shows loading but never re-reads",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "S.book.load = 'pending'; bookPaint(); readBook(bookGen, S.book.who);",
+  "to": "S.book.load = 'pending'; bookPaint();",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-2: «Reintentar» = ONE read"
+  ]
+ },
+ {
+  "id": "r3-d-04",
+  "slice": "r3-d",
+  "label": "book-state: the Direcciones page draws a loading book as empty",
+  "file": "../customer-app/capp-home.js",
+  "from": "${d.load === 'pending' ? LOADLINE : rows}",
+  "to": "${rows}",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-1 ",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-1: the loading line in the list's place"
+  ]
+ },
+ {
+  "id": "r3-d-05",
+  "slice": "r3-d",
+  "label": "book-state: Inicio's «Entregar en» sheet draws a loading book as empty",
+  "file": "../customer-app/capp-home.js",
+  "from": "<nav>${dir && dir.load === 'pending' ? LOADLINE : ''}",
+  "to": "<nav>",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-1b",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-1b: the sheet's loading line"
+  ]
+ },
+ {
+  "id": "r3-d-06",
+  "slice": "r3-d",
+  "label": "book-state: «Agregar dirección» is live while the book loads (a duplicate add)",
+  "file": "../customer-app/capp-home.js",
+  "from": "const addAttr = (d) => (d && d.load ? ' aria-disabled=\"true\"' : pickAttr(d));",
+  "to": "const addAttr = (d) => pickAttr(d);",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-1 ",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-1: «Agregar dirección» waits while the book loads"
+  ]
+ },
+ {
+  "id": "r3-d-07",
+  "slice": "r3-d",
+  "label": "book-state: a tap on the disabled «Agregar dirección» still opens the pin step",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (a === 'addr-new') { if (bookLoad()) return; return openLayer('pin'); }",
+  "to": "if (a === 'addr-new') { return openLayer('pin'); }",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-1 ",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-1: a tap on the disabled «Agregar dirección» opens nothing"
+  ]
+ },
+ {
+  "id": "r3-d-08",
+  "slice": "r3-d",
+  "label": "book-state: the Inicio pill tells a screen reader «Agregá tu dirección» while the book loads",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "bookLoad() === 'pending' ? 'cargando tu dirección' : ",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-5",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-5: the spoken label"
+  ]
+ },
+ {
+  "id": "r3-d-09",
+  "slice": "r3-d",
+  "label": "book-state: Cuenta's «Direcciones» row shows the spoken loading label as its sub-line",
+  "file": "../customer-app/capp-home.js",
+  "from": "Direcciones${!vm.dir.load && (vm.dir.labels",
+  "to": "Direcciones${(vm.dir.labels",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-5",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-5: Cuenta's «Direcciones» row has no sub-line while the book loads"
+  ]
+ },
+ {
+  "id": "r3-d-10",
+  "slice": "r3-d",
+  "label": "book-state: a list opened while loading stays empty when the book lands (no fill in place)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (filling && dirShown) dirShown = CappHome.bookOrder(b.addresses, b.sel);",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-1 ",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-1 (Q5): the open list fills in place once"
+  ]
+ },
+ {
+  "id": "r3-d-11",
+  "slice": "r3-d",
+  "label": "book-state: a KNOWN book whose re-read fails is marked unreadable",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (S.book && S.book.who === uid && S.book.load) {",
+  "to": "if (S.book && S.book.who === uid) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-7: a known book is never drawn «unreadable»"
   ]
  }
 ]
