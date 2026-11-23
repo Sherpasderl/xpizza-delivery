@@ -41766,8 +41766,8 @@
   "slice": "r3-b",
   "label": "r3: the other address controls stay live while a pick is in flight",
   "file": "../customer-app/capp-home.js",
-  "from": "d.pend === id ? ' aria-busy=\"true\"' : ' aria-disabled=\"true\"'",
-  "to": "d.pend === id ? ' aria-busy=\"true\"' : ''",
+  "from": "d.pend === id ? ' aria-disabled=\"true\" aria-busy=\"true\"' : ' aria-disabled=\"true\"'",
+  "to": "d.pend === id ? ' aria-disabled=\"true\" aria-busy=\"true\"' : ''",
   "command": [
    "node",
    "--test",
@@ -41947,6 +41947,23 @@
   ],
   "kills_with": [
    "R3-CONFIRM: the 200 moves «en uso»"
+  ]
+ },
+ {
+  "id": "r3-b-12",
+  "slice": "r3-b",
+  "label": "r3: the tapped row is not disabled while its pick is in flight (SBS DIR3: the prototype :444 disables it too)",
+  "file": "../customer-app/capp-home.js",
+  "from": "d.pend === id ? ' aria-disabled=\"true\" aria-busy=\"true\"'",
+  "to": "d.pend === id ? ' aria-busy=\"true\"'",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=DIR-CONFIRM",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-CONFIRM (SBS DIR3, the prototype :444): the tapped row is disabled too"
   ]
  },
  {

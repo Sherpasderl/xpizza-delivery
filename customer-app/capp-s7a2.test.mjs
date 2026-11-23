@@ -6405,6 +6405,7 @@ test('r3 (a) Codex #153 DIR-CONFIRM: a tap in «Direcciones» keeps «Casa · en
     assert.deepEqual(enUso(S), ['Casa'], '🔴 R3-CONFIRM: nothing switches on the tap');
     const t = dirRow(S, AID.trabajo);
     assert.ok(t.querySelector('.addrspin') && t.getAttribute('aria-busy') === 'true', '🔴 R3-CONFIRM: the tapped row spins in its right slot');
+    assert.equal(t.getAttribute('aria-disabled'), 'true', '🔴 R3-CONFIRM (SBS DIR3, the prototype :444): the tapped row is disabled too — never announced as tappable while its pick is in flight');
     assert.ok(off(dirRow(S, AID.casa)) && off(S.q('.addrlist [data-act="addr-new"]')), '🔴 R3-CONFIRM: every other control is disabled');
     S.click(dirRow(S, AID.casa)); S.click(S.q('.addrlist [data-act="addr-new"]')); await flush();
     assert.deepEqual(addrWrites(addr), [{ id: AID.trabajo, expected_rev: 0, expected_default: AID.casa }], '🔴 R3-CONFIRM: ONE write in flight, the exact CAS body');
