@@ -12,7 +12,7 @@
 // always peels first (innermost of all), so per-site layers see a raw read minus only the post-asm11 hunks.
 const BASE = '31f05c8a40c35fe0c442be8839593954c3afc8b1';
 // the LANDING order of the layers (oldest → newest): a new lane APPENDS its name here and its hunks at the end of HUNKS
-const ORDER = Object.freeze(['order-owner']);
+const ORDER = Object.freeze(['order-owner', 'uid-path']);
 const HUNKS = Object.freeze([
  {
   "layer": "order-owner",
@@ -97,6 +97,13 @@ const HUNKS = Object.freeze([
   "file": "pixelpay-hosted-charge.js",
   "now": "module.exports = { freshIssueRefusal, guestForeign, acquireHostedAttempt, classifyHostedAttempt, malformedBindingOf, genPollToken, HOSTED_TTL_MS, genAttemptId, orderFingerprint, centsToLempiras };\n",
   "was": "module.exports = { freshIssueRefusal, guestForeign, acquireHostedAttempt, classifyHostedAttempt, genPollToken, HOSTED_TTL_MS, genAttemptId, orderFingerprint, centsToLempiras };\n"
+ },
+ {
+  "layer": "uid-path",
+  "label": "setDeliveryPricing / getDeliveryPricing admission: the ONE path-safe uid rule (access/membership isPathUid) before platform_admins/{uid} (Codex C 11-23)",
+  "file": "delivery/pricing-admin-core.js",
+  "now": "  if (!require('../access/membership').isPathUid(uid)) return { fail: reply(403, { error: 'not_authorized' }) };   // Codex C 11-23: the ONE path-safe uid rule — a '/'-bearing verified uid aliased platform_admins/<admin>\n",
+  "was": "  if (!uidOk(uid)) return { fail: reply(403, { error: 'not_authorized' }) };\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

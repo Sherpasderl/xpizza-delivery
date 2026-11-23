@@ -2,7 +2,7 @@
 // PLAN-3a-order-owner (advisor GO Option 1, rule 6c) — the post-asm11 layers hook's own pin. tools/post-asm11-layers.js holds the
 // exact-text hunks landed after the asm11 tip (BASE); ledgers1-module-inverse peels them FIRST, so every fold guard that peels ledgers1
 // peels them too. This guard pins:
-//   · each owned file (index.js; r1: pixelpay-hosted-charge.js) minus the hook's hunks === BASE byte-for-byte (non-vacuous);
+//   · each owned file (index.js; r1: pixelpay-hosted-charge.js; uid-path: delivery/pricing-admin-core.js) minus the hook's hunks === BASE byte-for-byte (non-vacuous);
 //   · every hunk occurs EXACTLY once; a byte inside a hunk (tamper) or a second copy (duplicate) is refused;
 //   · the hunks are the CURRENT `git diff -U0 BASE -- <file>`, in diff order (a drifted hunk or a missed edit is refused);
 //   · the ORDER: HUNKS grouped by layer in the declared landing order, peeled newest-first;
@@ -24,7 +24,7 @@ const rawOf = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 const perSite = (f, src) => require('./tools/memberreads-module-inverse').unapplyAfter(f, require('./tools/privacy-module-inverse').unapplyPrivacyModule(f, src), '099c280e4');
 const diskOf = (f) => perSite(f, rawOf(f));
 assert.ok(L.HUNKS.length >= 1 && L.FILES.length >= 1, 'POST-ASM11: non-vacuity — the hook owns hunks');
-assert.deepStrictEqual([...L.FILES].sort(), ['index.js', 'pixelpay-hosted-charge.js'], '🔴 POST-ASM11: the owned files (a new one is added here deliberately)');
+assert.deepStrictEqual([...L.FILES].sort(), ['delivery/pricing-admin-core.js', 'index.js', 'pixelpay-hosted-charge.js'], '🔴 POST-ASM11: the owned files (a new one is added here deliberately)');   // uid-path (Codex C 11-23): + pricing-admin-core.js
 for (const f of L.FILES) {
   const disk = diskOf(f), base = git(['show', `${L.BASE}:xpizza-functions/${f}`]);
   assert.notStrictEqual(disk, base, `POST-ASM11: non-vacuity — ${f} carries the post-asm11 hunks`);

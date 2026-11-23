@@ -123,7 +123,7 @@ async function admit(deps, req) {
   const v = await verifiedContext({ verifyIdToken: deps.verifyIdToken }, req);
   if (v.fail) return { fail: v.fail };
   const uid = v.ctx.uid;
-  if (!uidOk(uid)) return { fail: reply(403, { error: 'not_authorized' }) };
+  if (!require('../access/membership').isPathUid(uid)) return { fail: reply(403, { error: 'not_authorized' }) };   // Codex C 11-23: the ONE path-safe uid rule — a '/'-bearing verified uid aliased platform_admins/<admin>
   let admin;
   try { admin = (await deps.db.ref(`platform_admins/${uid}`).once('value')).val(); } catch (_) { return { fail: UNAVAILABLE() }; }
   if (admin !== true) return { fail: reply(403, { error: 'not_authorized' }) };

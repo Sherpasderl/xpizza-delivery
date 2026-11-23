@@ -544,5 +544,49 @@ const rejects = (p, code, re) => assert.rejects(p, (e) => e.code === code && (!r
     await rejects(ops.setDriverSuspended({ uid: 'd', actorUid: 'disp1' }, { db, auth: makeAuth({}, () => clockNow), HttpsError, now: clockNow }), 'aborted', /cambió/);
   });
 
+  // ---- UID-PATH admission (Codex C 11-23): a uid that is not path-safe ALIASES another node (`driver_accounts/p/` ≡ `driver_accounts/p`)
+  // and reached createUser with that foreign uid — every op refuses it BEFORE any read, Auth call or write; the caller gate likewise ----
+  const BAD_UIDS = ['pend/', 'pend/x', 'pe.nd', 'pe#nd', 'pe$nd', 'pe[nd', 'pe]nd', 'pe nd', ''];
+  const spied = (initial, users) => {
+    const db = makeDb(initial); const auth = makeAuth(users || {}, () => clockNow); const touched = [];
+    const sdb = { ref: (p) => { touched.push(`db:${p}`); return db.ref(p); }, _get: db._get };
+    const sauth = Object.fromEntries(Object.entries(auth).map(([k, f]) => [k, typeof f === 'function' ? (...a) => { touched.push(`auth:${k}`); return f(...a); } : f]));
+    return { db: sdb, auth: sauth, touched, raw: db };
+  };
+  await t('UIDPATH-REINVITE: re-invite with an aliasing uid is refused before any read or createUser (the reachable exploit)', async () => {
+    for (const bad of BAD_UIDS.filter(Boolean)) {
+      const w = spied({ ...seedBase(), driver_accounts: { pend: { enabled: false, onboarding_state: 'pending', version: 1, email: 'p@x.hn', invited_by: 'disp1' } } }, {});
+      await assert.rejects(ops.inviteDriver({ uid: bad, actorUid: 'disp1' }, { db: w.db, auth: w.auth, HttpsError, now: clockNow }), (e) => e.code === 'invalid-argument', `🔴 UIDPATH-REINVITE: ${JSON.stringify(bad)} must be refused`);
+      assert.deepStrictEqual(w.touched, [], `🔴 UIDPATH-REINVITE: ${JSON.stringify(bad)} touched ${w.touched.join(',')}`);
+    }
+  });
+  await t('UIDPATH-OPS: approve / suspend / deactivate / reactivate / submitDriverProfile refuse an aliasing or missing uid before any read', async () => {
+    const calls = {
+      approveDriver: (uid) => ({ uid, actorUid: 'disp1' }), setDriverSuspended: (uid) => ({ uid, actorUid: 'disp1' }),
+      setDriverDeactivated: (uid) => ({ uid, actorUid: 'disp1', cashAttested: true }), reactivate: (uid) => ({ uid, actorUid: 'disp1' }),
+      submitDriverProfile: (uid) => ({ uid, name: 'N', phone: '9999', vehicle: 'moto', plate: 'P1' }),
+    };
+    for (const [op, mk] of Object.entries(calls)) for (const bad of [...BAD_UIDS, undefined, null, 7]) {
+      const w = spied({ ...seedBase(), driver_accounts: { pend: { enabled: true, onboarding_state: 'active', version: 1, approved_at: 1 } } }, { pend: { uid: 'pend', email: 'p@x.hn', disabled: false } });
+      await assert.rejects(ops[op](mk(bad), { db: w.db, auth: w.auth, HttpsError, now: clockNow }), (e) => e.code === 'invalid-argument', `🔴 UIDPATH-OPS: ${op}(${JSON.stringify(bad)}) must be invalid-argument`);
+      assert.deepStrictEqual(w.touched, [], `🔴 UIDPATH-OPS: ${op}(${JSON.stringify(bad)}) touched ${w.touched.join(',')}`);
+    }
+  });
+  await t('UIDPATH-CALLER: the dispatcher gate refuses an aliasing caller uid before reading dispatchers/ or Auth', async () => {
+    for (const bad of BAD_UIDS.filter(Boolean)) {
+      const w = spied({ ...seedBase(), dispatchers: { pend: true } }, { pend: { uid: 'pend', email: 'd@x.hn', disabled: false } });
+      await assert.rejects(ops.assertDispatcherCaller(bad, {}, { db: w.db, auth: w.auth, HttpsError }), (e) => e.code === 'permission-denied', `🔴 UIDPATH-CALLER: ${JSON.stringify(bad)} must be refused`);
+      assert.deepStrictEqual(w.touched, [], `🔴 UIDPATH-CALLER: ${JSON.stringify(bad)} touched ${w.touched.join(',')}`);
+    }
+  });
+  await t('UIDPATH-LEGIT: a path-safe uid still re-invites (and a new invite without uid still works) through the admission', async () => {
+    const w = spied({ ...seedBase(), driver_accounts: { pend: { enabled: false, onboarding_state: 'pending', version: 1, email: 'p@x.hn', invited_by: 'disp1' } } }, { pend: { uid: 'pend', email: 'p@x.hn', disabled: true } });
+    const r = await ops.inviteDriver({ uid: 'pend', actorUid: 'disp1' }, { db: w.db, auth: w.auth, HttpsError, now: clockNow });
+    assert.deepStrictEqual([r.ok, r.uid, typeof r.link], [true, 'pend', 'string'], '🔴 UIDPATH-LEGIT: the legit re-invite');
+    await ops.assertDispatcherCaller('disp1', {}, { db: w.db, auth: makeAuth({ disp1: { uid: 'disp1', email: 'd@x.hn' } }, () => clockNow), HttpsError });
+    const n = await ops.inviteDriver({ name: 'Nuevo', phone: '99990000', email: 'nuevo@x.hn', actorUid: 'disp1' }, { db: w.db, auth: w.auth, HttpsError, now: clockNow });
+    assert.strictEqual(n.ok, true, '🔴 UIDPATH-LEGIT: a new invite (no uid) still works');
+  });
+
   console.log(`\ndriver-admin-ops: ${passed} tests passed`);
 })().catch((e) => { console.error('driver-admin-ops FAILED:', e && e.stack || e); process.exit(1); });

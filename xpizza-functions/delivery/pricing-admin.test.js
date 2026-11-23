@@ -237,6 +237,19 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
     }
   });
 
+  // Codex C 11-23: a verified uid that is not path-safe ALIASED platform_admins/<admin> (`platform_admins/tbowner/` ≡ the admin's flag) —
+  // refused 403 before the admin read; the path-safe admins (incl. '_', '-' and non-ASCII uids) keep working
+  await cell('DPW-UIDPATH', async (L) => {
+    for (const bad of ['tbowner/', 'tbowner/x', 'tb.owner', 'tb#owner', 'tb$owner', 'tb[owner', 'tb]owner', 'tb owner']) {
+      TOKENS[`alias:${bad}`] = { uid: bad };
+      const w = world(); const reads = []; const ref = w.db.ref; w.db.ref = (p) => { reads.push(String(p)); return ref.call(w.db, p); };
+      const r = await w.set(body(), `alias:${bad}`); const g = await w.get(`alias:${bad}`);
+      assert.deepStrictEqual([r.status, r.body.error, g.status, g.body.error], [403, 'not_authorized', 403, 'not_authorized'], `${L}: 🔴 ${JSON.stringify(bad)} must be refused (set ${r.status}, get ${g.status})`);
+      assert.deepStrictEqual(reads, [], `${L}: 🔴 ${JSON.stringify(bad)} read ${reads.join(',')}`);
+    }
+    for (const tok of ['admin', 'dash', 'under', 'uni']) { const g = await world().get(tok); assert.strictEqual(g.status, 200, `${L}: 🔴 the legit admin ${tok} still reads (${g.status})`); }
+  });
+
   if (fails.length) { console.log(`FAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }
   console.log(`OK (${n})`);
 })();
