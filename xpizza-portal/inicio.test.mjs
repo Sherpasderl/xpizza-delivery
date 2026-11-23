@@ -1,7 +1,7 @@
 // «Inicio» — the portal home (PLAN-portal-inicio-r0, APPROVED 11-13; MOCKUP-portal-map.html v3 s-inicio / s-inicio-ok). Built exact to
 // the frames, with ONLY the sourced elements (rule 8): the date, the branch pill, the three per-branch figures with «el {día} pasado»
 // (getSalesStats, compare previous_week), «Para revisar» = a paused branch + «Reanudar» (getMyBranches control → the ONE pause control),
-// 1b «Todo en orden» over those kinds, and «Editar producto». Everything else waits (S1–S4, Marketing, hours editing, «Ayuda»).
+// 1b «Todo en orden» over those kinds, and «Editar producto». Everything else waits (S1–S4, Marketing, hours editing); «Ayuda» = Sherpa support's WhatsApp (owner 11-14).
 // The figures come from the REAL chain (stats-portal-composition's): orders ← stats-fixtures (the real createOrder writers), the
 // nightly rollup ← stats-job.runStatsRollup, the answer ← stats-api.getSalesStatsCore behind the real authorizeCatalogEdit.
 // Run: node --test inicio.test.mjs
@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { installDom, loadModules, okJson, errJson, settle, textOf } from './ventas-harness.mjs';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -224,7 +224,25 @@ test('1b — nothing paused, every result KNOWN (Codex backfill item 6): «Todo 
   assert.equal(textOf(ok.querySelector('b')), 'Todo en orden');
   assert.equal(textOf(all(ok).find((n) => n.tag === 'span' && !has(n, 'in-okico'))), 'No hay nada pendiente en Centro.', 'ONE branch: the claim exactly as wide as the scope (owner 11-15)');
   assert.equal(cls(p.view, 'in-cnt').length, 0, 'no «N pendientes» on an empty list');
-  assert.deepEqual(cls(p.view, 'in-quick').map(textOf), ['Editar producto'], '🔴 only the sourced quick action (Crear oferta / Editar horario / Ayuda wait)');
+  assert.deepEqual(cls(p.view, 'in-quick').map(textOf), ['Editar producto', 'Ayuda'], '🔴 only the sourced quick actions, in the mockup\'s order (Crear oferta / Editar horario wait)');
+});
+test('«Ayuda» (owner 11-14): a plain row that opens WhatsApp with Sherpa support, +504 9795 2893, in a new tab — never a dead link', async () => {
+  const p = await page([branch('r_a', 'Centro')]);
+  const a = cls(p.view, 'in-quick').find((n) => textOf(n) === 'Ayuda');
+  assert.ok(a, 'the row is there');
+  // the ONE source (advisor 11-14): platform/sites.json runtime.support_whatsapp → sync-client → support-contact.js (generated)
+  const fq = createRequire(join(dirname(fileURLToPath(import.meta.url)), '..', 'xpizza-functions', 'package.json'));
+  const GEN = fq('./tools/support-contact-gen.js');
+  const SITES = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'platform', 'sites.json'), 'utf8'));
+  const e164 = GEN.supportWhatsappOf(SITES);
+  assert.ok(e164, 'premise: the manifest carries the support number');
+  assert.equal(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'support-contact.js'), 'utf8'), GEN.supportContactSource(SITES), '🔴 support-contact.js is exactly what sync-client generates from the manifest (run node xpizza-functions/tools/sync-client.js)');
+  assert.deepEqual([a.tag.toLowerCase(), a.getAttribute('href'), a.getAttribute('target'), a.getAttribute('rel')],
+    ['a', `https://wa.me/${e164.slice(1)}`, '_blank', 'noopener noreferrer'], '🔴 a real link to Sherpa support\'s WhatsApp, from the manifest (no restaurant data in the URL)');
+  assert.equal(IL.SUPPORT_WA, e164.slice(1));
+  assert.doesNotMatch(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'inicio-logic.js'), 'utf8'), /9795\s?2893/, '🔴 no literal number in inicio-logic.js (rule 4: one source)');
+  for (const bad of [null, undefined, '', '97952893', '+504 9795 2893', 50497952893]) assert.equal(IL.supportDigits(bad), null, `malformed ${JSON.stringify(bad)} ⇒ no «Ayuda» link, never a guess`);
+  assert.ok(a.children.some((n) => n.tag.toLowerCase() === 'svg'), 'the row\'s chevron');
 });
 test('a paused branch: «Sucursal Centro está en pausa desde las 3:10 pm» + «Reanudar» → the REAL pause request; the row goes and 1b shows', async () => {
   const since = NOW - 3600e3 + 10 * 60e3;   // 14:10

@@ -4,6 +4,7 @@
 import { lempiras, count } from './ventas-logic.js';
 import { clock12 } from './portal-time.js';   // THE portal clock («3:10 p. m.»; advisor 11-13)
 import { knownControl } from './control-state.js';   // THE known control states (one shared list)
+import { SUPPORT_WHATSAPP } from './support-contact.js';
 
 // the frames' words are literal; the two greetings the frame does not draw: owner-APPROVED 11-15 (05:00–11:59 / 19:00–04:59)
 export const INICIO_COPY = Object.freeze({ goodMorning: 'Buenos días', goodEvening: 'Buenas noches' });
@@ -76,3 +77,8 @@ export function reviewRows(branches, scopeRid) {
   }
   return rows;
 }
+
+// «Ayuda» (owner 11-14): Sherpa support's WhatsApp from the ONE source (advisor 11-14): platform/sites.json runtime.support_whatsapp,
+// generated into support-contact.js by sync-client. wa.me takes the digits; a malformed value ⇒ null ⇒ no «Ayuda» row, never a guess.
+export const supportDigits = (v) => (typeof v === 'string' && /^\+[1-9]\d{7,14}$/.test(v) ? v.slice(1) : null);
+export const SUPPORT_WA = supportDigits(SUPPORT_WHATSAPP);

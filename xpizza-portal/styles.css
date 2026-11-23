@@ -2235,6 +2235,7 @@
   .inicio .in-act:disabled{opacity:.5;cursor:default}
   .inicio .in-quick{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;padding:13px 0;border:none;border-bottom:1px solid var(--line2);background:none;font:inherit;font-size:14px;font-weight:600;color:var(--ink);cursor:pointer;text-align:left}
   .inicio .in-quick:hover{color:var(--accent)}
+  .inicio a.in-quick{text-decoration:none}   /* «Ayuda» is a link (WhatsApp), drawn as the same plain row */
   .inicio .in-quick svg{width:16px;height:16px;stroke:var(--mute2);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
   .inicio .in-ok{margin-top:12px;padding:20px 22px;background:var(--board-2);border-radius:16px;display:flex;gap:14px;align-items:center}
   .inicio .in-okico{width:36px;height:36px;border-radius:50%;background:var(--card);color:var(--mint-text);display:inline-flex;align-items:center;justify-content:center;flex:none}
