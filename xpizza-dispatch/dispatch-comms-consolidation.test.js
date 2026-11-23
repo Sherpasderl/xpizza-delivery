@@ -164,15 +164,45 @@ const navUnhandled = (allMessages) => Object.values(allMessages).filter(m => m &
   assert.ok(headerFitsOK(html), 'the thread header guarantees the name a readable budget (two-row header, or a non-zero .sh-id min-width)');
   assert.ok(rowsCssOK(html), 'the two-row layout CSS is present + correct: .sh-head.two-row display:block + .sh-idrow/.sh-actrow display:flex + .sh-actspacer flex:1');
 
-  // (c) row containment — the name (.nm) + close live in the identity row; the pills + call live in the actions row
+  // (c) row MEMBERSHIP (Codex #266) — not source order: parse each row's actual subtree and assert which controls
+  // it contains. jsdom isn't a dependency here, so the row subtree is isolated by balanced-<div> extraction (which
+  // respects real nesting). The header template is filled with sentinel slots for the dynamic controls.
   const t = fnSrc('renderCommsThread');
-  const pIdrow = t.indexOf('class="sh-idrow"'), pActrow = t.indexOf('class="sh-actrow"');
-  const pNm = t.indexOf('class="nm"'), pClose = t.indexOf('comms-sheet-close');
-  const pTriage = t.indexOf('${triageBtn}'), pWa = t.indexOf('${waBtn}'), pCall = t.indexOf('${callBtn}');
-  assert.ok(pIdrow > -1 && pActrow > pIdrow, 'the identity row precedes the actions row');
-  assert.ok(pIdrow < pNm && pNm < pActrow, 'the name (.nm) is contained in the identity row');
-  assert.ok(pIdrow < pClose && pClose < pActrow, 'close is contained in the identity row');
-  assert.ok(pActrow < pTriage && pActrow < pWa && pActrow < pCall, 'the pills + call are contained in the actions row');
+  // return the whole <div …>…</div> starting at `openStart`, matched by <div>/</div> depth
+  const divSubtreeAt = (str, openStart) => {
+    const re = /<div\b|<\/div>/g; re.lastIndex = openStart; let depth = 0, m;
+    while ((m = re.exec(str))) { if (m[0] === '</div>') { if (--depth === 0) return str.slice(openStart, m.index + 6); } else depth++; }
+    return str.slice(openStart);
+  };
+  // inner HTML of the div whose open tag carries class="cls" (null if the class isn't present)
+  const rowInner = (h, cls) => {
+    const at = h.indexOf(`class="${cls}"`); if (at < 0) return null;
+    const sub = divSubtreeAt(h, h.lastIndexOf('<div', at));
+    return sub.slice(sub.indexOf('>') + 1, sub.lastIndexOf('</div>'));
+  };
+  const membershipOK = (h) => {
+    const id = rowInner(h, 'sh-idrow'), act = rowInner(h, 'sh-actrow');
+    if (id == null || act == null) return false;
+    const idOk  = /id="comms-sheet-close"/.test(id) && /class="nm"/.test(id) && !/SLOT-(triage|wa|call)/.test(id);
+    const actOk = /SLOT-triage/.test(act) && /SLOT-wa/.test(act) && /SLOT-call/.test(act) && !/id="comms-sheet-close"|class="nm"/.test(act);
+    return idOk && actOk;
+  };
+  // build the REAL header from the template, dynamic controls → sentinel elements
+  const header = divSubtreeAt(t, t.indexOf('<div class="sh-head two-row">'))
+    .replace('${escapeHtml(initials)}', 'MF')
+    .replace('${escapeHtml(name)}', 'María Fernanda Alvarenga')
+    .replace('${sub}', '#47 · Efectivo · L 1,250.00')
+    .replace('${triageBtn}', '<button id="SLOT-triage"></button>')
+    .replace('${waBtn}', '<a id="SLOT-wa"></a>')
+    .replace('${callBtn}', '<a id="SLOT-call"></a>');
+  assert.ok(membershipOK(header), 'row membership: name+close in .sh-idrow, pills+call in .sh-actrow (parsed by row subtree, not source order)');
+  // mutant: move Close OUT of the identity row into the actions row — membership must fail
+  const closeEl = header.match(/<button class="sh-ic" id="comms-sheet-close"[\s\S]*?<\/button>/)[0];
+  const mClose = header.replace(closeEl, '').replace('<div class="sh-actrow">', `<div class="sh-actrow">${closeEl}`);
+  assert.ok(mClose !== header && !membershipOK(mClose), 'mutant killed: Close moved out of the identity row (into the actions row) fails membership');
+  // mutant: move call OUT of the actions row into the identity row — membership must fail
+  const mCall = header.replace('<a id="SLOT-call"></a>', '').replace('<div class="sh-idrow">', '<div class="sh-idrow"><a id="SLOT-call"></a>');
+  assert.ok(mCall !== header && !membershipOK(mCall), 'mutant killed: call moved out of the actions row (into the identity row) fails membership');
 
   // (d) mutants on the REAL source (Codex #264) — both realistic layout regressions must die, plus the one-row header
   const mFlex = html.replace(/(\.sh-head\.two-row\s*\{[^}]*display:\s*)block/, '$1flex');            // display:block → flex
@@ -183,7 +213,7 @@ const navUnhandled = (allMessages) => Object.values(allMessages).filter(m => m &
     `<div class="sh-head"><div class="sh-av">MF</div><div class="sh-id"><div class="nm">María Fernanda Alvarenga</div></div>` +
     `<button class="sh-attend">Marcar atendido</button><a class="sh-attend wa">Responder</a></div>`;
   assert.ok(!headerFitsOK(ONE_ROW), 'mutant killed: the retired one-row header (both pills, min-width:0) fails the fit guard');
-  ok('thread header fit (Option B): rows-CSS + containment verified; three mutants (display:block→flex, delete-4-rules, one-row) all die');
+  ok('thread header fit (Option B): rows-CSS + real row-membership verified; five mutants (display:block→flex, delete-4-rules, one-row, Close-out-of-idrow, call-out-of-actrow) all die');
 }
 
 // WCAG 2.4.3 (focus order) — the header's DOM/tab order is intentionally Close → triage → WhatsApp → call: it
