@@ -7438,3 +7438,21 @@ test('BOOK-LOAD-7: a KNOWN book never turns «unreadable» — a pick whose writ
     assert.deepEqual(dirRows(S).map((r) => r[1]), [AID.casa, AID.trabajo, null], 'the list stays');
   } finally { S.w.close(); }
 });
+test('BOOK-LOAD-1c (Codex #271 P2): the book landing under an OPEN «Entregar en» sheet patches it IN PLACE — the same sheet node (no replayed entrance), the focused control keeps focus; a failed read and its «Reintentar» too', async () => {
+  const held = deferred(), { S } = await dirBoot({ pgate: offlineOnce(held) });
+  try {
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush(); await flush();
+    const sheet = S.q('#layer .sheet'), loc = S.q('#layer [data-act="loc-use"]');
+    assert.ok(S.q('#layer .sandline.act'), 'premise: the read failed — the unreadable line');
+    loc.focus(); assert.equal(S.w.document.activeElement, loc, 'premise: focus on «Usar mi ubicación actual»');
+    const retry = S.q('#layer [data-act="book-retry"]'); retry.focus(); retry.click(); await flush();
+    assert.equal(S.q('#layer .sheet'), sheet, '🔴 BOOK-LOAD-1c: «Reintentar» keeps the sheet node');
+    assert.equal(S.w.document.activeElement, loc, '🔴 BOOK-LOAD-1c: the focus leaves with «Reintentar» to «Usar mi ubicación actual» (never lost to the page)');
+    assert.ok(S.q('#layer nav .aload'), 'loading again');
+    held.resolve(); await flush(); await flush(); await flush();
+    assert.equal(S.q('#layer .sheet'), sheet, '🔴 BOOK-LOAD-1c: the landing book keeps the sheet node (no replayed entrance)');
+    assert.equal(S.w.document.activeElement, loc, '🔴 BOOK-LOAD-1c: the focused control keeps focus');
+    assert.deepEqual(S.qa('#layer nav .navrow').map((b) => [b.dataset.act, b.dataset.id || null]), [['addr-use', AID.casa], ['addr-use', AID.trabajo], ['loc-use', null], ['addr-new', null]], 'the rows in place, in v6\'s order');
+    assert.equal(S.q('#layer [data-act="addr-new"]').getAttribute('aria-disabled'), null, '«Agregar dirección» live again');
+  } finally { S.w.close(); }
+});

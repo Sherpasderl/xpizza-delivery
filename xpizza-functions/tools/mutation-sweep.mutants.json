@@ -41392,8 +41392,8 @@
   "slice": "c-dir-1",
   "label": "the «Entregar en» sheet never lists the member's saved addresses",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "CappHome.addrSheetHtml(S.member && S.book ? { rows: dirShown || S.book.addresses, sel: savedSelId(), ...pickVm('inicio') } : null)",
-  "to": "CappHome.addrSheetHtml(null)",
+  "from": "const addrSheetVm = () => (S.member && S.book ? { rows: dirShown || S.book.addresses, sel: savedSelId(), ...pickVm('inicio') } : null);",
+  "to": "const addrSheetVm = () => null;",
   "command": [
    "node",
    "--test",
@@ -42927,6 +42927,42 @@
   ],
   "kills_with": [
    "BOOK-LOAD-7: a known book is never drawn «unreadable»"
+  ]
+ },
+ {
+  "id": "r3-d-12",
+  "slice": "r3-d",
+  "label": "book-state (Codex #271 P2): the book landing rebuilds the open sheet (a replayed entrance, focus lost)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (S.layer === 'addr') bookPatchSheet(); schedule();",
+  "to": "if (S.layer === 'addr') renderLayer(); schedule();",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-1c",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-1c: «Reintentar» keeps the sheet node"
+  ]
+ },
+ {
+  "id": "r3-d-13",
+  "slice": "r3-d",
+  "label": "book-state (Codex #271 P2): the focus is lost when «Reintentar» leaves the sheet",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (had && !had.isConnected) anchor.focus();\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-1c",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-1c: the focus leaves with «Reintentar» to «Usar mi ubicación actual»"
   ]
  }
 ]

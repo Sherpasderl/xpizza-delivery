@@ -1425,7 +1425,28 @@
     // book) — exists ONLY on the placeholder of a book never known on this phone; a KNOWN book (a v2 copy or a served read) has none, so a
     // failed re-read after a pick never marks a known book. Every renderer reads it through bookLoad(); none decides it
     const bookLoad = () => (S.member && S.book && S.book.load) || null;
-    const bookPaint = () => { if (S.layer === 'addr') renderLayer(); schedule(); };
+    const bookPaint = () => { if (S.layer === 'addr') bookPatchSheet(); schedule(); };
+    const addrSheetVm = () => (S.member && S.book ? { rows: dirShown || S.book.addresses, sel: savedSelId(), ...pickVm('inicio') } : null);
+    // Codex #271 P2: the book landing / failing / retrying under an OPEN «Entregar en» sheet patches ITS book part IN PLACE — the sheet
+    // node (no replayed entrance) and the focused control survive. Only the saved rows, the loading line and the unreadable line change;
+    // «Usar mi ubicación actual» and «Agregar dirección» are KEPT (their state attributes refreshed). A focused control that left (the
+    // «Reintentar» link) hands focus to «Usar mi ubicación actual»
+    function bookPatchSheet() {
+      const L = $('layer'), sh = L && L.querySelector('.sheet'), nav = sh && sh.querySelector('nav');
+      const t = doc.createElement('div'); t.innerHTML = CappHome.addrSheetHtml(addrSheetVm());
+      const fsh = t.querySelector('.sheet'), fnav = fsh && fsh.querySelector('nav'), anchor = nav && nav.querySelector('[data-act="loc-use"]');
+      if (!fnav || !anchor) return renderLayer();
+      const KEEP = new Set(['loc-use', 'addr-new']), had = doc.activeElement;
+      for (const x of [...sh.children]) if (x.classList.contains('sandline')) x.remove();
+      for (const x of [...fsh.children]) if (x.classList.contains('sandline')) sh.insertBefore(x, nav);
+      for (const x of [...nav.children]) if (!KEEP.has(x.dataset.act)) x.remove();
+      for (const x of [...fnav.children]) {
+        const o = KEEP.has(x.dataset.act) ? nav.querySelector(`[data-act="${x.dataset.act}"]`) : null;
+        if (!o) { nav.insertBefore(x, anchor); continue; }
+        for (const a of ['class', 'aria-disabled', 'aria-busy']) { if (x.hasAttribute(a)) o.setAttribute(a, x.getAttribute(a)); else o.removeAttribute(a); }
+      }
+      if (had && !had.isConnected) anchor.focus();
+    }
     function bookFailed(uid) { if (S.book && S.book.who === uid && S.book.load) { S.book.load = 'failed'; bookPaint(); } return null; }
     function bookRetry() {   // Q3: «Reintentar» — ONE read per tap; no timer, no loop
       if (!S.book || S.book.load !== 'failed') return;
@@ -1996,7 +2017,7 @@
     function renderLayer() {
       const L = $('layer'); if (!L) return;
       pinGen++; pinMap = null;   // any open pin map is obsolete
-      L.innerHTML = S.layer === 'payadj' ? paySheetHtml() : S.layer === 'help' && S.help ? CappOrder.helpSheetHtml(S.help) : S.layer === 'rate' && S.rate ? CappRate.sheetHtml(rateVm()) : S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml(S.member && S.book ? { rows: dirShown || S.book.addresses, sel: savedSelId(), ...pickVm('inicio') } : null) : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
+      L.innerHTML = S.layer === 'payadj' ? paySheetHtml() : S.layer === 'help' && S.help ? CappOrder.helpSheetHtml(S.help) : S.layer === 'rate' && S.rate ? CappRate.sheetHtml(rateVm()) : S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml(addrSheetVm()) : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
       if (S.layer !== 'pin') return;
       const firstHub = dir.view().rows.map((r) => r.entry).find((e) => Number.isFinite(e.hub_lat) && Number.isFinite(e.hub_lng));
       pinDraft = locNow() ? { lat: locNow().lat, lng: locNow().lng } : null;   // the editor's VIEW starts on the city when there is no location — never a pin
