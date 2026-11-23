@@ -485,7 +485,8 @@ test('#204-P3 child: retries exhausted ⇒ the view says unconfirmed, the overla
 //   • preventMapHitsAndGesturesFrom: an element handed to it (or inside one) is invisible to Maps — no map click from it;
 //   • fromContainerPixelToLatLng takes a google.maps.Point (anything else throws, as Maps does);
 //   • pointer capture as the spec has it (jsdom has none): the captured element gets that pointer's events wherever it goes, then
-//     lostpointercapture after the up / cancel; capture on a detached element throws.
+//     lostpointercapture (which BUBBLES, as every pointer event does — Codex #262 P2-2) after the up / cancel or a release; capture on a
+//     detached element throws.
 const { JSDOM } = createRequire(join(DIR, '..', 'xpizza-functions', 'package.json'))('jsdom');
 function handleEnv() {
   const E = fakeEnv();
@@ -511,7 +512,9 @@ function handleEnv() {
     getProjection() { return this.panes ? proj : null; }
   };
   const cap = new Map();
-  const ptr = (type, id, x = 0, y = 0, kind = 'mouse') => new W.PointerEvent(type, { bubbles: type !== 'lostpointercapture', cancelable: true, pointerId: id, pointerType: kind, isPrimary: true, clientX: x, clientY: y, button: 0, buttons: /up|cancel|lost/.test(type) ? 0 : 1 });
+  // button / buttons as the Pointer Events spec gives them: primary 0 / 1, pen barrel 2 / 2, pen eraser 5 / 32; moves carry button -1
+  const BUTTONS = { 0: 1, 2: 2, 5: 32 };
+  const ptr = (type, id, x = 0, y = 0, kind = 'mouse', button = 0) => new W.PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, pointerType: kind, isPrimary: true, clientX: x, clientY: y, button: type === 'pointermove' || type === 'lostpointercapture' ? -1 : button, buttons: /up|cancel|lost/.test(type) ? 0 : BUTTONS[button] });
   W.Element.prototype.setPointerCapture = function (id) { if (!this.isConnected) throw new W.DOMException('not connected', 'InvalidStateError'); cap.set(id, this); };
   W.Element.prototype.releasePointerCapture = function (id) { if (cap.get(id) === this) { cap.delete(id); this.dispatchEvent(ptr('lostpointercapture', id)); } };
   W.Element.prototype.hasPointerCapture = function (id) { return cap.get(id) === this; };
@@ -526,9 +529,9 @@ function handleEnv() {
   const hidden = (el) => { for (let n = el; n; n = n.parentNode) if (prevented.has(n)) return true; return false; };
   const downs = {};
   // ONE pointer event at a lat/lng, routed as a browser would; Maps hears it only when it reaches its surface (an unmoved press-release = a map click)
-  function pointer(type, q, { id = 1, kind = 'mouse' } = {}) {
+  function pointer(type, q, { id = 1, kind = 'mouse', button = 0 } = {}) {
     const at = px(q), target = cap.get(id) || hit(at);
-    target.dispatchEvent(ptr(type, id, at.x, at.y, kind));
+    target.dispatchEvent(ptr(type, id, at.x, at.y, kind, button));
     if (/up|cancel/.test(type) && cap.has(id)) { const c = cap.get(id); cap.delete(id); c.dispatchEvent(ptr('lostpointercapture', id)); }
     if (hidden(target)) return;
     if (type === 'pointerdown') downs[id] = at;
@@ -540,7 +543,9 @@ function handleEnv() {
   const kinds = () => E.parent.posted.map(([m]) => m.kind);
   const last = () => E.parent.posted[E.parent.posted.length - 1][0];
   async function start(drawing) { boot({ win: E.win, doc: d, loadMaps: E.loadMaps }); await tick(); E.fromParent(v3With(drawing)); await tick(); await tick(); }
-  return { E, W, d, box, prevented, fireWin, pointer, tap, drag, kinds, last, start, handles: () => [...d.querySelectorAll('.vh')] };
+  // the browser takes the capture away mid-press with no up / cancel (another element captured it, the window lost focus mid-drag, …)
+  const loseCapture = (id = 1) => { const c = cap.get(id); if (c) c.releasePointerCapture(id); };
+  return { E, W, d, box, prevented, fireWin, pointer, tap, drag, loseCapture, kinds, last, start, handles: () => [...d.querySelectorAll('.vh')] };
 }
 const EDIT4 = () => DRAW({ zone: 'z_aaaaaaaa', points: [P(0), P(1), P(2), P(3)] });
 const R6 = (x) => Math.round(x * 1e6) / 1e6;   // the child sends points at 6 decimals (ptOf)
@@ -659,4 +664,40 @@ test('route 3 (9): a finger is the same as a mouse (pointerType touch)', async (
   await H.start(EDIT4());
   H.drag(P(1), FAR(P(1)), { id: 7, kind: 'touch' });
   assert.deepEqual([H.last().kind, H.last().points[1]], ['finish', FAR(P(1))], '🔴 a finger drag commits like the mouse');
+});
+
+// Codex #262 P2-1: a pen's barrel / eraser button is not the primary press (Pointer Events button 2 / 5), as a mouse's right button is not
+test('route 3 (10): a pen barrel or eraser press on vertex 1 never closes the shape; the pen tip (primary) does', async () => {
+  const H = handleEnv();
+  await H.start(DRAW());
+  for (const q of [P(0), P(2), P(4)]) H.tap(q);
+  const n = H.kinds().length;
+  for (const button of [2, 5]) {
+    H.tap(P(0), { id: 3, kind: 'pen', button });
+    assert.equal(H.kinds().length, n, `🔴 a pen button ${button} press-release sends nothing`);
+    H.drag(P(2), FAR(P(2)), { id: 3, kind: 'pen', button });
+    assert.equal(H.kinds().length, n, `🔴 a pen button ${button} drag sends nothing`);
+  }
+  H.tap(P(0), { id: 3, kind: 'pen' });
+  assert.equal(H.last().kind, 'finish', '🔴 the pen tip still closes');
+});
+
+// Codex #262 P2-2: capture lost mid-drag with no up / cancel — an independent cell (the fake's lostpointercapture bubbles, as in Chrome)
+test('route 3 (11): capture lost mid-drag commits nothing, clears the preview, and the next press works', async () => {
+  const H = handleEnv();
+  await H.start(EDIT4());
+  const n = H.kinds().length;
+  const at = (h) => [h.style.left, h.style.top];
+  const before = at(H.handles()[1]);
+  H.pointer('pointerdown', P(1)); H.pointer('pointermove', FAR(P(1)));
+  assert.notDeepEqual(at(H.handles()[1]), before, 'premise: the handle follows the drag');
+  assert.ok(H.handles()[1].classList.contains('dragging'), 'premise: the drag preview is on');
+  H.loseCapture();
+  assert.equal(H.kinds().length, n, '🔴 a lost capture commits nothing');
+  assert.deepEqual(at(H.handles()[1]), before, '🔴 the handle is back on its vertex');
+  assert.ok(H.handles().every((h) => !h.classList.contains('dragging')), '🔴 the drag preview is cleared');
+  H.pointer('pointerup', FAR(P(1)));
+  assert.equal(H.kinds().length, n, '🔴 the late release (no capture, over the map) is nothing');
+  H.drag(P(1), FAR(P(1)));
+  assert.deepEqual([H.last().kind, H.last().points[1]], ['finish', FAR(P(1))], '🔴 the next press drags and commits as usual');
 });

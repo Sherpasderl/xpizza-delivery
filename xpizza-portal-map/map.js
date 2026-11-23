@@ -280,7 +280,8 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
   function wireHandles(hbox) {
     hbox.addEventListener('pointerdown', (e) => {
       const h = e.target.closest && e.target.closest('.vh'), v = ctl.view();
-      if (!h || st.press || !v || !v.editable || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      // the primary press only: a mouse's other buttons and a pen's barrel / eraser (Pointer Events button 2 / 5, Codex #262) are not a drag
+      if (!h || st.press || !v || !v.editable || ((e.pointerType === 'mouse' || e.pointerType === 'pen') && e.button !== 0)) return;
       e.preventDefault();
       h.setPointerCapture(e.pointerId);
       st.press = { i: Number(h.dataset.i), id: e.pointerId, x: e.clientX, y: e.clientY };
