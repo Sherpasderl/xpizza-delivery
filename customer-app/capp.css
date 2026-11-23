@@ -834,7 +834,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .rowbtn:last-child{border-bottom:0}
 .rowbtn svg.i{color:var(--mute)}
 .rowbtn .t{flex:1;min-width:0}
-.rowbtn .t span{display:block;font-size:13px;color:var(--mute);font-weight:400;text-wrap:balance;text-wrap:pretty}   /* 16b slot 11-22: no orphaned «negro» — pretty (WebView 117, iOS 26), balance where pretty is unknown (WebView 114, iOS 17.5) */
+.rowbtn .t span{display:block;font-size:13px;color:var(--mute);font-weight:400;text-wrap:balance;text-wrap:pretty;overflow-wrap:break-word}   /* 16b slot 11-22: no orphaned «negro» — pretty (WebView 117, iOS 26), balance where pretty is unknown (WebView 114, iOS 17.5); noOrphan's glued pair wider than the line breaks inside the word (Codex #260) */
 .rowbtn .chev{color:var(--line2)}
 .rowbtn.danger{color:var(--err)}
 .guestcard{margin:4px 16px 12px;padding:18px;border-radius:16px;background:var(--surf2);box-shadow:0 0 0 1px var(--line);display:flex;flex-direction:column;gap:10px}

@@ -72,23 +72,27 @@ test('ORPHAN-1 (16b): noOrphan glues the last two words with U+00A0 — on ESCAP
   assert.ok(!/&nbsp;|</.test(T.noOrphan('a b c')), 'ORPHAN-1: a character, never an entity or markup');
   assert.equal(T.noOrphan('Pedidos'), 'Pedidos', 'one word: unchanged');
   assert.equal(T.noOrphan(''), '', 'empty: unchanged');
-  assert.equal(T.noOrphan('Calle Supercalifragilística Espialidosa'), 'Calle Supercalifragilística Espialidosa', '🔴 ORPHAN-1: two long words are never glued into one unbreakable run (it would overflow a 320 px phone)');
+  assert.equal(T.noOrphan('Frente al estacionamiento subterráneo'), 'Frente al estacionamiento\u00a0subterráneo', '🔴 ORPHAN-1 (Codex #260 P2-2): a long pair that FITS is glued too (no cutoff; the CSS breaks a pair wider than the line)');
+  assert.equal(T.noOrphan('Portón de metal  negro'), 'Portón de metal\u00a0negro', '🔴 ORPHAN-1 (Codex #260 P2-1): a run of spaces before the last word collapses to ONE U+00A0');
+  assert.equal(T.noOrphan('Portón de metal\t negro'), 'Portón de metal\u00a0negro', '🔴 ORPHAN-1 (Codex #260 P2-1): a tab in the run too');
 });
 
 test('ORPHAN-2 (16b, the real writer): the «Direcciones» row of the SBS frame renders «… metal\u00a0negro»', () => {
   const H = require('./capp-home.js');
-  const d = dom(H.addressesHtml({ dir: { rows: [{ id: 'a1', label: 'Casa', detected: 'Col. Palmira, Calle 5', details: 'Portón de metal negro' }], sel: 'a1' } }));
+  const d = dom(H.addressesHtml({ dir: { rows: [{ id: 'a1', label: 'Casa', detected: 'Col. Palmira, Calle 5', details: 'Portón de metal  negro' }], sel: 'a1' } }));   // Codex #260: two spaces typed
   const sub = d.querySelector('.rowbtn[data-id="a1"] .t > span');
   assert.equal(sub.textContent, 'Col. Palmira, Calle 5 · Portón de metal\u00a0negro', '🔴 ORPHAN-2: the address subtitle is glued');
   assert.ok(/\.rowbtn \.t span\{[^}]*text-wrap:balance;text-wrap:pretty/.test(CSS), '🔴 ORPHAN-2: balance, then pretty where the WebView has it');
+  assert.ok(/\.rowbtn \.t span\{[^}]*overflow-wrap:break-word/.test(CSS), '🔴 ORPHAN-2 (Codex #260 P2-2): a glued pair wider than the line breaks inside the word, never overflows');
 });
 
 // CONSENT text is never glued (advisor 11-23): push's offers sub-line (PUSH_OFFERS_COPY_VERSION) and G7's email + WhatsApp consent
-// line render byte-identical. The ONLY census exemptions; push's `row()` subtitle is glued at its NON-consent caller (ORPHAN-CONSENT).
-const CONSENT_SITES = { 'capp-push.js': ['${sub}</span>', '${COPY.promosSub}</span>'] };
+// line render byte-identical. Codex #260 P2-3: the exemptions are the two NAMED consent rows — the promos row's own
+// `${COPY.promosSub}`, and push's row() ONLY at its call that passes COPY.offersSub (every other row() call passes noOrphan(…)).
 test('ORPHAN-CENSUS (16b): EVERY `.rowbtn .t` subtitle in the app goes through noOrphan — a new row cannot skip it', () => {
   const files = readdirSync(HERE).filter((f) => f.endsWith('.js') && /class=\\?"rowbtn/.test(readFileSync(join(HERE, f), 'utf8')));
   assert.deepEqual(files.sort(), ['capp-home.js', 'capp-push.js'], 'ORPHAN-CENSUS: the files that draw a .rowbtn (a new one joins this census)');
+  const CONSENT = { 'capp-push.js': ['${COPY.promosSub}</span>', '${sub}</span>'] };
   const skipped = [];
   let n = 0;
   for (const f of files) {
@@ -96,12 +100,22 @@ test('ORPHAN-CENSUS (16b): EVERY `.rowbtn .t` subtitle in the app goes through n
     for (const m of src.matchAll(/<span class="t">/g)) {
       const opens = [...src.slice(0, m.index).matchAll(/<(?:button|div) class="([^"]*)"/g)];
       if (!opens.length || !/(^| )rowbtn( |$)/.test(opens[opens.length - 1][1])) continue;   // the row this .t sits in
-      const end = src.slice(m.index).search(/<\/button>|<\/div>/), seg = src.slice(m.index, m.index + end);
-      for (const s of seg.matchAll(/<span>/g)) { n++; const e = seg.slice(s.index + 6); if (!e.startsWith('${noOrphan(') && !(CONSENT_SITES[f] || []).some((c) => e.startsWith(c))) skipped.push(`${f}: ${seg.slice(s.index, s.index + 60)}`); }
+      // the .t element itself: walk its span tags to the one that closes it; each span opened INSIDE it (any attributes) is a subtitle
+      const tags = /<span\b[^>]*>|<\/span>/g; tags.lastIndex = m.index + m[0].length;
+      for (let depth = 1, t; depth && (t = tags.exec(src));) {
+        if (t[0] === '</span>') { depth--; continue; }
+        depth++; n++;
+        const e = src.slice(t.index + t[0].length);
+        if (!e.startsWith('${noOrphan(') && !(CONSENT[f] || []).some((c) => e.startsWith(c))) skipped.push(`${f}: ${src.slice(t.index, t.index + 70)}`);
+      }
     }
   }
   assert.ok(n >= 13, `premise: the census sees the subtitles (${n})`);
   assert.deepEqual(skipped, [], '🔴 ORPHAN-CENSUS: a .rowbtn subtitle that skips noOrphan');
+  const push = readFileSync(join(HERE, 'capp-push.js'), 'utf8'), calls = [...push.matchAll(/\brow\('(\w+)', ([^,]+),/g)].map((c) => [c[1], c[2]]);
+  assert.ok(calls.length >= 2, `premise: push's row() calls (${calls.length})`);
+  assert.deepEqual(calls.filter(([, a]) => a === 'COPY.offersSub').map(([k]) => k), ['promociones'], 'ORPHAN-CENSUS: the ONE consent call of row() is the phone offers row');
+  assert.deepEqual(calls.filter(([, a]) => a !== 'COPY.offersSub' && !a.startsWith('noOrphan(')), [], '🔴 ORPHAN-CENSUS: a non-consent row() call passes its subtitle unglued');
 });
 
 test('ORPHAN-CONSENT (advisor 11-23): consent text renders BYTE-IDENTICAL — never glued — while the other «Notificaciones» sub-lines are', () => {

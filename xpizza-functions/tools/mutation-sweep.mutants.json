@@ -42615,10 +42615,10 @@
  {
   "id": "r3-c-02",
   "slice": "r3-c",
-  "label": "16b orphan: two long words are glued anyway (one unbreakable run overflows a 320 px phone)",
+  "label": "16b orphan (Codex #260 P2-1): only a single plain space is glued — two spaces or a tab before the last word leave it free to wrap alone",
   "file": "../customer-app/capp-text.js",
-  "from": ".length > GLUE_MAX) return s",
-  "to": ".length > 999) return s",
+  "from": "/(\\S+)\\s+(\\S+)$/",
+  "to": "/(\\S+) (\\S+)$/",
   "command": [
    "node",
    "--test",
@@ -42626,7 +42626,7 @@
    "../customer-app/capp-sbs-fixes.test.mjs"
   ],
   "kills_with": [
-   "ORPHAN-1: two long words are never glued into one unbreakable run"
+   "ORPHAN-1 (Codex #260 P2-1): a run of spaces before the last word collapses to ONE U+00A0"
   ]
  },
  {
@@ -42678,6 +42678,57 @@
   ],
   "kills_with": [
    "ORPHAN-CONSENT: the non-consent sub-lines are glued"
+  ]
+ },
+ {
+  "id": "r3-c-06",
+  "slice": "r3-c",
+  "label": "16b census (Codex #260 P2-3): a non-consent row() call passes its subtitle unglued (the generic ${sub} exemption would hide it)",
+  "file": "../customer-app/capp-push.js",
+  "from": "row('pedidos', noOrphan(COPY.ordersSub), x.pedidos)",
+  "to": "row('pedidos', COPY.ordersSub, x.pedidos)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ORPHAN-CENSUS",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "ORPHAN-CENSUS: a non-consent row() call passes its subtitle unglued"
+  ]
+ },
+ {
+  "id": "r3-c-07",
+  "slice": "r3-c",
+  "label": "16b census (Codex #260 P2-3): a row subtitle drawn as a span WITH attributes skips noOrphan",
+  "file": "../customer-app/capp-home.js",
+  "from": "<span>${noOrphan('Poné el pin en tu puerta y describí la referencia')}</span>",
+  "to": "<span class=\"subtitle\">Poné el pin en tu puerta y describí la referencia</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ORPHAN-CENSUS",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "ORPHAN-CENSUS: a .rowbtn subtitle that skips noOrphan"
+  ]
+ },
+ {
+  "id": "r3-c-08",
+  "slice": "r3-c",
+  "label": "16b (Codex #260 P2-2): no overflow-wrap — a glued pair wider than the line overflows the row",
+  "file": "../customer-app/capp.css",
+  "from": "text-wrap:pretty;overflow-wrap:break-word}",
+  "to": "text-wrap:pretty}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ORPHAN-2",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "ORPHAN-2 (Codex #260 P2-2): a glued pair wider than the line breaks inside the word, never overflows"
   ]
  }
 ]
