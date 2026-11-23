@@ -2446,8 +2446,10 @@ function stopSlice2MapAgeTimer() {
 // Capability gates (ledger R9 — no dead control): these prototype controls stay HIDDEN until their server piece
 // ships. Flip to true when the endpoint lands (routed separately): dep C = «Llegué · avisar» arrival
 // notification; dep F = «Problema» → Torre alert (the header Ayuda icon).
-const DRV2_CAN_NOTIFY_ARRIVAL = false;
-const DRV2_CAN_REPORT_PROBLEM = false;
+/* ===== SLICE3DEPS:ARRIVAL-PROBLEM-FLAGS:START (registered carve-out; parent region IMPORT) — go-live flip of the «Llegué·avisar» (DRV2_CAN_NOTIFY_ARRIVAL) + «Problema con este pedido» (DRV2_CAN_REPORT_PROBLEM) dark gates; both consts are frozen-baseline bytes inside SLICE2:IMPORT, so slice3-freeze splices this back to the 07e5ab38 branch (= false). ===== */
+const DRV2_CAN_NOTIFY_ARRIVAL = true;
+const DRV2_CAN_REPORT_PROBLEM = true;
+/* ===== SLICE3DEPS:ARRIVAL-PROBLEM-FLAGS:END ===== */
 
 // Device-cached nav preference (R7): drivers/{uid}/nav_app is AUTHORITATIVE. drv2ReadNavPref returns SERVER truth
 // (driverState.nav_app) when the driver record is loaded, else the PER-UID localStorage mirror, else the Waze
@@ -3457,7 +3459,7 @@ function drv2SessionTeardown() {
 // refuse it) is DEPLOYED to prod; flipping the flag before that would let a driver set on_break while assignment still
 // reached them. The driver's OWN write is drivers/{uid} { status:'on_break', break_since: serverTimestamp() } — own-uid
 // rules cascade, break_since validates isNumber && ===now; resume clears both. «Reanudar turno» is a TAP (owner 2026-10-27).
-const DRV2_PAUSE_ENABLED = false;
+const DRV2_PAUSE_ENABLED = true;
 const DRV2_PAUSE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5" width="4" height="14" rx="1.3"/><rect x="13.5" y="5" width="4" height="14" rx="1.3"/></svg>';
 const DRV2_PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg>';
 const DRV2_INFO_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01" stroke-linecap="round"/></svg>';   // prototype I.info (the «pedido en mano» note)

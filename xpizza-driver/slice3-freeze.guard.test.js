@@ -65,7 +65,7 @@ const SLICE3_PINS = {
     'INICIO-CHECKLIST': 'f270a45d4f0bc010c18de365e97fd1427138962b2b8d2abbdc07270db8cc4d74',
     'INICIO-PRACTICA': 'dc6e3b5213046e049f1ba47cd428392caca2cfcb84c7ffea4744c83f312e1e13',
   },
-  fileSha: 'ba1639e0476715a8563664f85989960cad4e1fc35a3d715dd81d7e2524e9e32d',
+  fileSha: 'c0ac5ac3ceaa623544430b6b14ba9a40b4f63ce931ab4cc645af2f5b531d6cb7',
 };
 // SLICE3DEPS carve-outs (advisor 2026-10-26): a REGISTERED exception to the non-nesting rule — a tiny span that MAY
 // live inside its declared SLICE2 parent, so slice 3 can edit slice-2-added host code (the fresh-offer deps object)
@@ -74,9 +74,9 @@ const SLICE3_PINS = {
 // carve (still inside the parent) still goes RED. An UNREGISTERED carve, or one in the wrong parent / partially
 // overlapping / double-nested, FAILS (negative self-tests below).
 const SLICE3_DEPS_PINS = {
-  names: ['OFFER-RENDER', 'LLEGUE-MAP', 'LLEGUE-HEADER', 'LLEGUE-CARD', 'SOLO-PICKUP-HEADER', 'STACKED-DELIV-HEADER', 'COMBINED-PICKUP-HEADER', 'STACKED-DELIV-CARD', 'INTERLUDE-EARN', 'RESUMEN-EARN'],
-  kinds: ['slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps'],
-  parents: ['SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'STACKED-BRANCH', 'STACKED-BRANCH', 'STACKED-BRANCH', 'IMPORT', 'IMPORT'],
+  names: ['OFFER-RENDER', 'LLEGUE-MAP', 'LLEGUE-HEADER', 'LLEGUE-CARD', 'SOLO-PICKUP-HEADER', 'STACKED-DELIV-HEADER', 'COMBINED-PICKUP-HEADER', 'STACKED-DELIV-CARD', 'INTERLUDE-EARN', 'RESUMEN-EARN', 'ARRIVAL-PROBLEM-FLAGS'],
+  kinds: ['slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps'],
+  parents: ['SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'STACKED-BRANCH', 'STACKED-BRANCH', 'STACKED-BRANCH', 'IMPORT', 'IMPORT', 'IMPORT'],
   restoreSha: {
     'OFFER-RENDER': 'f7bd685aa3efa75a6bd3df1757c120d16538876645961bfe5f68cf63170a9c3e',
     'LLEGUE-MAP': '4ce5b4226d369d69d82193fc06d09ab840cce26605c33cc2594c67693654c94f',
@@ -88,6 +88,7 @@ const SLICE3_DEPS_PINS = {
     'STACKED-DELIV-CARD': '3acff4eaa89e08e803c1623e9860a774ed2adf8e1c735b9c8118d65446863071',
     'INTERLUDE-EARN': 'e1e878a774a2e6704b5d79cbeceadeef34c9f422cc9eb041f58996e554cbd7fa',
     'RESUMEN-EARN': '90063cec79d75c03c96c8af28ab6f5fc19be406ee4e0ca0d90450d7f6f91c130',
+    'ARRIVAL-PROBLEM-FLAGS': 'bf37e46c9dbc6e9b37a4aae788c276574c6e12a534e07f46353882e1357e2041',
   },
 };
 function loadContract() {   // bytes → sha pin FIRST → JSON.parse; no import/require of editable code (Codex r2 P1)
@@ -104,7 +105,7 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = '4cdffb7d3660af68c576d658c85593c1d47aea71a22354862638d9134c1eddc7';
+const SLICE2_GUARD_SHA = '93ee75b26060eef1c010747501d2a93c89403cee7949d29d9942a5f623816355';
 const SLICE2_GUARD_CHECKS = 18;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 16). Re-pinned 16→18: the #962+stacked-seq re-gate ADDED 2 exact-pin sensitivity cells, never removed one.
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs

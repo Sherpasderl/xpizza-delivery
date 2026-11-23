@@ -67,7 +67,7 @@ const SLICE3_PINS = {
     'INICIO-CHECKLIST': 'f270a45d4f0bc010c18de365e97fd1427138962b2b8d2abbdc07270db8cc4d74',
     'INICIO-PRACTICA': 'dc6e3b5213046e049f1ba47cd428392caca2cfcb84c7ffea4744c83f312e1e13',
   },
-  fileSha: 'ba1639e0476715a8563664f85989960cad4e1fc35a3d715dd81d7e2524e9e32d',
+  fileSha: 'c0ac5ac3ceaa623544430b6b14ba9a40b4f63ce931ab4cc645af2f5b531d6cb7',
 };
 // Load the contract as DATA: read bytes → verify the sha256 pin FIRST → only then JSON.parse (Codex r2 P1). No
 // require/import of editable code; a tampered or executable contract fails the sha (and JSON.parse) before use.

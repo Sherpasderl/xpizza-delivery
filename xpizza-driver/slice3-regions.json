@@ -689,6 +689,15 @@
     "  ov.classList.add('open');",
     "  const done = ov.querySelector('#btn-resumen-done'); if (done) done.onclick = drv2DismissResumen;"
    ]
+  },
+  {
+   "name": "ARRIVAL-PROBLEM-FLAGS",
+   "kind": "slice3deps",
+   "parent": "IMPORT",
+   "restore": [
+    "const DRV2_CAN_NOTIFY_ARRIVAL = false;",
+    "const DRV2_CAN_REPORT_PROBLEM = false;"
+   ]
   }
  ]
 }
