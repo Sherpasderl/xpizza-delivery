@@ -39,8 +39,10 @@
     --success: #7fc8a0;
     --success-hover: #8fd3ad;
     --success-soft: rgba(127,200,160,0.16);
-    --warn: #e7bd86;
-    --warn-soft: rgba(231,189,134,0.16);
+    --sand: #cfc6b8; --sand-soft: rgba(207,198,184,0.16); --sand-glow: rgba(207,198,184,0.3); --sand-fg: #2a2824;
+    /* Map-marker fills carry WHITE initials, so they need AA-dark variants of the sand/sky dot hues (not the
+       pastel dots). Theme-independent (the map is its own surface): defined once, both themes read them. */
+    --mk-stale: #74695a; --mk-move: #35669c;
     --info: #93b6ea;
     --info-soft: rgba(147,182,234,0.16);
     --teal: #5ec2b0;
@@ -49,16 +51,15 @@
     --map-bg: #1a1c21;
     --avatar-1: #363a42; --avatar-2: #262a30;
     --da: #98a3b6; --da-call: #8fd8b4; --da-msg: #9dc0ff; --da-more: #98a3b6;
-    --sched-bg: #fbf0ce; --sched-fg: #7a5b0c; --gold: #e9c877;
     --brand-x: #F6935F; --brand-lamusa: #46C7BB;
     --scroll-thumb: rgba(255,252,248,0.15);
     --sel: rgba(166,160,240,0.32);
     --hair: rgba(255,255,255,0.06); --hair-2: rgba(255,255,255,0.14);
-    --accent-glow: rgba(236,154,161,0.5); --success-glow: rgba(127,200,160,0.5); --warn-glow: rgba(231,189,134,0.5); --info-glow: rgba(147,182,234,0.5);
+    --accent-glow: rgba(236,154,161,0.5); --success-glow: rgba(127,200,160,0.5); --info-glow: rgba(147,182,234,0.5);
     --menu-bg: rgba(38,42,49,0.97); --menu-bg-2: rgba(45,50,58,0.7);
     --ctrl-bg: rgba(24,30,42,0.82); --ctrl-hover: rgba(40,48,64,0.9); --track: rgba(0,0,0,0.28);
-    --success-fg: #10331e; --warn-fg: #5a3c10; --surface-4: #454d57;
-    --btn-pri-bg: #a6a0f0; --btn-pri-fg: #231f4e; --btn-warn-bg: #edc292; --btn-warn-fg: #5a3c10;
+    --success-fg: #10331e; --surface-4: #454d57;
+    --btn-pri-bg: #a6a0f0; --btn-pri-fg: #231f4e;
     --wash-1: rgba(118,124,178,0.18); --wash-2: rgba(150,132,182,0.13);
     color-scheme: dark;
   }
@@ -83,8 +84,7 @@
     --success: #287b55;
     --success-hover: #155c3f;
     --success-soft: rgba(63,158,120,0.13);
-    --warn: #8a6118;
-    --warn-soft: rgba(192,134,47,0.14);
+    --sand: #74695a; --sand-soft: rgba(116,105,90,0.14); --sand-glow: rgba(116,105,90,0.3); --sand-fg: #ffffff;
     --info: #3a5fc0;
     --info-soft: rgba(79,121,216,0.12);
     --teal: #1f8a7a;
@@ -93,16 +93,15 @@
     --map-bg: #e8edf4;
     --avatar-1: #e7ecf5; --avatar-2: #d8dfeb;
     --da: #5c6980; --da-call: #2f8f63; --da-msg: #3a5fc0; --da-more: #5c6980;
-    --sched-bg: #f3ead0; --sched-fg: #8a6118; --gold: #856410;
     --brand-x: #a8481c; --brand-lamusa: #0d6d66;
     --scroll-thumb: rgba(28,40,66,0.20);
     --sel: rgba(106,111,206,0.20);
     --hair: rgba(28,40,66,0.055); --hair-2: rgba(28,40,66,0.12);
-    --accent-glow: rgba(215,100,112,0.35); --success-glow: rgba(47,143,99,0.32); --warn-glow: rgba(154,106,30,0.3); --info-glow: rgba(58,95,192,0.3);
+    --accent-glow: rgba(215,100,112,0.35); --success-glow: rgba(47,143,99,0.32); --info-glow: rgba(58,95,192,0.3);
     --menu-bg: rgba(255,255,255,0.98); --menu-bg-2: rgba(246,248,252,0.9);
     --ctrl-bg: rgba(255,255,255,0.94); --ctrl-hover: rgba(238,242,248,0.97); --track: rgba(28,40,66,0.06);
-    --success-fg: #ffffff; --warn-fg: #ffffff; --surface-4: #dfe5ee;
-    --btn-pri-bg: #a7abee; --btn-pri-fg: #262a63; --btn-warn-bg: #eccf95; --btn-warn-fg: #5a3d12;
+    --success-fg: #ffffff; --surface-4: #dfe5ee;
+    --btn-pri-bg: #a7abee; --btn-pri-fg: #262a63;
     --wash-1: rgba(138,160,242,0.28); --wash-2: rgba(190,180,242,0.24);
     --hair-top: rgba(28,40,66,0.06);
     --shadow: 0 6px 20px rgba(28,40,66,0.10), 0 1px 2px rgba(28,40,66,0.08);
@@ -193,9 +192,9 @@
   .live-pip { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--text-soft); padding: 6px 10px; border-radius: 7px; border: 1px solid var(--border); white-space: nowrap; }
   .live-pip .d { width: 6px; height: 6px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 3px var(--success-soft); flex: none; }
   .live-pip b { color: var(--text); font-weight: 600; }
-  .live-pip.stale { color: var(--warn); }
-  .live-pip.stale .d { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
-  .live-pip.stale b { color: var(--warn); }
+  .live-pip.stale { color: var(--sand); }
+  .live-pip.stale .d { background: var(--sand); box-shadow: 0 0 0 3px var(--sand-soft); }
+  .live-pip.stale b { color: var(--sand); }
   /* D4: alerts bell badge */
   .alerts-bell { position: relative; }
   .alerts-bell-badge { position: absolute; top: 3px; right: 3px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 99px; background: var(--accent-solid); color: #fff; font-size: 9.5px; font-weight: 700; display: grid; place-items: center; box-shadow: 0 0 0 2px var(--topbar-2); pointer-events: none; }
@@ -290,36 +289,6 @@
     gap: 22px;
     padding: 0 4px;
   }
-  .tb-kpi {
-    text-align: center;
-    line-height: 1;
-    padding: 4px 8px;
-    border-radius: 9px;
-    transition: background 0.2s;
-  }
-  .kdiv { width: 1px; height: 26px; background: var(--hair-top); flex: 0 0 auto; }
-  .tb-kpi b {
-    display: block;
-    font-family: 'Inter', sans-serif;
-    font-weight: 800;
-    font-size: 19px;
-    color: var(--text);
-    letter-spacing: -0.02em;
-    font-variant-numeric: tabular-nums;
-    transition: color 0.2s;
-  }
-  .tb-kpi span {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: var(--text-dim);
-    transition: color 0.2s;
-  }
-  /* live cue: unassigned orders waiting */
-  .tb-kpi.alert { background: var(--warn-soft); }
-  .tb-kpi.alert b { color: var(--warn); }
-  .tb-kpi.alert span { color: var(--warn); }
 
   /* ---- v6 right cluster (mockup .rgt) ---- */
   .tb-right {
@@ -373,219 +342,6 @@
     font-size: 12px;
   }
   .topbar-btn:hover { background: var(--surface-3); color: var(--text); }
-
-  /* ==================== MENSAJES ICON BUTTON + BADGE ==================== */
-  .msg-btn .msg-icon {
-    width: 17px;
-    height: 17px;
-    display: inline-flex;
-  }
-  .msg-btn .msg-icon svg { width: 100%; height: 100%; }
-  .msg-btn .msg-badge {
-    position: absolute;
-    top: -5px; right: -5px;
-    background: var(--accent-solid);
-    color: white;
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 15px;
-    border-radius: 99px;
-    padding: 0 4px;
-    min-width: 15px;
-    height: 15px;
-    text-align: center;
-    box-sizing: border-box;
-    box-shadow: 0 0 0 2px var(--surface);
-    display: none;
-  }
-  .msg-btn.has-unhandled { color: var(--accent); border-color: var(--accent); }
-  .msg-btn.has-unhandled .msg-badge { display: inline-block; }
-
-  /* ==================== MENSAJES MODAL ==================== */
-  .msg-modal {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    z-index: 200;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 32px;
-  }
-  .msg-modal.open { display: flex; }
-  .msg-modal-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    width: 100%;
-    max-width: 720px;
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-  .msg-modal-header {
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border-soft);
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-  .msg-modal-title {
-    font-family: 'Inter', sans-serif;
-    font-weight: 600;
-    font-size: 18px;
-    color: var(--text);
-    flex: 1;
-    letter-spacing: -0.01em;
-  }
-  .msg-modal-close {
-    background: var(--surface-3);
-    border: none;
-    color: var(--text);
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .msg-modal-close svg { width: 14px; height: 14px; }
-  .msg-modal-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--border-soft);
-    padding: 0 20px;
-    gap: 4px;
-  }
-  .msg-tab {
-    background: transparent;
-    border: none;
-    color: var(--text-soft);
-    padding: 12px 14px;
-    font-size: 13px;
-    font-weight: 500;
-    font-family: inherit;
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    letter-spacing: -0.01em;
-  }
-  .msg-tab:hover { color: var(--text); }
-  .msg-tab.active {
-    color: var(--primary);
-    border-bottom-color: var(--primary);
-  }
-  .msg-tab-count {
-    background: var(--surface-3);
-    color: var(--text-soft);
-    font-size: 11px;
-    font-weight: 600;
-    padding: 1px 6px;
-    border-radius: 99px;
-    margin-left: 6px;
-  }
-  .msg-tab.active .msg-tab-count {
-    background: var(--primary-soft);
-    color: var(--primary);
-  }
-  .msg-modal-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 8px 0;
-  }
-  .msg-list-empty {
-    padding: 48px 20px;
-    text-align: center;
-    color: var(--text-dim);
-    font-size: 13px;
-  }
-  .msg-row {
-    padding: 14px 20px;
-    border-bottom: 1px solid var(--border-soft);
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 4px 14px;
-    align-items: start;
-  }
-  .msg-row:last-child { border-bottom: none; }
-  /* handled → recede via a muted-but-AA color (text-dim, ≥4.5:1 on surface), not opacity,
-     which dropped the functional meta below AA. */
-  .msg-row.handled .msg-row-from, .msg-row.handled .msg-row-body { color: var(--text-dim); }
-  .msg-row-from {
-    font-family: 'Inter', sans-serif;
-    font-weight: 600;
-    font-size: 14px;
-    color: var(--text);
-  }
-  /* per-restaurant brand chip on the inbound-message row (which line the customer texted) */
-  .msg-row-rest {
-    display: inline-block; margin-left: 8px; vertical-align: middle;
-    font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700;
-    letter-spacing: .01em; padding: 2px 8px; border-radius: 20px;
-  }
-  .msg-row-rest.rest-x_pizza { background: rgba(242,107,56,.16); color: var(--brand-x); }
-  .msg-row-rest.rest-la_musa { background: rgba(38,166,154,.18); color: var(--brand-lamusa); }
-  .msg-row-time {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    color: var(--text-dim);
-    text-align: right;
-    white-space: nowrap;
-  }
-  .msg-row-body {
-    grid-column: 1 / -1;
-    font-size: 13px;
-    color: var(--text);
-    line-height: 1.45;
-    margin-top: 2px;
-    word-wrap: break-word;
-  }
-  .msg-row-meta {
-    grid-column: 1 / -1;
-    font-size: 11px;
-    color: var(--text-dim);
-    margin-top: 4px;
-  }
-  .msg-row-actions {
-    grid-column: 1 / -1;
-    display: flex;
-    gap: 8px;
-    margin-top: 10px;
-  }
-  .msg-action-btn {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-family: inherit;
-    font-weight: 500;
-    cursor: pointer;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .msg-action-btn:hover { background: var(--surface-3); }
-  .msg-action-btn.primary {
-    background: var(--success);
-    color: var(--success-fg);
-    border-color: var(--success);
-  }
-  .msg-action-btn.primary:hover { background: var(--success-hover); }
-  .msg-action-btn.secondary {
-    background: var(--info-soft);
-    color: var(--info);
-    border-color: var(--info-soft);
-  }
-  .msg-action-btn .btn-icon {
-    width: 12px;
-    height: 12px;
-    display: inline-flex;
-  }
-  .msg-action-btn .btn-icon svg { width: 100%; height: 100%; }
 
   /* ==================== AUTO-ASSIGN TOGGLE ==================== */
   /* Auto-asignar (mockup .apill + sliding switch .sw) */
@@ -838,7 +594,8 @@
     background: var(--text-dim);
   }
   .status-dot.green { background: var(--success); box-shadow: 0 0 6px var(--success-glow); }
-  .status-dot.amber { background: var(--warn); box-shadow: 0 0 6px var(--warn-glow); }
+  .status-dot.sand { background: var(--sand); box-shadow: 0 0 6px var(--sand-glow); }
+  .status-dot.sky  { background: var(--info); box-shadow: 0 0 6px var(--info-glow); }
   .status-dot.blue  { background: var(--info); box-shadow: 0 0 6px var(--info-glow); }
   .status-dot.red   { background: var(--accent); }
   .status-pill {
@@ -852,9 +609,9 @@
     color: var(--text-soft);
   }
   .status-pill.available, .status-pill.at_restaurant { background: var(--success-soft); color: var(--success); }
-  .status-pill.assigned { background: var(--warn-soft); color: var(--warn); }
+  .status-pill.assigned { background: var(--info-soft); color: var(--info); }
   .status-pill.en_route_delivery { background: var(--info-soft); color: var(--info); }
-  .status-pill.returning { background: var(--warn-soft); color: var(--warn); }
+  .status-pill.returning { background: var(--info-soft); color: var(--info); }
   .status-pill.off_shift { background: var(--surface-3); color: var(--text-soft); }
 
   @keyframes flash-new {
@@ -929,7 +686,7 @@
   .recon-id { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: var(--text-soft, var(--text-soft)); }
   .recon-total { font-weight: 700; font-size: 13px; }
   .recon-sub { font-size: 12px; color: var(--text-soft, var(--text-soft)); margin-top: 3px; }
-  .recon-reason { font-size: 11px; color: var(--warn, var(--warn)); margin-top: 4px; }
+  .recon-reason { font-size: 11px; color: var(--info); margin-top: 4px; }
   .recon-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
   .recon-btn {
     flex: 1; padding: 7px 4px; border: none; border-radius: 6px;
@@ -937,7 +694,7 @@
     cursor: pointer;
   }
   .recon-btn.materialize { background: var(--success); color: var(--success-fg); }
-  .recon-btn.refund { background: var(--warn); color: var(--warn-fg); }
+  .recon-btn.refund { background: transparent; color: var(--text); border: 1px solid var(--border); }
   .recon-btn.abandon { background: var(--surface-3); color: var(--text-soft, var(--text-soft)); }
   /* "Cerrar como entregado" — neutral + DISTINCT from the 3 filled buttons (outlined), on its own full-width row
      (long label; a secondary, deliberate terminal). */
@@ -981,7 +738,8 @@
   }
   .av .s.green { background: var(--success); }
   .av .s.blue  { background: var(--info); }
-  .av .s.amber { background: var(--warn); }
+  .av .s.sand { background: var(--sand); }
+  .av .s.sky  { background: var(--info); }
   .av .s.red   { background: var(--accent); }
   .who { flex: 1; min-width: 0; }
   .who .dn {
@@ -1092,7 +850,7 @@
     padding: 2px 9px;
     border-radius: 99px;
   }
-  .phase-pill.pickup { background: var(--warn-soft); color: var(--warn); }
+  .phase-pill.pickup { background: var(--sand-soft); color: var(--sand); }
   .phase-pill.delivery { background: var(--info-soft); color: var(--info); }
   .phase-pill.awaiting { background: var(--accent-soft); color: var(--accent); }
 
@@ -1668,8 +1426,8 @@
   .picker-row .pstat { margin-top: 3px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
   /* "Requiere confirmación" drivers (full | en-route | unreachable): allowed-with-caution, NOT disabled.
      Amber cue + inline reason; the row stays fully clickable (the confirm() override is unchanged). */
-  .picker-row.needs-confirm { background: var(--warn-soft); border-color: var(--warn-soft); }
-  .picker-row.needs-confirm:hover { background: var(--warn-soft); }
+  .picker-row.needs-confirm { background: var(--sand-soft); border-color: var(--sand-soft); }
+  .picker-row.needs-confirm:hover { background: var(--sand-soft); }
   /* «Pausa» (owner ruling BLOCK): a paused driver is LISTED but not assignable — the row carries the native
      `disabled` attribute (so the click + 1–9 shortcut are inert) plus this dimmed treatment. Not the old
      fake-disabled class: the «En pausa» tag stays legible and nothing uses pointer-events/cursor:not-allowed. */
@@ -1679,8 +1437,8 @@
     font-family: 'Inter', sans-serif;
     font-size: 10px;
     font-weight: 500;
-    color: var(--warn);
-    background: var(--warn-soft);
+    color: var(--sand);
+    background: var(--sand-soft);
     padding: 1.5px 7px;
     border-radius: 6px;
   }
@@ -1733,7 +1491,7 @@
   .ucb-do { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-soft); }
 
   .recon-note-panel { width: 440px; }
-  .recon-note-warn { color: var(--warn); }
+  .recon-note-warn { color: var(--info); }
   .recon-note-body { padding: 14px 20px 4px; }
   .recon-note-label { display: block; font-size: 12px; color: var(--text-soft); margin-bottom: 7px; }
   .recon-note-input {
@@ -1814,22 +1572,22 @@
     color: var(--text-soft);
     margin-bottom: 32px;
   }
-  .config-form, .login-form {
+  .login-form {
     width: 100%;
     max-width: 420px;
   }
-  .config-form h2, .login-form h2 {
+  .login-form h2 {
     font-family: 'Inter', sans-serif; font-weight: 800;
     font-size: 18px;
     letter-spacing: 0.05em;
     margin-bottom: 6px;
   }
-  .config-form p, .login-form p {
+  .login-form p {
     color: var(--text-soft);
     font-size: 12px;
     margin-bottom: 14px;
   }
-  .config-form textarea, .config-form input, .login-form input {
+  .login-form input {
     width: 100%;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -1839,12 +1597,6 @@
     font-family: inherit;
     font-size: 14px;
     margin-bottom: 10px;
-  }
-  .config-form textarea {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    min-height: 200px;
-    resize: vertical;
   }
   .full-screen button.primary {
     background: var(--btn-pri-bg);
@@ -1889,11 +1641,11 @@
     font-size: 12px;
     color: #555;
   }
-/* Scheduled-order badge (cross-surface identity). Gold pill, dark text — legible on any card bg.
-   Contrast: #7A5B0C on #FBF0CE ≈ 6.4:1. */
+/* Scheduled-order badge (cross-surface identity). §5 no-amber: lavender pill (--primary) on its soft tint,
+   legible on any card bg. */
 /* F4: scheduled indicator = mockup .tag.sched (subtle full-radius pill). */
 .sched-badge {
-  display: inline-flex; align-items: center; gap: 5px; background: var(--sched-bg); color: var(--sched-fg);
+  display: inline-flex; align-items: center; gap: 5px; background: var(--primary-soft); color: var(--primary);
   font-weight: 500; font-size: 10.5px; line-height: 1.2; padding: 2px 8px; border-radius: 99px; margin: 4px 0;
 }
 
@@ -1930,7 +1682,15 @@
   /* F3: mockup default proportions (side rails ~1:0.92, center widest w/ a 400px min). The px model is kept so
      drag-resize + collapse (--lw/--rw → px / 0) still work; only the DEFAULT widths + the card gap/padding change. */
   :root { --lw-size: 372px; --rw-size: 342px; --lw: var(--lw-size); --rw: var(--rw-size); }
-  .app { height: calc(100vh - 53px); }   /* F4: match the 53px topbar (was 60px → ~7px bottom gap after F2) */
+  .app { height: calc(100vh - 53px); position: relative; }   /* F4: match the 53px topbar (was 60px → ~7px bottom gap after F2); relative = anchor for the roster re-open tab */
+  /* §4c (#8c): a persistent re-open tab on the board's right edge, visible ONLY while the Repartidores panel is
+     collapsed — the in-panel collapse hides its own control, so this is the always-there way back. */
+  .reopen-tab { position: absolute; right: 0; top: 50%; transform: translateY(-50%); z-index: 20; width: 30px; padding: 12px 0 10px; border-radius: 9px 0 0 9px; background: var(--surface); border: 1px solid var(--border); border-right: none; box-shadow: var(--shadow); display: none; flex-direction: column; align-items: center; gap: 10px; color: var(--text-soft); cursor: pointer; }
+  .app:not(.right-open) .reopen-tab { display: flex; }
+  .reopen-tab:hover { color: var(--text); background: var(--surface-2); }
+  .reopen-tab .ic { width: 15px; height: 15px; }
+  .reopen-tab .vl { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 11px; font-weight: 600; letter-spacing: 0.3px; line-height: 1; }
+  .reopen-tab .cnt { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 500; color: var(--btn-pri-fg); background: var(--btn-pri-bg); border-radius: 99px; min-width: 18px; padding: 1px 0; text-align: center; }
   .main { display: grid; box-sizing: border-box; grid-template-columns: var(--lw) minmax(400px, 1fr) var(--rw); grid-template-rows: 100%; height: 100%; gap: 12px; padding: 12px; transition: grid-template-columns .26s cubic-bezier(0.4,0,0.2,1); }
   .main.resizing { transition: none; }   /* no lag while dragging a rail edge */
   .app:not(.left-open) .main  { --lw: 0px; }
@@ -2032,20 +1792,20 @@
   .otros-head { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-dim); font-weight: 700; margin: 14px 2px 8px; }
   .ex-list { display: flex; flex-direction: column; gap: 9px; }
   /* D4-c4 "Pausar pedidos" banner + held tag — plain, the alert strip's tokens (a restyle is the later UI slice) */
-  .pause-banner { display: flex; flex-direction: column; gap: 4px; margin-left: 54px; padding: 8px 16px; background: var(--card-1); border-bottom: 1px solid var(--warn); color: var(--text); font-size: 13px; }   /* clears the fixed 54px nav rail, like header.topbar / .app */
+  .pause-banner { display: flex; flex-direction: column; gap: 4px; margin-left: 54px; padding: 8px 16px; background: var(--card-1); border-bottom: 1px solid var(--sand); color: var(--text); font-size: 13px; }   /* clears the fixed 54px nav rail, like header.topbar / .app */
   .pause-banner[hidden] { display: none; }   /* the class's display:flex would otherwise override [hidden] → an empty bordered strip when OPEN */
   .pause-banner .pb-row { display: flex; align-items: center; gap: 8px; }
-  .pause-banner .pb-row svg { color: var(--warn); flex: none; }
+  .pause-banner .pb-row svg { color: var(--sand); flex: none; }
   .pause-banner .pb-unknown svg { color: var(--text-dim); }
-  .held-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 8px; font-size: 11px; color: var(--warn); border: 1px solid var(--warn); }
+  .held-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 8px; font-size: 11px; color: var(--sand); border: 1px solid var(--sand); }
   /* .ex base depth (gradient/shadow/hover-lift) comes from the Task-6 .ex,.ord,.drv,.cash rule. */
   .ex { display: flex; gap: 12px; align-items: center; border-radius: 13px; padding: 12px 13px; position: relative; }
   .ex::before { content: ""; position: absolute; left: 0; top: 11px; bottom: 11px; width: 3px; border-radius: 3px; background: var(--text-dim); }
   .ex.red::before   { background: var(--accent); box-shadow: 0 0 10px var(--accent-glow); }
-  .ex.amber::before { background: var(--warn);   box-shadow: 0 0 10px var(--warn-glow); }
+  .ex.sand::before { background: var(--sand);   box-shadow: 0 0 10px var(--sand-glow); }
   .ex .exi { width: 30px; height: 30px; border-radius: 9px; background: var(--track); display: grid; place-items: center; flex: none; margin-left: 4px; color: var(--text-soft); }
   .ex.red .exi   { color: var(--accent); }
-  .ex.amber .exi { color: var(--warn); }
+  .ex.sand .exi { color: var(--sand); }
   .ex .b { flex: 1; min-width: 0; }
   .ex .t { font-weight: 600; font-size: 13px; color: var(--text); }
   .ex .d { color: var(--text-dim); font-size: 11.5px; margin-top: 2px; }
@@ -2057,20 +1817,20 @@
   /* F4: queue row = mockup .qrow (bordered card on surface-2, 7px radius, inset rounded status bar). */
   .ord { border: 1px solid var(--border-soft); border-radius: 7px; padding: 11px 12px 11px 15px; margin: 0 0 7px; position: relative; overflow: hidden; cursor: pointer; background: var(--surface-2); transition: border-color .14s, background .14s; }
   .ord::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2.5px; border-radius: 99px; background: var(--success); }
-  .ord.aging::before { background: var(--warn); }
+  .ord.aging::before { background: var(--sand); }
   .ord.late::before  { background: var(--accent); }
   .ord:hover { background: var(--surface-3); border-color: var(--border); }
   .ord .r1 { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 5px; }
   .ord .num  { font-family: 'IBM Plex Mono', monospace; font-weight: 500; font-size: 12px; color: var(--text-soft); flex: none; }
   .ord .cust { font-weight: 600; font-size: 13px; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ord .ord-age { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-dim); flex: none; }
-  .ord .ord-age.band-amber { color: var(--warn); }
+  .ord .ord-age.band-amber { color: var(--sand); }
   .ord .ord-age.band-red   { color: var(--accent); }
   .ord .items { color: var(--text-soft); font-size: 12px; margin-bottom: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ord .meta { display: flex; gap: 12px; margin-bottom: 10px; align-items: center; color: var(--text-dim); font-size: 11.5px; flex-wrap: wrap; }
   .ord .meta .m { display: inline-flex; gap: 5px; align-items: center; }
   .ord .meta .m .d { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
-  .ord .meta .m.pay  { color: var(--warn); }
+  .ord .meta .m.pay  { color: var(--sand); }
   .ord .meta .m.paid { color: var(--success); }
   .ord .meta .m.wa   { color: var(--info); }
   .ord .meta .m.warn { color: var(--accent); }
@@ -2082,7 +1842,7 @@
   .tag { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 500; padding: 2px 8px; border-radius: 99px; }
   .tag svg { width: 13px; height: 13px; }
   .tag.stall { color: var(--accent); background: var(--accent-soft); }
-  .tag.risk  { color: var(--warn); background: var(--warn-soft); }
+  .tag.risk  { color: var(--sand); background: var(--sand-soft); }
   .tag.sched { color: var(--text-soft); background: var(--surface-3); }
   /* F5 #2: "Ver detalle" = mockup .btn.ghost.sm (opens the drawer). */
   .unassigned-card .detail-btn {
@@ -2148,7 +1908,7 @@
   .cash-bar .ci b { font-family: 'IBM Plex Mono', monospace; font-weight: 500; font-size: 13px; color: var(--text); }
   .cash-bar .ci span { font-size: 10.5px; color: var(--text-dim); margin-top: 1px; }
   /* driver-cuadre breakdown: provisional/unresolved = warn (needs care); escape-hatch + read error = accent (stands out). */
-  .cash-bar .ci.cash-prov b { color: var(--warn); }
+  .cash-bar .ci.cash-prov b { color: var(--sand); }
   .cash-bar .ci.cash-escape b, .cash-bar .ci.cash-escape span { color: var(--accent); font-weight: 600; }
   .cash-bar .ci.cash-error b, .cash-bar .ci.cash-error span { color: var(--accent); }
   /* Heredado (pre-2.5.0, unverified): SUBORDINATE — dim + lighter so it can never read as a verified-final figure. */
@@ -2177,8 +1937,11 @@
   .q-cat-n { font-size: 11px; font-weight: 700; color: var(--text-soft); background: var(--hair); border-radius: 999px; padding: 1px 7px; min-width: 18px; text-align: center; }
   .comms-row { background: var(--surface); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: background .14s; }
   .comms-row:hover { background: var(--surface-2); }
+  .comms-seg { margin: 0 0 12px; }   /* §1: the Comms segment in the flyout pane (overrides .cola-seg's panel margin) */
+  .comms-row .comms-from .when { color: var(--text-dim); font-size: 10.5px; font-variant-numeric: tabular-nums; margin-left: auto; }
+  .comms-row .comms-from { display: flex; align-items: center; gap: 6px; }
   .comms-from { font-weight: 600; font-size: 12.5px; color: var(--text); display: flex; align-items: center; gap: 7px; }
-  .comms-flag { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--warn); background: var(--warn-soft); border-radius: 999px; padding: 1px 7px; }
+  .comms-flag { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--info); background: var(--info-soft); border-radius: 999px; padding: 1px 7px; }
   .comms-body { font-size: 11.5px; color: var(--text-soft); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* ---- Task 12: read-only Comms thread sheet (floating glass over the board) ---- */
@@ -2208,6 +1971,19 @@
   .sh-id .nm { font-weight: 700; font-size: 14px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sh-id .su { font-size: 11px; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sh-ic { width: 34px; height: 34px; border-radius: 9px; color: var(--da); background: none; border: none; cursor: pointer; display: grid; place-items: center; transition: .14s; text-decoration: none; }
+  /* §1: «Marcar atendido» on the thread header (moved from the retired modal) */
+  .sh-attend { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; background: var(--success-soft); color: var(--success); border: none; border-radius: 99px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+  .sh-attend svg { width: 13px; height: 13px; }
+  .sh-attend.wa, .sh-attend.pend { background: var(--surface-3); color: var(--text-soft); text-decoration: none; }   /* quieter secondary pills, not a second green action */
+  .sh-attend:hover { filter: brightness(1.05); }
+  /* Owner Option B (SBS 11-23): the thread header is two rows so the customer name never competes with the
+     action pills. A single flex row (avatar + name + «Marcar atendido» + «Responder» + call + close) starved
+     the identity (.sh-id is flex:1;min-width:0) to «M…» at the 430px sheet and off-screen at 390px (16b/16c).
+     Identity row (avatar · name/sub · close) over an actions row (pills · call). No logic change — same controls. */
+  .sh-head.two-row { display: block; padding: 12px 12px 11px 15px; }
+  .sh-head.two-row .sh-idrow { display: flex; align-items: center; gap: 11px; }
+  .sh-head.two-row .sh-actrow { display: flex; align-items: center; gap: 8px; margin-top: 11px; }
+  .sh-head.two-row .sh-actspacer { flex: 1; min-width: 0; }
   .sh-ic svg { width: 16px; height: 16px; }
   .sh-ic.call { color: var(--da-call); }
   .sh-ic:hover { background: var(--hair); filter: brightness(1.2); }
@@ -2248,6 +2024,7 @@
   <symbol id="i-chevdown" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></symbol>
   <symbol id="i-close" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
   <symbol id="i-collapse-r" viewBox="0 0 24 24"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></symbol>
+  <symbol id="i-expand-l" viewBox="0 0 24 24"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></symbol>
   <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
   <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></symbol>
@@ -2266,22 +2043,6 @@
   <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.8M20.5 19a5 5 0 0 0-3.5-4.7"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M5 5l1.8 1.8M17.2 17.2 19 19M3 12h2.5M18.5 12H21M5 19l1.8-1.8M17.2 6.8 19 5"/></symbol>
 </defs></svg>
-
-<!-- ================================ -->
-<!-- CONFIG SCREEN -->
-<!-- ================================ -->
-<div id="screen-config" class="full-screen hidden">
-  <div class="brand-large">X PIZZA</div>
-  <div class="brand-large-sub">DISPATCH</div>
-  <div class="config-form">
-    <h2>Configuración inicial</h2>
-    <p>Pega la configuración de Firebase y la API key de Google Maps. Solo una vez por dispositivo.</p>
-    <textarea id="firebase-config-input" placeholder='{ "apiKey": "...", "databaseURL": "...", ... }'></textarea>
-    <input type="text" id="maps-key-input" placeholder="Google Maps API key (AIza...)">
-    <button class="primary" id="config-save-btn">Guardar y entrar</button>
-  </div>
-  <div class="version-tag" data-version-display style="margin-top: 32px; text-align: center;"></div>
-</div>
 
 <!-- ================================ -->
 <!-- LOGIN SCREEN -->
@@ -2321,7 +2082,7 @@
   <div class="rail-av-menu" id="rail-av-menu" role="menu" aria-label="Cuenta" hidden>
     <div class="rail-av-email" id="rail-av-email"></div>
     <div class="rail-av-version" data-version-display></div>
-    <button class="rail-av-item" id="signout-btn" role="menuitem">Salir</button>
+    <button class="rail-av-item" id="signout-btn" role="menuitem">Cerrar sesión</button>
   </div>
 
   <!-- F2: topbar rebuilt to the mockup — title + search + tb-right (live · toggle · alerts · theme). The
@@ -2344,16 +2105,12 @@
     </div>
   </header>
 
-  <!-- Hidden sink: updateStats / updateMessagesBadge still write here (kept wired); the mockup topbar shows no
-       KPIs and no comms button. "En turno" lives in the roster header; Comms is on the nav rail. Activos +
-       Entregados are computed but not surfaced (flagged for the owner). -->
+  <!-- Hidden host for #topbar-user: the signed-in account email, read by the account menu + the sign-out
+       confirm sub. The mockup's topbar shows no KPIs and no comms button — "En turno" lives in the roster
+       header, Comms is on the nav rail — and the four KPI tiles here were hidden and unsurfaced, so §5
+       removes them along with updateStats. -->
   <div class="tb-kpis" id="tb-kpis-sink" hidden aria-hidden="true">
-    <div class="tb-kpi"><b id="stat-drivers">0</b><span>En turno</span></div>
-    <div class="tb-kpi" id="kpi-pending"><b id="stat-pending">0</b><span>En cola</span></div>
-    <div class="tb-kpi"><b id="stat-active">0</b><span>Activos</span></div>
-    <div class="tb-kpi"><b id="stat-delivered">0</b><span>Entregados</span></div>
     <span id="topbar-user"></span>
-    <button class="msg-btn" id="msg-btn" tabindex="-1" aria-label="Mensajes de clientes"><span class="msg-icon"></span><span class="msg-badge" id="msg-badge">0</span></button>
   </div>
 
   <!-- D4-c4 "Pausar pedidos": one row per effectively paused restaurant (or "no disponible"). Display-only — see renderPauseBanner. -->
@@ -2447,6 +2204,7 @@
       </div>
     </div>
   </div></div>
+  <button class="reopen-tab" id="roster-reopen" title="Mostrar Repartidores" aria-label="Mostrar Repartidores"><svg class="ic"><use href="#i-expand-l"/></svg><span class="vl">Repartidores</span><span class="cnt" id="reopen-roster-n">0</span></button>
 </div>
 
 <!-- F3: secondary-surface flyout (En Fila / Comms / Caja / Cerrados). The right column is now Repartidores-only
@@ -2470,7 +2228,14 @@
   <div class="flyout-body">
     <div class="rtab-pane hidden" data-pane="pedidos"><div id="pedidos-list"><div class="tree-empty">Sin pedidos en fila</div></div></div>
 
-    <div class="rtab-pane hidden" data-pane="comms"><div id="comms-list"><div class="tree-empty">Sin mensajes sin atender</div></div></div>
+    <div class="rtab-pane hidden" data-pane="comms">
+      <!-- §1: the retired #msg-modal's two tabs become this segment; the pane is now the single Comms surface. -->
+      <div class="cola-seg comms-seg">
+        <button class="cola-seg-btn on" data-cseg="unhandled" type="button">Sin atender <span class="cola-seg-n" id="cseg-unhandled-n">0</span></button>
+        <button class="cola-seg-btn" data-cseg="recent" type="button">Últimas 24h <span class="cola-seg-n" id="cseg-recent-n">0</span></button>
+      </div>
+      <div id="comms-list"><div class="tree-empty">Sin mensajes sin atender</div></div>
+    </div>
 
     <div class="rtab-pane hidden" data-pane="caja">
       <div class="tree-group hidden" id="reconciliation-group">
@@ -2567,14 +2332,14 @@
   .dra-pill { font-size:10.5px; font-weight:600; padding:3px 8px; border-radius:999px; display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
   .dra-pill .dot { width:6px; height:6px; border-radius:50%; }
   .dra-pill.ok { background:var(--success-soft); color:var(--success); } .dra-pill.ok .dot { background:var(--success); }
-  .dra-pill.pend { background:var(--warn-soft); color:var(--warn); } .dra-pill.pend .dot { background:var(--warn); }
+  .dra-pill.pend { background:var(--sand-soft); color:var(--sand); } .dra-pill.pend .dot { background:var(--sand); }
   .dra-pill.susp { background:var(--surface-3); color:var(--text-soft); } .dra-pill.susp .dot { background:var(--text-dim); }
   .dra-pill.dead { background:var(--accent-soft); color:var(--accent); } .dra-pill.dead .dot { background:var(--accent-solid); }
   .dra-pill.unk { background:var(--surface-3); color:var(--text-dim); }
   .dra-act { font-size:11.5px; font-weight:600; padding:5px 11px; border-radius:8px; border:1px solid var(--border); background:var(--surface-3); color:var(--text); cursor:pointer; }
   .dra-act.pri { background:var(--btn-pri-bg); color:var(--btn-pri-fg); border-color:transparent; }
   .dra-act.ok { background:var(--success-soft); color:var(--success); border-color:transparent; }
-  .dra-act.warn { background:var(--btn-warn-bg); color:var(--btn-warn-fg); border-color:transparent; }
+  .dra-act.warn { background:transparent; color:var(--text); border-color:var(--border); }
   .dra-act.danger { background:var(--accent-solid); color:#fff; border-color:transparent; }
   .dra-act.ghost { background:transparent; }
   .dra-act[disabled] { opacity:.45; cursor:not-allowed; }
@@ -2582,7 +2347,7 @@
   .dra-kebab:hover { background:var(--hover); color:var(--text); }
   .dra-menu { display:flex; gap:6px; }
   .dra-inset { background:var(--surface); border:1px solid var(--border-soft); border-radius:10px; padding:11px 12px; margin:10px 0; }
-  .dra-inset.warn { background:var(--warn-soft); border-color:transparent; }
+  .dra-inset.warn { background:var(--sand-soft); border-color:transparent; }
   .dra-inset.danger { background:var(--accent-soft); border-color:transparent; }
   .dra-inset.ok { background:var(--success-soft); border-color:transparent; }
   .dra-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-dim); }
@@ -2590,12 +2355,12 @@
   .dra-field input { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 10px; color:var(--text); font-size:13px; }
   .dra-cond { display:flex; gap:8px; align-items:flex-start; margin-bottom:9px; }
   .dra-ci { width:17px; height:17px; border-radius:50%; flex:0 0 auto; display:grid; place-items:center; color:#fff; }
-  .dra-ci.bad { background:var(--accent-solid); } .dra-ci.good { background:var(--success); } .dra-ci.unk { background:var(--warn); color:var(--warn-fg,#5a3c10); }
+  .dra-ci.bad { background:var(--accent-solid); } .dra-ci.good { background:var(--success); } .dra-ci.unk { background:var(--sand); color:var(--sand-fg); }
   .dra-ct b { font-size:12.5px; color:var(--text); } .dra-ct .fix { display:block; font-size:11px; color:var(--text-dim); }
   .dra-check { display:flex; align-items:center; gap:9px; cursor:pointer; font-size:13px; color:var(--text); margin-top:9px; }
   .dra-box { width:18px; height:18px; border-radius:5px; border:1.5px solid var(--border); display:grid; place-items:center; color:transparent; }
   .dra-check.on .dra-box { background:var(--success); border-color:var(--success); color:#10331e; }
-  .dra-owner { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--warn); }
+  .dra-owner { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--sand); }
   .dra-muted-txt { font-size:11px; color:var(--text-dim); }
   .dra-mono { font-family:'IBM Plex Mono',ui-monospace,monospace; }
   .dra-btnrow { display:flex; gap:8px; margin-top:12px; }
@@ -2629,33 +2394,28 @@
   </div>
 </div>
 
+<!-- Generic styled confirm (the «Quitar repartidor» look; title/body/two labels, resolves a Promise<boolean>).
+     Nothing operation-specific — reused for the Auto-asignar pause confirm (#1b); other dispatcher confirms can adopt it later. -->
+<div class="overlay-bg hidden" id="styled-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="styled-confirm-title">
+  <div class="picker-panel unassign-confirm-panel" tabindex="-1">
+    <div class="picker-header">
+      <div class="picker-title" id="styled-confirm-title"></div>
+      <div class="picker-sub" id="styled-confirm-sub" hidden></div>
+    </div>
+    <div class="unassign-confirm-body" id="styled-confirm-body"></div>
+    <div class="unassign-confirm-actions">
+      <button id="styled-confirm-cancel" class="ucb-cancel" type="button">Cancelar</button>
+      <button id="styled-confirm-ok" class="ucb-do" type="button">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Task 12: read-only Comms thread sheet (floating glass over the board; populated by renderCommsThread) -->
 <div class="comms-scrim" id="comms-scrim"></div>
 <div class="comms-sheet" id="comms-sheet" role="dialog" aria-modal="true" aria-label="Conversación con cliente"></div>
 
-<!-- Mensajes (incoming customer messages) modal -->
-<div class="msg-modal" id="msg-modal">
-  <div class="msg-modal-card">
-    <div class="msg-modal-header">
-      <div class="msg-modal-title">Mensajes de clientes</div>
-      <button class="msg-modal-close" id="msg-modal-close" aria-label="Cerrar"></button>
-    </div>
-    <div class="msg-modal-tabs">
-      <button class="msg-tab active" id="tab-unhandled" data-tab="unhandled">
-        Sin atender
-        <span class="msg-tab-count" id="tab-unhandled-count">0</span>
-      </button>
-      <button class="msg-tab" id="tab-history" data-tab="history">
-        Últimas 24h
-        <span class="msg-tab-count" id="tab-history-count">0</span>
-      </button>
-    </div>
-    <div class="msg-modal-body">
-      <div id="msg-list-unhandled"></div>
-      <div id="msg-list-history" style="display:none"></div>
-    </div>
-  </div>
-</div>
+<!-- §1: the «Mensajes de clientes» modal is retired — the flyout Comms pane (with its «Sin atender» / «Últimas 24h»
+     segment + the thread sheet) is the single Comms surface now. -->
 
 <!-- Action menu (popover for task actions) -->
 <div id="action-menu" class="hidden"></div>
@@ -2843,7 +2603,7 @@ function toast(msg, kind = '') {
 }
 
 function showScreen(name) {
-  ['config', 'login', 'main'].forEach(s => {
+  ['login', 'main'].forEach(s => {   // §2: the dead first-run config screen was removed (owner option A)
     $(`screen-${s}`).classList.toggle('hidden', s !== name);
   });
 }
@@ -2925,8 +2685,18 @@ $('login-btn').addEventListener('click', async () => {
 });
 
 $('signout-btn').addEventListener('click', async () => {
-  await XPD.signOutUser();
-  requestReload();   // PLAN §2.3: one-shot clean-path navigation (also reached via onAuth(null)); never a raw reload that could double-navigate
+  // §3 (#7): confirm before dropping the session mid-shift, through the generic styledConfirm.
+  const email = $('topbar-user')?.textContent || '';   // §3/#241 P3: the signed-in account + device in the sub
+  await styledConfirm({
+    title: '¿Cerrar sesión?',
+    sub: email ? `${email} · este dispositivo` : 'este dispositivo',
+    body: 'Vas a salir de la Central en este dispositivo. Para volver a entrar vas a necesitar tu correo y contraseña.',
+    confirmLabel: 'Cerrar sesión', cancelLabel: 'Cancelar', busyLabel: 'Cerrando sesión…',
+    onConfirm: async () => {
+      await XPD.signOutUser();
+      requestReload();   // PLAN §2.3: one-shot clean-path navigation (also reached via onAuth(null)); never a raw reload that could double-navigate
+    },
+  });
 });
 
 // ============================================================
@@ -3258,14 +3028,37 @@ function subscribeAll() {
     if (label) label.textContent = enabled ? 'Auto-asignar activo' : 'Auto-asignar pausado';
   });
 
+  // #1a: never let a double-click double-write the auto-assign toggle — a latch + disabled button until the
+  // server write settles and the subscription echo re-syncs the class.
+  // #1b: PAUSING stops new orders from routing themselves, so confirm it first (through the generic styled
+  // confirm); resuming stays one tap. The latch+disable span the confirm too, so the dialog can't be double-opened.
+  let autoAssignInFlight = false;
   $('auto-assign-toggle').addEventListener('click', async () => {
-    const isOn = $('auto-assign-toggle').classList.contains('on');
+    if (autoAssignInFlight) return;                                   // ignore re-clicks while a write is in flight
+    const btn = $('auto-assign-toggle');
+    const isOn = btn.classList.contains('on');
+    const confirmShown = isOn;                                       // the confirm is shown only when PAUSING
+    autoAssignInFlight = true;
+    btn.disabled = true;
     try {
+      if (confirmShown && !(await styledConfirm({
+        title: 'Pausar Auto-asignar',
+        body: 'Pausar la asignación automática. Mientras esté en pausa, los pedidos nuevos no se asignan solos — los asignás vos desde la cola.',
+        confirmLabel: 'Pausar', cancelLabel: 'Cancelar', opener: btn,   // #1b P2-1: the trigger, captured before it is disabled
+      }))) return;                                                   // declined → finally re-enables + (maybe) re-focuses
       await XPD.setAutoAssignEnabled(!isOn);
       toast(isOn ? 'Auto-asignación desactivada' : 'Auto-asignación activada',
             isOn ? 'error' : 'success');
     } catch (e) {
       toast('Error al cambiar configuración', 'error');
+    } finally {
+      autoAssignInFlight = false;
+      // #1b P2-1 / Codex #228 P2: return focus to the toggle ONLY if we showed the confirm AND the user
+      // hasn't moved focus elsewhere meanwhile (e.g. opened the picker during a slow write). Resume shows no
+      // confirm, so it never moves focus. (Checked while still disabled: focus is on body or the toggle.)
+      const restoreFocus = confirmShown && (document.activeElement === btn || document.activeElement === document.body);
+      btn.disabled = false;
+      if (restoreFocus) btn.focus();
     }
   });
 }
@@ -3386,7 +3179,7 @@ function renderDispatcherAlerts(alerts) {
   if (entries.length === 0) { container.innerHTML = ''; return; }
 
   const rowHtml = (e) => {
-    const sev = e.severity === 'red' ? 'red' : e.severity === 'amber' ? 'amber' : '';
+    const sev = e.severity === 'red' ? 'red' : e.severity === 'amber' ? 'sand' : '';   // §5 P3: the amber-severity cue renders the pastel .sand class (data key stays 'amber')
     const { title, detail } = alertContent(e.alert);
     const idAttr = escapeHtml(e.id);
     return `
@@ -3450,28 +3243,18 @@ function renderDispatcherAlerts(alerts) {
 let allMessages = {};         // msg_id -> message record
 let lastUnhandledIds = new Set();
 let messagesInitialized = false;
-let activeMsgTab = 'unhandled';
+let commsSeg = 'unhandled';   // §1: the Comms pane segment — 'unhandled' (Sin atender) | 'recent' (Últimas 24h)
 
 function initMessagesSubscription() {
-  // Inject the icon into the topbar button
-  const iconSpan = $('msg-btn')?.querySelector('.msg-icon');
-  if (iconSpan) iconSpan.innerHTML = ICONS.messageCircle;
-
-  // Wire up button to open the modal
-  $('msg-btn')?.addEventListener('click', openMessagesModal);
-  $('msg-modal-close')?.addEventListener('click', closeMessagesModal);
-  $('msg-modal')?.addEventListener('click', (e) => {
-    // Click on backdrop closes; click inside the card doesn't
-    if (e.target.id === 'msg-modal') closeMessagesModal();
+  // §1: the single Comms surface is the flyout pane. Its segment («Sin atender» / «Últimas 24h») replaces the
+  // retired #msg-modal's two tabs — toggle the filter, flip the .on state, re-render.
+  document.querySelectorAll('.comms-seg [data-cseg]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      commsSeg = btn.dataset.cseg;
+      document.querySelectorAll('.comms-seg [data-cseg]').forEach(b => b.classList.toggle('on', b === btn));
+      renderCommsTab();
+    });
   });
-
-  // Inject close icon
-  const closeBtn = $('msg-modal-close');
-  if (closeBtn) closeBtn.innerHTML = ICONS.close;
-
-  // Tab switching
-  $('tab-unhandled')?.addEventListener('click', () => switchMsgTab('unhandled'));
-  $('tab-history')?.addEventListener('click', () => switchMsgTab('history'));
 
   // Task 12: the read-only Comms thread sheet — click scrim closes it
   $('comms-scrim')?.addEventListener('click', closeCommsThread);
@@ -3508,142 +3291,18 @@ function initMessagesSubscription() {
     lastUnhandledIds = unhandledIds;
 
     updateMessagesBadge(unhandledIds.size);
-    // Modal lists re-render only when the modal is open (fallback triage surface)…
-    if ($('msg-modal')?.classList.contains('open')) {
-      renderMessagesLists();
-    }
-    renderCommsTab();   // …but the in-tab Comms list stays live regardless (Task 10b)
+    renderCommsTab();   // §1: the single Comms surface (pane + segment counts) stays live on every inbound message
     if (commsSheetTail) renderCommsThread();  // Task 12: keep an open thread sheet live
   });
 }
 
 function updateMessagesBadge(unhandledCount) {
-  const btn = $('msg-btn');
-  const badge = $('msg-badge');
-  if (!btn || !badge) return;
-  badge.textContent = String(unhandledCount);
-  btn.classList.toggle('has-unhandled', unhandledCount > 0);
-  // D2: the nav-rail Comms badge MIRRORS the topbar unhandled count (same single source).
+  // §1: the nav-rail Comms badge mirrors the unhandled count (the topbar #msg-btn was retired).
   const navBadge = $('nav-comms-badge');
   if (navBadge) { navBadge.textContent = String(unhandledCount); navBadge.hidden = !(unhandledCount > 0); }
 }
 
-function openMessagesModal() {
-  $('msg-modal')?.classList.add('open');
-  renderMessagesLists();
-}
 
-function closeMessagesModal() {
-  $('msg-modal')?.classList.remove('open');
-}
-
-function switchMsgTab(tab) {
-  activeMsgTab = tab;
-  $('tab-unhandled')?.classList.toggle('active', tab === 'unhandled');
-  $('tab-history')?.classList.toggle('active', tab === 'history');
-  $('msg-list-unhandled').style.display = tab === 'unhandled' ? '' : 'none';
-  $('msg-list-history').style.display   = tab === 'history' ? '' : 'none';
-}
-
-function renderMessagesLists() {
-  const entries = Object.entries(allMessages).map(([id, m]) => ({ id, ...m }));
-
-  // Unhandled list — sorted by received_at desc (most recent first)
-  const unhandled = entries
-    .filter(m => m.handled !== true)
-    .sort((a, b) => (b.received_at || 0) - (a.received_at || 0));
-
-  // 24h history — all messages received in the last 24 hours, sorted desc
-  const cutoff = Date.now() - (24 * 60 * 60 * 1000);
-  const history = entries
-    .filter(m => (m.received_at || 0) > cutoff)
-    .sort((a, b) => (b.received_at || 0) - (a.received_at || 0));
-
-  // Counts on tabs
-  $('tab-unhandled-count').textContent = String(unhandled.length);
-  $('tab-history-count').textContent   = String(history.length);
-
-  // Render each list
-  $('msg-list-unhandled').innerHTML = unhandled.length
-    ? unhandled.map(renderMessageRow).join('')
-    : '<div class="msg-list-empty">No hay mensajes sin atender</div>';
-
-  $('msg-list-history').innerHTML = history.length
-    ? history.map(renderMessageRow).join('')
-    : '<div class="msg-list-empty">No hay mensajes en las últimas 24 horas</div>';
-
-  // Wire up action buttons
-  document.querySelectorAll('.msg-action-handle').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const msgId = btn.dataset.msgId;
-      try {
-        await XPD.markMessageHandled(msgId, currentUser?.uid);
-        toast('Mensaje marcado como atendido', 'success');
-      } catch (e) {
-        toast('Error al marcar mensaje', 'error');
-      }
-    });
-  });
-  document.querySelectorAll('.msg-action-unhandle').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const msgId = btn.dataset.msgId;
-      try {
-        await XPD.markMessageUnhandled(msgId);
-        toast('Mensaje marcado como pendiente', '');
-      } catch (e) {
-        toast('Error al actualizar mensaje', 'error');
-      }
-    });
-  });
-}
-
-function renderMessageRow(m) {
-  const phone = formatMsgPhone(m.from);
-  const waPhone = String(m.from || '').replace(/\D/g, '');  // strip + and spaces
-  const time = formatMsgTime(m.received_at);
-  const body = escapeHtml(m.body || '(sin contenido)');
-  const isHandled = m.handled === true;
-  // Which restaurant's number was texted (stored by onIncomingWhatsApp; legacy/absent → x_pizza). A brand
-  // chip so the dispatcher sees at a glance which line the message came in on.
-  const rid = m.restaurant_id === 'la_musa' ? 'la_musa' : 'x_pizza';
-  const brandChip = `<span class="msg-row-rest rest-${rid}">${rid === 'la_musa' ? 'La Musa' : 'X. Pizza'}</span>`;
-
-  let metaLine = '';
-  if (isHandled && m.handled_at) {
-    const handledTime = formatMsgTime(m.handled_at);
-    metaLine = `<div class="msg-row-meta">Atendido · ${handledTime}</div>`;
-  }
-
-  // Action buttons differ for handled vs unhandled
-  const actions = isHandled
-    ? `
-      <a class="msg-action-btn" href="https://wa.me/${waPhone}" target="_blank" rel="noopener">
-        <span class="btn-icon">${ICONS.externalLink}</span>
-        Abrir en WhatsApp
-      </a>
-      <button class="msg-action-btn msg-action-unhandle" data-msg-id="${m.id}">
-        Marcar pendiente
-      </button>`
-    : `
-      <a class="msg-action-btn primary" href="https://wa.me/${waPhone}" target="_blank" rel="noopener">
-        <span class="btn-icon">${ICONS.externalLink}</span>
-        Responder
-      </a>
-      <button class="msg-action-btn msg-action-handle" data-msg-id="${m.id}">
-        <span class="btn-icon">${ICONS.check}</span>
-        Marcar atendido
-      </button>`;
-
-  return `
-    <div class="msg-row${isHandled ? ' handled' : ''}">
-      <div class="msg-row-from">${phone}${brandChip}</div>
-      <div class="msg-row-time">${time}</div>
-      <div class="msg-row-body">${body}</div>
-      ${metaLine}
-      <div class="msg-row-actions">${actions}</div>
-    </div>
-  `;
-}
 
 function formatMsgPhone(from) {
   // Stored as e.g. '50494738243'. Pretty-format as +504 9473-8243.
@@ -3926,7 +3585,6 @@ let colaSearchQuery = '';  // F2: topbar search — live text filter over the Co
 function syncActionQueueViews(precomputed) {
   const q = precomputed || getActionQueue(Date.now());
   renderCola(q);
-  updateStats(q);
   return q;
 }
 
@@ -4051,6 +3709,8 @@ function wireColaHandlers(list) {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const oid = btn.dataset.assignSelf;
+      // #2: self-assign runs the SAME confirm-to-override gate as the picker — no special case.
+      if (!(await confirmAssignOverride({ ...classifyDriverForAssign(currentUser.uid), driverName: (allDrivers[currentUser.uid] || {}).name }))) return;
       try {
         const res = await XPD.assignOrderToDriver(oid, currentUser.uid);
         if (res && res.ok === false) { toast(assignFailMsg(res.reason), 'error'); return; }
@@ -4119,21 +3779,32 @@ function renderOrderExpanded(order) {
 const cancelInFlight = new Set();   // F12: one cancel per order at a time (no double-fire stressing the server race)
 async function confirmCancelOrder(orderId) {
   if (cancelInFlight.has(orderId)) return;
-  if (!confirm(`¿Cancelar el pedido ${displayOrderLabel(orderId)}?\n\nEsto lo marcará como cancelado, reembolsará el cargo si hubo pago, y liberará al driver si está asignado.`)) return;
-  cancelInFlight.add(orderId);
-  try {
-    // Money-safe server cancel: voids the charge iff captured money, heals an already-cancelled-but-paid order.
-    const r = await XPD.cancelOrderRemote(orderId, 'Cancelado por dispatcher');
-    const refund = r && r.refund;
-    const suffix = refund === 'refunded' ? ' (reembolsado)' : refund === 'refund_pending' ? ' (reembolso pendiente)' : '';
-    toast(`Pedido ${displayOrderLabel(orderId)} cancelado${suffix}`, 'success');
-  } catch (e) {
-    // refund_pending / manual_review / claim_lost arrive as a non-2xx carrying e.outcome — show "revisar".
-    if (e && e.outcome) toast(`Pedido ${displayOrderLabel(orderId)}: ${e.outcome} — revisar`, 'error');
-    else toast('Error: ' + e.message, 'error');
-  } finally {
-    cancelInFlight.delete(orderId);
-  }
+  // §6 (styledConfirm adoption): the cancel confirm moves from window.confirm to the styled confirm («Volver»
+  // never collides with «Cancelar pedido»). The money logic below (the cancelInFlight latch, the money-safe
+  // cancelOrderRemote and its exact outcome mapping) is UNCHANGED — it just runs inside onConfirm.
+  const o = allOrders[orderId] || {};
+  await styledConfirm({
+    title: 'Cancelar pedido',
+    sub: `${displayOrderLabel(orderId)} · ${o.customer_name || '—'}${o.total != null ? ` · ${fmtL(o.total)}` : ''}`,
+    body: `Vas a cancelar el pedido ${displayOrderLabel(orderId)} de ${o.customer_name || '—'}. Se marca como cancelado, se reembolsa el cargo si hubo pago y el repartidor queda libre si estaba asignado.`,
+    confirmLabel: 'Cancelar pedido', cancelLabel: 'Volver', busyLabel: 'Cancelando…',
+    onConfirm: async () => {
+      cancelInFlight.add(orderId);
+      try {
+        // Money-safe server cancel: voids the charge iff captured money, heals an already-cancelled-but-paid order.
+        const r = await XPD.cancelOrderRemote(orderId, 'Cancelado por dispatcher');
+        const refund = r && r.refund;
+        const suffix = refund === 'refunded' ? ' (reembolsado)' : refund === 'refund_pending' ? ' (reembolso pendiente)' : '';
+        toast(`Pedido ${displayOrderLabel(orderId)} cancelado${suffix}`, 'success');
+      } catch (e) {
+        // refund_pending / manual_review / claim_lost arrive as a non-2xx carrying e.outcome — show "revisar".
+        if (e && e.outcome) toast(`Pedido ${displayOrderLabel(orderId)}: ${e.outcome} — revisar`, 'error');
+        else toast('Error: ' + e.message, 'error');
+      } finally {
+        cancelInFlight.delete(orderId);
+      }
+    },
+  });
 }
 
 // Cash bar — read-only aggregate of today's CLOSED cuadres
@@ -4301,36 +3972,58 @@ function renderPedidosTab() {
 function renderCommsTab() {
   const el = $('comms-list'); if (!el) return;
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-  // Recent conversations — latest inbound message per customer (by phone) in the last 24h,
-  // so handled chats are still reachable (tap → thread), not just unhandled ones.
-  const byPhone = new Map();
-  for (const m of Object.values(allMessages || {})) {
-    if (!m || (m.received_at || 0) < cutoff) continue;
+  const msgs = Object.values(allMessages || {}).filter(m => m && convoKey(m.from));
+
+  // «Sin atender» — EVERY unhandled message counts (so the count matches the nav badge exactly), independent
+  // of the 24h history window. The pane shows one row per conversation with a pending message, previewing its
+  // latest unhandled message — even if that message is older than 24h, or an older one stayed unhandled while
+  // the newest was already marked (Codex #242 B-P1).
+  const unhandledMsgs = msgs.filter(m => m.handled !== true);
+  const unhandledCount = unhandledMsgs.length;              // == updateMessagesBadge(unhandledIds.size)
+  const unhandledByPhone = new Map();
+  for (const m of unhandledMsgs) {
     const key = convoKey(m.from);
-    if (!key) continue;
-    const prev = byPhone.get(key);
-    if (!prev || (m.received_at || 0) > (prev.received_at || 0)) byPhone.set(key, m);
+    const prev = unhandledByPhone.get(key);
+    if (!prev || (m.received_at || 0) > (prev.received_at || 0)) unhandledByPhone.set(key, m);
   }
-  const convos = [...byPhone.values()].sort((a, b) => {
+  const unhandledRows = [...unhandledByPhone.values()].sort((a, b) => (b.received_at || 0) - (a.received_at || 0));
+
+  // «Últimas 24h» — latest message per customer (by phone) in the last 24h, so handled chats are still
+  // reachable (tap → thread), not just unhandled ones.
+  const recentByPhone = new Map();
+  for (const m of msgs) {
+    if ((m.received_at || 0) < cutoff) continue;
+    const key = convoKey(m.from);
+    const prev = recentByPhone.get(key);
+    if (!prev || (m.received_at || 0) > (prev.received_at || 0)) recentByPhone.set(key, m);
+  }
+  const recentRows = [...recentByPhone.values()].sort((a, b) => {
     const au = a.handled !== true, bu = b.handled !== true;
     if (au !== bu) return au ? -1 : 1;                   // unhandled first
     return (b.received_at || 0) - (a.received_at || 0);  // then most recent
   });
-  const unhandledCount = convos.filter(m => m.handled !== true).length;
-  setTabBadge('tab-comms-n', unhandledCount);
 
-  if (convos.length === 0) { el.innerHTML = '<div class="tree-empty">Sin conversaciones recientes</div>'; return; }
+  setTabBadge('tab-comms-n', unhandledCount);            // the rtab + nav badges mirror the unhandled count
+  // §1: the two segments («Sin atender» / «Últimas 24h») and their live counts.
+  const su = $('cseg-unhandled-n'); if (su) su.textContent = String(unhandledCount);
+  const sr = $('cseg-recent-n'); if (sr) sr.textContent = String(recentRows.length);
+
+  const convos = commsSeg === 'unhandled' ? unhandledRows : recentRows;
+  if (convos.length === 0) {
+    el.innerHTML = `<div class="tree-empty">${commsSeg === 'unhandled' ? 'Sin mensajes sin atender' : 'Sin conversaciones recientes'}</div>`;
+    return;
+  }
   el.innerHTML = convos.map(m => {
     const flag = m.handled !== true ? '<span class="comms-flag">Sin atender</span>' : '';
+    const when = Number.isFinite(m.received_at) ? `<span class="when">${escapeHtml(formatMsgTime(m.received_at))}</span>` : '';
     return `<div class="comms-row" data-comms-from="${escapeHtml(String(m.from || ''))}">
-      <div class="comms-from">${escapeHtml(formatMsgPhone(m.from))}${flag}</div>
+      <div class="comms-from">${escapeHtml(formatMsgPhone(m.from))}${flag}${when}</div>
       <div class="comms-body">${escapeHtml((m.body || '').slice(0, 90))}</div>
     </div>`;
-  }).join('') + '<button class="comms-open" id="comms-open-inbox">Abrir bandeja completa</button>';
+  }).join('');
   el.querySelectorAll('.comms-row[data-comms-from]').forEach(row => {
     row.addEventListener('click', () => openCommsThread(row.dataset.commsFrom));
   });
-  $('comms-open-inbox')?.addEventListener('click', openMessagesModal);
 }
 
 // ============================================================
@@ -4387,6 +4080,8 @@ function renderCommsThread() {
 
   // This customer's inbound messages (matched by trailing phone digits).
   const inbound = Object.values(allMessages || {}).filter(m => convoKey(m.from) === tail);
+  // §1: «Marcar atendido» moved from the retired modal onto this thread's header — the ids it marks handled.
+  const unhandledIds = Object.entries(allMessages || {}).filter(([, m]) => convoKey(m.from) === tail && m.handled !== true).map(([id]) => id);
 
   // Best-matching order (most recent) → header identity + the "Recibido" event/chip.
   const order = Object.values(allOrders || {})
@@ -4441,18 +4136,56 @@ function renderCommsThread() {
   const callBtn = waDigits
     ? `<a class="sh-ic call" href="tel:+${escapeHtml(waDigits)}" title="Llamar" aria-label="Llamar"><svg class="ic"><use href="#i-phone"/></svg></a>`
     : '';
+  // Codex #242 B-P2: restore the retired modal's WhatsApp reply route («Responder» when pending, «Abrir en
+  // WhatsApp» otherwise) + the «Marcar pendiente» undo (markMessageUnhandled) for an already-attended thread.
+  const waHref = waDigits ? `https://wa.me/${escapeHtml(waDigits)}` : '';
+  const waBtn = waHref
+    ? `<a class="sh-attend wa" href="${waHref}" target="_blank" rel="noopener">${unhandledIds.length ? 'Responder' : 'Abrir en WhatsApp'}</a>`
+    : '';
+  const latestInbound = Object.entries(allMessages || {})
+    .filter(([, m]) => convoKey(m.from) === tail)
+    .sort((a, b) => (b[1].received_at || 0) - (a[1].received_at || 0))[0];
+  const latestInboundId = latestInbound ? latestInbound[0] : '';
+  const triageBtn = unhandledIds.length
+    ? `<button class="sh-attend" id="comms-mark-attended" type="button" title="Marcar atendido"><svg class="ic sm"><use href="#i-check"/></svg>Marcar atendido</button>`
+    : (latestInboundId ? `<button class="sh-attend pend" id="comms-mark-pending" type="button" title="Marcar pendiente">Marcar pendiente</button>` : '');
 
+  // Owner Option B (SBS 11-23): two-row header — identity row (avatar · name/sub · close) over an actions row
+  // (pills · call). Same controls as before (triageBtn/waBtn/callBtn/close are unchanged); only the layout moves,
+  // so the name keeps a full-width budget instead of being starved by the pills. See .sh-head.two-row CSS.
+  // Focus/DOM order is intentionally Close → triage → WhatsApp → call (Codex #264 ruling): it follows the VISUAL
+  // reading order of the two rows (close sits in the top identity row), which is what WCAG 2.4.3 wants — do NOT
+  // reorder the DOM to the old single-row order; that would make tab order disagree with what's seen.
   sheet.innerHTML = `
-    <div class="sh-head">
-      <div class="sh-av">${escapeHtml(initials)}</div>
-      <div class="sh-id"><div class="nm">${escapeHtml(name)}</div><div class="su">${sub}</div></div>
-      ${callBtn}
-      <button class="sh-ic" id="comms-sheet-close" title="Cerrar" aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
+    <div class="sh-head two-row">
+      <div class="sh-idrow">
+        <div class="sh-av">${escapeHtml(initials)}</div>
+        <div class="sh-id"><div class="nm">${escapeHtml(name)}</div><div class="su">${sub}</div></div>
+        <button class="sh-ic" id="comms-sheet-close" title="Cerrar" aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
+      </div>
+      <div class="sh-actrow">
+        ${triageBtn}
+        ${waBtn}
+        <span class="sh-actspacer"></span>
+        ${callBtn}
+      </div>
     </div>
     ${recibido ? `<div class="sh-recibido">${recibido}</div>` : ''}
     <div class="sh-body">${body}</div>
   `;
   $('comms-sheet-close')?.addEventListener('click', closeCommsThread);
+  $('comms-mark-attended')?.addEventListener('click', async () => {   // §1: mark this thread's unhandled messages atendido
+    try {
+      await Promise.all(unhandledIds.map(id => XPD.markMessageHandled(id, currentUser?.uid)));
+      toast('Conversación marcada como atendida', 'success');
+    } catch (e) { toast('Error al marcar como atendido', 'error'); }
+  });
+  $('comms-mark-pending')?.addEventListener('click', async () => {    // Codex #242 B-P2: undo — mark the conversation pending again
+    try {
+      await XPD.markMessageUnhandled(latestInboundId);
+      toast('Conversación marcada como pendiente', 'success');
+    } catch (e) { toast('Error al marcar como pendiente', 'error'); }
+  });
 }
 
 function renderDriversSection() {
@@ -4484,6 +4217,7 @@ function renderDriversSection() {
   // F3: surface the En-turno count in the Repartidores + Mapa panel headers (mockup "6 en turno" / "6 repartidores
   // en turno"). Additive, id-guarded — writes nothing when the elements are absent.
   const rosterN = $('roster-drv-n'); if (rosterN) rosterN.textContent = `${live.length} en turno`;
+  const reopenN = $('reopen-roster-n'); if (reopenN) reopenN.textContent = String(live.length);   // §4c: mirror the on-shift count onto the re-open tab
   const mapN    = $('map-n');        if (mapN)    mapN.textContent    = `${live.length} ${live.length === 1 ? 'repartidor' : 'repartidores'} en turno`;
 
   liveTree.innerHTML = live.length
@@ -4515,9 +4249,6 @@ function renderDriversSection() {
   // Surfaced quick actions on the card face (Task 10a).
   wire.querySelectorAll('[data-call-driver]').forEach(btn => {
     btn.addEventListener('click', (e) => { e.stopPropagation(); window.location.href = `tel:${btn.dataset.callDriver}`; });
-  });
-  wire.querySelectorAll('[data-msg-driver]').forEach(btn => {
-    btn.addEventListener('click', (e) => { e.stopPropagation(); toast('Mensajería al repartidor: disponible en Fase 2'); });
   });
 
   wire.querySelectorAll('.driver-row').forEach(row => {
@@ -4676,9 +4407,21 @@ function showLastLocation(uid) {
 
 async function forceOffShift(uid) {
   const d = allDrivers[uid];
-  if (!confirm(`¿Sacar de turno a ${d?.name || 'este repartidor'}?\n\nSe marcará fuera de turno y desaparecerá del mapa.`)) return;
-  try { await XPD.endShift(uid); toast(`${d?.name || 'Repartidor'} fuera de turno`, 'success'); }
-  catch (e) { toast('Error: ' + e.message, 'error'); }
+  // §6: Sacar de turno moves to the styled confirm. endShift ONLY flips the driver node — it never reassigns
+  // the driver's order (verified), so the body says so honestly (rule 17). Count distinct active orders for the sub.
+  const activeOrders = new Set();
+  Object.values(allTasks).forEach((t) => { if (t && t.assigned_driver_id === uid && t.status !== 'completed' && t.status !== 'cancelled' && t.order_id) activeOrders.add(t.order_id); });
+  const active = activeOrders.size;
+  await styledConfirm({
+    title: 'Sacar de turno',
+    sub: `${d?.name || 'Repartidor'} · ${active} ${active === 1 ? 'pedido activo' : 'pedidos activos'}`,
+    body: `Vas a sacar de turno a ${d?.name || 'este repartidor'}. Queda fuera de turno y desaparece del mapa. Si tiene un pedido asignado, no se reasigna solo: queda con este repartidor, reasignalo vos.`,
+    confirmLabel: 'Sacar de turno', cancelLabel: 'Cancelar', busyLabel: 'Sacando de turno…',
+    onConfirm: async () => {
+      try { await XPD.endShift(uid); toast(`${d?.name || 'Repartidor'} fuera de turno`, 'success'); }
+      catch (e) { toast('Error: ' + e.message, 'error'); }
+    },
+  });
 }
 
 // «Pausa» — the on_break status label with elapsed minutes from drivers/{uid}/break_since. Number.isFinite
@@ -4712,15 +4455,15 @@ function renderDriverNode(uid, d) {
   } else if (!reachable) {
     dotClass = '';  // gray
   } else if (stale) {
-    // Stale GPS but still on duty: amber. Driver is in the system but not
+    // Stale GPS but still on duty: muted sand. Driver is in the system but not
     // actively pinging; push notification will reach them when an order comes in.
-    dotClass = 'amber';
+    dotClass = 'sand';
   } else if (d.status === 'available' || d.status === 'at_restaurant') {
     dotClass = 'green';
   } else if (d.status === 'en_route_delivery') {
     dotClass = 'blue';
   } else if (d.status === 'returning' || d.status === 'assigned') {
-    dotClass = 'amber';
+    dotClass = 'sky';
   } else {
     dotClass = '';
   }
@@ -4800,7 +4543,6 @@ function renderDriverNode(uid, d) {
         ${gpsChip}
         <div class="dacts">
           ${d.phone ? `<button class="da call" data-call-driver="${escapeHtml(String(d.phone))}" title="Llamar" aria-label="Llamar"><svg class="ic sm"><use href="#i-phone"/></svg></button>` : ''}
-          <button class="da msg" data-msg-driver="${uidAttr}" title="Mensaje in-app (Fase 2)" aria-label="Mensaje in-app"><svg class="ic sm"><use href="#i-message"/></svg></button>
           <button class="da more" data-more-driver="${uidAttr}" title="Acciones del repartidor" aria-label="Acciones del repartidor"><svg class="ic sm"><use href="#i-more"/></svg></button>
         </div>
       </div>
@@ -5150,6 +4892,73 @@ $('recon-note-overlay').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); settleReconNote($('recon-note-input').value); return; }
   if (e.key === 'Tab') {
     const focusables = [...$('recon-note-overlay').querySelectorAll('textarea, button:not([disabled])')];
+    const target = focusTrapTarget(e.shiftKey, document.activeElement, focusables);
+    if (target) { e.preventDefault(); target.focus(); }
+  }
+});
+
+// ── Generic styled confirm (#1b) — the «Quitar repartidor» look, but generic: title / body / two labels,
+// resolving a Promise<boolean>. Nothing operation-specific. Element-level focus-trapped: initial focus on
+// Cancel, own Tab trap, Esc = cancel with stopPropagation so the document arbiter never double-fires. Reused
+// for the Auto-asignar pause confirm; Cancelar pedido / Sacar de turno can adopt it later (noted for polish).
+let styledConfirmSettle = null, styledConfirmOpener = null, styledConfirmFlow = null, styledConfirmBusy = false, styledConfirmToken = 0;
+function settleStyledConfirm(result, token) {
+  // Codex #241 P1: a completion may settle ONLY the dialog it belongs to. An async «do» completion passes its
+  // captured token and is ignored if a newer dialog has opened meanwhile (so a late action can't approve a
+  // different confirm). A plain dismiss (no token) never fires while a flow is in flight.
+  if (!styledConfirmSettle) return;
+  if (token != null && token !== styledConfirmToken) return;
+  if (token == null && styledConfirmBusy) return;
+  const done = styledConfirmSettle; styledConfirmSettle = null; styledConfirmFlow = null; styledConfirmBusy = false;
+  $('styled-confirm-overlay').classList.add('hidden');
+  const opener = styledConfirmOpener; styledConfirmOpener = null;
+  if (opener && document.contains(opener)) { try { opener.focus(); } catch (_) {} }
+  done(result);
+}
+// Generic styled confirm → Promise<boolean>. Optional async flow: pass onConfirm (+ busyLabel) and the «do»
+// button runs it with a disabled «…ando» state (like #1a's in-flight latch), closing on success and staying
+// open on failure so the action can surface its own error. Without onConfirm it is a plain yes/no.
+function styledConfirm({ title, sub, body, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', opener, onConfirm, busyLabel } = {}) {
+  if (styledConfirmBusy) return Promise.resolve(false);   // Codex #241 P1: never open a new dialog while one's action is in flight
+  settleStyledConfirm(false); styledConfirmToken += 1;    // supersede any still-open (idle) dialog; this open gets its own token
+  // Capture the trigger to restore focus to on dismiss (CTA #1b P2-1). A caller whose trigger gets disabled
+  // while the dialog is open passes it explicitly AND re-focuses it after re-enabling.
+  styledConfirmOpener = opener || document.activeElement;
+  styledConfirmFlow = { onConfirm, busyLabel, confirmLabel };
+  $('styled-confirm-title').textContent = title || '';
+  const subEl = $('styled-confirm-sub'); subEl.textContent = sub || ''; subEl.hidden = !sub;   // optional header sub line
+  $('styled-confirm-body').textContent = body || '';     // textContent — plain text, no HTML injection
+  const okBtn = $('styled-confirm-ok'), cancelBtn = $('styled-confirm-cancel');
+  okBtn.textContent = confirmLabel; okBtn.disabled = false;
+  cancelBtn.textContent = cancelLabel; cancelBtn.disabled = false;
+  $('styled-confirm-overlay').classList.remove('hidden');
+  const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  cancelBtn.focus({ preventScroll: reduceMotion });   // default focus on the safe choice
+  return new Promise((resolve) => { styledConfirmSettle = resolve; });
+}
+$('styled-confirm-cancel').addEventListener('click', () => settleStyledConfirm(false));
+$('styled-confirm-ok').addEventListener('click', async () => {
+  const flow = styledConfirmFlow;
+  if (flow && typeof flow.onConfirm === 'function') {
+    const myToken = styledConfirmToken;   // Codex #241 P1: bind this completion to THIS dialog
+    const okBtn = $('styled-confirm-ok'), cancelBtn = $('styled-confirm-cancel');
+    styledConfirmBusy = true;
+    $('styled-confirm-overlay').querySelector('.picker-panel')?.focus();   // Codex #242 A: hold focus on the dialog BEFORE disabling — disabling the focused button blurs it (Chromium), so Tab could otherwise escape the trap
+    okBtn.disabled = true; cancelBtn.disabled = true;
+    if (flow.busyLabel) okBtn.textContent = flow.busyLabel;
+    try { await flow.onConfirm(); styledConfirmBusy = false; settleStyledConfirm(true, myToken); }
+    catch (_) { styledConfirmBusy = false; okBtn.disabled = false; cancelBtn.disabled = false; okBtn.textContent = flow.confirmLabel; }   // keep open; the action surfaced its own error
+    return;
+  }
+  settleStyledConfirm(true);
+});
+$('styled-confirm-overlay').addEventListener('click', (e) => { if (e.target === $('styled-confirm-overlay')) settleStyledConfirm(false); });
+$('styled-confirm-overlay').addEventListener('keydown', (e) => {
+  if (!styledConfirmSettle) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); settleStyledConfirm(false); return; }
+  if (e.key === 'Tab') {
+    const focusables = [...$('styled-confirm-overlay').querySelectorAll('button:not([disabled])')];
+    if (!focusables.length) { e.preventDefault(); $('styled-confirm-overlay').querySelector('.picker-panel')?.focus(); return; }   // Codex #241 P1: busy (both buttons disabled) → keep focus in the dialog
     const target = focusTrapTarget(e.shiftKey, document.activeElement, focusables);
     if (target) { e.preventDefault(); target.focus(); }
   }
@@ -5676,6 +5485,10 @@ function clearLookupPin() {
 // ============================================================
 function updateDriverMarkers() {
   if (!mapReady) return;   // PLAN §3.5: board renders independent of Maps; markers replay once mapReady (also guards the 5s tick)
+  // §5 no-amber: the sand/sky marker fills come from the AA-dark tokens (read once per render), never an amber literal.
+  const _mk = getComputedStyle(document.documentElement);
+  const MK_STALE = _mk.getPropertyValue('--mk-stale').trim() || '#74695a';
+  const MK_MOVE = _mk.getPropertyValue('--mk-move').trim() || '#35669c';
   const seen = new Set();
   for (const [uid, d] of Object.entries(allDrivers)) {
     if (!d.active || !d.lat || !d.lng) continue;
@@ -5684,19 +5497,19 @@ function updateDriverMarkers() {
     const initial = (d.name || '?').charAt(0).toUpperCase();
     const stale = XPD.isStalePing(d.last_ping);
     const reachable = d.active && d.status !== 'off_shift' && hasPushReachability(d);
-    // Map marker color: stale GPS = amber (still reachable),
-    // unreachable = gray. Don't gray out idle drivers; their phone just hasn't pinged.
+    // Map marker color: same mapping as the roster dots (idle-stale = sand, returning/assigned = sky), but
+    // read from the AA-dark marker tokens so the WHITE initials stay legible — no amber literal (§5 no-amber).
     let color;
     if (!reachable) {
       color = '#666';  // gray
     } else if (stale) {
-      color = '#b45309';  // amber (darkened for AA white initials) — reachable, just idle
+      color = MK_STALE;  // sand (idle but reachable)
     } else if (d.status === 'available' || d.status === 'at_restaurant') {
       color = '#15803d';  // green (darkened for AA white initials)
     } else if (d.status === 'en_route_delivery') {
       color = '#2563eb';  // blue (darkened for AA white initials)
     } else if (d.status === 'returning' || d.status === 'assigned') {
-      color = '#b45309';  // amber (darkened for AA white initials)
+      color = MK_MOVE;  // sky (returning/assigned)
     } else {
       color = '#666';
     }
@@ -5887,6 +5700,7 @@ function isPostPickup(orderId, tasksSrc = allTasks) {
 }
 
 function openPicker(orderId, isReassign = false) {
+  if (styledConfirmBusy) return;   // Codex #241 P1: don't open the picker while a styled confirm's action is in flight
   // a11y: remember who opened the picker (first-choice return target if it's still attached+visible on close).
   pickerOpener = document.activeElement;
   pickerOpen = true;
@@ -6018,13 +5832,7 @@ function openPicker(orderId, isReassign = false) {
 
     $('picker-list').querySelectorAll('[data-driver-uid]').forEach(row => {
       row.addEventListener('click', async () => {
-        if (row.dataset.full === '1') {
-          if (!confirm('Este repartidor ya tiene 2 pedidos (al límite). ¿Asignar de todas formas?')) return;
-        } else if (row.dataset.enroute === '1') {
-          if (!confirm('Este repartidor ya salió a entregar (en camino). ¿Asignar de todas formas?')) return;
-        } else if (row.dataset.unreachable === '1') {
-          if (!confirm('Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?')) return;
-        }
+        if (!(await confirmAssignOverride({ full: row.dataset.full === '1', enRoute: row.dataset.enroute === '1', unreachable: row.dataset.unreachable === '1', driverName: (allDrivers[row.dataset.driverUid] || {}).name }))) return;
         await assignOrder(orderId, row.dataset.driverUid);
       });
     });
@@ -6153,6 +5961,37 @@ function assignFailMsg(reason) {
   }
 }
 
+// The confirm-to-override gate, shared by EVERY assignment path (picker rows and «A mí») so none can
+// skip it. full → en-route → unreachable, in that priority; returns true to proceed, false if the
+// dispatcher declined a required confirmation. (CTA audit #2.)
+async function confirmAssignOverride({ full, enRoute, unreachable, driverName }) {
+  // §6: the override cascade moves from window.confirm to the styled confirm («Asignar igual» / «Cancelar»).
+  // The three messages and their priority (full → en-route → unreachable) are UNCHANGED, now the dialog body.
+  const title = driverName || 'Confirmar asignación';
+  if (full) return styledConfirm({ title, sub: 'requiere confirmación · lleno', body: 'Este repartidor ya tiene 2 pedidos (al límite). ¿Asignar de todas formas?', confirmLabel: 'Asignar igual', cancelLabel: 'Cancelar' });
+  if (enRoute) return styledConfirm({ title, sub: 'requiere confirmación · en camino', body: 'Este repartidor ya salió a entregar (en camino). ¿Asignar de todas formas?', confirmLabel: 'Asignar igual', cancelLabel: 'Cancelar' });
+  if (unreachable) return styledConfirm({ title, sub: 'requiere confirmación · sin notificaciones', body: 'Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?', confirmLabel: 'Asignar igual', cancelLabel: 'Cancelar' });
+  return true;
+}
+
+// Classify a driver for that gate by the SAME rules the picker renders: full = 2 distinct active
+// order_ids, en-route by status, unreachable = no push reachability. Used to gate «A mí» on the current
+// user's own driver record, so self-assign cannot bypass the override confirm.
+function classifyDriverForAssign(uid) {
+  const driver = allDrivers[uid] || null;
+  const orders = new Set();
+  Object.values(allTasks).forEach((t) => {
+    if (!t || t.assigned_driver_id !== uid) return;
+    if (t.status === 'completed' || t.status === 'cancelled') return;
+    if (t.order_id) orders.add(t.order_id);
+  });
+  return {
+    full: orders.size >= 2,
+    enRoute: !!driver && driver.status === 'en_route_delivery',
+    unreachable: !hasPushReachability(driver),
+  };
+}
+
 async function assignOrder(orderId, driverId) {
   try {
     if (pickerIsReassign) {
@@ -6173,29 +6012,15 @@ async function assignOrder(orderId, driverId) {
 // ============================================================
 // Stats + UI helpers
 // ============================================================
-function updateStats(precomputed) {
-  $('stat-drivers').textContent = getActiveDrivers().length;
-  // Slice B: the topbar "En cola" KPI mirrors the ONE Cola de acción needs-action count (unassigned ∪ stalled
-  // ∪ at-risk ∪ exceptions, deduped) — the same authoritative number shown in the Cola header + the segment
-  // "Todos". REVISE (P1-b): reuse the render cycle's precomputed queue when given, so the header and KPI are
-  // always derived from a single computation (never two timestamps, never one refreshed without the other).
-  const pendingCount = (precomputed || getActionQueue(Date.now())).counts.all;
-  $('stat-pending').textContent = pendingCount;
-  $('stat-active').textContent = getActiveOrders().length;
-  $('stat-delivered').textContent = getDeliveredTodayCount();
-  const kpiPending = $('kpi-pending');
-  if (kpiPending) kpiPending.classList.toggle('alert', pendingCount > 0);
-}
-
 function getDotClass(d) {
   // Match the logic in renderDriverNode: stale GPS doesn't dim a reachable
   // driver, but a driver we can't push (no FCM token, no web sub) is gray.
   const reachable = d.active && d.status !== 'off_shift' && hasPushReachability(d);
   if (!reachable) return '';
-  if (XPD.isStalePing(d.last_ping)) return 'amber';  // idle but reachable
+  if (XPD.isStalePing(d.last_ping)) return 'sand';  // idle but reachable
   if (d.status === 'available' || d.status === 'at_restaurant') return 'green';
   if (d.status === 'en_route_delivery') return 'blue';
-  if (d.status === 'returning' || d.status === 'assigned') return 'amber';
+  if (d.status === 'returning' || d.status === 'assigned') return 'sky';
   return '';
 }
 
@@ -6219,6 +6044,12 @@ function escapeHtml(s) {
 // Compact glance label for LISTS — the friendly daily "#47", or a short code suffix
 // when a daily number hasn't been assigned yet. The full order code (PZSX…) is NOT
 // shown in lists; it lives in the detail modal (see orderCode / renderOrderDetailModal).
+// Canonical money format — «L 1,250.00» (es-HN thousands + 2 decimals), matching the approved mockups, so a
+// total reads the same way wherever it's shown to the dispatcher. A null/non-finite amount renders «—».
+function fmtL(n) {
+  const v = Number(n);
+  return (n == null || !Number.isFinite(v)) ? '—' : 'L ' + v.toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 function displayOrderLabel(orderOrId) {
   const isObj = orderOrId && typeof orderOrId === 'object';
   const orderId = isObj ? orderOrId.order_id : orderOrId;
@@ -6267,12 +6098,12 @@ $('delivered-toggle').querySelector('.tree-group-toggle').innerHTML = ICONS.chev
 const OVERLAYS = [
   { name: 'flyout',      z: 151, modal: true,  transient: false, open: () => { const e = $('surface-flyout');     return !!(e && !e.hidden); },                       close: null /* set by initSurfaceFlyout */ },
   { name: 'action-menu', z: 170, modal: false, transient: false, open: () => { const e = $('action-menu');        return !!(e && !e.classList.contains('hidden')); },   close: () => closeActionMenu() },
-  { name: 'msg-modal',   z: 200, modal: true,  transient: false, open: () => { const e = $('msg-modal');          return !!(e && e.classList.contains('open')); },      close: () => closeMessagesModal() },
   { name: 'comms',       z: 206, modal: true,  transient: false, open: () => { const e = $('comms-sheet');         return !!(e && e.classList.contains('open')); },      close: () => closeCommsThread() },
   { name: 'drawer',      z: 210, modal: true,  transient: false, open: () => { const e = $('order-detail-modal');  return !!(e && e.classList.contains('open')); },      close: () => closeOrderDetailModal() },
   { name: 'picker',      z: 220, modal: true,  transient: false, open: () => { const e = $('picker-overlay');      return !!(e && !e.classList.contains('hidden')); },   close: null /* element-level focus-trapped: self-handles Esc (stopPropagation) → arbiter skips it */ },
   { name: 'recon-note',  z: 220, modal: true,  transient: false, open: () => { const e = $('recon-note-overlay');  return !!(e && !e.classList.contains('hidden')); },   close: null /* element-level focus-trapped MONEY dialog: self-handles Esc (stopPropagation) → arbiter skips it */ },
   { name: 'unassign-confirm', z: 230, modal: true, transient: false, open: () => { const e = $('unassign-confirm-overlay'); return !!(e && !e.classList.contains('hidden')); }, close: null /* opens OVER the picker; element-level focus-trapped: self-handles Esc (stopPropagation) → arbiter skips it */ },
+  { name: 'styled-confirm', z: 235, modal: true, transient: false, open: () => { const e = $('styled-confirm-overlay'); return !!(e && !e.classList.contains('hidden')); }, close: null /* generic focus-trapped confirm: self-handles Esc (stopPropagation) → arbiter skips it */ },
   { name: 'toast',       z: 240, modal: false, transient: true,  open: () => { const e = $('toast');               return !!(e && e.classList.contains('show')); } },
   { name: 'account-menu',z: 300, modal: false, transient: false, open: () => { const e = $('rail-av-menu');        return !!(e && !e.hidden); },                          close: null /* set by initAvatarMenu */ },
 ];
@@ -6305,6 +6136,7 @@ $('rail-toggle-right').addEventListener('click', () => togRail('right-open'));
 // F6 #3: in-panel collapse control on the Repartidores header — same mechanism as the topbar toggle (togRail),
 // just a discoverable affordance in the panel. Re-expand via the topbar rail-toggle (the collapsed panel is 0-width).
 $('roster-collapse')?.addEventListener('click', () => togRail('right-open'));
+$('roster-reopen')?.addEventListener('click', () => togRail('right-open'));   // §4c: the persistent re-open tab (shown only while collapsed)
 
 // ===========================================================================
 // S1b — Administrar repartidores (driver-account admin). The record at
@@ -6771,7 +6603,7 @@ function flyoutRestoreFocus(opener, doc) {
   const routes = {
     despacho() { ensureRailOpen('left-open'); ensureRailOpen('right-open'); },
     pedidos() { ensureRailOpen('right-open'); activateRtab('pedidos'); scrollTo($('pedidos-list')); },
-    comms() { openMessagesModal(); },                          // opens the shipped modal (transient — no active move)
+    comms() { activateRtab('comms'); },                        // §1: opens the flyout on the single Comms pane (modal retired)
     programados() { ensureRailOpen('right-open'); activateRtab('pedidos'); scrollTo(document.querySelector('#pedidos-list [data-cat="Programados"]')); },
     reconciliacion() { ensureRailOpen('right-open'); activateRtab('caja'); },
     repartidores() { ensureRailOpen('right-open'); scrollTo($('drivers-live-group')); },
@@ -6935,7 +6767,7 @@ if ('serviceWorker' in navigator) {
 /* P-SELFUPDATE CP2 §3 — this app's self-update adapter: idle = none of these overlays open, no focused field, no request
    of ours in flight, no tap/key in the last 30 s, online (see SherpaClient.idleAdapter). State reloads from the
    database. Inert (unstamped) pages register nothing. */
-try { var __S = window.SherpaClient; if (__S && !__S.inert) __S.registerAdapter(__S.idleAdapter({ overlays: ["#msg-modal.open", "#comms-sheet.open", "#order-detail-modal.open", "#picker-overlay:not(.hidden)", "#recon-note-overlay:not(.hidden)", "#unassign-confirm-overlay:not(.hidden)", "#surface-flyout:not([hidden])", "#action-menu:not(.hidden)"] })); } catch (_) {}
+try { var __S = window.SherpaClient; if (__S && !__S.inert) __S.registerAdapter(__S.idleAdapter({ overlays: ["#comms-sheet.open", "#order-detail-modal.open", "#picker-overlay:not(.hidden)", "#recon-note-overlay:not(.hidden)", "#unassign-confirm-overlay:not(.hidden)", "#styled-confirm-overlay:not(.hidden)", "#surface-flyout:not([hidden])", "#action-menu:not(.hidden)"] })); } catch (_) {}
 </script>
 </body>
 </html>

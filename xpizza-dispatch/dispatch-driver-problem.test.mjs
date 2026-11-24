@@ -120,8 +120,11 @@ ok('every reason renders «Problema con el pedido» / «Pedido #42 · {motivo} �
   assert.match(h, /Pedido #42 · El local está cerrado · Tbname/, 'DRVF-TORRE-RENDER-DETAIL');
   assert.match(h, /data-alert-id="driver_problem_tb_order_1_tb_push_1"/, 'DRVF-TORRE-RENDER-ID the row carries its id (dismiss + navigation)');
   assert.doesNotMatch(h, /Otros \/ Revisar/, 'DRVF-TORRE-RENDER-NOT-OTROS not buried in the unknown bucket');
-  assert.match(h, /class="ex amber"/, 'DRVF-TORRE-RENDER-AMBER');
-  ok('renderDispatcherAlerts puts the real alert in the main list, amber, with its id — not in «Otros / Revisar»');
+  // §5 no-amber (Codex #245 B / 54d1b6358): the amber-severity cue renders the pastel .sand class (the data
+  // key stays 'amber' — asserted at line 82). The rendered row must carry no amber literal at all (pastel-only).
+  assert.match(h, /class="ex sand"/, 'DRVF-TORRE-RENDER-SAND');
+  assert.doesNotMatch(h, /\bamber\b/, 'DRVF-TORRE-RENDER-NO-AMBER the rendered row carries no amber literal');
+  ok('renderDispatcherAlerts puts the real alert in the main list, pastel sand, with its id — not in «Otros / Revisar»');
 }
 
 console.log(`\n${pass} passed`);

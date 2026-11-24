@@ -33,7 +33,7 @@
     --lilac-bg:#EEE6FD; --lilac-ink:#7E45E1;
     --sky-bg:#E2EFFE; --sky-ink:#1F6BC1;
     --mint-bg:#DFF6EC; --mint-ink:#147B5C;
-    --cash-bg:#FBEFDD; --cash-ink:#8A5A12;
+    --cash-bg:#EFEBE3; --cash-ink:#6F6456;
     --xp:#D13B6D; --lm:#9558CA;
     --shadow-s:0 1px 2px rgba(40,25,80,.07);
     --shadow-m:0 10px 22px -12px rgba(40,25,80,.34), 0 1px 2px rgba(40,25,80,.06);
@@ -54,7 +54,7 @@
       --lilac-bg:#221A38; --lilac-ink:#B79BF5;
       --sky-bg:#152238; --sky-ink:#79B4F2;
       --mint-bg:#11281F; --mint-ink:#5FD3A8;
-      --cash-bg:#2E2413; --cash-ink:#E7BD86;
+      --cash-bg:#2B2A26; --cash-ink:#CFC6B8;
       --xp:#F07CA5; --lm:#B79BF5;
       --shadow-s:0 1px 2px rgba(0,0,0,.5);
       --shadow-m:0 12px 26px -14px rgba(0,0,0,.9), 0 1px 2px rgba(0,0,0,.4);
@@ -74,7 +74,7 @@
     --lilac-bg:#221A38; --lilac-ink:#B79BF5;
     --sky-bg:#152238; --sky-ink:#79B4F2;
     --mint-bg:#11281F; --mint-ink:#5FD3A8;
-    --cash-bg:#2E2413; --cash-ink:#E7BD86;
+    --cash-bg:#2B2A26; --cash-ink:#CFC6B8;
     --xp:#F07CA5; --lm:#B79BF5;
     --shadow-s:0 1px 2px rgba(0,0,0,.5);
     --shadow-m:0 12px 26px -14px rgba(0,0,0,.9), 0 1px 2px rgba(0,0,0,.4);
@@ -1818,6 +1818,19 @@ async function reactivateTestPush(){
 }
 
 // ── settings ──
+// §3 (#7): a confirm STEP before signing out — a pushed sheet inside Ajustes, so one stray tap can't drop
+// the session mid-shift. «Cancelar» / back returns to Ajustes; «Cerrar sesión» runs the existing sign-out.
+function openSignoutConfirm(){
+  openSheet(`
+    <div class="sh-nav">
+      <button class="back" type="button" data-settings="1" data-back="1" aria-label="Atrás">${IC_BACK}</button>
+      <h2 class="sh-h">¿Cerrar sesión?</h2>
+    </div>
+    <div class="panel pad" style="font-size:15px;color:var(--ink2)">Vas a salir de la Central en este teléfono. Para volver a entrar vas a necesitar tu correo y contraseña.</div>
+    <button class="btn btn-d" type="button" data-signout-commit="1" style="margin-top:0">Cerrar sesión</button>
+    <button class="btn btn-g" type="button" data-settings="1" data-back="1">Cancelar</button>
+  `);
+}
 function openSettings(){
   const sup = currentPushSupport();
   openSheet(`
@@ -1842,7 +1855,7 @@ function openSettings(){
 
 // ── delegated events ──
 document.addEventListener('click', (e) => {
-  const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],[data-chip],[data-tab],[data-settheme],[data-push],[data-testpush],[data-reactivate],[data-signout],[data-drvfocus],[data-donetoggle],[data-map],[data-back],[data-alerts],[data-alert-order],[data-alert-dismiss]');
+  const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],[data-chip],[data-tab],[data-settheme],[data-push],[data-testpush],[data-reactivate],[data-signout],[data-signout-commit],[data-settings],[data-drvfocus],[data-donetoggle],[data-map],[data-back],[data-alerts],[data-alert-order],[data-alert-dismiss]');
   if (!el) return;
   const ds = el.dataset;
 
@@ -1882,11 +1895,13 @@ document.addEventListener('click', (e) => {
   if (ds.push){ enableStaffPush(); return; }
   if (ds.testpush){ runTestPush(); return; }
   if (ds.reactivate){ reactivateTestPush(); return; }
-  if (ds.signout){
+  if (ds.signout){ sheetDir = 'push'; openSignoutConfirm(); return; }   // §3: confirm step, not an immediate sign-out
+  if (ds.signoutCommit){
     closeSheet();
     XPD.signOutUser().catch(() => toast('No se pudo cerrar sesión', true));
     return;
   }
+  if (ds.settings){ sheetDir = ds.back ? 'pop' : 'push'; openSettings(); return; }   // §3: back/Cancelar from the sign-out confirm returns to Ajustes
   if (ds.drvfocus){ showTab('mapa'); window.__focusDriverOnMap?.(ds.drvfocus); return; }
   if (ds.map){ closeSheet(); showTab('mapa'); window.__focusOrderOnMap?.(ds.map); return; }
 });
@@ -2026,11 +2041,23 @@ function openDriverInfo(uid){
   const ordLabel = oid ? displayLabel(oid, STORE.orders[oid]) : null;
   const statusEs = DRIVER_STATUS_ES[d.status] || d.status || '';
   // Google's bubble is always light — these literals are intentional, not theme tokens.
-  driverInfoWindow.setContent(`<div style="font-family:-apple-system,system-ui,sans-serif;padding:1px 3px;min-width:118px">
+  // §4b: the bubble was info-only — give it two READ-ONLY shortcuts into existing flows (no new mutation, so
+  // the read-only contract is untouched): «Llamar» = tel: the driver, «Ver pedido» = openDetail of the order
+  // they carry (the same detail sheet, one tap from «Reasignar»). «Ver pedido» shows only when they carry one.
+  // Google's bubble is always light → literal colours (lilac wash / violet solid), as the name/status already are.
+  driverInfoWindow.setContent(`<div style="font-family:-apple-system,system-ui,sans-serif;padding:1px 3px;min-width:160px">
     <div style="font-weight:700;font-size:14px;color:#191627">${escapeHtml(d.name || 'Repartidor')}</div>
     <div style="font-size:12px;color:#5E5A75;margin-top:1px">${escapeHtml(statusEs)}${ordLabel ? ` · ${escapeHtml(ordLabel)}` : ''}</div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      ${d.phone ? `<a href="tel:${escapeHtml(String(d.phone))}" style="flex:1 1 0;height:34px;border-radius:10px;font-size:13px;font-weight:700;background:#F1E8FC;color:#7E45E1;display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h3l2 5-2.5 1.5a13 13 0 0 0 6 6L15 13l5 2v3a2 2 0 0 1-2.2 2A17 17 0 0 1 3 5.2 2 2 0 0 1 5 3z"/></svg>Llamar</a>` : ''}
+      ${oid ? `<button type="button" data-iw-order="${escapeHtml(oid)}" style="flex:1 1 0;height:34px;border-radius:10px;border:none;font-size:13px;font-weight:700;background:#9256D7;color:#fff">Ver pedido</button>` : ''}
+    </div>
   </div>`);
   driverInfoWindow.open(map, mk);
+  if (oid) google.maps.event.addListenerOnce(driverInfoWindow, 'domready', () => {
+    const vp = document.querySelector('[data-iw-order]');
+    if (vp) vp.addEventListener('click', () => { driverInfoWindow.close(); openDetail(vp.dataset.iwOrder); });   // read-only: opens the existing detail sheet
+  });
 }
 
 window.__driversUpdated = () => {
@@ -2044,8 +2071,12 @@ window.__focusDriverOnMap = async (uid) => {
   clearFocus();
   const d = STORE.drivers[uid];
   if (d && typeof d.lat === 'number' && typeof d.lng === 'number') {
+    showMapMsg('');                                   // #4: clear any prior "no location" note
     map.panTo({ lat:d.lat, lng:d.lng }); map.setZoom(15);
     openDriverInfo(uid);
+  } else {
+    // #4: a driver with no GPS fix would otherwise do nothing silently — give honest feedback on the map.
+    showMapMsg(d?.name ? `${d.name} todavía no envió su ubicación.` : 'Todavía no hay ubicación de este repartidor.');
   }
 };
 
@@ -2056,7 +2087,7 @@ window.__focusOrderOnMap = async (orderId) => {
   if (!mapReady) return;
   clearFocus();
   const dt = STORE.tasks[`${orderId}_delivery`];
-  const order = STORE.orders[orderId];
+  const order = STORE.orders[orderId] || STORE.scheduled[orderId];   // a scheduled (Programado) order lives in STORE.scheduled — resolve it so «Ver en mapa» focuses its destination/hub
   $('ver-todos')?.classList.remove('hidden');
   if (order?.order_type === 'pickup') {
     const hub = HUBS[order.restaurant_id] || HUBS.x_pizza;
@@ -2153,7 +2184,7 @@ function mdraListLive() { return MDRA.view === 'list' && !MDRA.dialogOpen; }
 function mdraEnsure() {
   if ($('mdra-sheet')) return;
   const st = document.createElement('style');
-  st.textContent = `#mdra-sheet{position:fixed;inset:0;z-index:999;background:var(--bg,#1c2027);display:none;flex-direction:column;overflow:auto}
+  st.textContent = `#mdra-sheet{position:fixed;inset:0;z-index:999;background:var(--bg,#1c2027);color:#f1effa;display:none;flex-direction:column;overflow:auto}
   #mdra-sheet.open{display:flex}
   .mdra-open{background:var(--surface-2,#2d323a);border:1px solid var(--border,rgba(255,255,255,.12));color:var(--text,#f2f4f6);font-size:12px;font-weight:600;padding:7px 12px;border-radius:9px}
   .mdra-top{display:flex;align-items:center;gap:10px;padding:16px;border-bottom:1px solid var(--border-soft,rgba(255,255,255,.07));position:sticky;top:0;background:var(--bg,#1c2027)}
@@ -2164,15 +2195,15 @@ function mdraEnsure() {
   .mdra-row{display:flex;align-items:center;gap:11px;padding:12px;border:1px solid var(--border-soft,rgba(255,255,255,.07));border-radius:11px;background:var(--surface-2,#2d323a);margin-bottom:8px}
   .mdra-row.mut{opacity:.55} .mdra-who{flex:1;min-width:0} .mdra-nm{font-size:14px;font-weight:600} .mdra-mt{font-size:12px;color:var(--text-dim,#9b9993)}
   .mdra-pill{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px}
-  .mdra-pill.ok{background:var(--success-soft,rgba(127,200,160,.16));color:var(--success,#7fc8a0)} .mdra-pill.pend{background:var(--warn-soft,rgba(231,189,134,.16));color:var(--warn,#e7bd86)}
+  .mdra-pill.ok{background:var(--success-soft,rgba(127,200,160,.16));color:var(--success,#7fc8a0)} .mdra-pill.pend{background:rgba(207,198,184,.16);color:#cfc6b8}
   .mdra-pill.susp{background:var(--surface-3,#3b4048);color:var(--text-soft,#a9aba9)} .mdra-pill.dead{background:var(--accent-soft,rgba(236,154,161,.16));color:var(--accent,#ec9aa1)} .mdra-pill.unk{background:var(--surface-3,#3b4048);color:var(--text-dim,#9b9993)}
   .mdra-act{font-size:13px;font-weight:600;padding:8px 14px;border-radius:9px;border:1px solid var(--border,rgba(255,255,255,.12));background:var(--surface-3,#3b4048);color:var(--text,#f2f4f6);margin-left:6px}
   .mdra-act.pri{background:var(--primary,#a6a0f0);color:var(--primary-fg,#201c48);border-color:transparent} .mdra-act.ok{background:var(--success-soft,rgba(127,200,160,.16));color:var(--success,#7fc8a0);border-color:transparent}
-  .mdra-act.danger{background:var(--accent-solid,#cc3a45);color:#fff;border-color:transparent} .mdra-act.warn{background:var(--warn,#e7bd86);color:var(--warn-fg,#5a3c10);border-color:transparent} .mdra-act[disabled]{opacity:.45}
+  .mdra-act.danger{background:var(--accent-solid,#cc3a45);color:#fff;border-color:transparent} .mdra-act.warn{background:transparent;color:#f1effa;border-color:rgba(255,255,255,.22)} .mdra-act[disabled]{opacity:.45}
   .mdra-full{width:100%;margin:8px 0 0} .mdra-field{display:flex;flex-direction:column;gap:5px;margin-bottom:11px} .mdra-field input{background:var(--surface,#262a31);border:1px solid var(--border,rgba(255,255,255,.12));border-radius:9px;padding:11px;color:var(--text,#f2f4f6);font-size:15px}
   .mdra-inset{background:var(--surface,#262a31);border:1px solid var(--border-soft,rgba(255,255,255,.07));border-radius:11px;padding:13px;margin:11px 0}
   .mdra-check{display:flex;align-items:center;gap:10px;font-size:14px;margin-top:10px} .mdra-box{width:22px;height:22px;border-radius:6px;border:1.5px solid var(--border,rgba(255,255,255,.12));display:grid;place-items:center;color:transparent} .mdra-check.on .mdra-box{background:var(--success,#7fc8a0);color:#10331e;border-color:transparent}
-  .mdra-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim,#9b9993)} .mdra-owner{font-size:10px;font-weight:700;text-transform:uppercase;color:var(--warn,#e7bd86)} .mdra-mut-t{font-size:12px;color:var(--text-dim,#9b9993)}
+  .mdra-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim,#9b9993)} .mdra-owner{font-size:10px;font-weight:700;text-transform:uppercase;color:#cfc6b8} .mdra-mut-t{font-size:12px;color:var(--text-dim,#9b9993)}
   .mdra-cond{display:flex;gap:9px;margin-bottom:9px} .mdra-ci{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:11px} .mdra-ci.bad{background:var(--accent-solid,#cc3a45)} .mdra-ci.good{background:var(--success,#7fc8a0)}
   .mdra-back{background:none;border:none;color:var(--text-dim,#9b9993);font-size:13px;margin-bottom:12px}`;
   document.head.appendChild(st);
@@ -2267,7 +2298,7 @@ async function mdraDeactivate(body) {
   const uid = MDRA.sel; const rec = MDRA.recs[uid] || {};
   const back = () => { MDRA.view = 'list'; MDRA.sel = null; mdraRender(); };
   if (mdraDeriveState(rec) !== 'suspended') {
-    body.innerHTML = `<button class="mdra-back" id="mdra-bk">← Volver</button><div class="mdra-inset" style="background:var(--warn-soft,rgba(231,189,134,.16))"><b style="font-size:13px">Primero suspendé al repartidor</b><p class="mdra-mut-t" style="margin:6px 0 0">Solo se puede desactivar una cuenta ya suspendida.</p></div><button class="mdra-act danger mdra-full" disabled>Desactivar cuenta</button>`;
+    body.innerHTML = `<button class="mdra-back" id="mdra-bk">← Volver</button><div class="mdra-inset" style="background:rgba(207,198,184,.16)"><b style="font-size:13px">Primero suspendé al repartidor</b><p class="mdra-mut-t" style="margin:6px 0 0">Solo se puede desactivar una cuenta ya suspendida.</p></div><button class="mdra-act danger mdra-full" disabled>Desactivar cuenta</button>`;
     $('mdra-bk').addEventListener('click', back); return;
   }
   let openShift = false, openOrders = [], precheckErr = false, tasks = {};   // tasks hoisted: the Reasignar remedy reads it after the try
@@ -2283,11 +2314,11 @@ async function mdraDeactivate(body) {
   const cuadre = (MDRA.cash && !MDRA.cashErr) ? mdraLatestCuadre(MDRA.cash[uid]) : null; const cash = mdraCashDisplay(cuadre, MDRA.cashErr);
   const blockers = mdraBlockers({ openShift, openOrders, cashAttested: MDRA.attested === true }); const hard = openShift || openOrders.length > 0;
   const cond = ['open_shift', 'open_tasks'].map((r) => {
-    if (precheckErr) return `<div class="mdra-cond"><span class="mdra-ci" style="background:var(--warn,#e7bd86);color:#5a3c10"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 8v4M12 16h.01"/></svg></span><div><b style="font-size:13px">${r === 'open_shift' ? 'Turno: desconocido' : 'Entregas: desconocido'}</b></div></div>`;
+    if (precheckErr) return `<div class="mdra-cond"><span class="mdra-ci" style="background:#cfc6b8;color:#2a2824"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 8v4M12 16h.01"/></svg></span><div><b style="font-size:13px">${r === 'open_shift' ? 'Turno: desconocido' : 'Entregas: desconocido'}</b></div></div>`;
     const bad = (r === 'open_shift' && openShift) || (r === 'open_tasks' && openOrders.length); const t = r === 'open_shift' ? (bad ? 'Turno abierto' : 'Sin turno abierto') : (bad ? `${openOrders.length} entrega(s) en curso` : 'Sin entregas en curso'); const reOid = openOrders.find((oid) => !isPostPickup(STORE.orders[oid] || {}, oid, tasks)); const fix = (bad && r === 'open_tasks' && reOid) ? `<button id="mdra-reasignar" data-oid="${escapeHtml(String(reOid))}" style="background:none;border:none;padding:0;color:var(--primary,#a6a0f0);text-decoration:underline;font:inherit;cursor:pointer">Reasignar</button>` : ''; return `<div class="mdra-cond"><span class="mdra-ci ${bad ? 'bad' : 'good'}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="${bad ? 'M6 6l12 12M18 6L6 18' : 'M4 12l5 5L20 6'}"/></svg></span><div><b style="font-size:13px">${escapeHtml(t)}</b>${fix}</div></div>`; }).join('');
   const canDo = !precheckErr && blockers.length === 0; // dual-role is the server's call — its refusal surfaces via mdraErr
   body.innerHTML = `<button class="mdra-back" id="mdra-bk">← Volver</button><div style="font-size:16px;font-weight:700;margin-bottom:10px">Desactivar a ${escapeHtml(mdraName(uid, rec))}</div>`
-    + ((hard || precheckErr) ? `<div class="mdra-inset" style="background:var(--warn-soft,rgba(231,189,134,.16))"><b style="font-size:13px">${precheckErr ? 'No se pudo verificar el estado' : 'Todavía no se puede desactivar'}</b><div style="margin-top:9px">${cond}</div></div>` : `<div>${cond}</div>`)
+    + ((hard || precheckErr) ? `<div class="mdra-inset" style="background:rgba(207,198,184,.16)"><b style="font-size:13px">${precheckErr ? 'No se pudo verificar el estado' : 'Todavía no se puede desactivar'}</b><div style="margin-top:9px">${cond}</div></div>` : `<div>${cond}</div>`)
     + `<div class="mdra-inset"><div style="display:flex;align-items:center"><span class="mdra-lbl">Efectivo</span><span class="mdra-owner" style="margin-left:auto">Decisión del dueño</span></div><label class="mdra-check ${MDRA.attested ? 'on' : ''}" id="mdra-ck"><span class="mdra-box"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 12l5 5L20 6"/></svg></span><span>Sin efectivo pendiente</span></label><div style="display:flex;justify-content:space-between;margin-top:10px;font-size:13px"><span class="mdra-lbl">Último cuadre</span><span style="color:${cash.available ? 'var(--text,#f2f4f6)' : 'var(--text-dim,#9b9993)'}">${escapeHtml(cash.text)}</span></div><div class="mdra-mut-t" style="margin-top:7px">Solo confirmación; no registra monto.</div></div>`
     + `<button class="mdra-act danger mdra-full" id="mdra-go" ${canDo ? '' : 'disabled'}>Desactivar cuenta</button>`;
   $('mdra-bk').addEventListener('click', back);

@@ -98,8 +98,9 @@ const pickerJs = html.slice(openIdx, closeEnd);
   assert.match(pickerJs, /requiere confirmación · lleno/, 'reason: lleno');
   assert.match(pickerJs, /requiere confirmación · en camino/, 'reason: en camino');
   assert.match(pickerJs, /requiere confirmación · sin notificaciones/, 'reason: sin notificaciones');
-  // CSS: needs-confirm is amber; the disabled opacity/not-allowed treatment is GONE; nothing blocks the click
-  assert.match(html, /\.picker-row\.needs-confirm\s*\{\s*background:\s*var\(--warn-soft\)/, 'needs-confirm amber CSS present');
+  // CSS: needs-confirm is the pastel sand caution (no-amber §5); the disabled opacity/not-allowed treatment is
+  // GONE; nothing blocks the click
+  assert.match(html, /\.picker-row\.needs-confirm\s*\{\s*background:\s*var\(--sand-soft\)/, 'needs-confirm sand (pastel) CSS present');
   assert.doesNotMatch(html, /\.picker-row\.disabled\s*\{[^}]*opacity/, 'old .picker-row.disabled opacity rule removed');
   assert.doesNotMatch(html, /\.picker-row[^{]*\{[^}]*pointer-events:\s*none/, 'no pointer-events:none on picker rows');
   assert.doesNotMatch(html, /\.picker-row\.needs-confirm[^{]*\{[^}]*cursor:\s*not-allowed/, 'needs-confirm never cursor:not-allowed');
@@ -229,13 +230,17 @@ const pickerJs = html.slice(openIdx, closeEnd);
 {
   const reg = html.slice(html.indexOf('const OVERLAYS = ['), html.indexOf('const anyModalOpen ='));
   assert.ok(reg && reg.length > 0, 'canonical OVERLAYS registry present');
-  for (const n of ['flyout', 'action-menu', 'msg-modal', 'comms', 'drawer', 'picker', 'recon-note', 'toast', 'account-menu'])
+  // 'styled-confirm' is the CTA #1b declared delta — a new generic focus-trapped confirm overlay.
+  // §1: 'msg-modal' retired (the flyout Comms pane is the single surface now).
+  for (const n of ['flyout', 'action-menu', 'comms', 'drawer', 'picker', 'recon-note', 'styled-confirm', 'toast', 'account-menu'])
     assert.match(reg, new RegExp(`name: '${n}'`), `registry includes the '${n}' overlay`);
   assert.match(html, /const anyModalOpen = \(\) => OVERLAYS\.some\(o => o\.modal && o\.open\(\)\)/, 'anyModalOpen (⌘K bail) DERIVES from OVERLAYS');
   // flyout + account-menu closers attach in their IIFEs; picker + recon-note are close:null (self-handled).
   assert.match(html, /_am\.close = \(\) => setOpen\(false\)/, 'account-menu registers its close() (arbiter-driven)');
   assert.match(reg, /name: 'picker',[^\n]*close: null/, 'picker is close:null → arbiter skips it (self-handles Esc)');
   assert.match(reg, /name: 'recon-note',[^\n]*close: null/, 'recon-note is close:null → arbiter skips it (self-handles Esc)');
+  assert.match(reg, /name: 'styled-confirm',[^\n]*close: null/, 'styled-confirm is close:null → arbiter skips it (self-handles Esc) [CTA #1b delta]');
+  assert.match(html, /\$\('styled-confirm-overlay'\)\.addEventListener\('keydown'[\s\S]*?e\.key === 'Escape'[\s\S]*?e\.stopPropagation\(\); settleStyledConfirm\(false\)/, 'styled-confirm self-handles Esc element-level with stopPropagation (settle false)');
   // the two self-handled modals DO keep their own element-level Esc (with stopPropagation, so the arbiter can't double-fire)
   assert.match(html, /\$\('picker-overlay'\)\.addEventListener\('keydown'[\s\S]*?e\.key === 'Escape'[\s\S]*?e\.stopPropagation\(\);[\s\S]*?closePicker\(\)/, 'picker self-handles Esc element-level with stopPropagation');
   assert.match(html, /\$\('recon-note-overlay'\)\.addEventListener\('keydown'[\s\S]*?e\.key === 'Escape'[\s\S]*?e\.stopPropagation\(\); settleReconNote\(null\)/, 'recon-note self-handles Esc element-level with stopPropagation (money dismiss = settle null)');
@@ -254,9 +259,7 @@ const pickerJs = html.slice(openIdx, closeEnd);
     ['distinct-order add',    'if (t.order_id) ordersByDriver[t.assigned_driver_id].add(t.order_id);'],
     ['orderCount = set.size',  'const orderCount = ordersByDriver[uid] ? ordersByDriver[uid].size : 0;'],
     ['full = count >= 2',     'const full = orderCount >= 2;'],
-    ['confirm() full',        "if (!confirm('Este repartidor ya tiene 2 pedidos (al límite). ¿Asignar de todas formas?')) return;"],
-    ['confirm() en-route',    "if (!confirm('Este repartidor ya salió a entregar (en camino). ¿Asignar de todas formas?')) return;"],
-    ['confirm() unreachable', "if (!confirm('Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?')) return;"],
+    // (the full/en-route/unreachable confirm() cascade moved into the shared confirmAssignOverride — frozen in its own block below, CTA #2)
     ['click → assignOrder',   'await assignOrder(orderId, row.dataset.driverUid);'],
     ['reassignOrder call',    'const res = await XPD.reassignOrder(orderId, driverId, pickerFromDriver);'],
     ['assignOrderToDriver',   'const res = await XPD.assignOrderToDriver(orderId, driverId);'],
@@ -271,23 +274,51 @@ const pickerJs = html.slice(openIdx, closeEnd);
   ok(`assignment-logic sites byte-identical to base (${anchors.length} anchors)`);
 }
 
-// The click LISTENER that reads data-* and calls assignOrder must be verbatim (whole block).
+// CTA audit #2 — the confirm-to-override cascade MOVED into the shared confirmAssignOverride, called by BOTH
+// the picker rows AND «A mí» (self-assign) so no assignment path can skip it. The three message texts and the
+// full→en-route→unreachable PRIORITY are preserved — frozen here in their new home, with a base-sanity check
+// that each message existed inline before. (Cascade behaviour + the «A mí» routing are proven in
+// dispatch-self-assign-gate.test.js.)
 {
+  const MSG = {
+    full: 'Este repartidor ya tiene 2 pedidos (al límite). ¿Asignar de todas formas?',
+    enRoute: 'Este repartidor ya salió a entregar (en camino). ¿Asignar de todas formas?',
+    unreachable: 'Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?',
+  };
+  for (const [k, m] of Object.entries(MSG)) assert.ok(baseHtml.includes(m), `[base sanity] base had the ${k} message inline`);
+  const gStart = html.indexOf('function confirmAssignOverride(');
+  const gate = html.slice(gStart, html.indexOf('function classifyDriverForAssign(', gStart));
+  assert.ok(gStart > -1 && gate, 'confirmAssignOverride is present');
+  // EXACT prompt-argument freeze (Codex #227 P3): the WHOLE confirm(...) statement, terminator included, so
+  // appending text to a message — e.g. + ' MUTATED COPY' — breaks the match and the mutant dies here.
+  // §6 (declared delta): the cascade moved from window.confirm to styledConfirm. Freeze the EXACT message as
+  // the dialog BODY (so an append-mutant still dies), the «Asignar igual» override label, and the priority order.
+  const stmt = {
+    full: `if (full) return styledConfirm({ title, sub: 'requiere confirmación · lleno', body: '${MSG.full}', confirmLabel: 'Asignar igual', cancelLabel: 'Cancelar' });`,
+    enRoute: `if (enRoute) return styledConfirm({ title, sub: 'requiere confirmación · en camino', body: '${MSG.enRoute}', confirmLabel: 'Asignar igual', cancelLabel: 'Cancelar' });`,
+    unreachable: `if (unreachable) return styledConfirm({ title, sub: 'requiere confirmación · sin notificaciones', body: '${MSG.unreachable}', confirmLabel: 'Asignar igual', cancelLabel: 'Cancelar' });`,
+  };
+  for (const [k, s] of Object.entries(stmt)) assert.ok(gate.includes(s), `confirmAssignOverride freezes the EXACT ${k} styledConfirm statement (message + «Asignar igual»)`);
+  assert.ok(gate.indexOf(stmt.full) > -1 && gate.indexOf(stmt.full) < gate.indexOf(stmt.enRoute)
+    && gate.indexOf(stmt.enRoute) < gate.indexOf(stmt.unreachable),
+    'full → en-route → unreachable priority preserved');
+  ok('override cascade frozen EXACTLY in the shared confirmAssignOverride (whole styledConfirm statements + priority; base-sanity the messages pre-existed inline)');
+}
+
+// The picker click LISTENER now routes through the shared gate, then assigns. Base had the inline cascade.
+{
+  const baseBlock = `    $('picker-list').querySelectorAll('[data-driver-uid]').forEach(row => {
+      row.addEventListener('click', async () => {
+        if (row.dataset.full === '1') {`;
+  assert.ok(baseHtml.includes(baseBlock), '[base sanity] base had the inline-cascade click listener');
   const block = `    $('picker-list').querySelectorAll('[data-driver-uid]').forEach(row => {
       row.addEventListener('click', async () => {
-        if (row.dataset.full === '1') {
-          if (!confirm('Este repartidor ya tiene 2 pedidos (al límite). ¿Asignar de todas formas?')) return;
-        } else if (row.dataset.enroute === '1') {
-          if (!confirm('Este repartidor ya salió a entregar (en camino). ¿Asignar de todas formas?')) return;
-        } else if (row.dataset.unreachable === '1') {
-          if (!confirm('Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?')) return;
-        }
+        if (!(await confirmAssignOverride({ full: row.dataset.full === '1', enRoute: row.dataset.enroute === '1', unreachable: row.dataset.unreachable === '1', driverName: (allDrivers[row.dataset.driverUid] || {}).name }))) return;
         await assignOrder(orderId, row.dataset.driverUid);
       });
     });`;
-  assert.ok(baseHtml.includes(block), '[base sanity] base has the click-listener block');
-  assert.ok(html.includes(block), 'confirm()-override click listener is verbatim unchanged');
-  ok('confirm()-override click listener block is byte-identical');
+  assert.ok(html.includes(block), 'picker click listener routes through (await) confirmAssignOverride then assignOrder (CTA #2 + §6 async)');
+  ok('picker click listener block is the shared-gate form');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

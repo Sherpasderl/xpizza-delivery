@@ -101,7 +101,12 @@ const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[
 // element can borrow the dark theme's value in light mode.
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  const themed = Object.keys(DARK);
+  // Map-marker fills (--mk-stale / --mk-move) are deliberately THEME-INDEPENDENT: the map is its own surface
+  // and the markers carry white initials + a fixed dark stroke in both themes, so they are defined once on the
+  // base :root and never redefined in light. They are read by JS (getComputedStyle), not by a theme-varying
+  // CSS element, so they can't borrow a dark value in light mode.
+  const THEME_INDEPENDENT = new Set(['--mk-stale', '--mk-move']);
+  const themed = Object.keys(DARK).filter(k => !THEME_INDEPENDENT.has(k));
   const missing = themed.filter(k => !(k in LIGHT));
   assert.deepStrictEqual(missing, [], `light theme defines every dark token (missing: ${missing.join(', ')})`);
   for (const k of ['--bg', '--surface', '--text', '--text-dim', '--primary', '--primary-fg', '--accent', '--accent-solid', '--success', '--success-fg', '--warn', '--warn-fg', '--surface-4', '--card-1', '--map-bg', '--track', '--sel'].filter(x => x in DARK)) {
@@ -124,7 +129,7 @@ const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[
   // Base text tokens on their grounds (these caught the muted-text regression — keep them).
   const TOKEN_PAIRS = [
     ['--text', '--bg'], ['--text', '--surface'], ['--text-soft', '--surface'],
-    ['--text-dim', '--surface'], ['--text-dim', '--surface-2'], ['--gold', '--surface'],
+    ['--text-dim', '--surface'], ['--text-dim', '--surface-2'],
   ];
   // Real functional components. bg = layer VALUES nearest→base (a {sel} reads that rule's actual `background`).
   // Dimming: `op.sels` = ANCESTORs whose opacity/animation/filter dims BOTH text and its bg over `op.backdrop`;
@@ -137,20 +142,16 @@ const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[
     { n: '.dispatcher-alert', fg: '.dispatcher-alert', bg: [{ sel: '.dispatcher-alert' }] },
     { n: 'pulsing torre-count.hot', fg: '.torre-count.hot', bg: ['--surface'], selfDim: true },           // animation must NOT dim the number
     { n: 'version-tag', fg: '.version-tag', bg: ['--surface'], selfDim: true },                            // opacity must not drop it <AA
-    { n: 'brand chip x_pizza', fg: '.msg-row-rest.rest-x_pizza', bg: [{ sel: '.msg-row-rest.rest-x_pizza' }, '--surface'] },
-    { n: 'brand chip la_musa', fg: '.msg-row-rest.rest-la_musa', bg: [{ sel: '.msg-row-rest.rest-la_musa' }, '--surface'] },
     { n: 'active Cola count', fg: '.cola-seg-btn.on .cola-seg-n', bg: [{ sel: '.cola-seg-btn.on .cola-seg-n' }, { sel: '.cola-seg-btn.on' }] },
     { n: 'status available', fg: '.status-pill.available', bg: [{ sel: '.status-pill.available' }, '--card-1'] },
     { n: 'status assigned', fg: '.status-pill.assigned', bg: [{ sel: '.status-pill.assigned' }, '--card-1'] },
     { n: 'status en_route', fg: '.status-pill.en_route_delivery', bg: [{ sel: '.status-pill.en_route_delivery' }, '--card-1'] },
     { n: 'status off_shift', fg: '.status-pill.off_shift', bg: [{ sel: '.status-pill.off_shift' }, '--card-1'] },
     { n: 'stale row .dm meta', fg: '.who .dm', bg: ['--card-1', '--surface'], op: { sels: ['.driver-row.stale'], backdrop: '--surface' } },
-    { n: 'handled msg body', fg: '.msg-row.handled .msg-row-body', bg: ['--surface'], op: { sels: ['.msg-row.handled'], backdrop: '--surface' } },
     { n: 'btn assign-self', fg: '.unassigned-card .assign-self-btn', bg: [{ sel: '.unassigned-card .assign-self-btn' }] },
     { n: 'btn od-action primary', fg: '.od-action-btn.primary', bg: [{ sel: '.od-action-btn.primary' }] },
-    { n: 'btn msg-action primary', fg: '.msg-action-btn.primary', bg: [{ sel: '.msg-action-btn.primary' }] },
     { n: 'btn recon materialize', fg: '.recon-btn.materialize', bg: [{ sel: '.recon-btn.materialize' }] },
-    { n: 'btn recon refund', fg: '.recon-btn.refund', bg: [{ sel: '.recon-btn.refund' }] },
+    { n: 'btn recon refund (ghost)', fg: '.recon-btn.refund', bg: ['--surface-2'] },   // §5: ghost outline — text resolves over the recon-card ground
     { n: 'od-row phone link', fg: '.od-row a', bg: ['--surface'] },
     // recon-note modal (C-2) surface
     { n: 'recon-note confirm btn', fg: '.recon-note-btn.confirm', bg: [{ sel: '.recon-note-btn.confirm' }] },
@@ -218,7 +219,7 @@ const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[
   ];
   // TARGET element (last segment) allowed a raw (non-var) rgba background: full-cover scrims + brand-tinted
   // chips. Last-segment match so a descendant (`.rest-x_pizza .ex`) can't launder the brand rgba onto `.ex`.
-  const BG_RGBA_OK = ['.msg-modal', '.order-detail-modal', '.overlay-bg', '.comms-scrim', '.flyout-scrim', '.rest-x_pizza', '.rest-la_musa'];
+  const BG_RGBA_OK = ['.order-detail-modal', '.overlay-bg', '.comms-scrim', '.flyout-scrim'];
   const grantsHex = (part, h) =>
     HEX_OK.some(([k, list]) => part.includes(k) && list.some(a => a.toLowerCase() === h.toLowerCase())) ||
     HEX_OK_EXACT.some(([k, list]) => part === k && list.some(a => a.toLowerCase() === h.toLowerCase()));
@@ -261,13 +262,14 @@ const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[
   const regBlock = html.slice(html.indexOf('const OVERLAYS = ['), html.indexOf('const anyModalOpen ='));
   const reg = {};
   for (const m of regBlock.matchAll(/\{\s*name:\s*'([^']+)',\s*z:\s*(\d+),/g)) reg[m[1]] = Number(m[2]);
-  const canonical = ['flyout', 'action-menu', 'msg-modal', 'comms', 'drawer', 'picker', 'recon-note', 'toast', 'account-menu'];
+  // §1: 'msg-modal' retired (the flyout Comms pane is the single surface now).
+  const canonical = ['flyout', 'action-menu', 'comms', 'drawer', 'picker', 'recon-note', 'toast', 'account-menu'];
   for (const n of canonical) assert.ok(n in reg, `OVERLAYS registry (single source) includes '${n}'`);
   // Bind each registry z to the authored CSS z-index of its element (panels).
-  const cssSel = { flyout: '.surface-flyout', 'action-menu': '#action-menu', 'msg-modal': '.msg-modal', comms: '.comms-sheet', drawer: '.order-detail-modal', picker: '.overlay-bg', 'recon-note': '.overlay-bg', toast: '.toast', 'account-menu': '.rail-av-menu' };
+  const cssSel = { flyout: '.surface-flyout', 'action-menu': '#action-menu', comms: '.comms-sheet', drawer: '.order-detail-modal', picker: '.overlay-bg', 'recon-note': '.overlay-bg', toast: '.toast', 'account-menu': '.rail-av-menu' };
   for (const n of canonical) assert.strictEqual(zOf(cssSel[n]), reg[n], `CSS z-index of ${n} (${cssSel[n]}=${zOf(cssSel[n])}) matches the registry z (${reg[n]}) — CSS bound to the single source`);
   // Functional order: bottom→top, and toast above the top modal (a failed-assign toast must show over the picker).
-  assert.ok(reg.flyout < reg['action-menu'] && reg['action-menu'] < reg['msg-modal'] && reg['msg-modal'] < reg.comms && reg.comms < reg.drawer && reg.drawer < reg.picker, `canonical z-order holds (${canonical.map(n => reg[n]).join(' < ')})`);
+  assert.ok(reg.flyout < reg['action-menu'] && reg['action-menu'] < reg.comms && reg.comms < reg.drawer && reg.drawer < reg.picker, `canonical z-order holds (${canonical.map(n => reg[n]).join(' < ')})`);
   assert.ok(reg.toast > reg.picker && reg.toast > reg['recon-note'], `.toast z (${reg.toast}) must exceed the modal layer (${reg.picker}) — feedback shows OVER the picker/recon-note`);
   assert.ok(reg['account-menu'] > reg.toast, `account-menu z (${reg['account-menu']}) above the toast — topmost interactive layer`);
   // SCRIMS bound both directions: each scrim sits ABOVE the layer beneath it and BELOW its own panel — so a scrim

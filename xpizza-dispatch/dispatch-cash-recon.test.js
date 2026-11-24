@@ -211,9 +211,24 @@ const fnSrc = (src, name) => { const s = src.indexOf(`function ${name}(`); const
   // «Pausa» (approved): renderDriverNode gained ONE metaText branch so the «En pausa · N min» label survives
   // connectivity/load status. Prove everything ELSE is byte-identical to base by stripping exactly that
   // approved branch and comparing — so the roster's liveness logic + presentation stay provably untouched.
+  // §5 (no-amber, owner-approved): the idle-stale dot recolours amber → 'sand' and the returning/assigned dot
+  // amber → 'sky' (pastel). Normalise JUST those declared cues (the two dotClass values + the one comment word)
+  // on BOTH sides, so the comparison still proves everything ELSE — the liveness predicates, order count,
+  // GPS-dark row and the rest of the presentation — is byte-identical.
+  const normDot = (s) => s
+    .replace(/Stale GPS but still on duty: (?:amber|muted sand)\./, 'Stale GPS but still on duty: DOT.')
+    .replace(/dotClass = '(?:amber|sand|sky)';/g, "dotClass = 'DOT';");
   const node = fnSrc(html, 'renderDriverNode');
-  const stripped = node.replace(/  \/\/ «Pausa»: the pause label[\s\S]*?\n  \}\n(?=  else if \(gpsDark\))/, '');
-  assert.strictEqual(stripped, fnSrc(baseHtml, 'renderDriverNode'), 'renderDriverNode byte-identical to base APART FROM the approved «Pausa» metaText branch (roster logic + presentation untouched)');
+  const stripped = normDot(node.replace(/  \/\/ «Pausa»: the pause label[\s\S]*?\n  \}\n(?=  else if \(gpsDark\))/, ''));
+  // §4a (CTA #8, owner-approved): the dead «Mensaje in-app (Fase 2)» button was removed from the driver row.
+  // Strip that exact line from the base too, so the comparison still proves everything ELSE — the liveness
+  // predicates, order count, GPS-dark row and the rest of the presentation — is byte-identical.
+  const base = normDot(fnSrc(baseHtml, 'renderDriverNode').replace(/ *<button class="da msg"[^\n]*\n/, ''));
+  assert.strictEqual(stripped, base, 'renderDriverNode byte-identical to base APART FROM the approved «Pausa» metaText branch, the §4a Fase-2 button removal, and the §5 dot recolour (roster logic + presentation untouched)');
+  // §5 non-vacuous: the roster dot vocab is now the pastel sand/sky, never amber
+  assert.match(node, /dotClass = 'sand';/, 'idle-stale dot is sand (pastel)');
+  assert.match(node, /dotClass = 'sky';/, 'returning/assigned dot is sky (pastel)');
+  assert.ok(!/dotClass = 'amber';/.test(node), 'the amber dot is gone');
   assert.notStrictEqual(stripped, node, 'the «Pausa» metaText branch is present (strip actually removed it)');
   // the predicates the roster relies on are the existing ones (documents what byte-identity protects)
   for (const pred of ['XPD.isStalePing(', 'hasPushReachability(', 'staleDriverUids.has(', 'getOrdersForDriver(']) assert.ok(node.includes(pred), `roster uses existing predicate ${pred}`);
