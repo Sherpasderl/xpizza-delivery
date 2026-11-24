@@ -63,7 +63,7 @@ const BRAND_CAPABILITIES = Object.freeze({
 // (dispatchers / kitchen staff are authorized today whatever their uid shape — no regression).
 const UID_RE = /^[A-Za-z0-9]{6,128}$/;
 const isUid = (v) => typeof v === 'string' && UID_RE.test(v);
-const isPathUid = (v) => typeof v === 'string' && /^[^.#$[\]/\s]{1,128}$/.test(v);
+const isPathUid = (v) => typeof v === 'string' && v.length >= 1 && v.length <= 128 && !/[\x00-\x1F\x7F/.#$[\]]/.test(v);   // Codex #270: the RTDB key rules — no ASCII control, none of / . # $ [ ]; spaces are legitimate uid characters
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isLoc = (v) => F1.isBrandId(v);   // PLAN §9: supported location ids = the full isBrandId (reserved names, no all-digit)
 

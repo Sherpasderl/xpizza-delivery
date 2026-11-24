@@ -13,6 +13,7 @@
 const ADMIN_FLAG = 'config/driver_admin_enabled';
 const TERMINAL = new Set(['completed', 'cancelled']);
 const MAXLEN = 120;
+const { isPathUid } = require('../access/membership');   // the ONE path-safe uid rule (no / . # $ [ ] or whitespace)
 
 function normEmail(e) { return String(e == null ? '' : e).trim().toLowerCase(); }
 // Force the Firebase hosted password-reset page to render in Spanish by pinning lang=es on the action link
@@ -66,6 +67,7 @@ async function assertAdminEnabled(db, HttpsError) {
 // Dispatcher gate — rejects customer tokens, non-dispatchers, and disabled/revoked callers.
 async function assertDispatcherCaller(uid, authToken, { db, auth, HttpsError }) {
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+  if (!isPathUid(uid)) throw new HttpsError('permission-denied', 'Solo despacho.');   // a '/'-bearing uid would alias dispatchers/<another uid>
   if (authToken && authToken.customer === true) throw new HttpsError('permission-denied', 'Solo despacho.');
   const [dispSnap, user] = await Promise.all([
     db.ref(`dispatchers/${uid}`).once('value'),
@@ -247,6 +249,7 @@ async function inviteDriver(params, deps) {
   let existing = null;
   try { existing = await auth.getUserByEmail(email); } catch (e) { existing = null; }
   if (existing) {
+    if (!isPathUid(existing.uid)) throw new HttpsError('failed-precondition', 'La cuenta de autenticación no es válida — revisá la invitación.');   // Codex #270: the looked-up uid builds a path too
     const rec = (await db.ref(`driver_accounts/${existing.uid}`).once('value')).val();
     if (rec && rec.invited_by && normEmail(rec.email) === email &&
         (rec.onboarding_state === 'pending' || rec.onboarding_state === 'profile_submitted')) {
@@ -368,10 +371,19 @@ function appendOpLog(db, uid, entry) {
   try { db.ref('driver_account_ops').push(Object.assign({ uid }, entry)).catch(() => {}); } catch (e) { /* best-effort */ }
 }
 
+// The ONE admission of every op's target uid (Codex C 11-23): a uid that is not path-safe ALIASES another account's node
+// (`driver_accounts/p/` resolves to `driver_accounts/p`) and would reach createUser with that foreign uid — refused before any read,
+// Auth call or write. inviteDriver's uid is optional (absent ⇒ a NEW invite, as before); every other op requires one.
+const admitted = (op, optional) => async (params, deps) => {
+  if (!(optional && !(params && params.uid)) && !isPathUid(params && params.uid)) throw new deps.HttpsError('invalid-argument', 'Repartidor inválido.');
+  return op(params, deps);
+};
+
 module.exports = {
   ADMIN_FLAG,
   normEmail, normalize, previouslyApproved, lastOp, validateShape, withLangEs,
   assertAdminEnabled, assertDispatcherCaller, isSharedIdentity, ownedNonterminalTasks,
   voidAccount, syncAuthToAccount, sweepAuthSync, casTransition,
-  inviteDriver, submitDriverProfile, approveDriver, setDriverSuspended, setDriverDeactivated, reactivate,
+  inviteDriver: admitted(inviteDriver, true), submitDriverProfile: admitted(submitDriverProfile), approveDriver: admitted(approveDriver),
+  setDriverSuspended: admitted(setDriverSuspended), setDriverDeactivated: admitted(setDriverDeactivated), reactivate: admitted(reactivate),
 };
