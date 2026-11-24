@@ -41,7 +41,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // re-pin), so it pins its OWN range from that cut point — a pin on the train line would pull the asm12/asm13 trains into the lane range.
 // Both are FULL commit ids, never a prefix (Codex #288: an 8-char prefix can name two commits or be shadowed by a ref).
 const BASE = 'fd205309aea6909363f6fda48e775228f5d5b912';
-const CAPP_TIP = 'ac6a9d6e165fd9a0fb0de3002dc6ecfdcf82b8e1';
+const CAPP_TIP = '732d786955925338786657b05c20eb498a648455';
 // ASSEMBLY STEPS (asm11 step 4, advisor 11-17): a capp commit made ON THE TRAIN line, before the lane's merge — it can't be the pin (a pin on
 // the train line pulls the train into the lane range). Each is listed by full sha with its EXACT file set: excused from the «after the pin» walk
 // only while that set is unchanged, and only while it is in HEAD's history (a step that left the tree is a stale entry). None touches a live
