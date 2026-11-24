@@ -126,6 +126,14 @@ test('the CSP allows exactly the hosts the code actually talks to', () => {
   const SELF_HOST = 'sherpa-portal.netlify.app';
   assert.ok(readFileSync(join(DIR, '..', 'xpizza-functions', 'portal', 'origins.js'), 'utf8').includes(`'https://${SELF_HOST}'`), 'the self host is the portal origin');
   hosts.delete(SELF_HOST);
+  // «Ayuda» (owner 11-14): Sherpa support's WhatsApp is a NAVIGATION — an <a href> the person opens in a new tab — never a request
+  // this page makes, so it needs no CSP directive (connect-src etc. govern fetches, not a followed link). Exempt ONLY while that is
+  // provably all it is: the one occurrence is inicio.js setting a link's href.
+  const NAV_ONLY = 'wa.me';
+  const navUses = JS.flatMap((f) => [...codeOf(f).matchAll(/https:\/\/wa\.me/g)].map(() => f));
+  assert.deepEqual(navUses, ['inicio.js'], `${NAV_ONLY} appears once, in inicio.js`);
+  assert.match(codeOf('inicio.js'), /help\.setAttribute\('href', `https:\/\/wa\.me\/\$\{IL\.SUPPORT_WA\}`\);/, `${NAV_ONLY} is only a link's href (a navigation, not a fetch)`);
+  hosts.delete(NAV_ONLY);
   for (const h of hosts) {
     assert.ok(policy.includes(h), `the code talks to ${h} but the CSP does not allow it — every deployed request would be blocked`);
   }

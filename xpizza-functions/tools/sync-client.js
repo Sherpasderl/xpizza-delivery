@@ -48,3 +48,5 @@ fs.copyFileSync(path.join(ROOT, 'xpizza-portal', 'fonts', 'figtree-latin.8330490
 for (const f of [...new Set(require(path.join(ROOT, 'platform', 'sites.json')).deployments.filter((d) => d.app === 'orders' && d.context === 'platform').map((d) => d.folder))])
   fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'marketing', 'offer-rules.js'), path.join(ROOT, f, 'offer-rules.js'));
 console.log(`sync-client: copied sherpa-client.js into ${folders.length} site folders, order-self-update.js into ${orderFolders.length}, order-control-state.js into xpizza-dispatch, pay-rate.js into xpizza-functions + xpizza-driver, cart-sig.js into ${cartSigFolders.length} folders`);
+// Inicio «Ayuda» (owner 11-14): Sherpa support's WhatsApp → the portal, GENERATED from the ONE source (support-contact-gen.js)
+fs.writeFileSync(path.join(ROOT, 'xpizza-portal', 'support-contact.js'), require('./support-contact-gen').supportContactSource(require(path.join(ROOT, 'platform', 'sites.json'))));

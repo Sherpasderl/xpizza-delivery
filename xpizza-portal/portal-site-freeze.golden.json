@@ -144,6 +144,7 @@
   "structure-s2.test.mjs",
   "styles.css",
   "sucursales-limit.test.mjs",
+  "support-contact.js",
   "team-logic.js",
   "team.js",
   "team.test.mjs",
@@ -220,8 +221,8 @@
    "bytes": 841
   },
   "styles.css": {
-   "sha256": "b9db3d66356f4b834394e9308693e33ce8d0e5cb4ad12b090cd5bc01e3c1cc40",
-   "bytes": 229535
+   "sha256": "ca0f31c91c9d9855a231d1e830d1026261419fcef3edf3906055941862d971ff",
+   "bytes": 229646
   }
  },
  "diff_aid": {

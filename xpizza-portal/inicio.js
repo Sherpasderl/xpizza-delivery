@@ -5,8 +5,9 @@
 //   • Ventas / Pedidos / Ticket promedio for the pill's branch — getSalesStats today vs the same weekday last week, ONE read per
 //     branch per session (cached-first, rule 7); a failed read keeps the three slots with «—» (no number invented, no reflow);
 //   • «Para revisar»: a paused branch + «Reanudar» through the ONE pause control (pause-control.js); 1b «Todo en orden» otherwise;
-//   • «Accesos rápidos»: «Editar producto». Crear oferta / Editar horario / Ayuda / the unpublished-menu, offer-cap and low-rating rows
-//     WAIT for their sources (Marketing, hours editing, Q-I3, S3, S4) — absent, never a dead link or a «0».
+//   • «Accesos rápidos»: «Editar producto» and «Ayuda» (owner 11-14: WhatsApp with Sherpa support). Crear oferta / Editar horario /
+//     the unpublished-menu, offer-cap and low-rating rows WAIT for their sources (Marketing, hours editing, S3, S4) — absent, never a
+//     dead link or a «0».
 // The shell owns routing and lands here first (registerHome; index.html loads this module — a page without it keeps today's landing).
 import { registerHome } from './shell.js';
 import { getSalesStats, getSalesStatsMulti } from './api.js';
@@ -181,7 +182,16 @@ function quickCol() {
   prod.type = 'button';
   prod.append(svg(...ICON.chev));
   prod.addEventListener('click', () => S.ctx.goto('menu'));
+  // «Ayuda» (owner 11-14): Sherpa support on WhatsApp — a plain link, nothing about the restaurant in the URL
   col.append(sect, prod);
+  if (IL.SUPPORT_WA) {   // the manifest's number, shape-checked (none ⇒ no row)
+    const help = el('a', 'in-quick', 'Ayuda');
+    help.setAttribute('href', `https://wa.me/${IL.SUPPORT_WA}`);
+    help.setAttribute('target', '_blank');
+    help.setAttribute('rel', 'noopener noreferrer');
+    help.append(svg(...ICON.chev));
+    col.append(help);
+  }
   return col;
 }
 
