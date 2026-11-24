@@ -74,6 +74,13 @@
       return typeof exp === 'number' && Number.isInteger(exp) && Number.isFinite(exp * 1000) ? exp * 1000 : null;
     } catch (_) { return null; }
   }
+  // the user a token NAMES (Codex #193): its `sub` — and `user_id`, when present, must agree; anything else ⇒ null. A consistency check on
+  // our own token at the sink (never trust: the server verifies the signature)
+  function tokenUid(t) {
+    if (typeof t !== 'string' || !t) return null;
+    const parts = t.split('.'); if (parts.length !== 3 || !parts.every((p) => p && B64URL.test(p))) return null;
+    try { const pl = segJson(parts[1]); const s = pl && pl.sub; return typeof s === 'string' && s && (pl.user_id === undefined || pl.user_id === s) ? s : null; } catch (_) { return null; }
+  }
   function tokenUsable(m, now) {
     const t = m && typeof m.idToken === 'string' && m.idToken ? m.idToken : null; if (!t) return null;
     const e = tokenExpMs(t), n = typeof now === 'number' && Number.isFinite(now) ? now : Date.now();
@@ -323,17 +330,31 @@
     async function memberToken(m) {
       if (!m) return null;
       const current = () => memberOf() === m;   // Codex promo r4 #1: the identity, revalidated after EVERY await
-      if (typeof m.getIdToken === 'function') {
+      if (typeof m.getIdTokenOwned === 'function') {
+        // Codex #178 #2 (P1): the token's OWN SDK user must be the member it is for — another user (the SDK switched before the host heard)
+        // ⇒ no token at all, the member is marked moved (post refuses to send) and the host is told; never the token of whoever the SDK holds
+        const o = await Promise.race([Promise.resolve().then(() => m.getIdTokenOwned()).then((x) => x || null, () => null), timeout(TOKEN_WAIT_MS).then(() => null)]);
+        // Codex #189 #1: an ANSWER naming another user — or none (signed out) — is the same refusal; only a failed read (null) keeps the cache
+        if (o && (o.uid || null) !== m.uid) { m.moved = true; if (typeof m.onMoved === 'function') { try { m.onMoved(o.uid || null); } catch (_) {} } return null; }
+        if (!current()) return null;
+        if (o && typeof o.token === 'string' && o.token) acceptToken(m, o.token, now());
+      } else if (typeof m.getIdToken === 'function') {
         const fresh = await Promise.race([Promise.resolve().then(() => m.getIdToken()).then((t) => (typeof t === 'string' && t ? t : null), () => null), timeout(TOKEN_WAIT_MS).then(() => null)]);
         if (!current()) return null;   // signed out / switched during the await ⇒ no token is accepted or sent
         if (fresh) acceptToken(m, fresh, now());   // the ONE setter: stored only if usable, and the screen is told
       }
-      if (!current()) return null;
-      return tokenUsable(m, now());   // never an expired token (Codex promo r3): usable, or no header at all
+      if (!current() || m.moved) return null;
+      const t = tokenUsable(m, now());   // never an expired token (Codex promo r3): usable, or no header at all
+      // Codex #193 (P1): THE sink — every member request (post, the SDK checkout's Bearer, the last-tip read) takes its token HERE; a token
+      // whose user is not this member (or that names none) never leaves, whatever path cached it: the #178 #2 refusal (moved, the host told)
+      const tu = t ? tokenUid(t) : null;
+      if (t && tu !== m.uid) { m.moved = true; if (typeof m.onMoved === 'function') { try { m.onMoved(tu); } catch (_) {} } return null; }
+      return t;
     }
     const headersFor = (extra, token) => { const h = { 'Content-Type': 'application/json', ...(extra || {}) }; if (token) h['x-firebase-id-token'] = token; return h; };
     async function post(url, body, extraHeaders) {
       const m = memberOf(), tok = await memberToken(m);
+      if (m && m.moved) throw new Error('capp-api: the SDK user is not this member — not sent');   // Codex #178 #2: refused, never dispatched
       const token = memberOf() === m ? tok : null;   // Codex promo r5: the identity AGAIN after the await, nothing awaited before the dispatch
       const r = await sfetch(url, { method: 'POST', headers: headersFor(extraHeaders, token), body: JSON.stringify(body) });
       let j = null; try { j = await r.json(); } catch (_) { j = null; }

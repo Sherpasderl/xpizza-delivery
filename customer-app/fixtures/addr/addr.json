@@ -1,0 +1,529 @@
+{
+ "source": {
+  "commit": "805a5015411a63ecac62d1f54bac653b9ea1ddc0",
+  "blobs": {
+   "xpizza-orders/account.js": "43df11e84a06abff6ee3e5f11816a507e22eea4c",
+   "xpizza-functions/signup-platform.js": "6a4912f9823ffabac5a12b3f8c85595178cc5c06",
+   "xpizza-functions/address-book.js": "2ed817e6d8e77a00d6a3b5497bfd382a78b34f9d",
+   "xpizza-functions/my-address.js": "52c53aeaa3327048198606b2833980a74ade516e",
+   "xpizza-functions/member-auth.js": "7f20b0df5b7f0ed7de78ddeb813b7d6a89539607"
+  },
+  "fn_blobs": {
+   "signup-platform.js": "6a4912f9823ffabac5a12b3f8c85595178cc5c06",
+   "address-book.js": "2ed817e6d8e77a00d6a3b5497bfd382a78b34f9d",
+   "my-address.js": "52c53aeaa3327048198606b2833980a74ade516e",
+   "member-auth.js": "7f20b0df5b7f0ed7de78ddeb813b7d6a89539607"
+  }
+ },
+ "ids": {
+  "casa": "a_b51af1ac8585",
+  "trabajo": "a_67588898c418",
+  "mama": "a_5f63349213b0",
+  "mama_samepin": "a_4d3c2b1a0f9e"
+ },
+ "scenarios": {
+  "profile_default_casa": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "name": "Ana",
+    "email": null,
+    "phone": "50499990000",
+    "phone_last4": "0000",
+    "consent": {
+     "terms": false,
+     "terms_version": null,
+     "promos": false
+    },
+    "completion": "off",
+    "addresses": [
+     {
+      "id": "a_67588898c418",
+      "label": "Trabajo",
+      "detected": "Blvd. Morazán, Tegucigalpa",
+      "details": "Torre 2, piso 5",
+      "lat": 14.1003,
+      "lng": -87.1901,
+      "last_used_at": 1795049932006
+     },
+     {
+      "id": "a_b51af1ac8585",
+      "label": "Casa",
+      "detected": "Col. Trejo, San Pedro Sula",
+      "details": "Casa azul, portón negro",
+      "lat": 15.52,
+      "lng": -88.03,
+      "last_used_at": 1795049932003
+     }
+    ],
+    "default_address": "a_b51af1ac8585",
+    "default_address_rev": 0
+   }
+  },
+  "use_trabajo": {
+   "req": {
+    "id": "a_67588898c418",
+    "expected_rev": 0,
+    "expected_default": "a_b51af1ac8585"
+   },
+   "status": 200,
+   "body": {
+    "ok": true,
+    "default_address": "a_67588898c418",
+    "default_address_rev": 1
+   }
+  },
+  "profile_after_use": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "name": "Ana",
+    "email": null,
+    "phone": "50499990000",
+    "phone_last4": "0000",
+    "consent": {
+     "terms": false,
+     "terms_version": null,
+     "promos": false
+    },
+    "completion": "off",
+    "addresses": [
+     {
+      "id": "a_67588898c418",
+      "label": "Trabajo",
+      "detected": "Blvd. Morazán, Tegucigalpa",
+      "details": "Torre 2, piso 5",
+      "lat": 14.1003,
+      "lng": -87.1901,
+      "last_used_at": 1800000060000
+     },
+     {
+      "id": "a_b51af1ac8585",
+      "label": "Casa",
+      "detected": "Col. Trejo, San Pedro Sula",
+      "details": "Casa azul, portón negro",
+      "lat": 15.52,
+      "lng": -88.03,
+      "last_used_at": 1795049932003
+     }
+    ],
+    "default_address": "a_67588898c418",
+    "default_address_rev": 1
+   }
+  },
+  "use_trabajo_again": {
+   "req": {
+    "id": "a_67588898c418",
+    "expected_rev": 0,
+    "expected_default": "a_b51af1ac8585"
+   },
+   "status": 409,
+   "body": {
+    "ok": false,
+    "reason": "stale_address",
+    "default_address": "a_67588898c418",
+    "default_address_rev": 1
+   }
+  },
+  "use_casa": {
+   "req": {
+    "id": "a_b51af1ac8585",
+    "expected_rev": 1,
+    "expected_default": "a_67588898c418"
+   },
+   "status": 200,
+   "body": {
+    "ok": true,
+    "default_address": "a_b51af1ac8585",
+    "default_address_rev": 2
+   }
+  },
+  "profile_after_back": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "name": "Ana",
+    "email": null,
+    "phone": "50499990000",
+    "phone_last4": "0000",
+    "consent": {
+     "terms": false,
+     "terms_version": null,
+     "promos": false
+    },
+    "completion": "off",
+    "addresses": [
+     {
+      "id": "a_b51af1ac8585",
+      "label": "Casa",
+      "detected": "Col. Trejo, San Pedro Sula",
+      "details": "Casa azul, portón negro",
+      "lat": 15.52,
+      "lng": -88.03,
+      "last_used_at": 1800000120000
+     },
+     {
+      "id": "a_67588898c418",
+      "label": "Trabajo",
+      "detected": "Blvd. Morazán, Tegucigalpa",
+      "details": "Torre 2, piso 5",
+      "lat": 14.1003,
+      "lng": -87.1901,
+      "last_used_at": 1800000060000
+     }
+    ],
+    "default_address": "a_b51af1ac8585",
+    "default_address_rev": 2
+   }
+  },
+  "use_trabajo_late": {
+   "req": {
+    "id": "a_67588898c418",
+    "expected_rev": 0,
+    "expected_default": "a_b51af1ac8585"
+   },
+   "status": 409,
+   "body": {
+    "ok": false,
+    "reason": "stale_address",
+    "default_address": "a_b51af1ac8585",
+    "default_address_rev": 2
+   }
+  },
+  "use_unknown": {
+   "req": {
+    "id": "a_000000000000",
+    "expected_rev": 2,
+    "expected_default": "a_b51af1ac8585"
+   },
+   "status": 404,
+   "body": {
+    "ok": false,
+    "reason": "not_found"
+   }
+  },
+  "use_bad_shape": {
+   "req": {
+    "id": "a_67588898c418",
+    "expected_rev": 2
+   },
+   "status": 400,
+   "body": {
+    "ok": false,
+    "reason": "bad_request"
+   }
+  },
+  "m3_profile_casa": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "name": "Ana",
+    "email": null,
+    "phone": "50499990000",
+    "phone_last4": "0000",
+    "consent": {
+     "terms": false,
+     "terms_version": null,
+     "promos": false
+    },
+    "completion": "off",
+    "addresses": [
+     {
+      "id": "a_b51af1ac8585",
+      "label": "Casa",
+      "detected": "Col. Trejo, San Pedro Sula",
+      "details": "Casa azul, portón negro",
+      "lat": 15.52,
+      "lng": -88.03,
+      "last_used_at": 1800000120000
+     },
+     {
+      "id": "a_67588898c418",
+      "label": "Trabajo",
+      "detected": "Blvd. Morazán, Tegucigalpa",
+      "details": "Torre 2, piso 5",
+      "lat": 14.1003,
+      "lng": -87.1901,
+      "last_used_at": 1800000060000
+     },
+     {
+      "id": "a_5f63349213b0",
+      "label": "Mamá",
+      "detected": "Col. Trejo, San Pedro Sula",
+      "details": "Casa verde, portón blanco",
+      "lat": 15.525,
+      "lng": -88.035,
+      "last_used_at": 1795049932009
+     }
+    ],
+    "default_address": "a_b51af1ac8585",
+    "default_address_rev": 2
+   }
+  },
+  "m3_profile_mama": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "name": "Ana",
+    "email": null,
+    "phone": "50499990000",
+    "phone_last4": "0000",
+    "consent": {
+     "terms": false,
+     "terms_version": null,
+     "promos": false
+    },
+    "completion": "off",
+    "addresses": [
+     {
+      "id": "a_b51af1ac8585",
+      "label": "Casa",
+      "detected": "Col. Trejo, San Pedro Sula",
+      "details": "Casa azul, portón negro",
+      "lat": 15.52,
+      "lng": -88.03,
+      "last_used_at": 1800000120000
+     },
+     {
+      "id": "a_67588898c418",
+      "label": "Trabajo",
+      "detected": "Blvd. Morazán, Tegucigalpa",
+      "details": "Torre 2, piso 5",
+      "lat": 14.1003,
+      "lng": -87.1901,
+      "last_used_at": 1800000060000
+     },
+     {
+      "id": "a_5f63349213b0",
+      "label": "Mamá",
+      "detected": "Col. Trejo, San Pedro Sula",
+      "details": "Casa verde, portón blanco",
+      "lat": 15.525,
+      "lng": -88.035,
+      "last_used_at": 1795049932012
+     }
+    ],
+    "default_address": "a_5f63349213b0",
+    "default_address_rev": 2
+   }
+  },
+  "m3_use_trabajo_stale": {
+   "req": {
+    "id": "a_67588898c418",
+    "expected_rev": 2,
+    "expected_default": "a_b51af1ac8585"
+   },
+   "status": 409,
+   "body": {
+    "ok": false,
+    "reason": "stale_address",
+    "default_address": "a_5f63349213b0",
+    "default_address_rev": 2
+   }
+  },
+  "m3_use_trabajo_ok": {
+   "req": {
+    "id": "a_67588898c418",
+    "expected_rev": 2,
+    "expected_default": "a_5f63349213b0"
+   },
+   "status": 200,
+   "body": {
+    "ok": true,
+    "default_address": "a_67588898c418",
+    "default_address_rev": 3
+   }
+  },
+  "m3_profile_trabajo": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "name": "Ana",
+    "email": null,
+    "phone": "50499990000",
+    "phone_last4": "0000",
+    "consent": {
+     "terms": false,
+     "terms_version": null,
+     "promos": false
+    },
+    "completion": "off",
+    "addresses": [
+     {
+      "id": "a_67588898c418",
+      "label": "Trabajo",
+      "detected": "Blvd. Morazán, Tegucigalpa",
+      "details": "Torre 2, piso 5",
+      "lat": 14.1003,
+      "lng": -87.1901,
+      "last_used_at": 1800000240000
+     },
+     {
+      "id": "a_b51af1ac8585",
+      "label": "Casa",
+      "detected": "Col. Trejo, San Pedro Sula",
+      "details": "Casa azul, portón negro",
+      "lat": 15.52,
+      "lng": -88.03,
+      "last_used_at": 1800000120000
+     },
+     {
+      "id": "a_5f63349213b0",
+      "label": "Mamá",
+      "detected": "Col. Trejo, San Pedro Sula",
+      "details": "Casa verde, portón blanco",
+      "lat": 15.525,
+      "lng": -88.035,
+      "last_used_at": 1795049932012
+     }
+    ],
+    "default_address": "a_67588898c418",
+    "default_address_rev": 3
+   }
+  },
+  "m3_profile_nocasa": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "name": "Ana",
+    "email": null,
+    "phone": "50499990000",
+    "phone_last4": "0000",
+    "consent": {
+     "terms": false,
+     "terms_version": null,
+     "promos": false
+    },
+    "completion": "off",
+    "addresses": [
+     {
+      "id": "a_67588898c418",
+      "label": "Trabajo",
+      "detected": "Blvd. Morazán, Tegucigalpa",
+      "details": "Torre 2, piso 5",
+      "lat": 14.1003,
+      "lng": -87.1901,
+      "last_used_at": 1800000240000
+     },
+     {
+      "id": "a_5f63349213b0",
+      "label": "Mamá",
+      "detected": "Col. Trejo, San Pedro Sula",
+      "details": "Casa verde, portón blanco",
+      "lat": 15.525,
+      "lng": -88.035,
+      "last_used_at": 1795049932012
+     }
+    ],
+    "default_address": "a_67588898c418",
+    "default_address_rev": 3
+   }
+  },
+  "m3_use_casa_gone": {
+   "req": {
+    "id": "a_b51af1ac8585",
+    "expected_rev": 3,
+    "expected_default": "a_67588898c418"
+   },
+   "status": 404,
+   "body": {
+    "ok": false,
+    "reason": "not_found"
+   }
+  },
+  "profile_empty": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "name": "Ana",
+    "email": null,
+    "phone": "50499990000",
+    "phone_last4": "0000",
+    "consent": {
+     "terms": false,
+     "terms_version": null,
+     "promos": false
+    },
+    "completion": "off",
+    "addresses": [],
+    "default_address": null,
+    "default_address_rev": 3
+   }
+  },
+  "use_casa_same": {
+   "req": {
+    "id": "a_b51af1ac8585",
+    "expected_rev": 0,
+    "expected_default": "a_b51af1ac8585"
+   },
+   "status": 200,
+   "body": {
+    "ok": true,
+    "default_address": "a_b51af1ac8585",
+    "default_address_rev": 1
+   }
+  },
+  "m4_profile_mama_samepin": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "name": "Ana",
+    "email": null,
+    "phone": "50499990000",
+    "phone_last4": "0000",
+    "consent": {
+     "terms": false,
+     "terms_version": null,
+     "promos": false
+    },
+    "completion": "off",
+    "addresses": [
+     {
+      "id": "a_4d3c2b1a0f9e",
+      "label": "Mamá",
+      "detected": "Col. Trejo, San Pedro Sula",
+      "details": "Casa verde, portón blanco",
+      "lat": 15.52,
+      "lng": -88.03,
+      "last_used_at": 1795049932015
+     },
+     {
+      "id": "a_67588898c418",
+      "label": "Trabajo",
+      "detected": "Blvd. Morazán, Tegucigalpa",
+      "details": "Torre 2, piso 5",
+      "lat": 14.1003,
+      "lng": -87.1901,
+      "last_used_at": 1795049932006
+     },
+     {
+      "id": "a_b51af1ac8585",
+      "label": "Casa",
+      "detected": "Col. Trejo, San Pedro Sula",
+      "details": "Casa azul, portón negro",
+      "lat": 15.52,
+      "lng": -88.03,
+      "last_used_at": 1795049932003
+     }
+    ],
+    "default_address": "a_4d3c2b1a0f9e",
+    "default_address_rev": 0
+   }
+  },
+  "m4_use_trabajo_stale": {
+   "req": {
+    "id": "a_67588898c418",
+    "expected_rev": 0,
+    "expected_default": "a_b51af1ac8585"
+   },
+   "status": 409,
+   "body": {
+    "ok": false,
+    "reason": "stale_address",
+    "default_address": "a_4d3c2b1a0f9e",
+    "default_address_rev": 0
+   }
+  }
+ },
+ "scenarios_sha256": "720eb3d6ad29007bb5fbfa901ed55b43b3d2f732455bf348c8194fe9cb264bb4"
+}

@@ -30,6 +30,7 @@
   // ── icons (the prototype's IC, verbatim) ──
   const I = (d, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
   const IC = {
+    back: I('<path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/>'), edit: I('<path d="M4 20h4l10-10-4-4L4 16z"/>'),   // v6 (C-DIR-1: the top-bar back, the INERT pencil)
     wa: I('<path d="M4 20l1.3-3.9A8 8 0 1 1 8.2 19z"/><path d="M9.5 9.5c0 3 2 5 5 5l1-1.5-2-1-1 1a4 4 0 0 1-1.5-1.5l1-1-1-2z"/>'),   // v6 P:1204
     update: I('<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>'),   // MOCKUP-capp-native-store-update
     chev: I('<path d="M9 6l6 6-6 6"/>'), left: I('<path d="M15 6l-6 6 6 6"/>'), right: I('<path d="M9 6l6 6-6 6"/>'), down: I('<path d="M6 9l6 6 6-6"/>'), search: I('<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>'),
@@ -134,6 +135,8 @@
   const opensText = (cfg, now) => { const c = clockOf(now), o = rangeOf(cfg, c.day); if (o && c.min < o[0]) return 'Abre hoy ' + fmtMin(o[0]); for (let d = 1; d <= 7; d++) { const oo = rangeOf(cfg, (c.day + d) % 7); if (oo) return 'Abre ' + (d === 1 ? 'mañana' : 'el ' + DAYS[(c.day + d) % 7]) + ' ' + fmtMin(oo[0]); } return 'Cerrado por ahora'; };
   // S4 (read only under schedulingLive): «Programar pedido» only when the SERVED schedule offers a slot — the picker's own generator
   // (CappSchedule), so the cue never promises a slot the picker would not show
+  const textMod = () => (typeof self !== 'undefined' && self.CappText) || require('./capp-text.js');   // 16b: the shared no-orphan glue (capp-text.js)
+  const noOrphan = (s) => textMod().noOrphan(s);
   const schedMod = () => (typeof self !== 'undefined' && self.CappSchedule) || require('./capp-schedule.js');
   const hasSlot = (cfg, now) => { const K = schedMod(), ms = typeof now === 'number' ? now : now.getTime(); return !!cfg && (K.slots(cfg.schedule, ms, 'pickup').length > 0 || K.slots(cfg.schedule, ms, 'delivery').length > 0); };
 
@@ -256,7 +259,7 @@
     const short = vm.addr && vm.addr.short ? vm.addr.short : 'Tu ubicación', line = vm.addr && vm.addr.line ? vm.addr.line : 'Agregá tu dirección';
     const q = vm.tab === 'search' && vm.q ? vm.q : '';
     return `<div class="desknav">${brandLockHtml()}`
-      + `<button class="dn-addr" data-act="addr" aria-label="Dirección de entrega: ${esc(line)}">${IC.pin}<span class="v"><span class="k">Entregar en</span> ${esc(short)}</span>${IC.down}</button>`
+      + `<button class="dn-addr" data-act="addr"${vm.addr && vm.addr.busy ? ' aria-disabled="true"' : ''} aria-label="Dirección de entrega: ${esc(line)}">${IC.pin}<span class="v"><span class="k">Entregar en</span> ${esc(short)}</span>${IC.down}</button>`
       + `<button class="dn-search${vm.tab === 'search' ? ' live' : ''}" data-act="tab" data-tab="search" aria-label="Buscar">${IC.search}${esc(q || 'Buscá restaurantes o platos')}</button>`
       + `<span class="right">${t('home', 'Inicio')}${ORDERS_SCREEN ? t('orders', 'Pedidos') : ''}<button class="nb acct" data-act="tab" data-tab="account" aria-current="${vm.tab === 'account'}">${vm.memberInitial ? `<span class="av">${esc(vm.memberInitial)}</span>` : IC.user}Cuenta</button></span></div>`;
   }
@@ -303,7 +306,7 @@
     const short = vm.addr && vm.addr.short ? vm.addr.short : 'Tu ubicación';
     const locrow = vm.locDenied ? `<div class="locrow">${IC.locoff}<span>Ubicación desactivada</span><button data-act="loc-on">Activar</button></div>` : '';
     return `<div class="home-head">
-      <button class="addr-btn" data-act="addr" aria-label="Dirección de entrega: ${esc(line)}"><span><span class="k">Entregar en</span><span class="v"><span>${esc(short)}</span>${IC.down}</span></span></button>
+      <button class="addr-btn" data-act="addr"${vm.addr && vm.addr.busy ? ' aria-disabled="true"' : ''} aria-label="Dirección de entrega: ${esc(line)}"><span><span class="k">Entregar en</span><span class="v"><span>${esc(short)}</span>${IC.down}</span></span></button>
       ${locrow}
     </div>`;
   }
@@ -430,8 +433,24 @@
 
   // ── the guest location layers (P addrSheet :2179-2184 guest rows, the location soft-ask :1766, the full-screen pin step :2186 / capp-ui
   //    pinStepHtml — its store-free sentence; the map is the drawn schematic with a live map inside when a Maps key is configured) ──
-  const addrSheetHtml = () => `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Dirección de entrega"><div class="grab"></div><div class="sheethead"><div><h2>Entregar en</h2><small>La zona de cada restaurante se revisa con esta dirección.</small></div><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div>
-    <nav><button class="navrow" data-act="loc-use">${IC.nav.replace('class="i"', 'class="i" style="margin-right:10px"')}Usar mi ubicación actual<span></span></button><button class="navrow" data-act="addr-new">${IC.plus.replace('class="i"', 'class="i" style="margin-right:10px"')}Agregar dirección<span></span></button></nav></div>`;
+  // C-DIR-1 (v6 :2179-2184): a member's saved addresses head the sheet — «{label}» / «{detected}», the one in use .on (dir: { rows, sel },
+  // the shell's per-open frozen book); a guest's sheet is unchanged
+  // C-DIR-1 (advisor 11-14, owed SBS — the sensible reading of v6 :2170 / :2181): the book's order on every list — the address IN USE
+  // first, then the most recently used (last_used_at descending; none ⇒ last); a tie keeps the server's order
+  const lastUsed = (a) => (a && Number.isSafeInteger(a.last_used_at) ? a.last_used_at : 0);
+  const bookOrder = (addresses, sel) => addresses.map((a, i) => ({ a, i })).sort((x, y) => ((y.a.id === sel) - (x.a.id === sel)) || (lastUsed(y.a) - lastUsed(x.a)) || (x.i - y.i)).map((e) => e.a);
+  // direcciones r3 (owner-APPROVED confirm-first prototype): while a pick is in flight its row spins in the right slot and every other
+  // address control is disabled; a failed pick leaves ONE calm sand line above the list where it was made
+  const SPIN = '<i class="addrspin" aria-hidden="true"></i>';
+  const SANDLINE = '<div class="sandline" role="status">No pudimos cambiar la dirección. Probá de nuevo.</div>';
+  // book-state (MOCKUP-capp-book-state, owner 11-23, Q1/Q3 (a)): the book NOT LOADED YET — one quiet line in the rows' place (the Inicio
+  // frame-1 voice); UNREADABLE — the sand line + «Reintentar». `load` comes from the shell's ONE book state; «Agregar dirección» waits in both
+  const LOADLINE = '<p class="note aload" role="status">Cargando tus direcciones…</p>';
+  const BOOKFAIL = '<div class="sandline act" role="status"><span>No pudimos cargar tus direcciones.</span><button class="retry" data-act="book-retry">Reintentar</button></div>';
+  const addAttr = (d) => (d && d.load ? ' aria-disabled="true"' : pickAttr(d));
+  const pickAttr = (d, id) => (!d || !d.pend ? '' : d.pend === id ? ' aria-disabled="true" aria-busy="true"' : ' aria-disabled="true"');   // the tapped row too (the prototype :444)
+  const addrSheetHtml = (dir) => `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Dirección de entrega"><div class="grab"></div><div class="sheethead"><div><h2>Entregar en</h2><small>La zona de cada restaurante se revisa con esta&nbsp;dirección.</small></div><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div>
+    ${dir && dir.err ? SANDLINE : dir && dir.load === 'failed' ? BOOKFAIL : ''}<nav>${dir && dir.load === 'pending' ? LOADLINE : ''}${dir && dir.rows ? dir.rows.map((a) => `<button class="navrow${dir.sel === a.id ? ' on' : ''}" data-act="addr-use" data-id="${esc(a.id)}"${pickAttr(dir, a.id)}>${esc(a.label)}<span>${dir.pend === a.id ? SPIN : esc(a.detected)}</span></button>`).join('') : ''}<button class="navrow" data-act="loc-use"${pickAttr(dir)}>${IC.nav.replace('class="i"', 'class="i" style="margin-right:10px"')}Usar mi ubicación actual<span></span></button><button class="navrow" data-act="addr-new"${addAttr(dir)}>${IC.plus.replace('class="i"', 'class="i" style="margin-right:10px"')}Agregar dirección<span></span></button></nav></div>`;
   const softaskHtml = () => `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Ubicación"><div class="grab"></div><div class="softask"><div class="ill">${IC.pin}</div><h2>Encontrá restaurantes cerca de vos</h2><p>Usamos tu ubicación solo para mostrarte quién te entrega y poner el pin donde estás.</p><div class="acts"><button class="primary" data-act="loc-allow">Usar mi ubicación</button><button class="btn2 wide" data-act="loc-deny">Escribir mi dirección</button></div></div></div>`;
   const pinEditorHtml = (mapSvg, live) => `<div class="pinstep" role="dialog" aria-label="Confirmá dónde entregamos"><div class="mapwrap">${mapSvg || ''}${live ? '<div class="gmap" data-gmap="pin" style="position:absolute;inset:0"></div>' : ''}<div class="store-nav" style="position:absolute"><button class="iconbtn" data-act="lclose" aria-label="Cancelar">${IC.close}</button><span></span></div><div class="hint">Mové el mapa hasta que el pin quede en tu puerta</div><span class="pin">${IC.pinfill}</span></div>
     <div class="foot"><b>Confirmá dónde entregamos</b><span class="sub">Las direcciones aquí se describen con referencias: el pin es la dirección, los detalles son la referencia.</span><button class="primary" data-act="pin-done">Listo</button></div></div>`;
@@ -449,7 +468,7 @@
     <div class="guestcard"${known ? '' : ' style="visibility:hidden" aria-hidden="true"'}><h2>Tu cuenta</h2>
       <ul><li>${IC.check}<span>Opción de pago en efectivo y tarjeta</span></li><li>${IC.check}<span>Recompensas y promos</span></li><li>${IC.check}<span>Programá pedidos y guardá tu dirección</span></li></ul>
       ${known ? '<button class="primary" data-act="signin" data-ctx="account">Entrá o creá tu cuenta</button>' : '<span class="primary" aria-hidden="true">Entrá o creá tu cuenta</span>'}</div>
-    <div class="rows">${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>Los de este teléfono</span></span>${IC.chev}</button>` : ''}${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}</div></div>`);
+    <div class="rows">${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>${noOrphan('Los de este teléfono')}</span></span>${IC.chev}</button>` : ''}${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}</div></div>`);
   }
 
   // G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27, frames 1 / 4a / 4b): the MEMBER's Cuenta — .acct-hero (name, phone and
@@ -497,14 +516,24 @@
     return shellWrap(vm, `<div class="flow"><div class="flowbar plain"><h1>Cuenta</h1></div>
     <div style="height:12px"></div>${hero}<div class="rows">
       ${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos</span>${IC.chev}</button>` : ''}
-      <button class="rowbtn" data-act="addr">${IC.pin}<span class="t">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>
-      ${vm.notifRow && vm.notifRow.title ? `<button class="rowbtn" data-act="sub-notifs">${IC.bell}<span class="t">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}
+      ${vm.dir ? `<button class="rowbtn" data-act="addresses">${IC.pin}<span class="t">Direcciones${!vm.dir.load && (vm.dir.labels || (vm.addr && vm.addr.line)) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */
+        : `<button class="rowbtn" data-act="addr">${IC.pin}<span class="t">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}
+      ${vm.notifRow && vm.notifRow.title ? `<button class="rowbtn" data-act="sub-notifs">${IC.bell}<span class="t">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}
       ${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}
-      ${vm.updateRow ? `<button class="rowbtn" data-act="app-update-row">${IC.update}<span class="t">Actualizar la app<span>Hay una versión nueva en ${esc(vm.updateRow)}</span></span>${IC.chev}</button>` : ''}</div>
+      ${vm.updateRow ? `<button class="rowbtn" data-act="app-update-row">${IC.update}<span class="t">Actualizar la app<span>${noOrphan(`Hay una versión nueva en ${esc(vm.updateRow)}`)}</span></span>${IC.chev}</button>` : ''}</div>
     <div class="rows sess">
       <button class="rowbtn" data-act="signout">${IC.out}<span class="t">Cerrar sesión</span></button>
-      <button class="rowbtn" data-act="forget">${IC.phone}<span class="t">Olvidar este teléfono<span>Cierra tu sesión y deja de recordar tu número</span></span></button></div>
+      <button class="rowbtn" data-act="forget">${IC.phone}<span class="t">Olvidar este teléfono<span>${noOrphan('Cierra tu sesión y deja de recordar tu número')}</span></span></button></div>
     <div class="credit ver">v${esc(a.version || '')}</div></div>`);
+  }
+  // C-DIR-1 (v6 :2170, rulings 11-13): «Direcciones» — a step of Cuenta: v6's top bar, one row per saved address «{label}» (+ « · en uso»
+  // on the address in use) / «{detected} · {details}», v6's pencil in the chevron slot (INERT: no action of its own), then «Agregar
+  // dirección» (v6's pin-only step). dir: { rows, sel } — the shell's per-open frozen book (no row inserted while it shows)
+  function addressesHtml(vm) {
+    const d = vm.dir || { rows: [], sel: null };
+    const rows = d.rows.map((a) => `<button class="rowbtn" data-act="addr-use" data-id="${esc(a.id)}"${pickAttr(d, a.id)}>${IC.pin}<span class="t"><b>${esc(a.label)}${d.sel === a.id ? ' · en uso' : ''}</b><span>${noOrphan(esc(a.details ? `${a.detected} · ${a.details}` : a.detected))}</span></span>${d.pend === a.id ? SPIN : IC.edit.replace('class="i"', 'class="i chev"')}</button>`).join('');
+    return shellWrap(vm, `<div class="flow"><div class="topbar"><button class="iconbtn" data-act="addresses-back" aria-label="Volver">${IC.back}</button><h1>Direcciones</h1><span class="sp"></span></div>
+    ${d.err ? SANDLINE : d.load === 'failed' ? BOOKFAIL : ''}<div class="rows addrlist">${d.load === 'pending' ? LOADLINE : rows}<button class="rowbtn" data-act="addr-new"${addAttr(d)}>${IC.plus}<span class="t">Agregar dirección<span>${noOrphan('Poné el pin en tu puerta y describí la referencia')}</span></span></button></div></div>`);
   }
   // G7 frame 2: «Olvidar este teléfono» — the shell's .errsheet, the calm icon, two exits
   const forgetSheetHtml = () => `<div class="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Olvidar este teléfono"><div class="grab"></div>
@@ -518,5 +547,5 @@
   // frame 4 only when EVERY listed store answers «outside» (an unknown coverage is never counted as outside)
   const allOutOfZone = (rows, loc) => { const live = (rows || []).filter((r) => !r.gone); return !!loc && live.length > 0 && live.every((r) => covers(r.entry, loc) === false); };
 
-  return { homeHtml, titleOf, footHtml, legalUrl, brandLockHtml, searchHtml, ordersHtml, tabbarHtml, desknavHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, ratingHtml, logoFallback, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
+  return { bookOrder, homeHtml, titleOf, footHtml, legalUrl, brandLockHtml, searchHtml, ordersHtml, tabbarHtml, desknavHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addressesHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, ratingHtml, logoFallback, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
 });

@@ -10,7 +10,8 @@
 //
 //   createSignup({ doc, host, api, auth, google?, timers?, now? }) → { open({ ctx, prefill?, memberOnly? }), close(), state }
 //     host: the element the sheet lives in (outside the store mount's #app, so a re-render never wipes it)
-//     api: a CappSignupApi · auth: a CappAuthFirebase · google.getIdToken({ clientId, nonce }) → Promise<id_token> (GIS popup)
+//     api: a CappSignupApi · auth: a CappAuthFirebase · memberToken(uid) → Promise<token|null>: the host's owned accessor (Codex #197)
+//     google.getIdToken({ clientId, nonce }) → Promise<id_token> (GIS popup)
 //     events (opts.onEvent): 'signed-in' { uid, name, phone, email, isNew } at «Listo» · 'guest' («Prefiero seguir como invitado»)
 //                            · 'closed'
 (function (root, factory) {
@@ -172,7 +173,8 @@
     async function save() {
       if (S.busy || !S.name.trim() || !S.terms) return;
       const g = S.gen; S.busy = true; S.err = ''; render();
-      let idToken = null; try { idToken = await auth.idToken(); } catch (_) { idToken = null; }
+      // Codex #197: the host's ONE owned accessor, for the account THIS sheet signed in — another SDK user ⇒ no token, nothing sent
+      let idToken = null; try { idToken = S.uid && typeof o.memberToken === 'function' ? await o.memberToken(S.uid) : null; } catch (_) { idToken = null; }
       const r = idToken ? await api.completeProfile({ idToken, email: S.email.trim(), name: S.name.trim(), promos: S.promos }) : { ok: false };
       if (!live(g)) return;
       S.busy = false;

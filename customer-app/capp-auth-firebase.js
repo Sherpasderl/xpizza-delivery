@@ -8,7 +8,8 @@
 //     subscribe(onUser, onError) → unsubscribe     the CappAuthState adapter: onUser({ uid } | null) on every auth change
 //     signInWithCustomToken(token) → Promise<uid>    verifyOtp / redeemSignupGrant / Google all end in a custom token
 //     signOut() → Promise                            an ORDINARY sign-out (the device marker is kept, §4c)
-//     idToken(force?) → Promise<string|null>         the member token the transport sends (x-firebase-id-token)
+//     idTokenOwned(force?) → Promise<{ token, uid }>  uid = the SDK's user when the answer is made (null = signed out); token = null
+//                                                       when that is not the user the token was asked for; REJECTS on a token failure
 //   loadSdk() → Promise<{ initializeApp, authMod }> is injectable (tests use a fake; production imports the SDK).
 (function (root, factory) {
   const api = factory();
@@ -53,9 +54,16 @@
         return cred && cred.user ? cred.user.uid : (auth.currentUser && auth.currentUser.uid) || null;
       },
       async signOut() { const { auth, authMod } = await ensure(); await authMod.signOut(auth); },
-      async idToken(force) {
+      // Codex #152 #2: the token WITH the SDK user it belongs to — and only if that user is STILL the SDK's current one when the token
+      // arrives (a sign-out / switch can land while getIdToken is in flight, BEFORE the auth listeners — and so the shell — hear of it)
+      async idTokenOwned(force) {
         const { auth } = await ensure();
-        return auth.currentUser ? auth.currentUser.getIdToken(force === true) : null;
+        // Codex #189 #1: a changed user (or none) is an ANSWER — { token: null, uid: who the SDK holds now } — never a bare null, which
+        // the transport cannot tell from a failed read; a failed read rejects (the caller's transient path)
+        const u = auth.currentUser; if (!u || !u.uid) return { token: null, uid: null };
+        const token = await u.getIdToken(force === true);
+        const now = auth.currentUser, nu = now && now.uid ? now.uid : null;
+        return token && nu === u.uid ? { token, uid: u.uid } : { token: null, uid: nu };
       },
     };
   }

@@ -24855,8 +24855,8 @@
   "slice": "s2b",
   "label": "«Realizando» / «Enviando» ignore the geo line",
   "file": "../customer-app/capp-ui.js",
-  "from": "esc(C.addrLine(S.flow) || (S.flow.details || '').trim() || 'Tu ubicación')",
-  "to": "esc((S.flow.details || '').trim() || 'Tu ubicación')",
+  "from": "esc(savedLine(S.flow) || C.addrLine(S.flow) || (S.flow.details || '').trim() || 'Tu ubicación')",
+  "to": "esc(savedLine(S.flow) || (S.flow.details || '').trim() || 'Tu ubicación')",
   "command": [
    "node",
    "--test",
@@ -26877,8 +26877,8 @@
   "slice": "s7a2",
   "label": "the guest pin not seeded into a fresh checkout flow",
   "file": "../customer-app/capp-ui.js",
-  "from": "const sp = seedPin(); if (sp) C.setPin(",
-  "to": "const sp = seedPin(); if (false && sp) C.setPin(",
+  "from": "S.flow = newFlow(); const sp = seedPin();\n        if (sp) {",
+  "to": "S.flow = newFlow(); const sp = seedPin();\n        if (false && sp) {",
   "command": [
    "node",
    "--test",
@@ -26941,8 +26941,8 @@
   "slice": "s7a2",
   "label": "an existing checkout flow is re-seeded",
   "file": "../customer-app/capp-ui.js",
-  "from": "function seededFlow() { if (!S.flow) { S.flow = newFlow(); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); } return S.flow; }",
-  "to": "function seededFlow() { if (!S.flow) S.flow = newFlow(); { const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); } return S.flow; }",
+  "from": "      if (!S.flow) {\n        S.flow = newFlow(); const sp = seedPin();",
+  "to": "      if (!S.flow) S.flow = newFlow();\n      {\n        const sp = seedPin();",
   "command": [
    "node",
    "--test",
@@ -31002,24 +31002,6 @@
   ]
  },
  {
-  "id": "g7-10",
-  "slice": "g7",
-  "label": "«Cerrar sesión» waits for the SDK before the guest Cuenta",
-  "file": "../customer-app/capp-shell-ui.js",
-  "from": "signingOut = true; dropMember(); renderNow();",
-  "to": "signingOut = true;",
-  "command": [
-   "node",
-   "--test",
-   "--test-timeout=60000",
-   "--test-name-pattern=^G7",
-   "../customer-app/capp-s7a2.test.mjs"
-  ],
-  "kills_with": [
-   "G7-signout"
-  ]
- },
- {
   "id": "g7-11",
   "slice": "g7",
   "label": "«Olvidar este teléfono» keeps the device marker",
@@ -31058,19 +31040,18 @@
  {
   "id": "g7-13",
   "slice": "g7",
-  "label": "a rejected sign-out leaves the Cuenta signed out",
+  "label": "a rejected sign-out leaves the overlay up (the member can't use the app)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "if (u && u.uid) applyMember(CappDeviceAccount.readProfile(storage, u.uid) || { uid: u.uid }); renderNow(); return; }",
-  "to": "renderNow(); return; }",
+  "from": "if (!ok) { leaving = false; swap(null); return false; }",
+  "to": "if (!ok) { leaving = false; return false; }",
   "command": [
    "node",
    "--test",
-   "--test-timeout=60000",
-   "--test-name-pattern=^G7",
+   "--test-name-pattern=RESTART-REJECT",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "G7-reject"
+   "R3-REJECT: no overlay left"
   ]
  },
  {
@@ -31251,8 +31232,8 @@
   "slice": "g7",
   "label": "the runtime.signup endpoint set drops setPromos (the host never builds its URL)",
   "file": "../customer-app/capp-signup-api.js",
-  "from": "'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs']);",
-  "to": "'completeProfile', 'redeemSignupGrant', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs']);",
+  "from": "'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs', 'getMyProfile', 'useMyAddress']);",
+  "to": "'completeProfile', 'redeemSignupGrant', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs', 'getMyProfile', 'useMyAddress']);",
   "command": [
    "node",
    "--test",
@@ -31504,7 +31485,9 @@
   ],
   "kills_with": [
    "G7-privacy"
-  ]
+  ],
+  "equivalent": true,
+  "why": "COVERED ELSEWHERE, not strictly equivalent (advisor 11-20): on every admitted path, settleOwner(u.uid) → dropUidKeyed(u.uid) removes another uid's cached profile in the SAME auth callback; on the no-completion-mark restore path (which returns before the settle) a brief DEVICE-ONLY window remains, and it closes at the sign-out's guest settle (dropUidKeyed(null)); readProfile is uid-validated, so another uid's profile is never shown. The purge line stays in the code (live, not removable)"
  },
  {
   "id": "g7-24",
@@ -34286,8 +34269,8 @@
   "slice": "route",
   "label": "hydration runs despite a payment return owning the boot",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "    if (routing && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();",
-  "to": "    if (routing) hydrate(); else reflect();",
+  "from": "      if (routing && !gestured && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();",
+  "to": "      if (routing && !gestured) hydrate(); else reflect();",
   "command": [
    "node",
    "--test",
@@ -34509,8 +34492,8 @@
   "slice": "route",
   "label": "Codex D-4a r1 P2: hydration gated on UI flags (an ownerless resumed return hydrates)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "    if (routing && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();",
-  "to": "    if (routing && !S.ret && !S.neutral) hydrate(); else reflect();",
+  "from": "      if (routing && !gestured && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();",
+  "to": "      if (routing && !gestured && !S.ret && !S.neutral) hydrate(); else reflect();",
   "command": [
    "node",
    "--test",
@@ -34527,8 +34510,8 @@
   "slice": "route",
   "label": "Codex D-4a r2: a user gesture inside the store does not cancel a pending cold link",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "    const onUserIntent = () => { if (!dead && (pendingRoute || awaitOrderRoute)) cancelRoute(); };",
-  "to": "    const onUserIntent = () => {};",
+  "from": "if (gate === 'held') gestured = true; if (pendingRoute || awaitOrderRoute) cancelRoute(); };",
+  "to": "if (gate === 'held') gestured = true; };",
   "command": [
    "node",
    "--test",
@@ -34899,8 +34882,8 @@
   "slice": "promo",
   "label": "PLAN-capp-store-promo-feeinfo: Codex promo r4 #4 reverted: the JWT structure check is skipped (malformed tokens pass)",
   "file": "../customer-app/capp-api.js",
-  "from": "if (parts.length !== 3 || !parts.every((p) => p && B64URL.test(p))) return null;",
-  "to": "if (parts.length < 2) return null;",
+  "from": "  function tokenExpMs(t) {\n    if (typeof t !== 'string' || !t) return null;\n    const parts = t.split('.'); if (parts.length !== 3 || !parts.every((p) => p && B64URL.test(p))) return null;",
+  "to": "  function tokenExpMs(t) {\n    if (typeof t !== 'string' || !t) return null;\n    const parts = t.split('.'); if (parts.length < 2) return null;",
   "command": [
    "node",
    "--test",
@@ -39073,8 +39056,8 @@
   "slice": "capp-push",
   "label": "sign-out without forgetting the token",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "      await pushAuthExit();   // the server forgets",
-  "to": "      void 0;   // the server forgets",
+  "from": "async () => { await pushAuthExit(); try { await fbAuth.signOut(); return true; }",
+  "to": "async () => { try { await fbAuth.signOut(); return true; }",
   "command": [
    "node",
    "--test",
@@ -39109,8 +39092,8 @@
   "slice": "capp-push",
   "label": "the Cuenta row placed before Direcciones",
   "file": "../customer-app/capp-home.js",
-  "from": "      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n",
-  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n",
+  "from": "      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${!vm.dir.load && (vm.dir.labels || (vm.addr && vm.addr.line)) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}\n      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n",
+  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${!vm.dir.load && (vm.dir.labels || (vm.addr && vm.addr.line)) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}\n",
   "command": [
    "node",
    "--test",
@@ -39146,7 +39129,7 @@
   "label": "Codex r1 P1-1: a push call takes whatever session token is current (not the owner's)",
   "file": "../customer-app/capp-shell-ui.js",
   "from": "const tok = await tokFor(c && c.owner, { member });",
-  "to": "const tok = fbAuth ? await fbAuth.idToken() : null;",
+  "to": "const tok = await sdkTokenAnswer().then((x) => (x && x.token) || null);",
   "command": [
    "node",
    "--test",
@@ -39161,7 +39144,7 @@
  {
   "id": "push-s12",
   "slice": "capp-push",
-  "label": "Codex r1 P1-4: the SDK's own sign-out (guest) never forgets the token",
+  "label": "Codex r1 P1-4: a COLD start as a guest (her session gone) never forgets her live token (r3: the admitted sign-out is leave()'s pre)",
   "file": "../customer-app/capp-shell-ui.js",
   "from": "clearComplete(); pushAuthExit(); pushSettleSoon(); }",
   "to": "clearComplete(); pushSettleSoon(); }",
@@ -39169,17 +39152,17 @@
    "node",
    "--test",
    "--test-timeout=60000",
-   "--test-name-pattern=^PUSH-SHELL",
+   "--test-name-pattern=^PUSH-SHELL-12d",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "🔴 PUSH-SHELL-12 (guest)"
+   "🔴 PUSH-SHELL-12d: a cold guest start invalidates her token on the phone"
   ]
  },
  {
   "id": "push-s13",
   "slice": "capp-push",
-  "label": "Codex r1 P1-4: a session without its completion mark is signed out without forgetting the token",
+  "label": "Codex r1 P1-4: a COLD restored session without its completion mark is signed out without forgetting the token (r3: the admitted case is leave()'s)",
   "file": "../customer-app/capp-shell-ui.js",
   "from": "dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {}));",
   "to": "dropMember(); fbAuth.signOut().catch(() => {});",
@@ -39187,11 +39170,11 @@
    "node",
    "--test",
    "--test-timeout=60000",
-   "--test-name-pattern=^PUSH-SHELL",
+   "--test-name-pattern=^PUSH-SHELL-12e",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "🔴 PUSH-SHELL-12 (marker)"
+   "🔴 PUSH-SHELL-12e: forgotten under the still-valid session on a cold start"
   ]
  },
  {
@@ -39358,8 +39341,8 @@
   "slice": "capp-notifs",
   "label": "the Cuenta keeps a separate «Promociones» row beside «Notificaciones»",
   "file": "../customer-app/capp-home.js",
-  "from": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n",
-  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n      <button class=\"rowbtn\" data-act=\"promos\">${IC.bell}<span class=\"t\">Promociones<span>Ofertas por correo y WhatsApp</span></span></button>\n",
+  "from": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n",
+  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n      <button class=\"rowbtn\" data-act=\"promos\">${IC.bell}<span class=\"t\">Promociones<span>Ofertas por correo y WhatsApp</span></span></button>\n",
   "command": [
    "node",
    "--test",
@@ -41692,12 +41675,337 @@
   ]
  },
  {
+  "id": "dir-01",
+  "slice": "c-dir-1",
+  "label": "«en uso» on EVERY row (not the address in use)",
+  "file": "../customer-app/capp-home.js",
+  "from": "${d.sel === a.id ? ' · en uso' : ''}",
+  "to": "${' · en uso'}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-2"
+  ]
+ },
+ {
+  "id": "dir-02",
+  "slice": "c-dir-1",
+  "label": "r3: the pick is never sent (no useMyAddress)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (live() && own) r = await suApi.useMyAddress({ idToken: own, ...body });",
+  "to": "if (false) r = await suApi.useMyAddress({ idToken: own, ...body });",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=DIR-CONFIRM",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-CONFIRM: the tap sends the pick"
+  ]
+ },
+ {
+  "id": "dir-03",
+  "slice": "c-dir-1",
+  "label": "r3: a failed pick is counted as success (the screen lies about the server)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "won = !!(b && b.sel === id);",
+  "to": "won = true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=REFUSED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-REFUSED: the calm sand line"
+  ]
+ },
+ {
+  "id": "dir-04",
+  "slice": "c-dir-1",
+  "label": "a sign-out / member switch leaves the previous member's book on the device",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (S.book && S.book.who) { try { storage && storage.removeItem(ADDR_KEY(S.book.who)); } catch (_) {} }",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-7"
+  ],
+  "equivalent": true,
+  "why": "since r3 (wipe + restart) a previous member's book exists only after an admission (ownBy sets seenUid), and every identity change of an admitted member goes through leave(): dropMember → identityChanged → bookIdentity removes the book, then wipeIdentity → dropUidKeyed removes it again; when P2-2 skips the wipe (a stale tab) the façade's stale() refuses the removal anyway. The other callers (auth onChange guest / no completion mark, applyMember) run with no previous member's book. DIR-7 still pins the outcome (the book leaves the device); the line is redundant with the wipe (advisor 11-20: delete it in the one-tab change if approved)"
+ },
+ {
+  "id": "dir-05",
+  "slice": "c-dir-1",
+  "label": "the visible «Direcciones» list re-renders LIVE (a KNOWN list changes while open — rule 7)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "dir: { rows: dirShown || [], sel: savedSelId(), ...pickVm('dir') } }) :",
+  "to": "dir: { rows: S.book.addresses, sel: savedSelId(), ...pickVm('dir') } }) :",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-6b: nothing removed from (or inserted into) a visible KNOWN list"
+  ]
+ },
+ {
+  "id": "dir-06",
+  "slice": "c-dir-1",
+  "label": "the pencil gets an action of its own (v6 draws it inert)",
+  "file": "../customer-app/capp-home.js",
+  "from": "${d.pend === a.id ? SPIN : IC.edit.replace('class=\"i\"', 'class=\"i chev\"')}</button>`).join('');",
+  "to": "${d.pend === a.id ? SPIN : IC.edit.replace('class=\"i\"', 'class=\"i chev\" data-act=\"addr-edit\"')}</button>`).join('');",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-2"
+  ]
+ },
+ {
+  "id": "dir-07",
+  "slice": "c-dir-1",
+  "label": "the «Entregar en» sheet never lists the member's saved addresses",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const addrSheetVm = () => (S.member && S.book ? { rows: dirShown || S.book.addresses, sel: savedSelId(), ...pickVm('inicio') } : null);",
+  "to": "const addrSheetVm = () => null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-4"
+  ]
+ },
+ {
+  "id": "dir-08",
+  "slice": "c-dir-1",
+  "label": "a default_address naming no kept entry is kept (an «en uso» that is not in the list)",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "const d = j && typeof j.default_address === 'string' && addresses.some((a) => a.id === j.default_address) ? j.default_address : null;",
+  "to": "const d = j && typeof j.default_address === 'string' ? j.default_address : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-API"
+  ]
+ },
+ {
+  "id": "dir-09",
+  "slice": "c-dir-1",
+  "label": "a malformed entry is kept (no coordinate check)",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "&& inRange(a.lat, 90) && inRange(a.lng, 180))",
+  "to": ")",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-API"
+  ]
+ },
+ {
+  "id": "dir-pin",
+  "slice": "c-dir-1",
+  "label": "the address fixture is trusted at another 3a ref (the pre-CAS addr-3a-fwd tip)",
+  "file": "../customer-app/capp-s7a2.test.mjs",
+  "from": "const ADDR_REF = '805a5015411a63ecac62d1f54bac653b9ea1ddc0';",
+  "to": "const ADDR_REF = '1856188046a6afac53f05b20ccad27702ef4b376';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ADDR-PIN",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "ADDR-PIN: the fixture was generated at the approved 3a ref"
+  ]
+ },
+ {
+  "id": "dir-guard",
+  "slice": "c-dir-1",
+  "label": "capp-guards (11-18 re-base, direcciones-r2): a capp commit after CAPP_TIP no longer fails the range",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "  assert.equal(later, '', `🔴 capp commit(s) after CAPP_TIP",
+  "to": "  assert.equal('', '', `🔴 capp commit(s) after CAPP_TIP",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=still bites",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "GUARD-BITES"
+  ]
+ },
+ {
+  "id": "seed-01",
+  "slice": "c-dir-1-seed",
+  "label": "the checkout ignores the saved address in use (the device location seeds: the checkout disagrees with the pill)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const seedNow = () => savedSeed() || S.loc;",
+  "to": "const seedNow = () => S.loc;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1 SEED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-SEED: the saved pin"
+  ]
+ },
+ {
+  "id": "seed-02",
+  "slice": "c-dir-1-seed",
+  "label": "the saved line survives a MOVED pin (the row names an address the pin no longer is)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const savedLine = (f) => (f && f.saved && f.saved.pinV === f.pinV ?",
+  "to": "const savedLine = (f) => (f && f.saved ?",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1 SEED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-SEED override"
+  ]
+ },
+ {
+  "id": "seed-05",
+  "slice": "c-dir-1-seed",
+  "label": "a device fix chosen AFTER the saved address is ignored (the saved address keeps seeding)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const savedInUse = () => (S.member && S.locPick === 'saved' ? bookSel() : null);",
+  "to": "const savedInUse = () => (S.member ? bookSel() : null);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1 SEED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-SEED device"
+  ]
+ },
+ {
+  "id": "seed-06",
+  "slice": "c-dir-1-seed",
+  "label": "the zone ignores the saved address in use (runs on the device location)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const locNow = () => { const a = savedInUse(); return a ? { lat: a.lat, lng: a.lng, confirmed: true, source: 'saved' } : S.loc; };",
+  "to": "const locNow = () => S.loc;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1 SEED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-SEED out"
+  ]
+ },
+ {
+  "id": "dir-31",
+  "slice": "c-dir-1",
+  "label": "the book in the server's order (the address in use not first — advisor 11-14)",
+  "file": "../customer-app/capp-home.js",
+  "from": "  const bookOrder = (addresses, sel) => addresses.map((a, i) => ({ a, i })).sort((x, y) => ((y.a.id === sel) - (x.a.id === sel)) || (lastUsed(y.a) - lastUsed(x.a)) || (x.i - y.i)).map((e) => e.a);",
+  "to": "  const bookOrder = (addresses, sel) => addresses.slice();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-DIR-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-2"
+  ]
+ },
+ {
+  "id": "dir-32",
+  "slice": "c-dir-1",
+  "label": "«dirección.» orphaned again (a plain space, 16b)",
+  "file": "../customer-app/capp-home.js",
+  "from": "se revisa con esta&nbsp;dirección.</small>",
+  "to": "se revisa con esta dirección.</small>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-DIR-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-NOTE"
+  ]
+ },
+ {
+  "id": "dir-33",
+  "slice": "c-dir-1",
+  "label": "the member's saved address drawn as the guest pin button (v6 :1846, not :1845)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      const sl = m ? savedLine(f) : '';",
+  "to": "      const sl = '';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-DIR-1 \\(b\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-B-ROW"
+  ]
+ },
+ {
+  "id": "dir-34",
+  "slice": "c-dir-1",
+  "label": "a pick replaces details the customer typed",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      const unedited = !(f.details || '').trim() || (f.saved && f.saved.details && f.details === f.saved.details);",
+  "to": "      const unedited = true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-DIR-1 \\(b\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-B-EDITED"
+  ]
+ },
+ {
   "id": "loc-sand-01",
   "slice": "loc-sand",
   "label": "the location-off row keeps the amber fill and text",
   "file": "../customer-app/capp.css",
-  "from": "border-radius:12px;background:var(--sand-bg);color:var(--sand);box-shadow",
-  "to": "border-radius:12px;background:var(--warn-bg);color:var(--warn);box-shadow",
+  "from": "gap:10px;padding:10px 14px;border-radius:12px;background:var(--sand-bg);color:var(--sand);box-shadow",
+  "to": "gap:10px;padding:10px 14px;border-radius:12px;background:var(--warn-bg);color:var(--warn);box-shadow",
   "command": [
    "node",
    "--test",
@@ -41713,8 +42021,8 @@
   "slice": "loc-sand",
   "label": "the sand hairline is dropped (the row loses its edge on white)",
   "file": "../customer-app/capp.css",
-  "from": "color:var(--sand);box-shadow:inset 0 0 0 1px var(--sand-line);font-size:13.5px",
-  "to": "color:var(--sand);font-size:13.5px",
+  "from": "box-shadow:inset 0 0 0 1px var(--sand-line);font-size:13.5px;font-weight:500}",
+  "to": "font-size:13.5px;font-weight:500}",
   "command": [
    "node",
    "--test",
@@ -41842,6 +42150,1210 @@
   ],
   "kills_with": [
    "GUARD-BITES"
+  ]
+ },
+ {
+  "id": "r3-b-01",
+  "slice": "r3-b",
+  "label": "r3: the other address controls stay live while a pick is in flight",
+  "file": "../customer-app/capp-home.js",
+  "from": "d.pend === id ? ' aria-disabled=\"true\" aria-busy=\"true\"' : ' aria-disabled=\"true\"'",
+  "to": "d.pend === id ? ' aria-disabled=\"true\" aria-busy=\"true\"' : ''",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=DIR-CONFIRM",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-CONFIRM: every other control is disabled"
+  ]
+ },
+ {
+  "id": "r3-b-02",
+  "slice": "r3-b",
+  "label": "r3: the shell's click gate is gone (Inicio's «Entregar en» opens mid-pick)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if ((S.addrPick || gate === 'held') && ADDR_ACTS.has(a)) return;",
+  "to": "      if (false) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=INICIO-LOCK",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-INICIO: no sheet opens"
+  ]
+ },
+ {
+  "id": "r3-b-03",
+  "slice": "r3-b",
+  "label": "r3: the tap switches «en uso» at once (optimistic)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      S.addrErr = null; S.addrPick = { id, surface }; bookSeq++; pickPaint();",
+  "to": "      S.addrErr = null; S.addrPick = { id, surface }; S.book = { ...S.book, sel: id }; bookSeq++; pickPaint();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=DIR-CONFIRM",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-CONFIRM: nothing switches on the tap"
+  ]
+ },
+ {
+  "id": "r3-b-04",
+  "slice": "r3-b",
+  "label": "r3: the re-read is NOT owned (any token — another member's after a switch)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      const own = await ownedToken(uid);\n      if (dead || gen !== bookGen) return null;",
+  "to": "      const own = await sdkTokenAnswer().then((x) => (x && x.token) || null);\n      if (dead || gen !== bookGen) return null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=re-anchor r3-b-04",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C197-BOOK: no profile re-read under Bob's token while the book is Ana's"
+  ]
+ },
+ {
+  "id": "r3-b-05",
+  "slice": "r3-b",
+  "label": "r3: the write skips the owner check (a token of whoever the SDK holds)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        const own = await ownedToken(uid);\n        const live = () =>",
+  "to": "        const own = await sdkTokenAnswer().then((x) => (x && x.token) || null);\n        const live = () =>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#153 #1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C153-1"
+  ]
+ },
+ {
+  "id": "r3-b-06",
+  "slice": "r3-b",
+  "label": "r3: a pick landing during the send re-seeds the DISPATCHED flow",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const flowEditable = () => !!S.flow && UNSENT.has(S.screen) && !frozenNow() && !lockedHere();",
+  "to": "const flowEditable = () => !!S.flow;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#153 #2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C153-2: «Enviando» still names Casa"
+  ]
+ },
+ {
+  "id": "r3-b-07",
+  "slice": "r3-b",
+  "label": "r3: a 409 naming my id at a higher rev is TRUSTED as success (owner 11-18: never)",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "if (r.status === 200 && j && j.ok === true && j.default_address === id && Number.isSafeInteger(j.default_address_rev)",
+  "to": "if ((r.status === 200 && j && j.ok === true || r.status === 409) && j && j.default_address === id && Number.isSafeInteger(j.default_address_rev)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SPECULATIVE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-409-BODY: a 409 is never success by its body"
+  ]
+ },
+ {
+  "id": "r3-b-08",
+  "slice": "r3-b",
+  "label": "r3: a failed pick draws no sand line",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (won) { S.locPick = 'saved'; bookSave(); } else S.addrErr = surface;",
+  "to": "if (won) { S.locPick = 'saved'; bookSave(); } else S.addrErr = null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=REFUSED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-REFUSED: the calm sand line"
+  ]
+ },
+ {
+  "id": "r3-b-09",
+  "slice": "r3-b",
+  "label": "r3: a read that started before a pick landed overrides it",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (seq0 !== bookSeq) return b;\n      const filling",
+  "to": "      const filling",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=STALE-READ",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-STALE-READ: the older read"
+  ]
+ },
+ {
+  "id": "r3-b-10",
+  "slice": "r3-b",
+  "label": "r3: the checkout's «Cambiar» stays live mid-pick",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (!p || frozenNow() || pickBusy()) return true;",
+  "to": "if (!p || frozenNow()) return true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SHEET-CONFIRM",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-SHEET: «Cambiar» is disabled",
+   "a disabled «Cambiar» opens nothing"
+  ]
+ },
+ {
+  "id": "r3-b-11",
+  "slice": "r3-b",
+  "label": "r3: a 200 never moves «en uso» (the device stays on the old pick)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "          S.book = { ...S.book, sel: id, rev: r.default_address_rev }; won = true;",
+  "to": "          won = false;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=DIR-CONFIRM",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-CONFIRM: the 200 moves «en uso»"
+  ]
+ },
+ {
+  "id": "r3-b-12",
+  "slice": "r3-b",
+  "label": "r3: the tapped row is not disabled while its pick is in flight (SBS DIR3: the prototype :444 disables it too)",
+  "file": "../customer-app/capp-home.js",
+  "from": "d.pend === id ? ' aria-disabled=\"true\" aria-busy=\"true\"'",
+  "to": "d.pend === id ? ' aria-busy=\"true\"'",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=DIR-CONFIRM",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-CONFIRM (SBS DIR3, the prototype :444): the tapped row is disabled too"
+  ]
+ },
+ {
+  "id": "r3-rs-01",
+  "slice": "r3-rs",
+  "label": "r3 restart: the wipe skips the active order (her tracking token stays)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const MEMBER_REC = /^capp:(?:active_order|rate_nudge|",
+  "to": "const MEMBER_REC = /^capp:(?:rate_nudge|",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^r3 RESTART:",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-RESTART: no unkeyed record of hers"
+  ]
+ },
+ {
+  "id": "r3-rs-02",
+  "slice": "r3-rs",
+  "label": "r3 restart: the app never restarts (her in-memory state survives)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      try { go(win.location.origin + '/'); } catch (_) {}\n      return true;",
+  "to": "      return true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^r3 RESTART:",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-RESTART: the app starts again at its root"
+  ]
+ },
+ {
+  "id": "r3-rs-03",
+  "slice": "r3-rs",
+  "label": "r3 restart: the self-update snapshot (her cart + checkout) survives the restart",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      try { const ss = win && win.sessionStorage; if (ss) ss.removeItem(SNAPSHOT_KEY); } catch (_) {}",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^r3 RESTART:",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-RESTART: no self-update snapshot"
+  ]
+ },
+ {
+  "id": "r3-rs-04",
+  "slice": "r3-rs",
+  "label": "r3 restart: the wipe runs BEFORE the push exit / sign-out completes",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      leaving = true; swap(kind);\n",
+  "to": "      leaving = true; swap(kind); wipeIdentity(keep);\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=RESTART-ORDER",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-ORDER: nothing wiped before the sign-out completes"
+  ]
+ },
+ {
+  "id": "r3-rs-05",
+  "slice": "r3-rs",
+  "label": "r3 switch: the incoming member's own completion mark is wiped (he is signed out after the restart)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        if (!keep || !v || v.uid !== keep) rawDel(k);",
+  "to": "        rawDel(k);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SWITCH-KEEP",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-SWITCH-KEEP: B's completion mark stays"
+  ]
+ },
+ {
+  "id": "r3-rs-06",
+  "slice": "r3-rs",
+  "label": "r3 switch: per-uid records kept by PREFIX, not the exact uid",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (m && m[1] !== keep) rawDel(k); }",
+  "to": "if (m && !(keep && m[1].startsWith(keep))) rawDel(k); }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SWITCH-KEEP",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-SWITCH-KEEP: capp:addr:u_bobby is gone"
+  ]
+ },
+ {
+  "id": "r3-rs-07",
+  "slice": "r3-rs",
+  "label": "r3 gate: a MISSING stamp is treated as «guest» (an upgrade's records are anyone's)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const mismatch = own !== 'guest' && own !== id && unkeyedHeld();",
+  "to": "const mismatch = own !== 'guest' && own !== null && own !== id && unkeyedHeld();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=GATE-UNSTAMPED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-GATE-UNSTAMPED: an unstamped record is wiped"
+  ]
+ },
+ {
+  "id": "r3-rs-08",
+  "slice": "r3-rs",
+  "label": "r3 gate: the stamp is written BEFORE the check (B's admission re-stamps A's records)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      const id = uid ? 'u:' + uid : 'guest', own = rawGet(OWNER_KEY);",
+  "to": "      const id = uid ? 'u:' + uid : 'guest'; try { rawStorage.setItem(OWNER_KEY, id); } catch (_) {} const own = rawGet(OWNER_KEY);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=GATE-MISMATCH",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-GATE-MISMATCH: none of her unkeyed records is left"
+  ]
+ },
+ {
+  "id": "r3-rs-09",
+  "slice": "r3-rs",
+  "label": "r3 gate: a member-scoped record is READ before the session settles (the façade bypassed)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const hidden = (k) => gate === 'held' && MEMBER_REC.test(String(k));",
+  "to": "const hidden = (k) => false;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=GATE-MATCH",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-GATE-READ: her pin is not read before the session settles"
+  ]
+ },
+ {
+  "id": "r3-rs-10",
+  "slice": "r3-rs",
+  "label": "r3 gate: a session that never settles (unavailable) RESTORES her records (fail open)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        if (st === 'guest') settleOwner(null);\n",
+  "to": "        if (st === 'unavailable' && gate === 'held') { settled = true; gate = 'open'; bootSteps(); }\n        if (st === 'guest') settleOwner(null);\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=GATE-UNAVAILABLE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-GATE-UNAVAILABLE: still nothing of hers"
+  ]
+ },
+ {
+  "id": "r3-rs-11",
+  "slice": "r3-rs",
+  "label": "r3 gate: a tap held before a MISMATCH is replayed after the wipe",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (mismatch) { S.held = null; if (win",
+  "to": "      if (mismatch) { if (win",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=GATE-MISMATCH",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-GATE-MISMATCH: the held tap is dropped"
+  ]
+ },
+ {
+  "id": "r3-rs-12",
+  "slice": "r3-rs",
+  "label": "r3 gate: a GUEST's device is gated too (its boot no longer as today)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (own !== 'guest' && (unkeyedHeld() || /^u:/.test(own || ''))) gate = 'held';",
+  "to": "      if (unkeyedHeld() || /^u:/.test(own || '')) gate = 'held';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=GATE-GUEST",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-GATE-GUEST: the guest's location at once"
+  ]
+ },
+ {
+  "id": "r3-rs-13",
+  "slice": "r3-rs",
+  "label": "r3 gate: a cold route mounts the store before the session settles",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    if (gate === 'open') bootSteps(); else setTitle();",
+  "to": "    bootSteps();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=GATE-ROUTE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-GATE-ROUTE: no store mounted before"
+  ]
+ },
+ {
+  "id": "r3-rs-14",
+  "slice": "r3-rs",
+  "label": "r3 restart: a write AFTER the leave still lands once the device stamp is hers again (her other tab re-admitted her) — the store not sealed",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      setItem: (k, v) => { k = String(k); if (((gate === 'sealed' || unstamped) && memberKey(k)) || hidden(k)) return;",
+  "to": "      setItem: (k, v) => { k = String(k); if ((unstamped && memberKey(k)) || hidden(k)) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=re-anchor r3-rs-14",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-SEAL: the leaving tab writes nothing, even under her own returned stamp"
+  ]
+ },
+ {
+  "id": "r3-rs-15",
+  "slice": "r3-rs",
+  "label": "r3 gate: «Entregar en» stays live while the boot is held (a pin write would be lost)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "busy = !!S.addrPick || gate === 'held';",
+  "to": "busy = !!S.addrPick;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=GATE-MATCH",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-GATE-MATCH: «Entregar en» disabled while held"
+  ]
+ },
+ {
+  "id": "r3-rs-16",
+  "slice": "r3-rs",
+  "label": "r3 restart: it reloads the CURRENT url (a ?pay= return re-fires)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      try { go(win.location.origin + '/'); } catch (_) {}\n      return true;",
+  "to": "      try { go(win.location.href); } catch (_) {}\n      return true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=RESTART-ROOT",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-ROOT: ONE replace, to the origin root"
+  ]
+ },
+ {
+  "id": "r3-rs-17",
+  "slice": "r3-rs",
+  "label": "r3 restart: a switch says «Cerrando sesión…»",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "kind === 'switch' ? 'Cambiando de cuenta…' : 'Cerrando sesión…'",
+  "to": "'Cerrando sesión…'",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^r3 RESTART:",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-RESTART: its one line"
+  ]
+ },
+ {
+  "id": "r3-rs-18",
+  "slice": "r3-rs",
+  "label": "r3 gate (Codex #173 #4): a payment return opened on a MISMATCH is processed (her return record written back)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "loadLoc(); if (!mismatch) bootReturnNow(); bootSteps();",
+  "to": "loadLoc(); bootReturnNow(); bootSteps();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#173 #4",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C173-4: her order records are gone"
+  ]
+ },
+ {
+  "id": "r3-rs-19",
+  "slice": "r3-rs",
+  "label": "r3 restart: no overlay while the sign-out runs (her screen stays live and readable)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      leaving = true; swap(kind);\n",
+  "to": "      leaving = true;\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=RESTART-ORDER",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R3-ORDER: the overlay is up at once"
+  ]
+ },
+ {
+  "id": "r3-rs-20",
+  "slice": "r3-rs",
+  "label": "r3 restart: the seal also covers the push core's own device record (a token minted mid-switch is never invalidated)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const memberKey = (k) => MEMBER_REC.test(k) ||",
+  "to": "const memberKey = (k) => k === 'capp:push:v1' || MEMBER_REC.test(k) ||",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=PUSH-SHELL-11",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-11: the token minted for A while B is here is invalidated on the phone"
+  ]
+ },
+ {
+  "id": "r3-rs-21",
+  "slice": "r3-rs",
+  "label": "r3 restart: leave() skips dropMember (her in-flight reads run on until navigation, under the next session's token)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (S.member) dropMember();\n      gate = 'sealed';\n",
+  "to": "      gate = 'sealed';\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=re-anchor r3-rs-21",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C178-DROP: the shell holds no member after the leave"
+  ]
+ },
+ {
+  "id": "r3-rs-22",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #178 #1): the façade never checks the device's stamp (a stale tab writes her payment record back after another tab's wipe)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const stale = (k) => memberKey(k) && rawGet(OWNER_KEY) !== myStamp;",
+  "to": "const stale = (k) => false;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#178 #1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C178-1: the stale tab writes no payment record back"
+  ]
+ },
+ {
+  "id": "r3-rs-23",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #189 #1): a change answer without a token — the SDK says its user changed (switched / signed out) but returns no token; the member is not marked moved, so her still-usable cached token carries her order",
+  "file": "../customer-app/capp-api.js",
+  "from": "if (o && (o.uid || null) !== m.uid) { m.moved = true;",
+  "to": "if (false) { m.moved = true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#189 #1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C189-1: her order is not dispatched (never with her cached token)"
+  ]
+ },
+ {
+  "id": "r3-rs-24",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #178 #3): dropMember runs BEFORE the exit is confirmed (a refused sign-out loses her caches)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      leaving = true; swap(kind);\n      if (!S.member) memberGen++;",
+  "to": "      leaving = true; swap(kind); if (S.member) dropMember();\n      if (!S.member) memberGen++;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#178 #3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C178-3: her book is kept byte for byte"
+  ]
+ },
+ {
+  "id": "r3-rs-25",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #178 #4): a member-stamped device with no records boots OPEN (a cart built before the settle is wiped)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (own !== 'guest' && (unkeyedHeld() || /^u:/.test(own || ''))) gate = 'held';",
+  "to": "      if (own !== 'guest' && unkeyedHeld()) gate = 'held';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#178 #4",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C178-4: the store tap is held before the session settles"
+  ]
+ },
+ {
+  "id": "r3-rs-26",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #178 #5): recovery keeps the checkout when the COORDINATES match (another address at the same door)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (now && now.saved && f.saved.id && f.saved.id === now.saved.id && ",
+  "to": "      if (now && finitePin(now) && finitePin(f.pin) && f.pin.lat === now.lat && f.pin.lng === now.lng) return;\n      if (now && now.saved && f.saved.id && f.saved.id === now.saved.id && ",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#178 #5",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C178-5: the checkout names Mamá (same pin as Casa)"
+  ]
+ },
+ {
+  "id": "r3-rs-27",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #189 #1): a changed SDK user (switched or signed out) answers a bare null — the transport keeps her cached token",
+  "file": "../customer-app/capp-auth-firebase.js",
+  "from": "        return token && nu === u.uid ? { token, uid: u.uid } : { token: null, uid: nu };",
+  "to": "        return token && nu === u.uid ? { token, uid: u.uid } : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#189 #1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C189-1: her order is not dispatched (never with her cached token)"
+  ]
+ },
+ {
+  "id": "r3-rs-28",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #193): the sink check removed — a cached token of another user leaves with her request",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (t && tu !== m.uid) { m.moved = true; if (typeof m.onMoved === 'function') { try { m.onMoved(tu); } catch (_) {} } return null; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#193 \\(P1\\) SINK",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C193-SINK: a token whose user is not hers never leaves with her request"
+  ]
+ },
+ {
+  "id": "r3-rs-29",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #197): the one accessor stops checking whose token it is — Ana's action carries Bob's token",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (o && (o.uid || null) !== uid) { identityMoved(o.uid || null); return null; }\n      return o && typeof o.token === 'string' && o.token ? o.token : null;",
+  "to": "      return o && typeof o.token === 'string' && o.token ? o.token : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#197 \\(P1\\) repro",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C197-promos: Ana's toggle never writes with Bob's token"
+  ]
+ },
+ {
+  "id": "r3-rs-30",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #197): a direct SDK token read planted outside the accessor — the census must see it",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    async function togglePromos() {\n",
+  "to": "    async function togglePromos() {\n      try { fbAuth && fbAuth.idTokenOwned(); } catch (_) {}\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#197",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C197-CENSUS: a member token read outside the one accessor"
+  ]
+ },
+ {
+  "id": "r3-rs-31",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #189 P2-2): the wipe no longer re-validates ownership after pre() — a stale tab deletes the current owner's data",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (rawGet(OWNER_KEY) === myStamp) wipeIdentity(keep);",
+  "to": "      wipeIdentity(keep);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#189 P2-2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C189-P2-2: the guest's cart is never wiped by a stale tab"
+  ]
+ },
+ {
+  "id": "r3-rs-32",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #189 P2-3): stampAs trusts a write that failed — the unpersisted stamp reads as another owner and the boot restarts",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      const held = rawGet(OWNER_KEY); unstamped = held !== id; myStamp = unstamped ? held : id;",
+  "to": "      myStamp = id;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#189 P2-3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C189-P2-3: a failed stamp write is never an ownership change (no restart, no overlay)"
+  ]
+ },
+ {
+  "id": "r3-rs-33",
+  "slice": "r3-rs",
+  "label": "r3 (identity, 11-20): the offer's redeem reply landing after a leave still signs the new account in (the SDK flipped by a tab that left)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (r && r.ok && r.token && !leaving) uid = await fbAuth.signInWithCustomToken(r.token);",
+  "to": "if (r && r.ok && r.token) uid = await fbAuth.signInWithCustomToken(r.token);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=OFFER-RACE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "OFFER-RACE: a tab that left never signs the new account in"
+  ]
+ },
+ {
+  "id": "r3-rs-34",
+  "slice": "r3-rs",
+  "label": "r3 (identity, 11-20): ownBy stamps while LEAVING — a late «Listo» rewrites another identity's stamp (its records re-labelled)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "function ownBy(uid) { if (leaving) return; seenUid = uid;",
+  "to": "function ownBy(uid) { seenUid = uid;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SHEET-RACE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "SHEET-RACE: Bob's stamp is never overwritten by a tab that left"
+  ]
+ },
+ {
+  "id": "r3-rs-35",
+  "slice": "r3-rs",
+  "label": "r3 (identity, 11-20): settleOwner runs in a tab that left while its gate was held — it stamps and mismatch-wipes the identity that holds the device now",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (settled || leaving) return; settled = true;",
+  "to": "      if (settled) return; settled = true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=PRESETTLE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PRESETTLE: a tab that left writes no stamp"
+  ]
+ },
+ {
+  "id": "r3-rs-36",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #236 P2, single tab): leave() does not void a pending admission — one waiting on its token (no member mounted yet) lands in the leaving tab",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (!S.member) memberGen++;   // Codex #236 P2",
+  "to": "      // if (!S.member) memberGen++;   // Codex #236 P2",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#236 P2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C236-P2: an admission that resumes after the leave never repopulates the member"
+  ]
+ },
+ {
+  "id": "r3-rs-37",
+  "slice": "r3-rs",
+  "label": "r3 (Codex #236 P2 scope): leave() voids a MOUNTED member's generation too — a refused sign-out kills her token refresh",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (!S.member) memberGen++;",
+  "to": "      memberGen++;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=#236 P2 \\(scope\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C236-P2-SCOPE: after a refused sign-out her token refresh still runs"
+  ]
+ },
+ {
+  "id": "r3-c-01",
+  "slice": "r3-c",
+  "label": "16b orphan: noOrphan joins the last two words with a plain space (the last word can wrap alone again)",
+  "file": "../customer-app/capp-text.js",
+  "from": "m[1] + '\\u00a0' + m[2]",
+  "to": "m[1] + ' ' + m[2]",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ORPHAN-1",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "ORPHAN-1: the last word never stands alone"
+  ]
+ },
+ {
+  "id": "r3-c-02",
+  "slice": "r3-c",
+  "label": "16b orphan (Codex #260 P2-1): only a single plain space is glued — two spaces or a tab before the last word leave it free to wrap alone",
+  "file": "../customer-app/capp-text.js",
+  "from": "/(\\S+)\\s+(\\S+)$/",
+  "to": "/(\\S+) (\\S+)$/",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ORPHAN-1",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "ORPHAN-1 (Codex #260 P2-1): a run of spaces before the last word collapses to ONE U+00A0"
+  ]
+ },
+ {
+  "id": "r3-c-03",
+  "slice": "r3-c",
+  "label": "16b orphan: the «Direcciones» address subtitle skips noOrphan (the SBS DIR3 «negro» row)",
+  "file": "../customer-app/capp-home.js",
+  "from": "<span>${noOrphan(esc(a.details ? `${a.detected} · ${a.details}` : a.detected))}</span>",
+  "to": "<span>${esc(a.details ? `${a.detected} · ${a.details}` : a.detected)}</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ORPHAN-CENSUS",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "ORPHAN-CENSUS: a .rowbtn subtitle that skips noOrphan"
+  ]
+ },
+ {
+  "id": "r3-c-04",
+  "slice": "r3-c",
+  "label": "consent: the push-offers consent text (PUSH_OFFERS_COPY_VERSION) is glued by the 16b helper — no longer byte-identical",
+  "file": "../customer-app/capp-push.js",
+  "from": "row('promociones', COPY.offersSub, x.promociones)",
+  "to": "row('promociones', noOrphan(COPY.offersSub), x.promociones)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ORPHAN-CONSENT",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "ORPHAN-CONSENT: the push-offers consent text, byte-identical"
+  ]
+ },
+ {
+  "id": "r3-c-05",
+  "slice": "r3-c",
+  "label": "16b orphan: the «Pedidos» phone row (push row(), census-exempt for consent) skips the glue",
+  "file": "../customer-app/capp-push.js",
+  "from": "row('pedidos', noOrphan(COPY.ordersSub), x.pedidos)",
+  "to": "row('pedidos', COPY.ordersSub, x.pedidos)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ORPHAN-CONSENT",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "ORPHAN-CONSENT: the non-consent sub-lines are glued"
+  ]
+ },
+ {
+  "id": "r3-c-06",
+  "slice": "r3-c",
+  "label": "16b census (Codex #260 P2-3): a non-consent row() call passes its subtitle unglued (the generic ${sub} exemption would hide it)",
+  "file": "../customer-app/capp-push.js",
+  "from": "row('pedidos', noOrphan(COPY.ordersSub), x.pedidos)",
+  "to": "row('pedidos', COPY.ordersSub, x.pedidos)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ORPHAN-CENSUS",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "ORPHAN-CENSUS: a non-consent row() call passes its subtitle unglued"
+  ]
+ },
+ {
+  "id": "r3-c-07",
+  "slice": "r3-c",
+  "label": "16b census (Codex #260 P2-3): a row subtitle drawn as a span WITH attributes skips noOrphan",
+  "file": "../customer-app/capp-home.js",
+  "from": "<span>${noOrphan('Poné el pin en tu puerta y describí la referencia')}</span>",
+  "to": "<span class=\"subtitle\">Poné el pin en tu puerta y describí la referencia</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ORPHAN-CENSUS",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "ORPHAN-CENSUS: a .rowbtn subtitle that skips noOrphan"
+  ]
+ },
+ {
+  "id": "r3-c-08",
+  "slice": "r3-c",
+  "label": "16b (Codex #260 P2-2): no overflow-wrap — a glued pair wider than the line overflows the row",
+  "file": "../customer-app/capp.css",
+  "from": "text-wrap:pretty;overflow-wrap:break-word}",
+  "to": "text-wrap:pretty}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ORPHAN-2",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "ORPHAN-2 (Codex #260 P2-2): a glued pair wider than the line breaks inside the word, never overflows"
+  ]
+ },
+ {
+  "id": "r3-d-01",
+  "slice": "r3-d",
+  "label": "book-state: the placeholder of a never-known book carries no load ⇒ drawn as an empty book",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "rev: null, load: 'pending' };",
+  "to": "rev: null };",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-1 ",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-1: the loading line in the list's place"
+  ]
+ },
+ {
+  "id": "r3-d-02",
+  "slice": "r3-d",
+  "label": "book-state: a failed first read leaves the book «loading» forever (no unreadable line, no retry)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "S.book.load = 'failed'; bookPaint();",
+  "to": "bookPaint();",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-2: the calm line + «Reintentar»"
+  ]
+ },
+ {
+  "id": "r3-d-03",
+  "slice": "r3-d",
+  "label": "book-state: «Reintentar» shows loading but never re-reads",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "S.book.load = 'pending'; bookPaint(); readBook(bookGen, S.book.who);",
+  "to": "S.book.load = 'pending'; bookPaint();",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-2: «Reintentar» = ONE read"
+  ]
+ },
+ {
+  "id": "r3-d-04",
+  "slice": "r3-d",
+  "label": "book-state: the Direcciones page draws a loading book as empty",
+  "file": "../customer-app/capp-home.js",
+  "from": "${d.load === 'pending' ? LOADLINE : rows}",
+  "to": "${rows}",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-1 ",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-1: the loading line in the list's place"
+  ]
+ },
+ {
+  "id": "r3-d-05",
+  "slice": "r3-d",
+  "label": "book-state: Inicio's «Entregar en» sheet draws a loading book as empty",
+  "file": "../customer-app/capp-home.js",
+  "from": "<nav>${dir && dir.load === 'pending' ? LOADLINE : ''}",
+  "to": "<nav>",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-1b",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-1b: the sheet's loading line"
+  ]
+ },
+ {
+  "id": "r3-d-06",
+  "slice": "r3-d",
+  "label": "book-state: «Agregar dirección» is live while the book loads (a duplicate add)",
+  "file": "../customer-app/capp-home.js",
+  "from": "const addAttr = (d) => (d && d.load ? ' aria-disabled=\"true\"' : pickAttr(d));",
+  "to": "const addAttr = (d) => pickAttr(d);",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-1 ",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-1: «Agregar dirección» waits while the book loads"
+  ]
+ },
+ {
+  "id": "r3-d-07",
+  "slice": "r3-d",
+  "label": "book-state: a tap on the disabled «Agregar dirección» still opens the pin step",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (a === 'addr-new') { if (bookLoad()) return; return openLayer('pin'); }",
+  "to": "if (a === 'addr-new') { return openLayer('pin'); }",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-1 ",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-1: a tap on the disabled «Agregar dirección» opens nothing"
+  ]
+ },
+ {
+  "id": "r3-d-08",
+  "slice": "r3-d",
+  "label": "book-state: the Inicio pill tells a screen reader «Agregá tu dirección» while the book loads",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "bookLoad() === 'pending' ? 'cargando tu dirección' : ",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-5",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-5: the spoken label"
+  ]
+ },
+ {
+  "id": "r3-d-09",
+  "slice": "r3-d",
+  "label": "book-state: Cuenta's «Direcciones» row shows the spoken loading label as its sub-line",
+  "file": "../customer-app/capp-home.js",
+  "from": "Direcciones${!vm.dir.load && (vm.dir.labels",
+  "to": "Direcciones${(vm.dir.labels",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-5",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-5: Cuenta's «Direcciones» row has no sub-line while the book loads"
+  ]
+ },
+ {
+  "id": "r3-d-10",
+  "slice": "r3-d",
+  "label": "book-state: a list opened while loading stays empty when the book lands (no fill in place)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (filling && dirShown) dirShown = CappHome.bookOrder(b.addresses, b.sel);",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-1 ",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-1 (Q5): the open list fills in place once"
+  ]
+ },
+ {
+  "id": "r3-d-11",
+  "slice": "r3-d",
+  "label": "book-state: a KNOWN book whose re-read fails is marked unreadable",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (S.book && S.book.who === uid && S.book.load) {",
+  "to": "if (S.book && S.book.who === uid) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-7: a known book is never drawn «unreadable»"
+  ]
+ },
+ {
+  "id": "r3-d-12",
+  "slice": "r3-d",
+  "label": "book-state (Codex #271 P2): the book landing rebuilds the open sheet (a replayed entrance, focus lost)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (S.layer === 'addr') bookPatchSheet(); schedule();",
+  "to": "if (S.layer === 'addr') renderLayer(); schedule();",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-1c",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-1c: «Reintentar» keeps the sheet node"
+  ]
+ },
+ {
+  "id": "r3-d-13",
+  "slice": "r3-d",
+  "label": "book-state (Codex #271 P2): the focus is lost when «Reintentar» leaves the sheet",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (had && !had.isConnected) anchor.focus();\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=BOOK-LOAD-1c",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "BOOK-LOAD-1c: the focus leaves with «Reintentar» to «Usar mi ubicación actual»"
   ]
  },
  {

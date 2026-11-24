@@ -38,7 +38,7 @@ const E = { quoteOrder: 'https://fn.test/quoteOrder', createOrder: 'https://fn.t
 const OPEN_ALL = Array.from({ length: 7 }, () => [11, 0, 22, 0]);
 const at = (h, m = 0) => new Date(2026, 9, 26, h, m, 0, 0).getTime();
 const KEY = 'capp:rid_a:pending_place';
-const JWT = (() => { const b = (o) => Buffer.from(JSON.stringify(o)).toString('base64url'); return `${b({ alg: 'RS256' })}.${b({ exp: Math.floor(at(23) / 1000) })}.sig`; })();
+const JWT = (() => { const b = (o) => Buffer.from(JSON.stringify(o)).toString('base64url'); return `${b({ alg: 'RS256' })}.${b({ sub: 'u_ana', user_id: 'u_ana', exp: Math.floor(at(23) / 1000) })}.sig`; })();   // a Firebase ID token names its user (Codex #193: the sink checks it)
 const ANA = { uid: 'u_ana', idToken: null, getIdToken: async () => JWT };
 const CARD20 = 'CV4242000000000000AB';
 const SAVED20 = { kind: 'saved', card_id: CARD20 };

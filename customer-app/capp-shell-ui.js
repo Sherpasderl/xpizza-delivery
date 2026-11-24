@@ -28,6 +28,12 @@
   const DIR_EVERY_MS = 60 * 1000, AVAIL_EVERY_MS = 30 * 1000, MENU_LRU = 8, RECENT_MAX = 5;
   const MENU_KEY = (rid) => `capp:menu:${rid}`, AVAIL_KEY = (rid) => `capp:avail:${rid}`, LRU_KEY = 'capp:menu:lru', RECENT_KEY = 'capp:recent', LOC_KEY = 'capp:guest_loc';
   const g = typeof self !== 'undefined' ? self : {};
+  // r3 (owner 11-19, Codex #173 → rule 36: wipe + restart): the device data of whoever holds the app. MEMBER_REC = the UNKEYED records
+  // (no uid in them); UID_REC = the per-uid ones (the uid in the key); the profile cache and the completion mark carry it in the value.
+  // OWNER_KEY stamps whose the unkeyed records are: 'guest' or 'u:{uid}'
+  const OWNER_KEY = 'capp:member_owner', COMPLETE_KEY = 'capp:member_complete', SNAPSHOT_KEY = 'sherpa_reload_snapshot';
+  const MEMBER_REC = /^capp:(?:active_order|rate_nudge|rate_done|return|guest_loc|recent|store_handoff|[^:]+:(?:pending_place|pending_pay|placed|cart|sent_order))$/;
+  const UID_REC = /^capp:(?:addr|fav):(.+)$/;
   const pick = (opts, name, file) => opts[name] || g[name] || (typeof require === 'function' ? require(file) : null);
 
   function mount(doc, opts) {
@@ -58,7 +64,30 @@
     const syncBar = () => { try { const sb = win && win.Capacitor && win.Capacitor.Plugins ? win.Capacitor.Plugins.StatusBar : null; if (!Theme || !sb || typeof sb.setStyle !== 'function') return; const p = sb.setStyle({ style: Theme.barStyle(win) }); if (p && typeof p.catch === 'function') p.catch(() => {}); } catch (_) {} };
     const unTheme = Theme && win ? Theme.subscribe(win, () => { syncBar(); const pm = pinMapRef(); if (pm && pm.m && typeof pm.m.setOptions === 'function') { try { pm.m.setOptions({ styles: themeStyles() }); } catch (_) {} } }) : null;
     syncBar();
-    const storage = o.storage !== undefined ? o.storage : (() => { try { return win.localStorage; } catch (_) { return null; } })();
+    const rawStorage = o.storage !== undefined ? o.storage : (() => { try { return win.localStorage; } catch (_) { return null; } })();
+    // r3: THE device store everything in the app goes through (the store, capp-api, push, the directory). A GATED boot (its unkeyed
+    // records stamped to a member, or not stamped at all) neither reads nor writes them until its identity settles; a LEAVING app
+    // writes no member record at all (the wipe below goes to the raw store). Device records (menus, push's own queue) are untouched
+    // leaving (r3 restart): this mount is leaving the device — declared before the boot path, which settles and stamps (advisor 11-20)
+    let gate = 'open', myStamp = null, unstamped = false, leaving = false;   // gate: 'held' | 'open' | 'sealed' · myStamp: the stamp THIS mount owns (set by the boot / settle / admission)
+    // unstamped (Codex #189 P2-3): this mount's stamp could not be PERSISTED (quota) — member records fail closed; never an ownership change
+    const hidden = (k) => gate === 'held' && MEMBER_REC.test(String(k));
+    const memberKey = (k) => MEMBER_REC.test(k) || UID_REC.test(k) || k === 'capp:member_profile' || k === COMPLETE_KEY || k === OWNER_KEY;
+    // Codex #178 #1 (P1, the cross-tab stale writer): a member record is written / removed ONLY while the device's stamp is still THIS
+    // mount's — another tab left (its wipe removed the stamp) or another identity owns the device now ⇒ refused, and this tab seals itself
+    // and restarts (staleLeave). ONE check, here
+    const stale = (k) => memberKey(k) && rawGet(OWNER_KEY) !== myStamp;
+    const storage = rawStorage ? {
+      getItem: (k) => (hidden(k) ? null : rawStorage.getItem(k)),
+      setItem: (k, v) => { k = String(k); if (((gate === 'sealed' || unstamped) && memberKey(k)) || hidden(k)) return; if (stale(k)) { staleLeave(); return; } rawStorage.setItem(k, v); },
+      removeItem: (k) => { k = String(k); if (((gate === 'sealed' || unstamped) && memberKey(k)) || hidden(k)) return; if (stale(k)) { staleLeave(); return; } rawStorage.removeItem(k); },
+      key: (i) => rawStorage.key(i),
+      get length() { return rawStorage.length; },
+    } : null;
+    const rawGet = (k) => { try { return rawStorage ? rawStorage.getItem(k) : null; } catch (_) { return null; } };
+    const rawDel = (k) => { try { rawStorage.removeItem(k); } catch (_) {} };
+    const rawKeys = () => { const ks = []; try { for (let i = 0; rawStorage && i < rawStorage.length; i++) { const k = rawStorage.key(i); if (k) ks.push(k); } } catch (_) {} return ks; };
+    const unkeyedHeld = () => rawKeys().some((k) => MEMBER_REC.test(k));
     // state 4 (MOCKUP-capp-native-store-update): the INSTALLED app on a NEW build (its stamp vs the last build this device ran) ⇒ the
     // cart says «App actualizada…» once (closed ⇒ gone); the device's build is recorded at once (a reopen is never «updated» again)
     let appUpdated = false, curBuild = null;
@@ -106,6 +135,14 @@
     // Cuenta lands on the member's Cuenta, which G7 draws
     const SU = runtime.signup && runtime.signup.firebase && runtime.signup.endpoints ? runtime.signup : null;
     let auth = o.auth || null, fbAuth = null, signup = null;
+    // r3: the boot's GATE — whose are the unkeyed records? A guest's ('guest') paint at once; a member's, or nobody's (no stamp), wait for
+    // the first settled identity (settleOwner). Nothing on the device yet ⇒ a guest's device. Without sign-up the only identity is a guest
+    let settled = false, bootDone = false;
+    { const own = rawGet(OWNER_KEY); myStamp = own;
+      // Codex #178 #4: a MEMBER's stamp gates the boot even with no records yet (whatever is built before the settle would be hers)
+      if (own !== 'guest' && (unkeyedHeld() || /^u:/.test(own || ''))) gate = 'held';
+      else if (own === null) stampAs('guest'); }
+    if (!SU) settleOwner(null);
     const authNow = () => { try { return auth ? auth.state() : 'unresolved'; } catch (_) { return 'unresolved'; } };
     // PLAN-capp-store-promo-feeinfo r0: a MOUNTED store reads the same tri-state (its header's promo pill / «Envío gratis») and is
     // told when it changes — the shell's own repaint never reaches a store's #app
@@ -130,12 +167,14 @@
       held: null, heldErr: false, store: null, layer: null, locDenied: false, loc: null, neutral: null, ret: null, retAssoc: null, order: null };
     let awaitOrderRoute = null;   // a /r/{rid}/pago reload waiting for its order's owner to resolve (identityChanged)
     // ── the guest location (r1 §2.3, owned by the SHELL, persisted per device): { lat, lng, confirmed, source: 'gps'|'pin', v } ──
-    { const l = readJ(LOC_KEY); if (l && Number.isFinite(l.lat) && Number.isFinite(l.lng) && (l.source === 'gps' || l.source === 'pin')) S.loc = { lat: l.lat, lng: l.lng, confirmed: l.confirmed === true, source: l.source, v: Number(l.v) || 1 }; }
+    function loadLoc() { const l = readJ(LOC_KEY); if (l && Number.isFinite(l.lat) && Number.isFinite(l.lng) && (l.source === 'gps' || l.source === 'pin')) S.loc = { lat: l.lat, lng: l.lng, confirmed: l.confirmed === true, source: l.source, v: Number(l.v) || 1 }; }
+    loadLoc();
     function setLoc(lat, lng, source) {
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
       if (S.loc && S.loc.lat === lat && S.loc.lng === lng && S.loc.source === source) return;
       S.loc = { lat, lng, confirmed: true, source, v: (S.loc ? S.loc.v : 0) + 1 }; S.locDenied = false;
       writeJ(LOC_KEY, S.loc);
+      S.locPick = 'device';   // C-DIR-1: a pin / GPS fix chosen now takes over from a saved address
     }
     const geoApi = () => (o.geolocation !== undefined ? o.geolocation : (win && win.navigator && win.navigator.geolocation) || null);
     // «Usar mi ubicación actual» (OWNER 2026-10-21: a detected fix is confirmed); denied / failed ⇒ the drawn locrow, NO fallback pin
@@ -216,7 +255,7 @@
       const social = { rating: CappHome.ratingHtml(row.entry && row.entry.ratings, nowMs()), shareUrl: storeUrl(entry.rid), isFav: () => isFav(entry.rid) };   // C-1b: the member's heart reads the book live
       // ONE clock (PLAN-capp-virtual-clock P1): the store UI runs on the shell's timers unless the host gave it its own
       const ui = CappUI.mount(doc, { ...uo, ...(uo.timers ? {} : { timers: T }), ...updOpts, social, ...(view ? { view, deskChrome: storeChrome, deskBrand: CappHome.brandLockHtml, deskTerms: () => { const l = legalVm(); return l && CappHome.legalUrl(l.terms) ? l.terms : null; } } : {}), guestCardOnly: runtime.guestCardOnly === true,
-        onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: admittedAuth, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
+        onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: admittedAuth, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => seedNow(), addressPicker: addressPicker(),
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
         onEvent: (name, detail) => { if (name === 'menu_reload') { if (S.store && S.store.ui === ui) reloadMenu(S.store); return; } if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'fav') { setFav(entry.rid, !!(detail && detail.on)); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if (name === 'store-open') { if (runtime.store && detail && detail.url === runtime.store.url) { keepHandoff(entry.rid); openExternal(runtime.store.url); } return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
@@ -299,12 +338,105 @@
     // mark names its uid; anything else (no mark — e.g. a crash between the SDK persisting the uid and «Listo» —, another uid) is
     // signed out and never applied, restore after restore until the sign-out is CONFIRMED (the 'guest' callback). An ordinary sign-out
     // clears the mark. (The app has never been live: no session predates the mark — nothing to grandfather.)
-    const COMPLETE_KEY = 'capp:member_complete';
     const completeUid = () => { try { const v = JSON.parse(storage.getItem(COMPLETE_KEY) || 'null'); return v && v.v === 1 && typeof v.uid === 'string' ? v.uid : null; } catch (_) { return null; } };
     const markComplete = (uid) => { try { storage.setItem(COMPLETE_KEY, JSON.stringify({ v: 1, uid })); } catch (_) {} };
     const clearComplete = () => { try { storage.removeItem(COMPLETE_KEY); } catch (_) {} };
+    // ── r3 (owner 11-19; Codex #173 → rule 36): the device's data belongs to ONE identity at a time ──
+    // The FIRST settled identity (a guest, or a member her completion mark names) is checked against the stamp: 'guest' is anyone's (a
+    // guest who signs in keeps her cart and location), 'u:{uid}' only that member's. A mismatch — or no stamp at all — wipes it before
+    // anything of it is read (a gated boot read nothing of it: no restart); the per-uid records of anyone else go either way
+    let seenUid = null;
+    function dropUidKeyed(keep) {
+      for (const k of rawKeys()) { const m = UID_REC.exec(k); if (m && m[1] !== keep) rawDel(k); }
+      for (const k of [CappDeviceAccount.PROFILE_KEY, COMPLETE_KEY]) {
+        const raw = rawGet(k); if (raw === null) continue;
+        let v = null; try { v = JSON.parse(raw); } catch (_) { v = null; }
+        if (!keep || !v || v.uid !== keep) rawDel(k);
+      }
+    }
+    function wipeIdentity(keep) {
+      for (const k of rawKeys()) if (MEMBER_REC.test(k)) rawDel(k);
+      dropUidKeyed(keep); rawDel(OWNER_KEY);
+      try { const ss = win && win.sessionStorage; if (ss) ss.removeItem(SNAPSHOT_KEY); } catch (_) {}   // a self-update snapshot (cart + flow) never outlives her
+    }
+    function settleOwner(uid) {
+      if (settled || leaving) return; settled = true;   // a tab that left never settles: no stamp, no mismatch wipe (advisor 11-20)
+      const id = uid ? 'u:' + uid : 'guest', own = rawGet(OWNER_KEY);
+      const mismatch = own !== 'guest' && own !== id && unkeyedHeld();
+      if (mismatch) wipeIdentity(uid); else dropUidKeyed(uid);
+      stampAs(id);   // stamped only AFTER the check (or the wipe)
+      if (gate !== 'held') return;
+      gate = 'open'; if (!bootDone) return;   // settled before the boot ran: its steps run as on any open boot
+      // the gated boot's held steps: on a MATCH, what the boot deferred (the location, the searches, a payment return, the active order,
+      // the cold route, the store handoff) and a held store tap, once; on a MISMATCH the held tap is dropped (it was made before the wipe)
+      // a payment return opened on a MISMATCH was the wiped identity's: never processed, its search stripped (nothing re-fires)
+      if (mismatch) { S.held = null; if (win && win.history && win.location && win.location.search) { try { win.history.replaceState(win.history.state, '', win.location.pathname + win.location.hash); } catch (_) {} } }
+      S.recent = (readJ(RECENT_KEY) || []).filter((x) => typeof x === 'string').slice(0, RECENT_MAX);
+      loadLoc(); if (!mismatch) bootReturnNow(); bootSteps(); checkHeld(); renderNow();
+    }
+    // a member admitted here: the stamp names her (her session settled first — a 'guest' stamp is adopted, as a guest's sign-in keeps)
+    // r3 (identity, advisor 11-20): once LEAVING, nothing stamps — the ONE place every admission stamps; a late one (a sheet's «Listo», an
+    // offer's sign-in) never rewrites the device's stamp, which by then is another identity's (its records would be re-labelled as this one's)
+    function ownBy(uid) { if (leaving) return; seenUid = uid; if (!settled) settleOwner(uid); else stampAs('u:' + uid); }
+    function stampAs(id) {
+      try { rawStorage.setItem(OWNER_KEY, id); } catch (_) {}
+      // Codex #189 P2-3: only a stamp the device HOLDS is this mount's; a failed write keeps the device's own (no stale ⇒ no restart)
+      const held = rawGet(OWNER_KEY); unstamped = held !== id; myStamp = unstamped ? held : id;
+    }
+    // Codex #178 #1: the device's stamp moved under this tab (another tab left, or another identity owns it): this tab writes no member
+    // record from here on and starts again at the root — NO wipe (what is on the device now is not this tab's to delete)
+    function staleLeave() {
+      if (leaving) return;
+      leaving = true; gate = 'sealed';
+      const own = rawGet(OWNER_KEY); swap(own && own.startsWith('u:') ? 'switch' : 'signout');
+      if (S.member) dropMember();
+      const go = o.replace || ((u) => win.location.replace(u));
+      try { go(win.location.origin + '/'); } catch (_) {}
+    }
+    // Codex #178 #2 (P1): the SDK's user is not the admitted member (it switched before the listener ran) — that IS the switch
+    const switchPre = (nu) => { const c = runtime.push === true ? pushCore() : null, h = c && c.available() ? c.held() : null; return h && h.live && h.owner !== nu ? pushForget() : null; };
+    // Codex #189 #1: no user at all (the SDK signed out first) is the sign-out, as the 'guest' callback would be
+    function identityMoved(nu) { if (leaving || !seenUid) return; if (!nu) leave('signout', null, () => pushAuthExit()); else if (nu !== seenUid) leave('switch', nu, () => switchPre(nu)); }
+    // Codex #197 (P1, the CLASS): THE ONE place the app reads a member's ID token from the SDK (capp-guards' census pins it) — the
+    // answer names the user it belongs to ({ token, uid }: the adapter's idTokenOwned; null = the read failed). Asked synchronously
+    // (the token queue's order is the callers' order)
+    function sdkTokenAnswer() { if (!fbAuth) return Promise.resolve(null); let p; try { p = fbAuth.idTokenOwned(); } catch (_) { p = null; } return Promise.resolve(p).then((x) => x || null, () => null); }
+    // the token for a request made FOR `uid` — every member request outside the transport takes it HERE: an answer naming another user
+    // (or none: signed out) is the leave (#189's rule) and no token; a failed read is no token
+    async function ownedMemberToken(uid) {
+      if (typeof uid !== 'string' || !uid) return null;
+      const o = await sdkTokenAnswer();
+      if (o && (o.uid || null) !== uid) { identityMoved(o.uid || null); return null; }
+      return o && typeof o.token === 'string' && o.token ? o.token : null;
+    }
+    // the overlay (MOCKUP-capp-identity-restart): the whole screen in the app's background, a small ring and one line; every tap blocked
+    function swap(kind) {
+      let el = $('swap');
+      if (!kind) { if (el) el.remove(); app.removeAttribute('inert'); return; }
+      if (!el) { el = doc.createElement('div'); el.id = 'swap'; el.className = `app swap${app.classList.contains('dark') ? ' dark' : ''}`; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite'); (app.parentNode || doc.body).appendChild(el); }
+      el.innerHTML = `<span class="ring" aria-hidden="true"></span><p>${kind === 'switch' ? 'Cambiando de cuenta…' : 'Cerrando sesión…'}</p>`;
+      app.setAttribute('inert', '');
+    }
+    // the admitted member LEFT: the overlay, the push exit (pre; false = the sign-out was refused ⇒ nothing changes), then the device
+    // writes nothing more, forgets every record of hers and the app starts again at its root (no search, no hash: a payment return
+    // never re-fires) — nothing of hers survives in memory. keep: the incoming member's own per-uid records (a switch)
+    async function leave(kind, keep, pre) {
+      if (leaving) return true;
+      leaving = true; swap(kind);
+      if (!S.member) memberGen++;   // Codex #236 P2: an admission still waiting on its token never lands in a leaving tab (a mounted member's timers stay hers until the exit is confirmed, #178 #3)
+      let ok = true; try { if (pre) ok = (await pre()) !== false; } catch (_) { ok = false; }
+      if (!ok) { leaving = false; swap(null); return false; }   // the sign-out was refused: nothing changed (she is still the member, every cache kept)
+      // the exit is confirmed: her identity ends in memory (the one hook, dropMember — every in-flight read, token and timer of hers is
+      // void) BEFORE the seal and the wipe (Codex #178 #3: never before the exit is confirmed)
+      if (S.member) dropMember();
+      gate = 'sealed';
+      if (rawGet(OWNER_KEY) === myStamp) wipeIdentity(keep);   // Codex #189 P2-2: re-validated after pre() — a stale tab wipes nothing
+      const go = o.replace || ((u) => win.location.replace(u));
+      try { go(win.location.origin + '/'); } catch (_) {}
+      return true;
+    }
     async function signedIn(d) {
-      markComplete(d.uid);
+      markComplete(d.uid); ownBy(d.uid);
       CappDeviceAccount.remember(storage, d.phone);   // §4c: the device marker (full E.164), kept across ordinary sign-outs
       CappDeviceAccount.rememberProfile(storage, d);   // the member's own profile, for a RESTORED session's autofill
       await applyMember(d);
@@ -318,13 +450,13 @@
       // Codex G6 r1 #3: applied only if, after the token's await, nothing has changed — no sign-out / switch in between, and the
       // session is still THIS uid's
       const gen = ++memberGen, uid = p.uid; clearTokenTimers();   // a new identity: the old one's token timers are cancelled
-      let idToken = null; try { idToken = await fbAuth.idToken(); } catch (_) { idToken = null; }
+      const idToken = await ownedMemberToken(uid);
       if (dead || gen !== memberGen) return;
       const u = auth && auth.state() === 'member' && auth.user ? auth.user() : null;
       if (!u || u.uid !== uid) return;
-      // getIdToken: the transport asks the SDK at send time (cached while valid, refreshed once expired); idToken = the fallback
+      // getIdTokenOwned: the transport asks the SDK at send time, through the ONE accessor (Codex #197); idToken = the fallback
       // S-picker: with the runtime intlPhone the member's number stays E.164 (its own country); off ⇒ the local 8 digits, as before
-      S.member = { uid: p.uid, name: p.name || '', phone: runtime.intlPhone === true ? String(p.phone || '') : String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', ...(typeof p.promos === 'boolean' ? { promos: p.promos } : {}), idToken: null, getIdToken: () => fbAuth.idToken(), onTokenChange: onMemberToken };
+      S.member = { uid: p.uid, name: p.name || '', phone: runtime.intlPhone === true ? String(p.phone || '') : String(p.phone || '').replace(/\D/g, '').replace(/^504/, ''), email: p.email || '', ...(typeof p.promos === 'boolean' ? { promos: p.promos } : {}), idToken: null, getIdTokenOwned: () => sdkTokenAnswer(), onMoved: (nu) => identityMoved(nu), onTokenChange: onMemberToken };
       { const A = apiMod(); if (A && typeof A.acceptToken === 'function') A.acceptToken(S.member, idToken, nowMs()); }   // the ONE setter (an unusable token is refused)
       if (S.store) S.store.ui.setMember(S.member);   // §4c: back on the SAME checkout step, filled in
       identityChanged();
@@ -360,7 +492,8 @@
         tokTimer = null;
         const live = () => !dead && gen === memberGen && S.member && S.member.uid === uid;
         if (!live() || usable(S.member)) return;
-        let t = null; try { t = await fbAuth.idToken(); } catch (_) { t = null; }
+        // Codex #193: the OWNED read — the SDK's user is checked against hers; another user (or none) is the leave, never its token on her
+        const t = await ownedMemberToken(uid);   // another SDK user (or none) ⇒ the leave inside; never its token on her
         if (!live() || usable(S.member)) return;
         const A = apiMod();
         if (!(A && A.acceptToken(S.member, t, nowMs())) && i + 1 < TOKEN_RETRY_MS.length) retryToken(gen, uid, i + 1);   // accepted ⇒ the notifier patches
@@ -368,7 +501,7 @@
     }
     // ── G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27): the MEMBER's Cuenta, in the shell, under runtime.signup (G6's flag; absent ⇒
     //    the member's Cuenta stays the host's event, byte for byte) ──
-    let suApi = null, suMod = null;   // suMod: the signup-api MODULE (C-3r v2: its snapshotOf, the reorder's alignment check)
+    let suApi = null, suMod = null;   // suMod: the signup-api MODULE (C-3r v2: its snapshotOf, the reorder's alignment check; C-DIR-1: its bookOf, the cached book's one shape rule)
     const promosOv = { uid: null, v: null };   // frame 1b: the optimistic value while setPromos is in flight
     let signingOut = false;
     const phoneShown = (ph) => { const P = typeof CappPhone !== 'undefined' ? CappPhone : (o.CappPhone || null); const raw = String(ph || ''); if (!raw || !P) return raw;
@@ -398,7 +531,7 @@
     async function togglePromos() {
       const m = S.member; if (!m || typeof m.promos !== 'boolean' || !suApi || promosOv.uid) return;
       const v = !m.promos, uid = m.uid; promosOv.uid = uid; promosOv.v = v; renderNow();   // optimistic
-      let ok = false, got = v; try { const tok = await fbAuth.idToken(); const r = tok ? await suApi.setPromos({ idToken: tok, value: v }) : null; ok = !!r && r.ok === true; if (ok && typeof r.value === 'boolean') got = r.value; } catch (_) { ok = false; }
+      let ok = false, got = v; try { const tok = await ownedMemberToken(uid); const r = tok ? await suApi.setPromos({ idToken: tok, value: v }) : null; ok = !!r && r.ok === true; if (ok && typeof r.value === 'boolean') got = r.value; } catch (_) { ok = false; }
       promosOv.uid = null; promosOv.v = null;
       if (dead || !S.member || S.member.uid !== uid) return;
       // the committed value read back by the server (contract §6) is what the switch and the cache keep
@@ -410,10 +543,11 @@
     async function signOutNow({ forget = false } = {}) {
       if (!fbAuth) return;
       if (forget) CappDeviceAccount.forget(storage);
-      signingOut = true; dropMember(); renderNow();
-      await pushAuthExit();   // the server forgets THIS device's token while the session's ID token is still valid (rule 20)
-      try { await fbAuth.signOut(); } catch (_) { signingOut = false; const u = auth && auth.user ? auth.user() : null; if (u && u.uid) applyMember(CappDeviceAccount.readProfile(storage, u.uid) || { uid: u.uid }); renderNow(); return; }
-      signingOut = false; renderNow();
+      // r3: the quiet overlay at once, then the restart; the server forgets THIS device's token while the session's ID token is still
+      // valid (rule 20). A rejected sign-out changes nothing: the overlay goes, she is still the member
+      signingOut = true;
+      const ok = await leave('signout', null, async () => { await pushAuthExit(); try { await fbAuth.signOut(); return true; } catch (_) { return false; } });
+      signingOut = false; if (!ok) renderNow();
     }
     // ── push (MOCKUP-capp-push r1): a MEMBER's, on a native phone (the token is registered under the member's ID token) ──
     let push = null;
@@ -445,7 +579,7 @@
     async function tokFor(uid, { member = true } = {}) {
       const mine = () => { const u = auth && auth.user ? auth.user() : null; return !dead && !!u && u.uid === uid && (!member || (!!S.member && S.member.uid === uid)); };
       if (typeof uid !== 'string' || !uid || !fbAuth || !mine()) return null;
-      let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+      const tok = await ownedMemberToken(uid);
       return tok && mine() ? tok : null;
     }
     // the member's prefs as the server last answered (null until read) — per uid; a device that is not registered shows both off
@@ -584,6 +718,12 @@
       auth = CappAuthState.createAuthState({ subscribe: fbAuth.subscribe, timers: T });
       auth.onChange((st) => {
         storeAuth();
+        // r3 (owner 11-19): a member ADMITTED here left — a sign-out (ours or the SDK's) or another account — ⇒ the restart, never an
+        // in-place reset (the push exit first: the device forgets her token while a session still can)
+        const u0 = st === 'member' && auth.user ? auth.user() : null;
+        if (seenUid && st === 'guest') { leave('signout', null, () => pushAuthExit()); return; }
+        if (seenUid && u0 && u0.uid && u0.uid !== seenUid) { const nu = u0.uid; leave('switch', nu, () => switchPre(nu)); return; }
+        if (st === 'guest') settleOwner(null);
         if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearComplete(); pushAuthExit(); pushSettleSoon(); }   // a CONFIRMED sign-out: no personal data stays on show
         if (st !== 'member') { dropMember(); schedule(); return; }
         const u = auth.user && auth.user();
@@ -594,14 +734,13 @@
         // a RESTORED session without THIS uid's completion mark: never a member; signed out (a rejected sign-out is retried at the next
         // restore — nothing is cleared until the 'guest' callback confirms it)
         // (Codex r1 P1-4: the device's token is forgotten FIRST, while this session's token is still valid — bounded, then signed out)
+        if (u && u.uid && completeUid() !== u.uid && seenUid) { leave('signout', null, () => pushAuthExit().then(() => fbAuth.signOut()).then(() => true, () => true)); return; }
         if (u && u.uid && completeUid() !== u.uid) { dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {})); schedule(); return; }
+        if (u && u.uid) settleOwner(u.uid);   // r3: her completion mark names her ⇒ the device's data is checked against the stamp
         // a session the SDK RESTORED (no sheet ran): the cached profile of THIS uid, at once (cached-first)
-        // Codex Pedidos r2 P1: a switch to ANOTHER uid drops the previous member SYNCHRONOUSLY (before any token await) — whatever was
-        // issued or shown for them is void before the new identity is admitted
-        if (u && u.uid && S.member && S.member.uid !== u.uid) dropMember();
         // a token another person owns (a live switch, OR a cold restore as someone else — Codex r1 P1-4) is forgotten before admission
         { const c = runtime.push === true ? pushCore() : null, h = c && c.available() ? c.held() : null; if (h && h.live && h.owner !== (u && u.uid)) pushForget(); }
-        if (u && u.uid && (!S.member || S.member.uid !== u.uid)) { const c = CappDeviceAccount.readProfile(storage, u.uid); applyMember(c || { uid: u.uid }); pushSettleSoon(); return; }
+        if (u && u.uid && (!S.member || S.member.uid !== u.uid)) { ownBy(u.uid); const c = CappDeviceAccount.readProfile(storage, u.uid); applyMember(c || { uid: u.uid }); pushSettleSoon(); return; }
         pushSettleSoon();
         schedule();
       });
@@ -611,7 +750,7 @@
       const syncDark = () => { host.classList.toggle('dark', app.classList.contains('dark')); host.classList.toggle('desk', app.classList.contains('desk')); };   // D-2: the sheet follows the viewport too
       syncDark();
       signup = CappSignup.createSignup({ doc, host: { addEventListener: (...a) => host.addEventListener(...a), contains: (n) => host.contains(n), querySelector: (q) => host.querySelector(q), set innerHTML(v) { syncDark(); host.classList.toggle('open', !!v); host.innerHTML = v; }, get innerHTML() { return host.innerHTML; } },
-        api: (suApi = CappSignupApi.createSignupApi({ endpoints: SU.endpoints, fetch: o.signupFetch, timers: T })), auth: fbAuth, google: o.google || null, timers: T, now: nowMs,
+        api: (suApi = CappSignupApi.createSignupApi({ endpoints: SU.endpoints, fetch: o.signupFetch, timers: T })), auth: fbAuth, memberToken: (uid) => ownedMemberToken(uid), google: o.google || null, timers: T, now: nowMs,
         ...(runtime.intlPhone === true ? { intlPhone: true, CappPhone: typeof CappPhone !== 'undefined' ? CappPhone : o.CappPhone } : {}),   // part B (b): the in-sheet country pane
         onEvent: (n, d) => { if (n === 'signed-in') signedIn(d); } });
       // Codex r1 P2-7: the push core (and its TAP listener) at startup — a cold start from a tapped push lands on Inicio and the tap
@@ -641,6 +780,7 @@
         // the order screen lives on its order flow's URL (D-3 r3 table: «Checkout, tip, outcome and tracker» = /r/{rid}/pago)
         if (S.tab === 'order' && S.order) return CappRoutes.format({ name: 'store', rid: S.order.rid, step: 'pago' });
         if (S.tab === 'receipt') return CappRoutes.format({ name: 'orders' });   // a past order's receipt is a step of «Pedidos» (no URL of its own)
+        if (S.tab === 'addresses') return CappRoutes.format({ name: 'account' });   // C-DIR-1: «Direcciones» is a step of «Cuenta» (no URL of its own)
         if (S.tab === 'notifs') return CappRoutes.format({ name: 'account' });   // «Notificaciones» is a step of Cuenta (no URL of its own)
         return CappRoutes.format({ name: S.tab === 'search' ? 'search' : S.tab === 'account' ? 'account' : S.tab === 'orders' ? 'orders' : 'home' });
       } catch (_) { return null; }   // an id outside the ONE domain is never written: the URL stays as it is
@@ -657,7 +797,7 @@
       if (S.tab === 'order' && S.order) return CappHome.titleOf({ screen: 'order', status: S.order.status });
       if (S.tab === 'orders' || S.tab === 'receipt') return CappHome.titleOf({ screen: 'orders' });
       if (S.tab === 'search') return CappHome.titleOf({ screen: 'search', q: S.q || '' });
-      if (S.tab === 'account') return CappHome.titleOf({ screen: 'account' });
+      if (S.tab === 'account' || S.tab === 'addresses') return CappHome.titleOf({ screen: 'account' });
       if (S.tab === 'notifs') return CappHome.titleOf({ screen: 'notifs' });
       return CappHome.titleOf({ screen: 'home', platform });
     }
@@ -736,8 +876,10 @@
         if (!hydrating) cancelRoute();   // any user navigation cancels a pending cold link
         reorderGen++;   // … and voids a «Volver a pedir» tap still awaiting its receipt (Codex backfill P2: a round trip to the same tab)
         if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; clearHandoff(); S.store.ui.openCart(); S.store.ui.resumeVerification(); } else if (S.reorderOpen === entry.rid && S.store) { S.reorderOpen = null; S.store.ui.openCart(); toast('Pedido cargado en tu carrito'); } reflect(); return; }
-        if (entry.name !== 'store') { S.reorder = null; S.held = null; S.carry = null; }   // the customer went elsewhere: a held tap / «Volver a pedir» is void (Codex VP r2 #3)
+        if (entry.name !== 'store') { S.reorder = null; S.held = null; S.carry = null; }
+        if (entry.name !== 'addresses' && S.addrErr === 'dir') S.addrErr = null;   // r3: the sand line leaves with its list   // the customer went elsewhere: a held tap / «Volver a pedir» is void (Codex VP r2 #3)
         if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
+        if (entry.name === 'addresses') { if (!(S.member && S.book)) { T.setTimeout(() => nav.tab({ name: 'account' }), 0); return; } S.tab = 'addresses'; dirShown = CappHome.bookOrder(S.book.addresses, S.book.sel); renderNow(); return; }   // C-DIR-1: frozen per open, in use first
         if (entry.name === 'receipt') { if (!openReceipt(entry.oid)) { T.setTimeout(() => nav.tab({ name: 'orders' }), 0); return; } S.tab = 'receipt'; renderNow(); return; }
         if (entry.name === 'notifs') { if (!notifsOk()) { T.setTimeout(() => nav.back(), 0); return; } S.tab = 'notifs'; if (pushUi()) pushRefresh(); renderNow(); return; }
         if (entry.name === 'orders') { S.tab = 'orders'; loadOrders(); resumeOrder(); dir.visit(); renderNow(); return; }
@@ -761,6 +903,7 @@
     }
     function checkHeld() {
       const h = S.held; if (!h || S.store) return false;
+      if (gate === 'held') return false;   // r3: a gated boot holds the tap (pressed) until its identity settles (settleOwner)
       const st = dir.state(h.rid), e = cache.peek(h.rid);
       if (st === 'unknown' && dir.view().phase === 'cold') return false;   // the directory has not answered yet (a return entered at boot): wait
       if (st === 'gone' || st === 'unknown') { S.held = null; S.reorder = null; S.carry = null; schedule(); return false; }
@@ -794,7 +937,7 @@
       if (!S.member || !suApi || !fbAuth) { S.ordersRead = { phase: 'ready', active: [], past: [], who }; return; }   // a guest: no history
       const uid = S.member.uid;
       S.ordersRead = { phase: 'loading', active: [], past: [], who };
-      let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+      const tok = await ownedMemberToken(uid);
       const r = tok ? await suApi.getMyOrders({ idToken: tok, limit: 20 }) : { ok: false, reason: 'unauthenticated' };
       const cur = auth && auth.user ? auth.user() : null;   // the uid it was issued for = the CURRENT admitted one AND the SDK's session
       if (dead || gen !== ordersGen || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid) return;   // another identity now: not theirs
@@ -845,7 +988,7 @@
       return { updateLine: hidden !== dayOf(Number(nowMs())), updateRow: runtime.store.name };
     }
     // the top bar's two live facts — ONE source for Inicio's vm and the store page's bar (C-6c)
-    const addrVm = () => ({ short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' });
+    const addrVm = () => { const sv = savedInUse(), busy = !!S.addrPick || gate === 'held'; return sv ? { short: sv.label, line: `${sv.label} · ${sv.detected}`, busy } : { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : bookLoad() === 'pending' ? 'cargando tu dirección' : 'Agregá tu dirección', busy }; };   /* book-state Q4 (a): the SPOKEN label while the book loads — nothing changes on screen */   // r3: busy = a pick in flight (the pill waits)   // v6 :1507-1508
     const memberInitial = () => (authNow() === 'member' && S.member && S.member.name ? String(S.member.name).trim().charAt(0).toUpperCase() || null : null);
     // C-6c (D-3 r3 frame 2a): the desktop store page carries the shell's top bar — no tab is current there
     const storeChrome = () => CappHome.desknavHtml({ tab: 'store', q: '', addr: addrVm(), memberInitial: memberInitial() });
@@ -866,7 +1009,7 @@
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
       return { ...updateVm(), desk: !!(view && view.desk()), featPage: S.featPage || 0, pvPage: S.pvPage || 0, legal: legalVm(), legalPending: legalPending(), memberInitial: memberInitial(), signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
-        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: addrVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), paraVos: S.tab === 'home' && !S.heldErr ? paraVosOf(rows) : [], q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm(), notifRow: { title: cappPush().COPY.screenTitle, sub: cappPush().rowSub(notifsVm()) } } : {}) };
+        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, locNow()), addr: addrVm(), dir: dirVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), paraVos: S.tab === 'home' && !S.heldErr ? paraVosOf(rows) : [], q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm(), notifRow: { title: cappPush().COPY.screenTitle, sub: cappPush().rowSub(notifsVm()) } } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
     function saveScreen() {
@@ -892,7 +1035,7 @@
       const v = vm();
       const layer = $('layer'), toastEl = $('toast');
       const scr = app.querySelector(':scope > .screen');
-      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'receipt' && S.receipt ? receiptScreenHtml(v) : S.tab === 'notifs' && notifsOk() ? CappHome.shellWrap(v, cappPush().screenHtml(notifsVm())) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
+      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'receipt' && S.receipt ? receiptScreenHtml(v) : S.tab === 'addresses' && S.book ? CappHome.addressesHtml({ ...v, tab: 'account', dir: { rows: dirShown || [], sel: savedSelId(), ...pickVm('dir') } }) : S.tab === 'notifs' && notifsOk() ? CappHome.shellWrap(v, cappPush().screenHtml(notifsVm())) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
@@ -963,7 +1106,7 @@
       const p = payOf(od), c = p.view && p.view.consent;
       if (c && c.outcome === 'pending' && Number.isInteger(c.expires_at) && Number.isFinite(serverNow)) p.anchor = { at: mono(), left: c.expires_at - serverNow, id: c.adjustment_id };
     }
-    async function payHeaders() { if (!S.member || !fbAuth) return null; let t = null; try { t = await fbAuth.idToken(); } catch (_) { t = null; } return t ? { Authorization: `Bearer ${t}` } : null; }
+    async function payHeaders() { if (!S.member || !fbAuth) return null; const t = await ownedMemberToken(S.member.uid); return t ? { Authorization: `Bearer ${t}` } : null; }
     // §1.4: GET on the first sight of a pending consent, on every stream (re)open, when the app becomes visible and on resume; a failed
     // GET keeps the last anchor and is retried by the next of those (Codex r1 #4). A reply's timing comes WITH its view: a stale view
     // (an older seq) brings no anchor (Codex r1 #3)
@@ -1161,7 +1304,7 @@
       const gen = favGen;
       T.setTimeout(async () => {   // after paint: never awaited by a render
         if (dead || gen !== favGen) return;
-        let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+        const tok = await ownedMemberToken(uid);
         if (!tok || dead || gen !== favGen) return;
         const start = favClock;   // a write pending now, or settled after this point, may postdate the snapshot
         const r = await suApi.getMyFavorites({ idToken: tok });
@@ -1187,7 +1330,7 @@
         const p = favPend.get(rid); if (!p) return;
         const on = p.want;
         if (favConf.favorites.includes(rid) === on) { favPend.delete(rid); favShow(); return; }   // nothing left to send
-        let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+        const tok = await ownedMemberToken(favConf.who);
         if (dead || gen !== favGen || !favConf) return;   // another identity now: never dispatched under it
         const r = tok ? await suApi.setFavorite({ idToken: tok, rid, on }) : { ok: false, reason: 'unauthenticated' };
         if (dead || gen !== favGen || !favConf) return;   // a stale answer never lands on a later session (no apply, no toast)
@@ -1212,7 +1355,154 @@
       }
       return pvVisit.map((x) => { const row = rows.find((r) => r.rid === x.rid); return row ? { r: CappHome.storeOf(row), fav: isFav(x.rid), again: x.again } : null; }).filter(Boolean);
     }
+    // ── C-DIR-1 (PLAN-capp-direcciones r0 + rulings 11-13; 3a S-ADDR-1 / S-ADDR-2): the member's ADDRESS BOOK. Cached-first per member
+    // (capp:addr:<uid>: the served fields only), ONE getMyProfile read after paint; a sign-out or a member switch REMOVES the previous
+    // member's book from the device. «en uso» = default_address, persisted through useMyAddress (optimistic; a refusal reverts with
+    // the approved G7 line). The «Direcciones» screen and the sheet render a FROZEN copy per open (a read never inserts a row into a
+    // visible list — rule 7). The location in use: the saved address while S.locPick is 'saved'; a pin / GPS fix chosen after it takes over
+    const ADDR_KEY = (uid) => `capp:addr:${uid}`;
+    const ADDR_ACTS = new Set(['addr', 'addr-use', 'addr-new', 'loc-use']);
+    // direcciones r3 (owner 11-18: the CONFIRM-FIRST prototype, APPROVED; PLAN-3a-addr-rev @805a5015): «en uso» = the SERVER's
+    // default_address and its revision. A pick sends { id, expected_rev, expected_default } (what this device last SAW from the server)
+    // and NOTHING switches until the 200. ONE pick in flight (S.addrPick): its row spins, every other address control is disabled. Every
+    // non-200 — offline, the 12 s transport cap, a refusal, a 409 (whose body is trusted for nothing but «stale») — ends in ONE owned
+    // re-read (idTokenOwned, its uid = the book's): the pick is the re-read's selection ⇒ success; else the sand line on the list where it
+    // was made (S.addrErr) and the re-read book is the device's. A pick the identity change overtook is void
+    let bookGen = 0, bookSeq = 0, dirShown = null;
+    S.book = null; S.locPick = null; S.addrPick = null; S.addrErr = null;
+    const bookSave = () => { if (S.book && S.book.who) writeJ(ADDR_KEY(S.book.who), { v: 2, addresses: S.book.addresses, default_address: S.book.sel, default_address_rev: S.book.rev }); };
+    const bookSel = () => (S.book && S.book.sel ? S.book.addresses.find((a) => a.id === S.book.sel) || null : null);
+    const savedInUse = () => (S.member && S.locPick === 'saved' ? bookSel() : null);
+    const savedSelId = () => { const a = savedInUse(); return a ? a.id : null; };
+    const locNow = () => { const a = savedInUse(); return a ? { lat: a.lat, lng: a.lng, confirmed: true, source: 'saved' } : S.loc; };
+    const dirVm = () => (S.member && S.book ? { labels: S.book.addresses.map((a) => a.label).join(' · '), load: S.book.load || null } : null);   // v6 :2162
+    const pickVm = (surface) => ({ pend: S.addrPick ? S.addrPick.id : null, err: S.addrErr === surface, load: bookLoad() });
+    // C-DIR-1 seed (advisor ruling (A), 11-14): the store's checkout is seeded from the SAVED address in use (its pin confirmed, its label /
+    // detected / details) so it agrees with the pill; otherwise from the device location, exactly as before (guests unchanged). Read LIVE
+    // at checkout entry: after a sign-out / switch there is no book, so nothing of the previous member can seed
+    // C-DIR-1 (b) + r3: the «Entregar en» sheet over a store's checkout — the member's book in its order (in use first), the ONE renderer
+    // (CappHome.addrSheetHtml, v6's exact rows + the pick's state), and use(id), which only STARTS the pick: the store hears the outcome
+    // through ui.addrSettled (a 200 ⇒ the seed of the address now in use). A guest has no rows (the store never offers «Cambiar» to one)
+    function addressPicker() {   // a function declaration: a store mounted during boot (a restored route) reaches it before this line runs
+      return { rows: () => (S.member && S.book ? CappHome.bookOrder(S.book.addresses, S.book.sel) : []), sel: () => savedSelId(),
+        sheetHtml: (dir) => CappHome.addrSheetHtml({ ...dir, ...pickVm('sheet') }), pending: () => !!S.addrPick,
+        use: (id) => selectAddr(id, 'sheet'),   // Codex #173 #12 (6c): ONE validation — selectAddr's
+        dismiss: () => { if (S.addrErr === 'sheet') S.addrErr = null; } };
+    }
+    const savedSeed = () => { const a = savedInUse(); return a ? { lat: a.lat, lng: a.lng, confirmed: true, saved: { id: a.id, label: a.label, detected: a.detected, details: a.details } } : null; };
+    const seedNow = () => savedSeed() || S.loc;
+    // a served book (getMyProfile's or the device copy's) with its revision — a book without a valid revision is no book (never guessed)
+    const bookFrom = (uid, b) => (b && Array.isArray(b.addresses) && Number.isSafeInteger(b.default_address_rev) && b.default_address_rev >= 0
+      ? { who: uid, addresses: b.addresses, sel: b.default_address, rev: b.default_address_rev } : null);
+    // the OWNED read: the token's SDK user must still be the book's member when it arrives — a switch landing mid-read never fetches (or
+    // stores) another member's book under hers (Codex #153 #1). A read that started before a pick settled never overrides that pick
+    // Codex #173 #7: an owned-token wait is BOUNDED by the transport's own cap (CappSignupApi.TIMEOUT_MS): a held SDK never holds the
+    // picker — on expiry it is no token (a pick settles as UNKNOWN ⇒ the owned re-read, bounded the same way); a late token lands on nothing
+    function ownedToken(uid) {
+      return new Promise((res) => {
+        let done = false, t = null; const end = (v) => { if (done) return; done = true; if (t !== null) T.clearTimeout(t); res(v); };
+        t = T.setTimeout(() => end(null), suMod && suMod.TIMEOUT_MS > 0 ? suMod.TIMEOUT_MS : 12000);
+        ownedMemberToken(uid).then(end, () => end(null));   // asked NOW (the token queue's order is the reads' order); another user ⇒ the leave
+
+      });
+    }
+    async function readBook(gen, uid) {
+      const seq0 = bookSeq;
+      const own = await ownedToken(uid);
+      if (dead || gen !== bookGen) return null;
+      if (!own) return bookFailed(uid);
+      const r = await suApi.getMyProfile({ idToken: own });
+      if (dead || gen !== bookGen || !S.book || S.book.who !== uid) return null;
+      const b = r && r.ok === true ? bookFrom(uid, r.book) : null; if (!b) return bookFailed(uid);
+      if (seq0 !== bookSeq) return b;
+      const filling = !!S.book.load;   // Q5: a list opened while the book was not known fills in place ONCE (a KNOWN list stays frozen)
+      S.book = b;
+      if (filling && dirShown) dirShown = CappHome.bookOrder(b.addresses, b.sel);
+      if (S.locPick !== 'device') S.locPick = S.book.sel ? 'saved' : null;
+      bookSave(); bookPaint(); return b;
+    }
+    // book-state (PLAN-capp-book-state r0, owner 11-23): S.book.load — 'pending' (the first read in flight) | 'failed' (it ended without a
+    // book) — exists ONLY on the placeholder of a book never known on this phone; a KNOWN book (a v2 copy or a served read) has none, so a
+    // failed re-read after a pick never marks a known book. Every renderer reads it through bookLoad(); none decides it
+    const bookLoad = () => (S.member && S.book && S.book.load) || null;
+    const bookPaint = () => { if (S.layer === 'addr') bookPatchSheet(); schedule(); };
+    const addrSheetVm = () => (S.member && S.book ? { rows: dirShown || S.book.addresses, sel: savedSelId(), ...pickVm('inicio') } : null);
+    // Codex #271 P2: the book landing / failing / retrying under an OPEN «Entregar en» sheet patches ITS book part IN PLACE — the sheet
+    // node (no replayed entrance) and the focused control survive. Only the saved rows, the loading line and the unreadable line change;
+    // «Usar mi ubicación actual» and «Agregar dirección» are KEPT (their state attributes refreshed). A focused control that left (the
+    // «Reintentar» link) hands focus to «Usar mi ubicación actual»
+    function bookPatchSheet() {
+      const L = $('layer'), sh = L && L.querySelector('.sheet'), nav = sh && sh.querySelector('nav');
+      const t = doc.createElement('div'); t.innerHTML = CappHome.addrSheetHtml(addrSheetVm());
+      const fsh = t.querySelector('.sheet'), fnav = fsh && fsh.querySelector('nav'), anchor = nav && nav.querySelector('[data-act="loc-use"]');
+      if (!fnav || !anchor) return renderLayer();
+      const KEEP = new Set(['loc-use', 'addr-new']), had = doc.activeElement;
+      for (const x of [...sh.children]) if (x.classList.contains('sandline')) x.remove();
+      for (const x of [...fsh.children]) if (x.classList.contains('sandline')) sh.insertBefore(x, nav);
+      for (const x of [...nav.children]) if (!KEEP.has(x.dataset.act)) x.remove();
+      for (const x of [...fnav.children]) {
+        const o = KEEP.has(x.dataset.act) ? nav.querySelector(`[data-act="${x.dataset.act}"]`) : null;
+        if (!o) { nav.insertBefore(x, anchor); continue; }
+        for (const a of ['class', 'aria-disabled', 'aria-busy']) { if (x.hasAttribute(a)) o.setAttribute(a, x.getAttribute(a)); else o.removeAttribute(a); }
+      }
+      if (had && !had.isConnected) anchor.focus();
+    }
+    function bookFailed(uid) { if (S.book && S.book.who === uid && S.book.load) { S.book.load = 'failed'; bookPaint(); } return null; }
+    function bookRetry() {   // Q3: «Reintentar» — ONE read per tap; no timer, no loop
+      if (!S.book || S.book.load !== 'failed') return;
+      S.book.load = 'pending'; bookPaint(); readBook(bookGen, S.book.who);
+    }
+    function bookIdentity() {
+      const uid = S.member && S.member.uid ? S.member.uid : null;
+      if (S.book && S.book.who === uid) return;
+      if (S.book && S.book.who) { try { storage && storage.removeItem(ADDR_KEY(S.book.who)); } catch (_) {} }
+      bookGen++; S.book = null; dirShown = null; S.locPick = null; S.addrPick = null; S.addrErr = null;
+      if (!uid || !suApi || !fbAuth || !suMod || typeof suMod.bookOf !== 'function') return;
+      const c = readJ(ADDR_KEY(uid)), cb = c && c.v === 2 ? bookFrom(uid, suMod.bookOf(c)) : null;   // a v1 copy (no revision) waits for the read
+      S.book = cb || { who: uid, addresses: [], sel: null, rev: null, load: 'pending' };   // book-state: NOT LOADED YET — never drawn as an empty book
+      if (S.book.sel) S.locPick = 'saved';
+      const gen = bookGen;
+      T.setTimeout(() => { if (!dead && gen === bookGen) readBook(gen, uid); }, 0);   // after paint: never awaited by a render
+    }
+    function selectAddr(id, surface) {
+      if (S.addrPick || !S.member || !S.book || !S.book.addresses.some((a) => a.id === id) || !suApi || !fbAuth) return false;
+      // Codex #173 #8: the address already in use is picked like any other — through the server's CAS (the write is the fence a late
+      // older write meets; its 200 puts the saved address back in use over a device location)
+      if (!Number.isSafeInteger(S.book.rev)) return false;   // the server's pair is not known yet (the first read has not landed)
+      const uid = S.book.who, gen = bookGen, body = { id, expected_rev: S.book.rev, expected_default: S.book.sel };
+      S.addrErr = null; S.addrPick = { id, surface }; bookSeq++; pickPaint();
+      (async () => {
+        const own = await ownedToken(uid);
+        const live = () => !dead && gen === bookGen && !!S.addrPick;   // an identity change voids it (bookGen); only ONE pick can be in flight
+        let r = { ok: false, reason: 'offline' };
+        if (live() && own) r = await suApi.useMyAddress({ idToken: own, ...body });
+        if (!live()) return;
+        let won = false, adopted = false;
+        if (r.ok === true && r.default_address === id && Number.isSafeInteger(r.default_address_rev)) {
+          S.book = { ...S.book, sel: id, rev: r.default_address_rev }; won = true;
+        } else {
+          const b = await readBook(gen, uid);
+          if (!live()) return;
+          won = !!(b && b.sel === id); adopted = !!b && S.book === b;
+        }
+        S.addrPick = null; bookSeq++;
+        if (won) { S.locPick = 'saved'; bookSave(); } else S.addrErr = surface;
+        if (S.layer === 'addr' && won) closeLayer();
+        pickPaint(won, adopted);
+      })();
+      return true;
+    }
+    // the pick's state reaches every surface: the shell's (Inicio, «Direcciones», its sheet) and an open store's (its sheet, «Cambiar»;
+    // a 200 re-seeds its checkout — never a dispatched flow, the store's own rule)
+    function pickPaint(settled, adopted) {
+      if (S.layer === 'addr') renderLayer();   // Codex #173 #9: Inicio's open «Entregar en» sheet repaints too (a screen render keeps the layer)
+      schedule();
+      const ui = S.store && S.store.ui;
+      if (ui && typeof ui.addrSettled === 'function') { try { ui.addrSettled(settled === true ? seedNow() : settled === false ? false : undefined, settled === false && adopted ? savedSeed() : undefined); } catch (_) {} }
+    }
     function identityChanged() {
+      bookIdentity();   // C-DIR-1: the previous member's book leaves the device and every surface
+      if (S.tab === 'addresses' && !(S.member && S.book)) nav.tab({ name: 'account' });
       favIdentity();
       ordersGen++; S.ordersRead = null;   // any in-flight history read is void; nothing of the previous identity is shown
       rateGen++; rateCache.clear(); if (S.layer === 'rate') { S.rate = null; closeLayer(); }   // C-2: nothing of the previous identity's ratings
@@ -1278,7 +1568,8 @@
       const em = app.querySelector('#offer-email'), email = em ? String(em.value || '').trim() : od.email;
       offerBusy = true;
       let uid = null, r = null;
-      try { r = await suApi.redeemSignupGrant({ grant: od.grant.token, email, name: od.name || '' }); if (r && r.ok && r.token) uid = await fbAuth.signInWithCustomToken(r.token); } catch (_) { uid = null; }
+      // a reply landing after a leave signs nothing in (the SDK is never flipped by a tab that left; the fresh page decides)
+      try { r = await suApi.redeemSignupGrant({ grant: od.grant.token, email, name: od.name || '' }); if (r && r.ok && r.token && !leaving) uid = await fbAuth.signInWithCustomToken(r.token); } catch (_) { uid = null; }
       offerBusy = false;
       if (dead || S.order !== od) return;
       if (typeof uid === 'string' && uid) { od.offerDone = true; od.claimedBy = `u:${uid}`; await signedIn({ uid, name: (r && r.name) || od.name || '', phone: od.phoneWire, email: email || null, isNew: !!(r && r.isNew) }); if (!dead && S.tab === 'order' && !S.store) renderNow(); return; }
@@ -1353,7 +1644,7 @@
       const gen = receiptGen, uid = S.member && S.member.uid;
       if (!uid || !suApi || !fbAuth) return Promise.resolve(null);
       const p = (async () => {
-        let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+        const tok = await ownedMemberToken(uid);
         const r = tok ? await suApi.getReceipt({ idToken: tok, orderId: oid }) : { ok: false, reason: 'unauthenticated' };
         const cur = auth && auth.user ? auth.user() : null;
         if (dead || gen !== receiptGen || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid) return null;   // another identity now: not theirs
@@ -1395,7 +1686,7 @@
       if (hit && hit.who === uid) { if (hit.phase === 'ready') return Promise.resolve(hit); if (hit.phase === 'pending') return hit.p; }   // failed / queued ⇒ read
       const gen = rateGen;
       const p = (async () => {
-        let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+        const tok = await ownedMemberToken(uid);
         const r = tok ? await suApi.getMyRating({ idToken: tok, orderId: oid }) : { ok: false };
         if (dead || gen !== rateGen || rateUid() !== uid) return null;
         rateCache.set(oid, r.ok ? { phase: 'ready', who: uid, canRate: r.canRate, rating: r.rating, editableUntil: r.editableUntil } : { phase: 'failed', who: uid });
@@ -1500,7 +1791,7 @@
       const fields = CappRate.fieldsToSend(R.initial, R.value, R.dishes.map((d) => d.id)); if (!Object.keys(fields).length) return;
       R.sending = true; R.error = null; R.note = null; rerenderRate();
       const gen = rateGen;
-      let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+      const tok = await ownedMemberToken(uid);
       const r = tok ? await suApi.rateOrder({ idToken: tok, orderId: R.ctx.oid, fields }) : { ok: false, reason: 'unauthenticated' };
       if (dead || gen !== rateGen || S.rate !== R) return;
       R.sending = false;
@@ -1726,10 +2017,10 @@
     function renderLayer() {
       const L = $('layer'); if (!L) return;
       pinGen++; pinMap = null;   // any open pin map is obsolete
-      L.innerHTML = S.layer === 'payadj' ? paySheetHtml() : S.layer === 'help' && S.help ? CappOrder.helpSheetHtml(S.help) : S.layer === 'rate' && S.rate ? CappRate.sheetHtml(rateVm()) : S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml() : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
+      L.innerHTML = S.layer === 'payadj' ? paySheetHtml() : S.layer === 'help' && S.help ? CappOrder.helpSheetHtml(S.help) : S.layer === 'rate' && S.rate ? CappRate.sheetHtml(rateVm()) : S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml(addrSheetVm()) : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
       if (S.layer !== 'pin') return;
       const firstHub = dir.view().rows.map((r) => r.entry).find((e) => Number.isFinite(e.hub_lat) && Number.isFinite(e.hub_lng));
-      pinDraft = S.loc ? { lat: S.loc.lat, lng: S.loc.lng } : null;   // the editor's VIEW starts on the city when there is no location — never a pin
+      pinDraft = locNow() ? { lat: locNow().lat, lng: locNow().lng } : null;   // the editor's VIEW starts on the city when there is no location — never a pin
       const center = pinDraft || (firstHub ? { lat: firstHub.hub_lat, lng: firstHub.hub_lng } : null);
       const el = L.querySelector('[data-gmap="pin"]'), p = el && center ? CappUI.loadMapsFor(doc, runtime.mapsKey) : null;
       if (!p) return;
@@ -1760,10 +2051,11 @@
       if (el && typeof el.focus === 'function') el.focus();
     }
     function openLayer(k) {
+      if (k === 'addr') dirShown = S.member && S.book ? CappHome.bookOrder(S.book.addresses, S.book.sel) : null;   // C-DIR-1: the sheet's rows are frozen per open (rule 7), in use first
       if (MODAL.has(k) && !MODAL.has(S.layer)) { const ae = doc.activeElement; layerOpener = (ae && ae.dataset && ae.dataset.act ? { act: ae.dataset.act, oid: ae.dataset.oid || null } : null) || lastTap; }
       S.layer = k; renderLayer(); containLayer();
     }
-    function closeLayer(restore = true) { const was = S.layer; S.layer = null; renderLayer(); containLayer(); if (restore && MODAL.has(was)) restoreOpener(); if (was !== 'payadj') reconcilePay(); }
+    function closeLayer(restore = true) { const was = S.layer; S.layer = null; if (was === 'addr' && S.addrErr === 'inicio') S.addrErr = null; renderLayer(); containLayer(); if (restore && MODAL.has(was)) restoreOpener(); if (was !== 'payadj') reconcilePay(); }
     let pending = null;
     const raf = win && typeof win.requestAnimationFrame === 'function' ? (f) => win.requestAnimationFrame(f) : (f) => T.setTimeout(f, 16);
     function schedule() { if (pending || dead) return; pending = true; raf(() => { pending = null; renderNow(); }); }
@@ -1777,6 +2069,7 @@
       const a = t.dataset.act;
       if (!t.closest('#layer')) lastTap = { act: a, oid: t.dataset.oid || null };   // C-5 r2: where a sheet's focus returns
       if (a && a.startsWith('rate-') && rateAct(a, t)) return;   // C-2: the rating sheet and the Pedidos rows' entries
+      if ((S.addrPick || gate === 'held') && ADDR_ACTS.has(a)) return;   // r3: ONE pick in flight — every address control waits for the server's answer
       if (a === 'addr' && S.store) { nav.tab({ name: 'home' }); if (!S.store && S.tab === 'home') openLayer('addr'); return; }   // the address is the shell's: Inicio, with its sheet up
       // the Cuenta tab: with the guest rules ON (runtime.guestCardOnly), a guest's (and an unresolved) is frame 5b; a member's is a
       // later slice. Flag absent ⇒ exactly the S7a-2 behaviour: a host event (Codex guest r1 #3)
@@ -1831,7 +2124,11 @@
       if (a === 'neutral-home') { S.neutral = null; return renderNow(); }
       if (a === 'addr') return openLayer('addr');
       if (a === 'lclose') return closeLayer();   // «Cancelar» on the pin editor: the guest location is unchanged
-      if (a === 'addr-new') return openLayer('pin');
+      if (a === 'addr-new') { if (bookLoad()) return; return openLayer('pin'); }   // book-state Q2: no add while the book is not known (a duplicate)
+      if (a === 'book-retry') return void bookRetry();
+      if (a === 'addresses') return void nav.go({ name: 'addresses' });   // C-DIR-1: the member's «Direcciones» (v6 :2170)
+      if (a === 'addresses-back') return void nav.back();
+      if (a === 'addr-use') return void selectAddr(t.dataset.id, S.layer === 'addr' ? 'inicio' : 'dir');   // v6 :2264 — r3: confirm-first
       if (a === 'loc-use') { if (!readJ('capp:loc_asked')) return openLayer('softask'); closeLayer(); return geolocate('Usando tu ubicación actual'); }
       if (a === 'loc-allow') { writeJ('capp:loc_asked', true); closeLayer(); return geolocate('Ubicación activada'); }
       if (a === 'loc-deny') { writeJ('capp:loc_asked', true); S.locDenied = true; closeLayer(); return renderNow(); }
@@ -1869,6 +2166,10 @@
     };
     doc.addEventListener('keydown', onKey);
     doc.addEventListener('visibilitychange', onVisible);
+    // Codex #178 #1: another tab moved the device's stamp (it left, or another identity was admitted there) ⇒ this tab restarts at once
+    // (a storage event never fires for this tab's own writes)
+    const onStorage = (e) => { if (dead || leaving || !e || (e.key !== OWNER_KEY && e.key !== null)) return; if (rawGet(OWNER_KEY) !== myStamp) staleLeave(); };
+    if (win && typeof win.addEventListener === 'function') win.addEventListener('storage', onStorage);
     const dirTimer = T.setInterval(() => { if (!S.store && doc.visibilityState !== 'hidden') dir.revalidate(); }, DIR_EVERY_MS);
     const unAuth = auth && typeof auth.onChange === 'function' ? auth.onChange(() => { storeAuth(); schedule(); }) : null;
 
@@ -1878,7 +2179,7 @@
     // ── a hosted-checkout return (S7a-1 r2 §1.5 / r3 §2): its owner from EXACT local records only. One owner ⇒ that store is entered
     //    with the return (held until it is enterable); none / several on a fresh return ⇒ the neutral surface (frame 11); a stored
     //    handoff with no owner never re-shows it on later boots (it is kept, untouched, for its authoritative outcome) ──
-    {
+    function bootReturnNow() {
       const search = o.search !== undefined ? String(o.search || '') : (win && win.location ? win.location.search : '');
       // candidates: the stored directory, the menu LRU, and every store that holds a placement / pay record on this device (a cold
       // boot has no directory yet); ownership itself is decided by resolveOwner on the EXACT records
@@ -1892,6 +2193,7 @@
         S.ret = { rid: br.owner, search: '?' + q.toString(), handoff: h };
       } else if (br && br.handoff && (br.mode === 'persisted' || br.mode === 'memory')) S.neutral = { order: br.handoff.order };
     }
+    if (gate === 'open') bootReturnNow();   // r3: a GATED boot shows nothing of a return until its identity settles (bootIdentity)
     app.classList.add('app');
     if (view) app.classList.toggle('desk', view.desk());   // D-2: BEFORE the first paint (no pop-in)
     const unView = view ? view.subscribe((d) => {
@@ -1904,23 +2206,30 @@
     renderNow();
     dir.revalidate();
     loadMenus();
-    if (S.ret) enter(S.ret.rid, null);
-    // D-4a §3: a payment return OWNS the boot (S.ret / S.neutral) — hydration runs only when the boot found NO return
-    booted = true;
-    restoreActive();   // the device's active order, before the boot's route decision (a reload of /r/{rid}/pago lands on it)
-    if (routing && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();
-    // back from the store on a NEW build (state 4): the store left for, its cart open — never on a payment return (that owns the boot)
-    if (!S.ret && !S.neutral) { const rid = pendingHandoff(); if (rid) { appUpdated = true; S.reopenCart = rid; enter(rid); } }   // ANY return (persisted / memory / resumed, owned or not) owns the boot
+    // Codex code r2 (inverted, one check): a pending cold link is retried ONLY while the user has done NOTHING since hydration began
+    // — ANY gesture (a tap, a key, typing; in the store or the shell: its search, a category, a sheet, an in-app back, a blocked
+    // exit) cancels it through the same cancelRoute / navGen, BEFORE any retry can fire. The router itself dispatches no events.
+    // r3: on a GATED boot the hydration waits for the identity — a gesture made while it waits voids the cold link the same way
+    const USER_INTENT = ['pointerdown', 'click', 'keydown', 'input'];
+    let gestured = false;
+    const onUserIntent = () => { if (dead) return; if (gate === 'held') gestured = true; if (pendingRoute || awaitOrderRoute) cancelRoute(); };
+    // the boot's member-scoped steps: at once on an open boot; on a GATED one, once its identity settles on the stamp's owner (settleOwner)
+    function bootSteps() {
+      if (S.ret) enter(S.ret.rid, null);
+      // D-4a §3: a payment return OWNS the boot (S.ret / S.neutral) — hydration runs only when the boot found NO return
+      booted = true;
+      restoreActive();   // the device's active order, before the boot's route decision (a reload of /r/{rid}/pago lands on it)
+      if (routing && !gestured && (bootMode === 'none' || bootMode === 'invalid')) hydrate(); else reflect();
+      // back from the store on a NEW build (state 4): the store left for, its cart open — never on a payment return (that owns the boot)
+      if (!S.ret && !S.neutral) { const rid = pendingHandoff(); if (rid) { appUpdated = true; S.reopenCart = rid; enter(rid); } }   // ANY return (persisted / memory / resumed, owned or not) owns the boot
+    }
+    if (gate === 'open') bootSteps(); else setTitle();
+    bootDone = true;
     // a device Back leaves the sentinel: the nav (its listener runs first) re-pushes it — inheriting the PREVIOUS entry's URL — and
     // a blocked back renders nothing; this listener re-reflects the screen actually shown (pathname only)
     const onPopReflect = () => { if (dead) return; cancelRoute(); reflect(); };   // a device Back is a user navigation (Codex code r1 P1): it cancels a held cold link too
     if (routing && typeof win.addEventListener === 'function') win.addEventListener('popstate', onPopReflect);
-    // Codex code r2 (inverted, one check): a pending cold link is retried ONLY while the user has done NOTHING since hydration began
-    // — ANY gesture (a tap, a key, typing; in the store or the shell: its search, a category, a sheet, an in-app back, a blocked
-    // exit) cancels it through the same cancelRoute / navGen, BEFORE any retry can fire. The router itself dispatches no events
-    const USER_INTENT = ['pointerdown', 'click', 'keydown', 'input'];
-    const onUserIntent = () => { if (!dead && (pendingRoute || awaitOrderRoute)) cancelRoute(); };
-    if (routing && (pendingRoute || awaitOrderRoute) && typeof doc.addEventListener === 'function') for (const ev of USER_INTENT) doc.addEventListener(ev, onUserIntent, true);
+    if (routing && (gate === 'held' || pendingRoute || awaitOrderRoute) && typeof doc.addEventListener === 'function') for (const ev of USER_INTENT) doc.addEventListener(ev, onUserIntent, true);
     if (SU) raf(() => startAuth());   // G6: the Auth SDK after the first paint (never awaited by it)
 
     return {
@@ -1928,7 +2237,7 @@
       // §4c for the sign-in flow (G6): set the marker at sign-in; ONLY «Cerrar sesión y olvidar este teléfono» / deletion forgets it
       rememberAccount: (e164) => CappDeviceAccount.remember(storage, e164), forgetAccount: () => CappDeviceAccount.forget(storage),
       destroy() {
-        dead = true; clearTokenTimers(); stopOrder(); if (typeof logoOff === 'function') logoOff(); if (typeof unTheme === 'function') { try { unTheme(); } catch (_) {} } unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
+        dead = true; clearTokenTimers(); stopOrder(); if (typeof logoOff === 'function') logoOff(); if (typeof unTheme === 'function') { try { unTheme(); } catch (_) {} } unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (win && typeof win.removeEventListener === 'function') win.removeEventListener('storage', onStorage); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
         doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); doc.removeEventListener('visibilitychange', onVisible); if (app && typeof app.removeEventListener === 'function') app.removeEventListener('scroll', onRowScroll, true); nav.destroy();
       },
     };

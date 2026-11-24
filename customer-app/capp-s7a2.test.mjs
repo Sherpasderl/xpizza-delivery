@@ -90,6 +90,9 @@ test('contract fake: produced by the pinned 5f commit; every 200 body is exactly
 
 // ── the client directory store ──
 function memStorage(init = {}) { const m = new Map(Object.entries(init)); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), get length() { return m.size; }, key: (i) => [...m.keys()][i] ?? null, _m: m }; }
+// r3 (owner 11-19): a device ON THE NEW BUILD carries the stamp of whose its unkeyed records are — 'guest', or 'u:{uid}' (a member's).
+// Explicit per cell (never a harness default): an unstamped device with records is an UPGRADE, and its records are wiped at settle
+const owned = (init = {}, owner = 'guest') => memStorage({ 'capp:member_owner': owner, ...init });
 const resp = (k) => ({ status: SC[k].status, body: SC[k].body, etag: SC[k].headers.ETag });
 function rigDir({ storage = memStorage(), script = [], now = { t: T0 } } = {}) {
   const calls = [];
@@ -293,7 +296,7 @@ function bootShell({ realFrames = false, dirScript = defDir(), envelope = 'ok', 
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(stampedDir || HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: url || 'https://app.test/' });
-  const w = dom.window; { const rec = { w, cell: CUR, closed: false }; SHELLS.push(rec); const cl = w.close.bind(w); w.close = () => { rec.closed = true; return cl(); }; }
+  const w = dom.window; { const rec = { w, cell: CUR, closed: false }; SHELLS.push(rec); const cl = w.close.bind(w); w.close = () => { rec.closed = true; rec.w = null; return cl(); }; }   // a CLOSED window is released (the guard keeps only its cell + flag): the file's heap stays flat
   if (media) w.matchMedia = media.matchMedia;   // D-2: the viewport the shell reads at mount (a controllable matchMedia)
   // the paint frame is a MICROTASK (2e: test 35 flaky under load — a fixed flush raced jsdom's timer-driven frame): a render the shell
   // schedules lands in the same microtask drain as the data it paints, before any timer, whatever the load (no sleep, no timeout)
@@ -302,8 +305,8 @@ function bootShell({ realFrames = false, dirScript = defDir(), envelope = 'ok', 
   if (preMount) preMount(w);   // a host object present BEFORE the shell mounts (the installed app's Capacitor bridge)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-theme.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-splash.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'phone-countries.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-push.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
-  const dirCalls = [], envCalls = [], pend = {}, events = [];
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-splash.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-text.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'phone-countries.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-push.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+  const dirCalls = [], envCalls = [], pend = {}, events = [], replaced = [];   // replaced: r3's restart (location.replace), recorded
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
     envCalls.push(rid);
@@ -321,11 +324,11 @@ function bootShell({ realFrames = false, dirScript = defDir(), envelope = 'ok', 
   // clock drives the timers and flush only); otherwise the app's time IS the virtual clock (S.clock.t forward = a jump)
   const clock = vc ? (now || { get t() { return vc.now(); }, set t(v) { vc.jump(v); } }) : (now || { t: T0 });
   const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), ...(readPublic ? { readPublic } : {}), fetchDirectory, fetchEnvelope, readAvailability: async () => [], onEvent: (n, d) => events.push([n, J(d)]), runtime, storage: storage || memStorage(), now: () => clock.t,
-    auth: { state: () => auth }, geolocation, search, timers: vc || { setTimeout: (f, ms) => { const h = setTimeout(f, ms); if (h && typeof h.unref === 'function') h.unref(); return h; }, clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(vc ? { timeout: (ms) => new Promise((r) => vc.setTimeout(r, ms)) } : {}), ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } }, ...mountExtra });
+    auth: { state: () => auth }, geolocation, search, timers: vc || { setTimeout: (f, ms) => { const h = setTimeout(f, ms); if (h && typeof h.unref === 'function') h.unref(); return h; }, clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(vc ? { timeout: (ms) => new Promise((r) => vc.setTimeout(r, ms)) } : {}), ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } }, replace: (u) => replaced.push(u), ...mountExtra });
   const q = (s) => w.document.querySelector(s), qa = (s) => [...w.document.querySelectorAll(s)];
   const click = (s) => { const el = typeof s === 'string' ? q(s) : s; assert.ok(el, `premise: ${s} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   const release = (rid, body) => { const d = (pend[rid] || []).shift(); d.resolve({ status: 200, body: body || J(PROV[rid].envelope), etag: body ? '"changed"' : PROV[rid].etag }); };
-  return { w, ui, q, qa, click, dirCalls, envCalls, release, pend, clock, events };
+  return { w, ui, q, qa, click, dirCalls, envCalls, release, pend, clock, events, replaced };
 }
 
 test('shell: Inicio paints the directory-only rows BEFORE any envelope lands; menu rows fill in as each lands (never waits for all)', async () => {
@@ -423,11 +426,11 @@ test('shell location: denied ⇒ the drawn «Ubicación desactivada · Activar»
 });
 test('shell location: the guest location drives frame 4 (every store outside) and SEEDS the store\'s checkout pin', async () => {
   const far = { lat: 15.9, lng: -87.5, confirmed: true, source: 'pin', v: 3 };
-  const S = bootShell({ storage: memStorage({ 'capp:guest_loc': JSON.stringify(far) }) });
+  const S = bootShell({ storage: owned({ 'capp:guest_loc': JSON.stringify(far) }) });
   await flush();
   assert.equal(S.q('.home-body .empty b').textContent, 'Ningún restaurante entrega en esta dirección');
   const near = { lat: 15.531, lng: -88.021, confirmed: true, source: 'pin', v: 1 };
-  const N = bootShell({ storage: memStorage({ 'capp:guest_loc': JSON.stringify(near) }) });
+  const N = bootShell({ storage: owned({ 'capp:guest_loc': JSON.stringify(near) }) });
   await flush();
   N.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
   const ui = N.ui.store().ui; ui.cart.inc(ui.menu.dishes.find((d) => !d.launcher && !d.variantOf).key); ui.render();
@@ -488,7 +491,7 @@ const frozenCart = () => { const m = CappMenu.adaptMenu(PROV.x_pizza.envelope); 
   return { 'capp:x_pizza:cart': JSON.stringify({ v: 2, lines: [{ key: d.key, qty: 1, ex: [{}], added: 1 }], rid: 'x_pizza', mode: 'delivery', cart_gen: 'g_1', frozen_for: ORDER }) }; };
 test('frame 10: a cart frozen for a placement is read-only — the note, its controls disabled, «Ver estado del pedido» reads the STATUS (the recovery sheet) and sends NOTHING', async () => {
   const fetchLog = [];
-  const S = bootShell({ storage: memStorage(frozenCart()), fetchLog });
+  const S = bootShell({ storage: owned(frozenCart()), fetchLog });
   await flush();
   S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
   S.click('#cart-bar'); await flush();
@@ -504,7 +507,7 @@ test('frame 10: a cart frozen for a placement is read-only — the note, its con
   assert.equal(S.ui.store().ui.cart.count(), 1, 'still frozen: a tap through the store is refused');
 });
 test('frame 11: a fresh return this phone cannot tie to ONE store ⇒ the neutral surface (no tab bar, no store mounted); «Ir a Inicio»; a later boot does not show it again', async () => {
-  const storage = memStorage();
+  const storage = owned();
   const S = bootShell({ storage, search: `?pay=complete&order=${ORDER}&t=pt_9` });
   await flush();
   assert.equal(S.q('.empty.neutral b').textContent, 'No encontramos este pedido en este teléfono');
@@ -517,7 +520,7 @@ test('frame 11: a fresh return this phone cannot tie to ONE store ⇒ the neutra
   assert.equal(again.q('.empty.neutral'), null, 'a resumed, ownerless handoff never re-shows the surface');
 });
 test('return: a return OWNED by one store (its pay stash) enters THAT store with the return, once — even on a cold boot (no directory yet)', async () => {
-  const storage = memStorage({ 'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_1' }) });
+  const storage = owned({ 'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_1' }) });
   const S = bootShell({ storage, search: `?pay=complete&order=${ORDER}&t=pt_9` });
   await flush(); await flush();
   assert.equal(S.ui.store() && S.ui.store().rid, 'x_pizza');
@@ -528,7 +531,7 @@ test('return: a return OWNED by one store (its pay stash) enters THAT store with
 
 // ── Codex s7a2 r1 ──
 test('Codex s7a2 r1 #1 (P1): checkout adoption carries the IN-MEMORY cart — a cart whose persistence fails loses nothing across the remount', async () => {
-  const base = memStorage(storedMenu('x_pizza'));
+  const base = owned(storedMenu('x_pizza'));
   const storage = { ...base, getItem: base.getItem, removeItem: base.removeItem, key: base.key, get length() { return base.length; },
     setItem: (k, v) => { if (k === 'capp:x_pizza:cart') throw new Error('quota'); base.setItem(k, v); } };
   const S = bootShell({ envelope: 'hold', storage });
@@ -557,7 +560,7 @@ test('Codex s7a2 r1 #3: a STALE menu (verified > 60 s ago) never authorizes orde
 
 test('Codex s7a2 r1 #4: a LATER terminal outcome settles the return handoff — pending return (kept) → «Ver estado del pedido» → paid ⇒ capp:return removed', async () => {
   const t0 = T0, polls = [{ ok: true, state: 'pending' }, { ok: true, state: 'paid' }];
-  const storage = memStorage({ ...frozenCart(),
+  const storage = owned({ ...frozenCart(),
     'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_1', order: null, ts: t0 }),
     'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, dispatched: 1, cart_gen: 'g_1', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }) });
   const apiFetch = async (u) => { const j = u.startsWith('/x/s') ? (polls.length > 1 ? polls.shift() : polls[0]) : { ok: false }; return { status: 200, ok: true, json: async () => j }; };
@@ -574,7 +577,7 @@ test('Codex s7a2 r1 #4: a LATER terminal outcome settles the return handoff — 
 test('Codex s7a2 r1 #5: a tap HELD while the directory read is in flight is released to frame 7 when that read fails', async () => {
   const gate = deferred();
   // menus held: no other event may re-run the held-tap check (only the directory's own notification can release it)
-  const S = bootShell({ dirScript: [gate, 'complete'], envelope: 'hold', storage: memStorage(stored(SC.complete.body, T0 - 1000)) });
+  const S = bootShell({ dirScript: [gate, 'complete'], envelope: 'hold', storage: owned(stored(SC.complete.body, T0 - 1000)) });
   S.click('.rlist .rcard[data-rid="x_pizza"]');
   { const row = S.q('.rlist .rcard[data-rid="x_pizza"]'); assert.ok(!!row && row.classList.contains('held'), 'the drawn pressed state: held while the read is in flight'); }
   gate.resolve(resp('unavailable_503')); await flush();
@@ -722,30 +725,33 @@ test('stamp: shell.html is stamped as orders-app; on the stamped shell SherpaCli
 const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 const TOK = (uid, expMs = T0 + 3600e3) => `${b64u({ alg: 'RS256', typ: 'JWT' })}.${b64u({ sub: uid, user_id: uid, customer: true, exp: Math.floor(expMs / 1000) })}.sig`;   // the customer claim (getMyOrders requires customer === true)
 const WARNINGS = []; process.on('warning', (w) => WARNINGS.push(w));   // Codex promo r4 #5: no TimeoutOverflowWarning (asserted last)
-// failToken: the next N getIdToken() calls REJECT; failFrom: every call from index N on rejects; tokExp: the issued tokens' exp (ms)
+// failToken: the next N getIdToken() calls REJECT; failFrom: every call from index N on rejects; failIf(): a call rejects while it answers
+// true (the test's network switch); tokExp: the issued tokens' exp (ms)
 // rotate: each getIdToken() issues a NEW token (exp + n s) — a fresh token that really changes ⇒ the setter's notifier fires
-function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0, failFrom = Infinity, tokExp, rotate = false, authGate = null } = {}) {
-  const calls = { load: 0, ct: [], out: 0 }; let listeners = [], user = persisted;
+// notifyGate: { on, q } — while on, a sign-out / sign-in changes currentUser AT ONCE but its listeners wait for the test (production's order:
+// the SDK's user moves before onAuthStateChanged fires — Codex #152 #2 / #153 #1: the fake must never be laxer, on BOTH transitions)
+function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0, failFrom = Infinity, failIf = null, tokExp, rotate = false, authGate = null, notifyGate = null } = {}) {
+  const calls = { load: 0, ct: [], out: 0, get reads() { return tokN; } }; let listeners = [], user = persisted;   // reads: every SDK token read (r3-rs-21's cell)
   // hold: { on, q } — while on, every token read waits for the test to release it (a slow SDK)
   let tokN = 0; const rot = (n) => (rotate ? (tokExp ?? T0 + 3600e3) + n * 1000 : tokExp);
-  const tok = (u) => { const n = tokN++; return failToken > 0 ? (failToken--, Promise.reject(new Error('network'))) : n >= failFrom ? Promise.reject(new Error('network')) : hold && hold.on ? new Promise((r) => hold.q.push(() => r(TOK(u, rot(n))))) : Promise.resolve(TOK(u, rot(n))); };
+  const tok = (u) => { const n = tokN++; return failToken > 0 ? (failToken--, Promise.reject(new Error('network'))) : n >= failFrom || (failIf && failIf()) ? Promise.reject(new Error('network')) : hold && hold.on ? new Promise((r) => hold.q.push(() => r(TOK(u, rot(n))))) : Promise.resolve(TOK(u, rot(n))); };
   const auth = { get currentUser() { const u = user; return u ? { uid: u, getIdToken: () => tok(u) } : null; } };
   const emitU = () => { for (const l of listeners) l(user ? { uid: user } : null); };
   const authMod = { browserLocalPersistence: 'LOCAL', getAuth: () => auth, setPersistence: async () => {},
     // authGate: { q } — the first auth state waits until the test releases it (a slow SDK: auth still unresolved at startup)
     onAuthStateChanged: (a, next) => { listeners.push(next); const first = () => next(user ? { uid: user } : null); if (authGate) authGate.q.push(first); else Promise.resolve().then(first); return () => { listeners = listeners.filter((x) => x !== next); }; },
-    signInWithCustomToken: async (a, t) => { calls.ct.push(t); user = t.replace(/^ct:/, ''); emitU(); return { user: { uid: user } }; },
-    signOut: async () => { calls.out++; if (failSignOut > 0) { failSignOut--; throw new Error('network'); } user = null; emitU(); } };
+    signInWithCustomToken: async (a, t) => { calls.ct.push(t); user = t.replace(/^ct:/, ''); if (notifyGate && notifyGate.on) notifyGate.q.push(emitU); else emitU(); return { user: { uid: user } }; },
+    signOut: async () => { calls.out++; if (failSignOut > 0) { failSignOut--; throw new Error('network'); } user = null; if (notifyGate && notifyGate.on) notifyGate.q.push(emitU); else emitU(); } };
   return { calls, loadSdk: async () => { calls.load++; return { initializeApp: () => ({}), authMod }; } };
 }
 const SU_EP = Object.fromEntries(require('./capp-signup-api.js').ENDPOINTS.map((k) => [k, `https://fn.test/${k}`]));   // the ONE source of the set
 const SU_RUNTIME = { ...RUNTIME, guestCardOnly: true, signup: { firebase: { apiKey: 'k_test', projectId: 'p' }, endpoints: SU_EP } };
 function signupServer(verify) {
-  const sent = [];
-  const fetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop(); sent.push([ep, i && i.body ? JSON.parse(i.body) : null]);
+  const sent = [], heads = [];   // heads: [ep, the x-firebase-id-token header] (Codex #197's signup cell reads it)
+  const fetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop(); sent.push([ep, i && i.body ? JSON.parse(i.body) : null]); heads.push([ep, i && i.headers ? i.headers['x-firebase-id-token'] || null : null]);
     const j = ep === 'getSignupConfig' ? { ok: true, terms_url: 'https://legal.test/t', privacy_url: 'https://legal.test/p', legal_ready: true, google_enabled: false } : ep === 'verifyOtp' ? verify : { ok: true, cooldown: 30 };
     return { status: 200, json: async () => j }; };
-  return { fetch, sent };
+  return { fetch, sent, heads };
 }
 const ANA = { ok: true, token: 'ct:u_ana', is_new: false, name: 'Ana Pérez', completion: 'complete', profile: { name: 'Ana Pérez', email: 'ana@gmail.com' } };
 const suHost = (S) => S.q('#su-host');
@@ -780,7 +786,7 @@ test('G6 shell: the SDK after the first paint; «Entrá» opens the sheet; a ver
   assert.deepEqual(JSON.parse(storage.getItem('capp:device_account')), { v: 1, account: true, e164: '+50499990000' });
   assert.deepEqual(JSON.parse(storage.getItem('capp:member_profile')), { v: 1, uid: 'u_ana', name: 'Ana Pérez', phone: '+50499990000', email: 'ana@gmail.com' });
   assert.deepEqual(J(S.ui.state.member), { uid: 'u_ana', name: 'Ana Pérez', phone: '99990000', email: 'ana@gmail.com', idToken: TOK('u_ana') });
-  assert.equal(await S.ui.state.member.getIdToken(), TOK('u_ana'), 'the transport\'s send-time token comes from the SDK');
+  assert.deepEqual(J(await S.ui.state.member.getIdTokenOwned()), { token: TOK('u_ana'), uid: 'u_ana' }, 'the transport\'s send-time token comes from the SDK — with the user it belongs to (Codex #197: the ONE owned accessor)');
   S.click('.tabbar [data-tab="account"]'); await flush();
   assert.equal(S.q('.acct-hero .t b') && S.q('.acct-hero .t b').textContent, 'Ana Pérez', 'G7: a member\'s Cuenta is the shell\'s (under runtime.signup)'); assert.equal(S.events.filter((e) => e[0] === 'tab').length, 0);
   await fb.loadSdk().then(({ authMod }) => authMod.signOut()); await flush();
@@ -891,7 +897,12 @@ test('Codex G6 r1 #3: a member apply delayed by a slow token never lands after a
     if (after === 'signout') await authMod.signOut(); else { storage.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_b' })); await authMod.signInWithCustomToken(null, 'ct:u_b'); }
     await flush(); hold.on = false; for (const r of hold.q.splice(0)) r(); await flush(); await flush();
     if (after === 'signout') assert.equal(S.ui.state.member, null, '🔴 a late apply never revives a signed-out member');
-    else assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_b', '🔴 a late apply for A never overwrites B');
+    else {   // r3 (owner 11-19): the switch RESTARTS the app — re-pointed: A never lands here, and the fresh app admits B
+      assert.notEqual(S.ui.state.member && S.ui.state.member.uid, 'u_ana', '🔴 a late apply for A never lands after the switch');
+      assert.equal(S.replaced.length, 1, 'premise: the switch restarted the app');
+      const { S: F } = await relaunch(storage, 'u_b');
+      try { assert.equal(F.ui.state.member && F.ui.state.member.uid, 'u_b', '🔴 a late apply for A never overwrites B (the fresh app admits B)'); } finally { F.w.close(); }
+    }
   }
 });
 test('Codex G6 r3: a complete account that leaves the sheet by Back then ✕ is a marked member and restores normally after a reload', async () => {
@@ -1041,7 +1052,9 @@ test('G7 frame 1 / 4a: the member\'s Cuenta from the cached profile — the init
   assert.equal(txt(S.q('.acct-hero .av')), 'A');
   assert.deepEqual([...S.qa('.acct-hero .t > *')].map((x) => x.textContent), ['Ana Pérez', '+504 9612-3344', 'ana.perez@gmail.com'], '🔴 G7-hero: name, phone, email on three lines');
   // owner 11-01: «Pedidos» in scope ⇒ its row first (v6)
-  assert.deepEqual(g7Rows(S), ['Pedidos', 'Direcciones Agregá tu dirección', 'Notificaciones Pedidos y ofertas', 'Ayuda', 'Cerrar sesión', 'Olvidar este teléfono Cierra tu sesión y deja de recordar tu número'], '🔴 NOTIFS-ONE-ROW: the web member\'s Cuenta — ONE «Notificaciones» row, no «Promociones»');   // + «Direcciones» (C-6a, D-3 r3 DECIDED)
+  // book-state (PLAN-capp-book-state r0 §3, owner 11-23): the cached-first Cuenta paints before the book is read ⇒ «Direcciones» carries no
+  // sub-line while the book LOADS (a KNOWN empty book keeps the approved «Agregá tu dirección» — BOOK-LOAD-4)
+  assert.deepEqual(g7Rows(S), ['Pedidos', 'Direcciones', 'Notificaciones Pedidos y ofertas', 'Ayuda', 'Cerrar sesión', 'Olvidar este teléfono Cierra tu sesión y deja de recordar tu número'], '🔴 NOTIFS-ONE-ROW: the web member\'s Cuenta — ONE «Notificaciones» row, no «Promociones»');   // + «Direcciones» (C-6a, D-3 r3 DECIDED)
   assert.equal(S.qa('.flow [data-act="sub-notifs"]').length, 1, '🔴 NOTIFS-ONE-ROW: one row'); assert.equal(S.q('.flow [data-act="promos"], .flow [data-row="promos"]'), null, '🔴 NOTIFS-ONE-ROW: the consent is not on the Cuenta');
   assert.equal(S.qa('.flow .rows').length, 2); assert.ok(S.q('.flow .rows.sess'));
   const pref = S.q('.flow').textContent;
@@ -1183,10 +1196,14 @@ test('G7 Codex r1 #5: auth says member, the ID token still pending — the Cuent
 test('G7 frame 3: «Cerrar sesión» — no confirmation; the guest\'s Cuenta at once; the profile cache cleared on the confirmed sign-out; the device marker KEPT', async () => {
   const { S, fb, store } = await g7Boot();
   S.click('[data-act="signout"]');
-  assert.ok(S.q('.guestcard'), '🔴 G7-signout: the guest\'s Cuenta at once'); assert.equal(S.q('#layer .errsheet'), null, 'no confirmation');
-  await flush();
+  // r3 (owner 11-19) re-pointed: at once = the quiet overlay (her Cuenta covered); the guest's Cuenta is the restarted app's
+  assert.ok(S.q('#swap'), '🔴 G7-signout: her Cuenta covered at once'); assert.equal(S.q('#layer .errsheet'), null, 'no confirmation');
+  await flush(); await flush();
   assert.equal(fb.calls.out, 1); assert.equal(store.getItem('capp:member_profile'), null, 'no personal data stays on show');
   assert.ok(store.getItem('capp:device_account'), '🔴 G7-marker: an ordinary sign-out keeps the device marker');
+  const { S: F } = await relaunch(store, null);
+  try { F.click('.tabbar [data-tab="account"]'); await flush(); assert.ok(F.q('.guestcard'), '🔴 G7-signout: the guest\'s Cuenta (the restarted app)'); } finally { F.w.close(); }
+  S.w.close();
 });
 test('G7 frame 2: «Olvidar este teléfono» asks first («¿Olvidar este teléfono?» + the body, [Olvidar este teléfono][Cancelar]); Cancelar changes nothing; confirming forgets the marker and signs out', async () => {
   const { S, fb, store } = await g7Boot();
@@ -1197,7 +1214,12 @@ test('G7 frame 2: «Olvidar este teléfono» asks first («¿Olvidar este teléf
   S.click('#layer [data-act="lclose"]'); await flush();
   assert.equal(S.q('#layer .errsheet'), null); assert.equal(fb.calls.out, 0); assert.ok(store.getItem('capp:device_account'), 'Cancelar keeps everything');
   S.click('[data-act="forget"]'); S.click('#layer [data-act="forget-confirm"]'); await flush();
-  assert.equal(store.getItem('capp:device_account'), null, '🔴 G7-forget: the device marker removed'); assert.equal(fb.calls.out, 1); assert.ok(S.q('.guestcard'));
+  await flush();
+  assert.equal(store.getItem('capp:device_account'), null, '🔴 G7-forget: the device marker removed'); assert.equal(fb.calls.out, 1);
+  // r3 re-pointed: the guest's Cuenta is the restarted app's (here: the overlay)
+  assert.ok(S.q('#swap'), 'her Cuenta covered'); S.w.close();
+  const { S: F } = await relaunch(store, null);
+  try { F.click('.tabbar [data-tab="account"]'); await flush(); assert.ok(F.q('.guestcard'), 'the guest\'s Cuenta (the restarted app)'); } finally { F.w.close(); }
 });
 test('G7 a REJECTED sign-out restores the member (nothing pretends to be signed out)', async () => {
   const { S, fb } = await g7Boot({ fbOpts: { failSignOut: 1 } });
@@ -1445,12 +1467,12 @@ test('D-4a precedence: a payment RETURN owns the boot — the owner store resolv
   const apiFetch = async () => ({ status: 200, ok: true, json: async () => ({ ok: true, state: 'pending' }) });
   // the deep-linked store is READY first (its menu answers) while the owner's menu is held: only the precedence rule keeps it out
   const ownerLate = (rid) => (rid === 'x_pizza' ? 'hold' : 'ok');
-  const P = routeShell('/r/la_musa/pago', { storage: memStorage(recs()), search: ret, apiFetch, envelope: ownerLate }); await flush(); await flush();
+  const P = routeShell('/r/la_musa/pago', { storage: owned(recs()), search: ret, apiFetch, envelope: ownerLate }); await flush(); await flush();
   assert.ok(!P.ui.store() || P.ui.store().rid !== 'la_musa', '🔴 the deep-linked store was entered while a return owns the boot');
   P.release('x_pizza'); await flush(); await flush();
   assert.equal(P.ui.store() && P.ui.store().rid, 'x_pizza', '🔴 the return owner handles the boot (never the deep-linked store)');
   assert.equal(P.w.location.search, '', 'persisted ⇒ the boot (not the router) stripped the query');
-  const st = memStorage(recs()), real = st.setItem; st.setItem = (k, v) => { if (k === 'capp:return') throw new Error('quota'); real(k, v); };
+  const st = owned(recs()), real = st.setItem; st.setItem = (k, v) => { if (k === 'capp:return') throw new Error('quota'); real(k, v); };
   const M = routeShell('/r/la_musa/pago', { storage: st, search: ret, apiFetch }); await flush(); await flush();
   assert.equal(M.ui.store() && M.ui.store().rid, 'x_pizza', 'memory mode: still the owner');
   assert.equal(M.w.location.search, ret, '🔴 memory mode: the return query is the ONLY evidence — it must survive the reflections');
@@ -1460,9 +1482,9 @@ test('D-4a cold entry: /r/{rid} ⇒ that store; /pedido ⇒ the cart; /pago ⇒ 
   const d = anyDish();
   const A = routeShell('/r/x_pizza'); await flush(); await flush();
   assert.equal(A.ui.store() && A.ui.store().rid, 'x_pizza', '🔴 a cold store link must enter that store'); assert.equal(where(A), '/r/x_pizza');
-  const B = routeShell('/r/x_pizza/pedido', { storage: memStorage(cartOf('x_pizza', d.key)) }); await flush(); await flush();
+  const B = routeShell('/r/x_pizza/pedido', { storage: owned(cartOf('x_pizza', d.key)) }); await flush(); await flush();
   assert.equal(B.ui.store().ui.state.layerKind, 'cart', '🔴 /pedido opens the cart'); assert.equal(where(B), '/r/x_pizza/pedido');
-  const C = routeShell('/r/x_pizza/pago', { storage: memStorage(cartOf('x_pizza', d.key)) }); await flush(); await flush();
+  const C = routeShell('/r/x_pizza/pago', { storage: owned(cartOf('x_pizza', d.key)) }); await flush(); await flush();
   assert.equal(C.ui.store().ui.state.screen, 'checkout', '🔴 /pago opens the checkout'); assert.equal(where(C), '/r/x_pizza/pago');
   const E = routeShell('/r/x_pizza/pago'); await flush(); await flush();
   assert.equal(E.ui.store().ui.state.screen, 'store', 'an empty cart ⇒ the store'); assert.equal(where(E), '/r/x_pizza');
@@ -1470,14 +1492,14 @@ test('D-4a cold entry: /r/{rid} ⇒ that store; /pedido ⇒ the cart; /pago ⇒ 
 
 test('D-4a cold /pago under a LOCK: the lock is checked FIRST and resolved by status only — frozen ⇒ «Necesitamos revisar», a live card send ⇒ its status poll — ZERO sends', async () => {
   const sends = [];
-  const F = routeShell('/r/x_pizza/pago', { storage: memStorage(frozenCart()), fetchLog: sends }); await flush(); await flush();
+  const F = routeShell('/r/x_pizza/pago', { storage: owned(frozenCart()), fetchLog: sends }); await flush(); await flush();
   assert.equal(F.ui.store().ui.state.screen, 'store', 'no checkout over a lock');
   assert.match(txt(F.q('#layer')), /Necesitamos revisar tu pedido/, '🔴 a frozen cart ⇒ the recovery sheet');
   const t0 = T0, polls = [];
   const live = { ...frozenCart(), 'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_1', order: null, ts: t0 }),
     'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, pay_pending: true, dispatched: 1, cart_gen: 'g_1', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }) };
   const apiFetch = async (u) => { polls.push(u.split('?')[0]); return { status: 200, ok: true, json: async () => ({ ok: true, state: 'pending' }) }; };
-  const L = routeShell('/r/x_pizza/pago', { storage: memStorage(live), apiFetch }); await flush(); await flush();
+  const L = routeShell('/r/x_pizza/pago', { storage: owned(live), apiFetch }); await flush(); await flush();
   assert.ok(polls.length >= 1 && polls.every((u) => u === '/x/s'), `🔴 only status reads (${polls.join(',')})`);
   assert.equal(L.ui.store().ui.state.screen, 'store'); assert.ok(L.q('#layer .errsheet'), 'a held sheet, never the checkout');
   assert.deepEqual(sends.filter((x) => /createOrder|chargeOnlineOrder|\/x\/c|\/x\/p/.test(String(x))), [], '🔴 zero sends');
@@ -1485,7 +1507,7 @@ test('D-4a cold /pago under a LOCK: the lock is checked FIRST and resolved by st
 
 test('D-4a cold dish: resolved against the VERIFIED FRESH body — waits on a presentation body, opens on the fresh one; absent from the fresh body ⇒ the store', async () => {
   const d = anyDish();
-  const W = routeShell(`/r/x_pizza/plato/${encodeURIComponent(d.key)}`, { envelope: 'hold', storage: memStorage(storedMenu('x_pizza')) }); await flush(); await flush();
+  const W = routeShell(`/r/x_pizza/plato/${encodeURIComponent(d.key)}`, { envelope: 'hold', storage: owned(storedMenu('x_pizza')) }); await flush(); await flush();
   const ui = W.ui.store() && W.ui.store().ui;
   assert.ok(ui, 'premise: the store mounts on its stored (presentation) menu');
   assert.equal(ui.state.open, null, '🔴 never opened on the unverified presentation body');
@@ -1528,7 +1550,7 @@ test('D-4a native / routing off: no replaceState from the router and no hydratio
 test('D-4a cold /pago, every UNREADABLE lock case (Codex r2 #4): the marker (reconcile fails), the freeze state (unknown), the pending record ⇒ «Sin conexión» with a status-only retry — never the checkout, ZERO sends', async () => {
   const d = anyDish();
   for (const key of ['capp:x_pizza:placed', 'capp:x_pizza:cart', 'capp:x_pizza:pending_place']) {
-    const st = memStorage(cartOf('x_pizza', d.key)), real = st.getItem;
+    const st = owned(cartOf('x_pizza', d.key)), real = st.getItem;
     let armed = false; st.getItem = (k) => { if (armed && k === key) throw new Error('unreadable'); return real(k); };
     const sends = [];
     const S = routeShell('/r/x_pizza/pago', { storage: st, fetchLog: sends });
@@ -1546,7 +1568,7 @@ test('D-4a cold /pago, every UNREADABLE lock case (Codex r2 #4): the marker (rec
 
 test('D-4a §4: ADOPTION never discards a lock — a staged fresh body is NOT adopted (the mount is not torn down) while a payment lock is held, on the TAP path too', async () => {
   const t0 = T0, d = anyDish();
-  const storage = memStorage({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key),
+  const storage = owned({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key),
     'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_c', order: null, ts: t0 }),
     'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, pay_pending: true, dispatched: 1, cart_gen: 'g_c', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }) });
   const apiFetch = async () => ({ status: 200, ok: true, json: async () => ({ ok: true, state: 'pending' }) });
@@ -1572,7 +1594,7 @@ test('D-4a r1 P1: a device Back while a cold link is HELD cancels it — a delay
 
 test('D-4a r1 P2: a cold /pago on a PRESENTATION menu keeps its intent — the fresh menu arriving opens the checkout (never left on the store)', async () => {
   const d = anyDish();
-  const S = routeShell('/r/x_pizza/pago', { envelope: 'hold', storage: memStorage({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key) }) }); await flush(); await flush();
+  const S = routeShell('/r/x_pizza/pago', { envelope: 'hold', storage: owned({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key) }) }); await flush(); await flush();
   const ui = S.ui.store() && S.ui.store().ui; assert.ok(ui, 'premise: mounted on the stored (presentation) menu');
   assert.equal(ui.orderable(), false, 'premise: not orderable yet');
   S.release('x_pizza'); await flush(); await flush();
@@ -1582,7 +1604,7 @@ test('D-4a r1 P2: a cold /pago on a PRESENTATION menu keeps its intent — the f
 
 test('D-4a r1 P2: a LOCKED cold dish with a staged CHANGED menu never opens on the old mount (stale prices) — it stays pending', async () => {
   const t0 = T0, d = anyDish();
-  const storage = memStorage({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key),
+  const storage = owned({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key),
     'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_c', order: null, ts: t0 }),
     'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, pay_pending: true, dispatched: 1, cart_gen: 'g_c', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }) });
   const apiFetch = async () => ({ status: 200, ok: true, json: async () => ({ ok: true, state: 'pending' }) });
@@ -1595,7 +1617,7 @@ test('D-4a r1 P2: a LOCKED cold dish with a staged CHANGED menu never opens on t
 });
 
 test('D-4a r1 P2: hydration is gated on bootReturn.mode ∈ {none, invalid} — an OWNERLESS resumed handoff does not hydrate the linked store', async () => {
-  const storage = memStorage({ 'capp:return': JSON.stringify({ v: 1, pay: 'complete', order: ORDER, t: 'pt_9', owner: null, at: T0 }) });
+  const storage = owned({ 'capp:return': JSON.stringify({ v: 1, pay: 'complete', order: ORDER, t: 'pt_9', owner: null, at: T0 }) });
   const S = routeShell('/r/x_pizza', { storage }); await flush(); await flush();
   assert.equal(S.ui.store(), null, '🔴 r1 P2: a resumed (ownerless) return let the deep link hydrate');
 });
@@ -1603,7 +1625,7 @@ test('D-4a r1 P2: hydration is gated on bootReturn.mode ∈ {none, invalid} — 
 // ── Codex D-4a code r2 (NEW P2): a pending retry fires ONLY while the user has done nothing since hydration began ──
 test('D-4a r2: opening the store SEARCH while a cold /pago waits cancels it — the fresh menu never dismisses the search for the checkout', async () => {
   const d = anyDish();
-  const S = routeShell('/r/x_pizza/pago', { envelope: 'hold', storage: memStorage({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key) }) }); await flush(); await flush();
+  const S = routeShell('/r/x_pizza/pago', { envelope: 'hold', storage: owned({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key) }) }); await flush(); await flush();
   const ui = S.ui.store().ui; assert.equal(ui.orderable(), false, 'premise: /pago is waiting for the fresh menu');
   S.click('[data-act="ssearch"]'); await flush();
   assert.equal(ui.state.layerKind, 'ssearch', 'premise: the store search is open');
@@ -1614,7 +1636,7 @@ test('D-4a r2: opening the store SEARCH while a cold /pago waits cancels it — 
 
 test('D-4a r2: an in-store action during a LOCKED dish hydration cancels it — the dish never opens later when the lock clears', async () => {
   const t0 = T0, d = anyDish();
-  const storage = memStorage({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key),
+  const storage = owned({ ...storedMenu('x_pizza'), ...cartOf('x_pizza', d.key),
     'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_c', order: null, ts: t0 }),
     'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, pay_pending: true, dispatched: 1, cart_gen: 'g_c', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }) });
   const apiFetch = async () => ({ status: 200, ok: true, json: async () => ({ ok: true, state: 'pending' }) });
@@ -2031,7 +2053,9 @@ test('Pedido recibido: «Ayuda» opens wa.me/<runtime.supportWhatsapp> with the 
 // frame 7 (owner 10-27) in v6's .rw slot, end to end on the REAL writers: a guest card order (the code sheet, the charge with its
 // grant) leaves for PixelPay; a NEW page load on the paid return lands on «Pedido recibido» with the offer; «Crear mi cuenta» redeems
 // the grant (no second code) and signs in through the shell's own path; the offer is gone for the member
-test('Pedido recibido · frame 7: a guest card order\'s paid return shows the account offer (phone + email pre-filled); «Crear mi cuenta» redeems the grant and signs in — the offer gone', async () => {
+// a guest card order up to its charge (the real checkout, the code sheet, the charge with its signup grant): the device storage, the
+// order id and the runtime — frame 7's paid return and the r3 offer race build on it
+async function guestPaidOrder() {
   const storage = memStorage(), grant = { token: 'sg_1', expires_at: T0 + 15 * 60e3 };
   const GEO = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, longitude: -88.04 } }) };
   const sent = [];
@@ -2057,6 +2081,10 @@ test('Pedido recibido · frame 7: a guest card order\'s paid return shows the ac
     const ch = sent.find((x) => x[0] === 'p' && x[1] && x[1].order_id);   // RUNTIME.endpoints.chargeOnlineOrder = /x/p
     assert.ok(ch, `premise: the charge was sent (${sent.map((x) => x[0]).join(',')})`); id = ch[1].order_id;
   } finally { A.w.close(); }
+  return { storage, id, RT };
+}
+test('Pedido recibido · frame 7: a guest card order\'s paid return shows the account offer (phone + email pre-filled); «Crear mi cuenta» redeems the grant and signs in — the offer gone', async () => {
+  const { storage, id, RT } = await guestPaidOrder();
   // the paid return: a NEW page load on the same device storage
   const fb = fakeFirebase(); const su = [];
   const suFetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop(); const b = i && i.body ? JSON.parse(i.body) : null; su.push([ep, b]);
@@ -2082,6 +2110,100 @@ test('Pedido recibido · frame 7: a guest card order\'s paid return shows the ac
     assert.equal(su.filter((x) => x[0] === 'requestOtp').length, 0, 'no second code');
     assert.equal(B.q('.guestcard.offer'), null, '🔴 PR-7: the offer is gone for the member');
   } finally { B.w.close(); }
+});
+// r3 (re-anchor r3-rs-14): the SEAL is the only guard once the device's stamp is HERS again after this tab left — her other tab re-admitted
+// her (the same stamp) before this page unloaded; a late write of the leaving tab still lands nothing
+test('r3 (re-anchor r3-rs-14) SEAL: she signs out here, her OTHER tab re-admits her (the same stamp returns) — «Listo» in the leaving tab still lands nothing', async () => {
+  const { S, fb, st } = await dirBoot();
+  try {
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush(); S.click('#layer [data-act="addr-new"]'); await flush();
+    assert.ok(S.q('[data-act="pin-done"]'), 'premise: Inicio\'s pin editor is open');
+    await signOutNow(fb);
+    assert.equal(S.replaced.length, 1, 'premise: this tab left (the page is still alive)');
+    st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_ana' }));   // her completion mark (switchTo's writer format)
+    const { S: C } = await relaunch(st, 'u_ana');   // her other tab: the same device storage — she is admitted there again
+    try { await flush(); assert.equal(st.getItem(OWNER), 'u:u_ana', 'premise: the device\'s stamp is hers again'); } finally { C.w.close(); }
+    assert.equal(st.getItem('capp:guest_loc'), null, 'premise: no location on the device before the late tap');
+    if (S.q('[data-act="pin-done"]')) { S.click('[data-act="pin-done"]'); await flush(); }   // a tap that slipped through (jsdom ignores inert)
+    assert.equal(st.getItem('capp:guest_loc'), null, '🔴 R3-SEAL: the leaving tab writes nothing, even under her own returned stamp');
+  } finally { S.w.close(); }
+});
+// r3 (identity, advisor 11-20): a tab that goes STALE while its owner check is still held (the SDK unresolved) never settles afterwards —
+// no stamp, no mismatch wipe of the identity that holds the device now
+test('r3 (identity) PRESETTLE: a tab stale while its gate is HELD, then its SDK resolves (guest) — no stamp written, Bob\'s records untouched', async () => {
+  const { S: S0, st } = await dirBoot(); S0.w.close();   // the device: Ana's (her stamp, her records)
+  const gA = { q: [] };
+  const { S: A } = await relaunch(st, null, { fbOpts: { persisted: null, authGate: gA }, noFlush: true });   // tab A: the SDK not resolved yet
+  try {
+    await flush();
+    assert.equal(gA.q.length, 1, 'premise: tab A\'s first auth state is held (its owner check waits)');
+    st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' }));   // Bob's completion mark (switchTo's writer format)
+    const { S: B } = await relaunch(st, 'u_bob');   // tab B: Bob admitted on the same device
+    try {
+      await flush(); assert.equal(st.getItem(OWNER), 'u:u_bob', 'premise: the device is Bob\'s (tab B stamped it)');
+      B.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); const u = B.ui.store().ui; u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render();
+      B.click('.seg [data-val="delivery"]'); await flush();   // the store's own cart writer
+    } finally { B.w.close(); }
+    const cart = st.getItem('capp:x_pizza:cart'); assert.ok(cart, 'premise: Bob\'s cart is on the device');
+    A.w.dispatchEvent(new A.w.StorageEvent('storage', { key: OWNER })); await flush();   // the browser tells tab A the stamp changed
+    assert.equal(A.replaced.length, 1, 'premise: tab A is stale and left');
+    for (const f of gA.q.splice(0)) f(); await flush(); await flush(); await flush();   // tab A's SDK resolves (guest) after it left
+    assert.equal(st.getItem(OWNER), 'u:u_bob', '🔴 PRESETTLE: a tab that left writes no stamp');
+    assert.equal(st.getItem('capp:x_pizza:cart'), cart, '🔴 PRESETTLE: another identity\'s records are untouched (no mismatch wipe)');
+  } finally { A.w.close(); }
+});
+// r3 (identity, advisor 11-20): the ONE stamping place (ownBy) refuses once LEAVING — the sign-in sheet's «Listo» landing after this tab
+// left (another tab admitted Bob) never rewrites his stamp
+test('r3 (identity) SHEET-RACE: the sheet\'s «Listo» lands AFTER this tab left (another tab admitted Bob) — Bob\'s stamp and completion mark stay his', async () => {
+  const fb = fakeFirebase(); const srv = signupServer(ANA); const storage = memStorage();
+  const A = bootShell({ auth: 'unresolved', storage, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: srv.fetch } });
+  try {
+    await flush(); await flush();
+    await signInViaSheet(A);
+    assert.ok(suHost(A).querySelector('[data-su="finish"]'), 'premise: the sheet waits on «Listo»');
+    storage.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' }));   // Bob's completion mark (switchTo's writer format)
+    const { S: B } = await relaunch(storage, 'u_bob');   // tab B: the same device storage — Bob is admitted there
+    try { await flush(); assert.equal(storage.getItem(OWNER), 'u:u_bob', 'premise: the device is Bob\'s (tab B stamped it)'); } finally { B.w.close(); }
+    A.w.dispatchEvent(new A.w.StorageEvent('storage', { key: OWNER })); await flush();   // the browser tells tab A the stamp changed
+    assert.equal(A.replaced.length, 1, 'premise: tab A is stale and left');
+    A.click(suHost(A).querySelector('[data-su="finish"]')); await flush(); await flush();   // a tap that slipped through (jsdom ignores inert)
+    assert.equal(storage.getItem(OWNER), 'u:u_bob', '🔴 SHEET-RACE: Bob\'s stamp is never overwritten by a tab that left');
+    assert.equal(JSON.parse(storage.getItem('capp:member_complete')).uid, 'u_bob', '🔴 SHEET-RACE: no completion mark of hers lands');
+  } finally { A.w.close(); }
+});
+// r3 (identity, advisor 11-20): once a tab is LEAVING nothing admits or stamps. The race: this tab's «Crear mi cuenta» redeem is in flight,
+// another tab admits Bob (the device's stamp is his) ⇒ this tab is stale and leaves; the redeem reply lands after — the new account is
+// never signed in or admitted HERE, Bob's stamp is never overwritten, his records are never re-labelled as the new account's
+test('r3 (identity) OFFER-RACE: the offer\'s redeem lands AFTER this tab left (another tab admitted Bob) — no sign-in, no admission, Bob\'s stamp and records stay his', async () => {
+  const { storage, id, RT } = await guestPaidOrder();
+  let release = null; const held = new Promise((r) => { release = r; });
+  const fb = fakeFirebase(); const su = [];
+  const suFetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop(); const b = i && i.body ? JSON.parse(i.body) : null; su.push([ep, b]);
+    if (ep === 'redeemSignupGrant') await held;
+    const j = ep === 'getSignupConfig' ? { ok: true, terms_url: 'https://legal.test/t', privacy_url: 'https://legal.test/p', legal_ready: true, google_enabled: false }
+      : ep === 'redeemSignupGrant' ? { ok: true, token: 'ct:u_new', is_new: true, name: 'Ana', completion: 'complete' } : { ok: true };
+    return { status: 200, json: async () => j }; };
+  const pay2 = async (u) => ({ status: 200, ok: true, json: async () => (u.startsWith('/x/s') ? { ok: true, state: 'paid' } : { ok: false }) });
+  const A = bootShell({ storage, auth: 'guest', runtime: RT, apiFetch: pay2, search: `?pay=complete&order=${id}&t=pt_1`, mountExtra: { loadSdk: fb.loadSdk, signupFetch: suFetch } });
+  try {
+    await flush(); await flush(); await flush(800);
+    assert.ok(A.q('.mk-sheet .guestcard.offer'), 'premise: the offer in the order sheet');
+    A.click('[data-act="offer-create"]'); await flush(); await flush();
+    assert.ok(su.some((x) => x[0] === 'redeemSignupGrant'), 'premise: the redeem is in flight (held)');
+    storage.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' }));   // Bob's completion mark (switchTo's writer format)
+    const { S: B } = await relaunch(storage, 'u_bob');   // tab B: the same device storage — Bob is admitted there
+    try { await flush(); assert.equal(storage.getItem(OWNER), 'u:u_bob', 'premise: the device is Bob\'s (tab B stamped it)'); } finally { B.w.close(); }
+    const recs = keysOf(storage).filter((k) => /^capp:(?:active_order|[^:]+:(?:cart|placed|sent_order))$/.test(k)).sort();
+    A.w.dispatchEvent(new A.w.StorageEvent('storage', { key: OWNER }));   // the browser tells tab A the stamp changed
+    await flush();
+    assert.equal(A.replaced.length, 1, 'premise: tab A is stale and left');
+    release(); await flush(); await flush(); await flush();   // the redeem reply lands after the leave
+    assert.deepEqual(fb.calls.ct, [], '🔴 OFFER-RACE: a tab that left never signs the new account in');
+    assert.equal(storage.getItem(OWNER), 'u:u_bob', '🔴 OFFER-RACE: Bob\'s stamp is never overwritten — his records are never re-labelled');
+    assert.equal(JSON.parse(storage.getItem('capp:member_complete')).uid, 'u_bob', '🔴 OFFER-RACE: no completion mark of the new account lands');
+    assert.ok(!/u_new/.test(storage.getItem('capp:member_profile') || ''), '🔴 OFFER-RACE: no member profile of the new account lands');
+    assert.deepEqual(keysOf(storage).filter((k) => /^capp:(?:active_order|[^:]+:(?:cart|placed|sent_order))$/.test(k)).sort(), recs, 'the device records are untouched by the late reply');
+  } finally { A.w.close(); }
 });
 // ── «Pedido recibido» stage 2: the LIVE status, in place, from order_tracking/{token} (RTDB REST stream) — the record from the REAL
 // writer (create-order-build.buildCreateOrderUpdates) and its transitions on the paths index.js writes (status / delivered_at /
@@ -2241,7 +2363,7 @@ test('store-update state 1: with a store AND the «newer build» signal — the 
   try { await flush(); assert.equal(F.q('[data-act="app-update"]'), null, '🔴 SU-1: the signal says no newer build ⇒ no line'); } finally { F.w.close(); }
 });
 test('store-update state 4 (frozen): back on a new build with a cart FROZEN for a placement ⇒ «App actualizada. Estamos revisando tu pedido.» above frame 10\'s line, its controls still disabled', async () => {
-  const S = bootShell({ storage: memStorage({ ...frozenCart(), 'capp:app_build': 'b1' }), runtime: { ...RUNTIME, native: true }, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b2' } } } });
+  const S = bootShell({ storage: owned({ ...frozenCart(), 'capp:app_build': 'b1' }), runtime: { ...RUNTIME, native: true }, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b2' } } } });
   try {
     await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); S.click('#cart-bar'); await flush();
     assert.deepEqual(S.qa('#layer .cartnote .cn-l').map((x) => x.textContent), ['App actualizada. Estamos revisando tu pedido.', 'Tu pedido se está confirmando; no se puede cambiar mientras tanto.'], '🔴 SU-4b: the two drawn lines');
@@ -2250,7 +2372,7 @@ test('store-update state 4 (frozen): back on a new build with a cart FROZEN for 
   } finally { S.w.close(); }
 });
 test('store-update r2 (state 3 safety): the in-flight sheet keeps the retained placement record and the cart byte-for-byte (nothing cleared by the sheet)', async () => {
-  const storage = memStorage();
+  const storage = owned();
   const S = bootShell({ storage, runtime: STORE_RT, apiFetch: F426(['network', { status: 426, json: { error: 'client_update_required', app: 'orders', required_compat: 3 } }]), geolocation: GEO_OK2 });
   try {
     await flush(); await toShellPlace(S);
@@ -2266,7 +2388,7 @@ test('store-update r2 (state 3 safety): the in-flight sheet keeps the retained p
   } finally { S.w.close(); }
 });
 test('store-update r2 (round trip): «Abrir App Store» records the store; the NEW build reopens THAT store with its cart open and the «App actualizada» line; the same build never; a first install is never «updated»', async () => {
-  const storage = memStorage({ 'capp:app_build': 'b1' });
+  const storage = owned({ 'capp:app_build': 'b1' });
   const A = bootShell({ storage, runtime: STORE_RT, apiFetch: F426([{ status: 426, json: { error: 'client_update_required', app: 'orders', required_compat: 3 } }]), geolocation: GEO_OK2, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b1' } } } });
   try { A.w.open = () => null; await flush(); await toShellPlace(A); A.click('#layer [data-act="store-open"]'); await flush(); } finally { A.w.close(); }
   assert.equal(JSON.parse(storage.getItem('capp:store_handoff') || '{}').rid, 'x_pizza', '🔴 SU-r2-2: the store left for is recorded');
@@ -2286,7 +2408,7 @@ test('store-update r2 (round trip): «Abrir App Store» records the store; the N
     assert.equal(storage.getItem('capp:store_handoff'), null, 'one-shot');
   } finally { B.w.close(); }
   // a FIRST install (no previous build on the device): never «updated», nothing reopened; the build is recorded
-  const fresh = memStorage({ ...frozenCart() });
+  const fresh = owned({ ...frozenCart() });
   const F = bootShell({ storage: fresh, runtime: STORE_RT, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b9' } } } });
   try {
     await flush(); F.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); F.click('#cart-bar'); await flush();
@@ -2376,11 +2498,12 @@ async function pedidosBoot(db, opts = {}) {
   const g = g7Server();
   const fetch = async (u, i) => { const pth = u.split('?')[0];   // C-2: the rating endpoints go to the test's rating server (opts.rate)
     if (opts.rate && (pth.endsWith('/getMyRating') || pth.endsWith('/rateOrder'))) return opts.rate.handler(u, i);
+    if (opts.addr && (pth.endsWith('/getMyProfile') || pth.endsWith('/useMyAddress'))) return opts.addr.handler(u, i);   // C-DIR-1
     if (opts.fav && (pth.endsWith('/getMyFavorites') || pth.endsWith('/setFavorite'))) return opts.fav.handler(u, i);   // C-1b
     if (opts.push && /CustomerPush/.test(pth)) return opts.push.handler(u, i);   // push stage 2: 3a's REAL customer-push handlers
     return pth.endsWith('/getMyOrders') ? mo.handler(u, i) : g.fetch(u, i); };
   const fb = fakeFirebase({ persisted: 'u_ana', tokExp: T0 + 3600e3, ...(opts.fbOpts || {}) });
-  const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, readPublic: opts.readPublic, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation, ...(opts.envelope ? { envelope: opts.envelope } : {}), ...(opts.preMount ? { preMount: opts.preMount } : {}), ...(opts.dirScript ? { dirScript: opts.dirScript } : {}), ...(opts.media ? { media: opts.media } : {}) });
+  const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, readPublic: opts.readPublic, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation, ...(opts.search ? { search: opts.search } : {}), ...(opts.envelope ? { envelope: opts.envelope } : {}), ...(opts.preMount ? { preMount: opts.preMount } : {}), ...(opts.dirScript ? { dirScript: opts.dirScript } : {}), ...(opts.media ? { media: opts.media } : {}) });
   if (!opts.noFlush) { await flush(); await flush(); }
   return { S, mo, fb, g };
 }
@@ -2510,7 +2633,7 @@ test('getMyOrders client: ONLY the Row whitelist survives; a malformed row is dr
 });
 test('store-update r3 (Codex r2 #1): back on a new build with an UNRESOLVED card placement (valid credentials) ⇒ its verification starts by itself — a status request with no tap', async () => {
   const t0 = T0, polls = [];
-  const storage = memStorage({ ...frozenCart(), 'capp:app_build': 'b1',
+  const storage = owned({ ...frozenCart(), 'capp:app_build': 'b1',
     'capp:x_pizza:pending_pay': JSON.stringify({ order_id: ORDER, t: 'pt_9', rid: 'x_pizza', cart_gen: 'g_1', order: null, ts: t0 }),
     'capp:x_pizza:pending_place': JSON.stringify({ order_id: ORDER, method: 'online', card: true, issued: true, dispatched: 1, cart_gen: 'g_1', ts: t0, last_send: t0, expires_at: t0 + 3600e3 }),
     'capp:store_handoff': JSON.stringify({ v: 1, rid: 'x_pizza', at: t0 - 60e3, build: 'b1' }) });
@@ -2524,7 +2647,7 @@ test('store-update r3 (Codex r2 #1): back on a new build with an UNRESOLVED card
   } finally { S.w.close(); }
 });
 test('store-update r3 (Codex r2 #2): an OFFLINE first launch of the new build (directory 503) keeps the handoff; the next (online) launch on that build still restores the store, its cart open, the line', async () => {
-  const storage = memStorage({ 'capp:app_build': 'b1', 'capp:store_handoff': JSON.stringify({ v: 1, rid: 'x_pizza', at: T0 - 60e3, build: 'b1' }),
+  const storage = owned({ 'capp:app_build': 'b1', 'capp:store_handoff': JSON.stringify({ v: 1, rid: 'x_pizza', at: T0 - 60e3, build: 'b1' }),
     'capp:x_pizza:cart': (() => { const m = CappMenu.adaptMenu(PROV.x_pizza.envelope); const d = m.dishes.find((x) => !x.launcher && !x.variantOf && !m.pickupOnlyCats.has(String(x.cat))); return JSON.stringify({ v: 2, lines: [{ key: d.key, qty: 1, ex: [{}], added: 1 }], rid: 'x_pizza', mode: 'delivery' }); })() });
   const A = bootShell({ storage, dirScript: ['unavailable_503'], runtime: STORE_RT, mountExtra: { SherpaClient: { inert: true, identity: { build: 'b2' } } } });
   try { await flush(); await flush(); assert.equal(A.ui.store(), null, 'premise: offline — nothing mounted'); } finally { A.w.close(); }
@@ -2919,7 +3042,7 @@ async function againBoot(extra = {}) {
   placeReal(db, orders, 'u_ana', 'XP-V1', { ts: T0 - 86400e3 });   // 2× Margherita, Mozzarella on one (the real recipe)
   placeReal(db, orders, 'u_ana', 'LM-V2', { rid: 'la_musa', type: 'pickup', pay: 'card_delivery', ts: T0 - 2 * 86400e3, items_text: '1x Pad Thai (L210)' });
   const st = extra.storage || g7Store(G7_PROFILE({ promos: true }));
-  if (extra.seed) extra.seed(st);
+  if (extra.seed) { st.setItem('capp:member_owner', 'u:u_ana'); extra.seed(st); }   // r3: her records on her device (the stamp her admission wrote)
   const { S, mo, fb } = await pedidosBoot(db, { orders, storage: st, contextFor: extra.contextFor || AGAIN_CTX, ...(extra.envelope ? { envelope: extra.envelope } : {}), ...(extra.preMount ? { preMount: extra.preMount } : {}), ...(extra.receipts ? { receipts: extra.receipts } : {}), ...(extra.rgate ? { rgate: extra.rgate } : {}) });
   return { S, mo, fb, st, orders, db };
 }
@@ -3077,6 +3200,17 @@ test('Volver a pedir r2 (Codex VP r1 #2, the REAL held flow): a pill tapped whil
         await flush(); await flush(); await flush();
       }
       assert.equal(S.ui.store(), null, `🔴 VP-12 ${how}: the late menu opens NO store`);
+      if (how === 'identity') {   // r3 (owner 11-19) re-pointed: the sign-out restarts the app and her cart leaves with her — no recipe landed
+        assert.equal(st.getItem('capp:x_pizza:cart'), null, '🔴 VP-12 identity: no recipe applied to the cart (her cart left the device with her)');
+        assert.equal(S.replaced.length, 1, 'premise: the sign-out restarted the app');
+        const { S: F } = await relaunch(st, null);
+        try {
+          await until(() => F.q('.rlist .rcard[data-rid="x_pizza"]')); F.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); await flush();
+          assert.ok(F.ui.store() && F.ui.store().rid === 'x_pizza', 'premise: the store opened on the plain tap (the restarted app)');
+          assert.deepEqual(J(F.ui.store().ui.cart.lines().map((l) => l.key)), [], '🔴 VP-12 identity: the restarted app\'s cart carries no stale «Volver a pedir»');
+        } finally { F.w.close(); }
+        continue;
+      }
       assert.equal(st.getItem('capp:x_pizza:cart'), OWN, `🔴 VP-12 ${how}: no recipe applied to the cart`);
       // and a LATER plain visit of that store shows THEIR cart — no left-over recipe. After the release: straight from «Pedidos»
       // (its «Volver a pedir» store header — no navigation in between); after the identity change: from Inicio
@@ -3385,14 +3519,14 @@ test('C-6a r2 (Codex r1 #1-#5): the footer\'s Ayuda opens the platform support c
     try { assert.ok(E.q('.home-body footer.dfoot'), '🔴 C6A-5: the footer on Inicio\'s error state too'); } finally { E.w.close(); } }
 });
 
-test('C-6a «Direcciones» (D-3 r3 frame 6, DECIDED): the member\'s Cuenta row after «Pedidos», its address line, opening the approved location sheet', async () => {
+test('C-6a «Direcciones» (D-3 r3 frame 6) — superseded by C-DIR-1 (advisor 11-13: v6 :2170 governs): the member\'s Cuenta row after «Pedidos» opens v6\'s «Direcciones» screen', async () => {
   const { S } = await pedidosBoot({});
   try {
     S.click('.tabbar [data-tab="account"]'); await flush(); await flush();
     const rows = S.qa('.rows .rowbtn').map((b) => b.querySelector('.t').firstChild.textContent);
     assert.deepEqual(rows.slice(0, 3), ['Pedidos', 'Direcciones', 'Notificaciones'], '🔴 SEO-dir: the row, between Pedidos and Notificaciones');
-    S.click('.rowbtn[data-act="addr"]'); await flush();
-    assert.ok(S.q('#layer .sheet, #layer [role="dialog"]'), '🔴 SEO-dir: the location sheet opens');
+    S.click('.rowbtn[data-act="addresses"]'); await flush();
+    assert.equal(txt(S.q('.topbar h1')), 'Direcciones', '🔴 SEO-dir: v6\'s «Direcciones» opens (the interim location-sheet link is superseded)');
   } finally { S.w.close(); }
 });
 // ── C-6b (D-3 r3 f1a/f1b): the desktop top bar and the Inicio heading ──
@@ -4504,12 +4638,12 @@ test('S2 shell · dark: runtime.sdkPay absent ⇒ no projection stream, no notic
 const ACTIVE_REC = (TOKEN, placedAt) => JSON.stringify({ v: 1, exp: placedAt + 24 * 3600e3, order: { rid: 'x_pizza', order_id: 'XP-9', token: TOKEN, mode: 'delivery', status: 'new', owner: 'u:u_ana', placedAt, storeName: 'X. Pizza', branch: '', storeAddr: '',
   lines: [{ n: 1, name: 'Carnivora', extras: '', total: 340, dish_id: null }], fee: 45, tip: 20, total: 405, pay: 'online', addr: 'Col. Trejo', details: '', notes: '', whenText: 'Lo antes posible', phoneText: '', display_number: null, windowText: null, driver: null, stacked: false, doneAt: null, offerDone: true } });
 // wrapper: no injected payFetch — the production path, the page's SherpaClient present before mount (sherpa-client.js loads first)
-function payMember({ reply, rt = {}, wrapper = false }) {
-  const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12', srv = payServer(reply), fb = fakeFirebase({ persisted: 'u_ana' }), via = [];
-  const storage = memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }), 'capp:member_profile': JSON.stringify(ANA_PROF), 'capp:active_order': ACTIVE_REC(TOKEN, T0) });
+function payMember({ reply, rt = {}, wrapper = false, fbOpts = {} }) {
+  const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12', srv = payServer(reply), fb = fakeFirebase({ persisted: 'u_ana', ...fbOpts }), via = [];
+  const storage = owned({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }), 'capp:member_profile': JSON.stringify(ANA_PROF), 'capp:active_order': ACTIVE_REC(TOKEN, T0) }, 'u:u_ana');
   const preMount = wrapper ? (w) => { w.SherpaClient = { fetch: (u, i) => { via.push(String(u)); return srv.fetch(u, i); } }; } : null;
   const S = routeShell('/r/x_pizza/pago', { auth: 'unresolved', storage, preMount, runtime: { ...PAY_RT(SU_RUNTIME), ...rt }, readPublic: async () => ({ ok: false }), mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch, EventSource: ES, ...(wrapper ? {} : { payFetch: srv.fetch }) } });
-  return { S, srv, made, TOKEN, via };
+  return { S, srv, made, TOKEN, via, fb };
 }
 
 test('S2 shell · member, the production path (no injected payFetch): getPayAdjust and respondPayAdjust go through SherpaClient.fetch (pselfupdate-wrapper-lint)', async () => {
@@ -4730,7 +4864,7 @@ test('harness · REAL frames (advisor 11-08): with jsdom\'s own timer-driven req
 test('S2-checkout 8 (v7): an order placed with the in-app card shows its card in «Pago y entrega» — «Pago · Visa ···· 4242», the Total, «Se cobra al recibir tu pedido.» — before any adjustment projection exists', async () => {
   const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12', fb = fakeFirebase({ persisted: 'u_ana' });
   const rec = JSON.parse(ACTIVE_REC(TOKEN, T0)); rec.order.sdkCard = { brand: 'visa', last4: '4242' };
-  const storage = memStorage({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }), 'capp:member_profile': JSON.stringify(ANA_PROF), 'capp:active_order': JSON.stringify(rec) });
+  const storage = owned({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }), 'capp:member_profile': JSON.stringify(ANA_PROF), 'capp:active_order': JSON.stringify(rec) }, 'u:u_ana');
   const S = routeShell('/r/x_pizza/pago', { auth: 'unresolved', storage, runtime: PAY_RT(SU_RUNTIME), readPublic: async () => ({ ok: false }), mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch, EventSource: ES, payFetch: payServer(() => null).fetch } });
   try {
     await until(() => S.ui.state.member && made.some((e) => e.url.includes('/order_pay_view/'))); await flush();
@@ -5124,6 +5258,292 @@ test('dish-stats (1) F3: a stats-only revalidation during the visit adopts NOTHI
   } finally { S.w.close(); }
 });
 
+// ── C-DIR-1 (PLAN-capp-direcciones r0 + rulings; v6 P:2170 / :2179-2184 / :2162 / :1507 / :2264): the member's address book — 3a's getMyProfile
+// (S-ADDR-1) read once after paint, cached per member; «en uso» = default_address, persisted through useMyAddress (S-ADDR-2). The pencil
+// is INERT, «Agregar dirección» is v6's pin-only step. The served bodies are the REAL writer + 3a's REAL handlers (fixtures/addr) ──
+// ADDR_REF = feat/addr-rev-3a @805a5015 (PLAN-3a-addr-rev, APPROVED 11-18): S-ADDR-1 + S-ADDR-2 on main 31f05c8a4 + the selection CAS
+// (expected_rev + expected_default, 409 stale_address — the client trusts only «stale» and re-reads) — the ONE server ref
+// PROVENANCE-PIN:BEGIN addr
+const ADX = JSON.parse(readFileSync(join(HERE, 'fixtures/addr/addr.json'), 'utf8'));
+const ADDR_REF = '805a5015411a63ecac62d1f54bac653b9ea1ddc0';
+test('C-DIR-1 ADDR-PIN: the address fixture was produced by 3a\'s REAL handlers at the ONE approved server ref — every recorded blob is that ref\'s', () => {
+  assert.equal(ADX.source.commit, ADDR_REF, '🔴 ADDR-PIN: the fixture was generated at the approved 3a ref');
+  const files = Object.keys(ADX.source.blobs);
+  assert.deepEqual(files.filter((f) => /^xpizza-functions\/(signup-platform|my-address|address-book)\.js$/.test(f)).sort(), ['xpizza-functions/address-book.js', 'xpizza-functions/my-address.js', 'xpizza-functions/signup-platform.js'], 'premise: S-ADDR-1 + S-ADDR-2 + the book module');
+  for (const f of files) assert.equal(ADX.source.blobs[f], execFileSync('git', ['rev-parse', `${ADDR_REF}:${f}`], { cwd: join(HERE, '..'), encoding: 'utf8' }).trim(), `🔴 ADDR-PIN: ${f} is the ref's blob`);
+});
+// PROVENANCE-PIN:END addr
+const AID = ADX.ids;
+// THE ADDRESS SERVER STUB (r3; PLAN-3a-addr-rev @805a5015) — never laxer than 3a's handler:
+//   · getMyProfile answers the CALLER's own book (the token's uid): u_ana ⇒ the next scenario of `reads` (the last one sticks; default
+//     [profile]), anyone else ⇒ the empty book;
+//   · useMyAddress enforces the handler's exact body rule (EXACTLY { id, expected_rev, expected_default }, the 400 otherwise — its REAL
+//     recorded body), then answers the next scenario of `uses` — consumed when the server ANSWERS (after `ugate`), so a held write lands
+//     late in its real order — and ONLY when the client sent that scenario's recorded request byte for byte (else `problems` records it;
+//     every cell asserts `problems` empty);
+//   · ugate(body, n) ⇒ a promise the n-th write waits on, or 'OFFLINE' (the transport fails: status 0); pgate holds every read.
+const ADDR_RE = /^a_[a-f0-9]{6,32}$/;
+const addrBodyOk = (b) => !!b && typeof b === 'object' && !Array.isArray(b) && Object.keys(b).length === 3 && typeof b.id === 'string' && ADDR_RE.test(b.id)
+  && Number.isSafeInteger(b.expected_rev) && b.expected_rev >= 0 && 'expected_default' in b && (b.expected_default === null || (typeof b.expected_default === 'string' && ADDR_RE.test(b.expected_default)));
+function addrServer({ profile = 'profile_default_casa', reads = null, uses = ['use_trabajo'], pgate = null, ugate = null } = {}) {
+  const calls = [], problems = []; let prof = profile; const rq = reads ? [...reads] : null, uq = [...uses]; let wn = 0, rn = 0;
+  const whoOf = (i) => { const tk = (i.headers || {})['x-firebase-id-token'] || ''; try { return JSON.parse(Buffer.from(tk.split('.')[1], 'base64url').toString()).sub; } catch (_) { return null; } };
+  const reply = (sc) => ({ status: sc.status, json: async () => J(sc.body) });
+  const handler = async (u, i = {}) => {
+    const ep = u.split('?')[0].split('/').pop(), body = i.body ? JSON.parse(i.body) : null, who = whoOf(i);
+    calls.push({ ep, u, method: i.method || 'GET', body, headers: i.headers || {}, who });
+    if (ep === 'getMyProfile') {
+      if (pgate) await (typeof pgate === 'function' ? pgate(rn++) : pgate);   // book-state: a gate per read (n = 0, 1, …); a rejection = the transport fails (offline)
+      if (who && who !== 'u_ana') return reply(ADX.scenarios.profile_empty);
+      return reply(ADX.scenarios[rq ? (rq.length > 1 ? rq.shift() : rq[0]) : prof]);
+    }
+    const n = wn++;
+    if (!addrBodyOk(body)) return reply(ADX.scenarios.use_bad_shape);
+    const g = ugate ? ugate(body, n) : null;
+    if (g === 'OFFLINE') throw new Error('offline');
+    if (g) await g;
+    const name = uq.shift();
+    if (!name) { problems.push(`write ${n} ${JSON.stringify(body)}: no scenario left`); return reply(ADX.scenarios.use_bad_shape); }
+    const sc = ADX.scenarios[name];
+    if (JSON.stringify(sc.req) !== JSON.stringify(body)) problems.push(`write ${n}: sent ${JSON.stringify(body)}, ${name} was recorded for ${JSON.stringify(sc.req)}`);
+    return reply(sc);
+  };
+  return { handler, calls, problems, profile: (p) => { prof = p; } };
+}
+const addrWrites = (addr) => addr.calls.filter((c) => c.ep === 'useMyAddress').map((c) => c.body);
+const addrReads = (addr) => addr.calls.filter((c) => c.ep === 'getMyProfile');
+const addrStored = (st) => { const v = st.getItem('capp:addr:u_ana'); return v ? JSON.parse(v) : null; };
+const dirRows = (S) => S.qa('.addrlist .rowbtn').map((b) => [b.dataset.act, b.dataset.id || null, txt(b.querySelector('.t b')) || txt(b.querySelector('.t')), txt(b.querySelector('.t > span'))]);
+async function dirBoot(o = {}) {
+  const addr = addrServer(o);
+  const st = o.storage || g7Store(G7_PROFILE({ promos: true }));
+  const b = await pedidosBoot({}, { storage: st, addr, ...(o.fbOpts ? { fbOpts: o.fbOpts } : {}), ...(o.apiFetch ? { apiFetch: o.apiFetch } : {}), ...(o.url ? { url: o.url } : {}) });
+  await flush(); await flush();
+  return { ...b, addr, st };
+}
+const toAccount = async (S) => { S.click('.tabbar [data-tab="account"]'); await flush(); };
+const toDirecciones = async (S) => { await toAccount(S); S.click('[data-act="addresses"]'); await flush(); };
+test('C-DIR-1 (v6 :2162): the member\'s Cuenta row «Direcciones» carries the book\'s labels «Trabajo · Casa» (the server\'s order); the read is getMyProfile, after paint, the token in its header', async () => {
+  const { S, addr } = await dirBoot();
+  try {
+    await toAccount(S);
+    const row = S.q('.rows [data-act="addresses"]');
+    assert.ok(row, '🔴 DIR-1: the member\'s row opens «Direcciones»');
+    assert.equal(txt(row.querySelector('.t')), 'Direcciones Trabajo · Casa', '🔴 DIR-1: v6\'s subtitle — the labels joined');
+    const reads = addr.calls.filter((c) => c.ep === 'getMyProfile');
+    assert.equal(reads.length, 1, '🔴 DIR-1: ONE profile read'); assert.ok(reads[0].headers['x-firebase-id-token'] && !/tok|token/i.test(reads[0].u), 'the token in its header, never the URL');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (v6 :2170): «Direcciones» — one row per address «{label}» (+ « · en uso» on the default) / «{detected} · {details}», an INERT pencil, then «Agregar dirección»; back ⇒ Cuenta', async () => {
+  const { S } = await dirBoot();
+  try {
+    await toDirecciones(S);
+    assert.equal(txt(S.q('.topbar h1')), 'Direcciones', '🔴 DIR-2: v6\'s top bar');
+    assert.deepEqual(dirRows(S), [   // advisor 11-14 (owed SBS): the address in use FIRST, then last_used_at descending (the server sends Trabajo first)
+      ['addr-use', AID.casa, 'Casa · en uso', 'Col. Trejo, San Pedro Sula · Casa azul, portón negro'],
+      ['addr-use', AID.trabajo, 'Trabajo', 'Blvd. Morazán, Tegucigalpa · Torre 2, piso 5'],
+      ['addr-new', null, 'Agregar dirección Poné el pin en tu puerta y describí la referencia', 'Poné el pin en tu puerta y describí la referencia'],
+    ], '🔴 DIR-2: exact to v6 :2170');
+    for (const r of S.qa('.addrlist [data-act="addr-use"]')) { const pen = r.querySelector('svg.chev'); assert.ok(pen, '🔴 DIR-2: the pencil'); assert.equal(pen.closest('[data-act]'), r, '🔴 DIR-2: the pencil is INERT (no action of its own)'); }
+    S.click('.topbar [data-act="addresses-back"]'); await flush();
+    assert.ok(S.q('.rows [data-act="addresses"]'), 'back ⇒ Cuenta');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (v6 :2179-2184): the «Entregar en» sheet lists the saved addresses (label / detected; the one in use .on) ABOVE «Usar mi ubicación actual» and «Agregar dirección»; a tap selects and closes', async () => {
+  const { S } = await dirBoot();
+  try {
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush();
+    const rows = S.qa('#layer nav .navrow').map((b) => [b.dataset.act, b.dataset.id || null, b.classList.contains('on'), txt(b)]);
+    assert.deepEqual(rows, [
+      ['addr-use', AID.casa, true, 'Casa Col. Trejo, San Pedro Sula'], ['addr-use', AID.trabajo, false, 'Trabajo Blvd. Morazán, Tegucigalpa'],   // in use first (advisor 11-14)
+      ['loc-use', null, false, 'Usar mi ubicación actual'], ['addr-new', null, false, 'Agregar dirección'],
+    ], '🔴 DIR-4: exact to v6 :2181-2183');
+    S.click(`#layer [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush(); await flush();
+    assert.equal(S.q('#layer .sheet'), null, '🔴 DIR-4: the sheet closes'); assert.equal(txt(S.q('.addr-btn .v > span')), 'Trabajo', '🔴 DIR-4: the pill follows');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (16b, owed SBS 11-14): the «Entregar en» note never leaves «dirección.» alone — «esta dirección.» is one unit (the mockup\'s line 2)', async () => {
+  const { S } = await dirBoot();
+  try {
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush();
+    const note = S.q('#layer .sheethead small');
+    assert.equal(note.textContent, 'La zona de cada restaurante se revisa con esta dirección.', '🔴 DIR-NOTE: «esta» and «dirección.» held together (no-break space)');
+  } finally { S.w.close(); }
+});
+// SUPERSEDED by the owner's Q5 (MOCKUP-capp-book-state, 11-23): a list opened BEFORE the read lands is a book NOT LOADED YET — it draws the
+// loading line (never «Agregar dirección» alone, which read as an empty book) and fills in place ONCE when the book lands; rule 7 (frozen
+// per open) holds for a list opened on a KNOWN book. The next open shows the same book
+test('C-DIR-1 (rule 7 + book-state Q5): «Direcciones» opened BEFORE the read lands is LOADING, fills in place once when it lands; the next open shows the book', async () => {
+  const G = deferred();
+  const { S } = await dirBoot({ pgate: G.p });
+  try {
+    await toDirecciones(S);
+    assert.deepEqual([dirRows(S).map((r) => r[0]), txt(S.q('.addrlist .aload'))], [['addr-new'], 'Cargando tus direcciones…'], 'premise: no book yet — the loading line');
+    G.resolve(); await flush(); await flush();
+    assert.deepEqual(dirRows(S).map((r) => r[0]), ['addr-use', 'addr-use', 'addr-new'], '🔴 DIR-6 (Q5): the loading list fills in place once');
+    S.click('.topbar [data-act="addresses-back"]'); await flush(); S.click('[data-act="addresses"]'); await flush();
+    assert.deepEqual(dirRows(S).map((r) => r[0]), ['addr-use', 'addr-use', 'addr-new'], '🔴 DIR-6: the next open shows it');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (rule 7) KNOWN: a list opened on a KNOWN book never changes while open — a re-read that drops Casa leaves the visible rows; the next open shows the server\'s book', async () => {
+  const { S, addr } = await dirBoot({ reads: ['m3_profile_trabajo', 'm3_profile_nocasa'], uses: ['m3_use_casa_gone'] });
+  try {
+    await toDirecciones(S);
+    const before = dirRows(S).map((r) => r[1]);
+    assert.ok(before.includes(AID.casa), 'premise: Casa is listed');
+    S.click(`.addrlist [data-act="addr-use"][data-id="${AID.casa}"]`); await flush(); await flush();
+    assert.equal(addrReads(addr).length, 2, 'premise: the re-read (Casa gone) landed');
+    assert.deepEqual(dirRows(S).map((r) => r[1]), before, '🔴 DIR-6b: nothing removed from (or inserted into) a visible KNOWN list');
+    S.click('.topbar [data-act="addresses-back"]'); await flush(); S.click('[data-act="addresses"]'); await flush();
+    assert.ok(!dirRows(S).some((r) => r[1] === AID.casa), 'the next open shows the server\'s book');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (isolation): SIGN-OUT removes the member\'s book from the device and every surface; a guest\'s sheet is today\'s (no saved rows)', async () => {
+  const { S, st } = await dirBoot();
+  try {
+    await toAccount(S);
+    assert.ok(st.getItem('capp:addr:u_ana'), 'premise: the book is on the device');
+    S.click('[data-act="signout"]'); await flush(); await flush();
+    assert.equal(st.getItem('capp:addr:u_ana'), null, '🔴 DIR-7: the previous member\'s book leaves the device');
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush();
+    assert.deepEqual(S.qa('#layer nav .navrow').map((b) => b.dataset.act), ['loc-use', 'addr-new'], '🔴 DIR-7: the guest\'s sheet — no saved rows');
+    assert.notEqual(txt(S.q('.addr-btn .v > span')), 'Casa', 'the pill no longer names her address');
+  } finally { S.w.close(); }
+});
+// ── C-DIR-1 SEED (advisor ruling (A) 11-14, its own commit): a member's SAVED address in use seeds the store's checkout — its pin CONFIRMED,
+// the row «{label} · {detected}», its details — so the checkout agrees with the pill; the quote / zone run on it as on any pin (an
+// out-of-zone address ⇒ today's gate, never another pin); «Ajustar pin» overrides it; a pin / GPS fix chosen after it seeds instead
+// (as today); a sign-out / switch can never leave it seeded. Guests are unchanged (their confirmed location seeds, as before) ──
+async function seedCheckout(o = {}) {
+  const b = await dirBoot(o);
+  if (o.pick) { await toDirecciones(b.S); b.S.click(`.addrlist [data-act="addr-use"][data-id="${o.pick}"]`); await flush(); await flush(); b.S.click('.tabbar [data-tab="home"]'); await flush(); }
+  b.S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  const ui = b.S.ui.store().ui; ui.cart.inc(ui.menu.dishes.find((d) => !d.launcher && !d.variantOf && !ui.menu.pickupOnlyCats.has(String(d.cat))).key); ui.render();
+  b.S.click('#cart-bar'); b.S.click('[data-act="checkout"]'); await flush(); await flush();
+  return { ...b, ui };
+}
+const casaOf = () => ADX.scenarios.profile_default_casa.body.addresses.find((a) => a.id === AID.casa);
+const addrBold = (S) => txt(S.q('.urow b[data-addr]'));   // the member's saved row (a plain .urow, v6 :1845) or the pin button (v6 :1846)
+test('C-DIR-1 SEED: the member\'s saved address in use (Casa, in x_pizza\'s zone) SEEDS the checkout — its pin confirmed, «Casa · Col. Trejo, San Pedro Sula», its details; no out-of-zone gate', async () => {
+  const { S, ui } = await seedCheckout();
+  try {
+    const c = casaOf(), p = ui.state.flow.pin;
+    assert.deepEqual({ lat: p.lat, lng: p.lng, confirmed: p.confirmed }, { lat: c.lat, lng: c.lng, confirmed: true }, '🔴 DIR-SEED: the saved pin, confirmed');
+    assert.equal(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', '🔴 DIR-SEED: the checkout shows the saved address');
+    assert.equal(ui.state.flow.details, 'Casa azul, portón negro', '🔴 DIR-SEED: its details (v6 :1804)');
+    assert.equal(S.q('.gate[role="alert"]'), null, 'inside the zone: no gate');
+  } finally { S.w.close(); }
+});
+// ── C-DIR-1 (b) (owed SBS 11-14, advisor: v6 :1845's MEMBER row + the host-provided «Entregar en» picker over the checkout) ──
+const trabajoOf = () => ADX.scenarios.profile_default_casa.body.addresses.find((a) => a.id === AID.trabajo);
+const addrRowOf = (S) => S.q('.urows .urow:has(b[data-addr])');
+test('C-DIR-1 (b) ROW (v6 :1845): a member\'s saved address in use ⇒ the plain row «Casa · …», «Tocá el mapa para ajustar el pin», «Cambiar»; «Pin confirmado» after the pin step; never «Pin en el restaurante»', async () => {
+  const { S, ui } = await seedCheckout();
+  try {
+    const row = addrRowOf(S);
+    assert.ok(row && !row.matches('[data-act]'), '🔴 DIR-B-ROW: the plain .urow (no pin button)');
+    assert.equal(txt(row), 'Casa · Col. Trejo, San Pedro Sula Tocá el mapa para ajustar el pin Cambiar', '🔴 DIR-B-ROW: v6 :1845 exactly');
+    assert.ok(row.querySelector('button.act[data-act="co-addr"]'), '🔴 DIR-B-ROW: «Cambiar»');
+    S.click('.map[data-act="pin"]'); await flush(); ui.state.pinDraft = { lat: casaOf().lat, lng: casaOf().lng };
+    S.click('[data-act="pin-done"]'); await flush(); await flush();
+    assert.match(txt(addrRowOf(S)), /Pin confirmado/, '🔴 DIR-B-ROW: confirmed on the pin step');
+    assert.ok(!/Pin en el restaurante/.test(S.q('.flow').textContent), 'the recorded deviation: never v6\'s «Pin en el restaurante» for a saved address');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (b) PICK: «Cambiar» opens v6\'s «Entregar en» sheet over the checkout (in use first, then «Usar mi ubicación actual» / «Agregar dirección»); picking Trabajo RE-SEEDS the flow and asks a NEW quote (the old one dropped)', async () => {
+  const { S, ui } = await seedCheckout();
+  try {
+    S.click('[data-act="co-addr"]'); await flush();
+    assert.equal(ui.state.layerKind, 'addrpick', 'over the checkout (the store\'s own layer)');
+    assert.deepEqual(S.qa('#layer nav .navrow').map((b) => [b.dataset.act, b.dataset.id || null]), [['addr-use', AID.casa], ['addr-use', AID.trabajo], ['loc-use', null], ['addr-new', null]], '🔴 DIR-B-PICK: v6\'s exact rows, in use first');
+    const oldQ = ui.state.q;
+    S.click(`#layer [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush();
+    const t = trabajoOf(), p = ui.state.flow.pin;
+    assert.equal(ui.state.layerKind, null, 'the sheet closes');
+    assert.deepEqual([p.lat, p.lng], [t.lat, t.lng], '🔴 DIR-B-PICK: the flow re-seeded on Trabajo\'s pin');
+    assert.equal(addrBold(S), 'Trabajo · Blvd. Morazán, Tegucigalpa', '🔴 DIR-B-PICK: the row names Trabajo');
+    assert.equal(ui.state.flow.details, 'Torre 2, piso 5', '🔴 DIR-B-PICK: the unedited details follow the address');
+    assert.ok(ui.state.q === null || ui.state.q !== oldQ, '🔴 DIR-B-PICK: the old quote is never kept');
+    assert.ok(String(ui.state.askedKey).includes(String(t.lat)), '🔴 DIR-B-PICK: a new quote asked for the new pin');
+    assert.match(txt(addrRowOf(S)), /Tocá el mapa para ajustar el pin/, 'a new pin version: not confirmed on the pin step yet');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (b) EDITED: details the customer TYPED are never replaced by a pick', async () => {
+  const { S, ui } = await seedCheckout();
+  try {
+    ui.state.flow.details = 'Portón verde, segunda casa'; ui.render(); await flush();
+    S.click('[data-act="co-addr"]'); await flush();
+    S.click(`#layer [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush();
+    assert.equal(ui.state.flow.details, 'Portón verde, segunda casa', '🔴 DIR-B-EDITED: an edit is kept');
+    assert.equal(addrBold(S), 'Trabajo · Blvd. Morazán, Tegucigalpa', 'the address still moved');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (b) ROUTES: «Usar mi ubicación actual» = the store\'s pin step at the device fix; «Agregar dirección» = the pin step at the branch (no Inicio hop)', async () => {
+  const { S, ui } = await seedCheckout();
+  try {
+    S.click('[data-act="co-addr"]'); await flush(); S.click('#layer [data-act="loc-use"]'); await flush();
+    assert.equal(ui.state.layerKind, 'pin', '🔴 DIR-B-ROUTE: the pin step (loc-use)'); assert.ok(ui.state.pinDraft && Number.isFinite(ui.state.pinDraft.lat), 'centred on a fix');
+    assert.ok(S.ui.store(), 'still in the store (no Inicio hop)');
+    S.click('[data-act="lclose"]'); await flush();
+    S.click('[data-act="co-addr"]'); await flush(); S.click('#layer [data-act="addr-new"]'); await flush();
+    assert.equal(ui.state.layerKind, 'pin', '🔴 DIR-B-ROUTE: the pin step (addr-new)'); assert.ok(S.ui.store(), 'still in the store');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 SEED: «Ajustar pin» to another point OVERRIDES the saved address — the row no longer names it', async () => {
+  const { S, ui } = await seedCheckout();
+  try {
+    S.click('[data-act="pin"]'); await flush();
+    ui.state.pinDraft = { lat: 15.531, lng: -88.021 };   // the schematic map has no pan: the draft a live map would report
+    S.click('[data-act="pin-done"]'); await flush(); await flush();
+    assert.deepEqual([ui.state.flow.pin.lat, ui.state.flow.pin.lng], [15.531, -88.021], 'premise: the customer moved the pin');
+    assert.notEqual(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', '🔴 DIR-SEED override: the moved pin is no longer «Casa»');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 SEED: a saved address OUTSIDE every zone (Trabajo, ~180 km away) in use ⇒ the zone runs on ITS coordinates — Inicio\'s honest «Ningún restaurante entrega en esta dirección», never a fallback to another pin', async () => {
+  const b = await dirBoot({ uses: ['use_trabajo', 'use_casa'] });
+  try {
+    await toDirecciones(b.S); b.S.click(`.addrlist [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush(); await flush();
+    b.S.click('.tabbar [data-tab="home"]'); await flush();
+    assert.equal(txt(b.S.q('.home-body .empty b')), 'Ningún restaurante entrega en esta dirección', '🔴 DIR-SEED out: the zone on the saved address (frame 4)');
+    b.S.click(`.addr-btn`); await flush(); b.S.click(`#layer [data-act="addr-use"][data-id="${AID.casa}"]`); await flush(); await flush();
+    assert.ok(b.S.q('.rlist .rcard[data-rid="x_pizza"]'), 'back on Casa (inside): the stores return');
+  } finally { b.S.w.close(); }
+});
+test('C-DIR-1 SEED: a device fix chosen AFTER the saved address («Usar mi ubicación actual») takes over — the device location seeds, as today', async () => {
+  const near = { latitude: 15.531, longitude: -88.021 };
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:loc_asked', JSON.stringify(1));
+  const addr = addrServer();
+  const { S } = await pedidosBoot({}, { storage: st, addr, geolocation: { getCurrentPosition: (ok) => ok({ coords: near }) } });
+  try {
+    await flush(); await flush();
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush(); S.click('#layer [data-act="loc-use"]'); await flush(); await flush();
+    S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    const u = S.ui.store().ui; u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render();
+    S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush(); await flush();
+    assert.deepEqual([u.state.flow.pin.lat, u.state.flow.pin.lng], [near.latitude, near.longitude], '🔴 DIR-SEED device: the later device fix seeds, not the saved address');
+    assert.notEqual(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', 'the row is not the saved address');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 SEED: a SIGN-OUT with the seeded checkout open never leaves the saved address in it (no pin, no details, no row)', async () => {
+  const { S, ui, fb, st } = await seedCheckout();
+  try {
+    assert.equal(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', 'premise: seeded');
+    const { authMod } = await fb.loadSdk(); await authMod.signOut(); await flush(); await flush();
+    assert.equal(S.replaced.length, 1, 'premise: the sign-out restarted the app');
+  } finally { S.w.close(); }
+  // r3 (owner 11-19) re-pointed: the checkout after the sign-out is the RESTARTED app's — it holds none of her saved address
+  const { S: F } = await relaunch(st, null);
+  try {
+    await until(() => F.q('.rlist .rcard[data-rid="x_pizza"]')); F.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    const u = F.ui.store().ui; u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render();
+    F.click('#cart-bar'); F.click('[data-act="checkout"]'); await flush(); await flush();
+    const f = u.state.flow;
+    assert.notDeepEqual([f.pin.lat, f.pin.lng], [casaOf().lat, casaOf().lng], '🔴 DIR-SEED sign-out: the saved pin is gone');
+    assert.notEqual(f.details, 'Casa azul, portón negro', '🔴 DIR-SEED sign-out: the saved details are gone');
+    assert.ok(!/Casa · Col\. Trejo/.test(F.w.document.body.textContent), '🔴 DIR-SEED sign-out: nothing on screen names her address');
+  } finally { F.w.close(); }
+});
+
 // ── C-3r v2 (PLAN-3a-capp-member-reads R2.7 / R3.2 / R4.3 / §4.3; advisor 11-14): the reorder reads the snapshot from the RECEIPT through
 // readReceipt (cached + de-duplicated; prefetched rows make the tap request-free) under a 1.5 s deadline; ONE owner / generation /
 // navigation check runs before applying EITHER outcome (a late success and a late fallback are both dropped). A v2 snapshot carries the
@@ -5431,13 +5851,21 @@ test('Codex P1 (A→B→A): Ana\'s OLD refusal landing after Bob and Ana again n
   try {
     await flush(); await reEnterHome(S); S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush();
     assert.equal(held.length, 1, 'premise: Ana\'s x_pizza save is in flight');
-    await switchTo(S, fb, st, 'u_bob'); await switchTo(S, fb, st, 'u_ana'); await flush(); await reEnterHome(S);
-    S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="la_musa"]'); await flush(); await flush();
-    assert.ok(bookOf(st).includes('la_musa'), 'premise: the NEW session saved la_musa');
-    const t0 = txt(S.q('#toast') || S.q('body'));
-    held[0](); await flush(); await flush();
-    assert.ok(bookOf(st).includes('la_musa'), '🔴 P1: the stale rollback never lands on the new session');
-    assert.ok(!/máximo/.test(txt(S.q('#toast'))) || /máximo/.test(t0), '🔴 P1: the stale refusal never speaks to the new session (no toast)');
+    await switchTo(S, fb, st, 'u_bob');
+    assert.equal(S.replaced.length, 1, 'premise: the switch restarted the app');
+    // r3 (owner 11-19) re-pointed: «Ana again» is a NEW app (the old page still holds her stale save) — the stale answer lands there,
+    // never on the new session's book or screen
+    st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_ana' }));
+    const { S: F } = await relaunch(st, 'u_ana', { fav });
+    try {
+      await flush(); await reEnterHome(F);
+      F.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="la_musa"]'); await flush(); await flush();
+      assert.ok(bookOf(st).includes('la_musa'), 'premise: the NEW session saved la_musa');
+      const t0 = txt(F.q('#toast') || F.q('body'));
+      held[0](); await flush(); await flush();
+      assert.ok(bookOf(st).includes('la_musa'), '🔴 P1: the stale rollback never lands on the new session');
+      assert.ok(!/máximo/.test(txt(F.q('#toast'))) || /máximo/.test(t0), '🔴 P1: the stale refusal never speaks to the new session (no toast)');
+    } finally { F.w.close(); }
   } finally { S.w.close(); }
 });
 test('Codex P2 (read × save): a getMyFavorites snapshot that started BEFORE a save and lands AFTER it never erases the save', async () => {
@@ -5494,7 +5922,12 @@ test('Codex r2 P2 schedule 1: toggle → read STARTS → save succeeds → read 
   const { S } = await pedidosBoot({}, { fav, storage: st, fbOpts: { hold }, noFlush: true });
   try {
     // admit Ana, but keep the book read's OWN token held: the read has not started
-    for (let i = 0; i < 12 && !(S.ui.state.member && hold.q.length === 1 && fav.reads() === 0); i++) { await flush(); if (!S.ui.state.member) for (const r of hold.q.splice(0)) r(); }
+    // C-DIR-1 (merge-forward 11-18): a member's address-book read (capp-shell-ui bookIdentity, after paint) ALSO waits on a token, and
+    // it asks FIRST — wait for both waiters, let the book's (the first) through, and prove the favorites read has still not started
+    for (let i = 0; i < 12 && !(S.ui.state.member && hold.q.length === 2 && fav.reads() === 0); i++) { await flush(); if (!S.ui.state.member) for (const r of hold.q.splice(0)) r(); }
+    assert.ok(S.ui.state.member && hold.q.length === 2, 'premise: admitted; the book read and the favorites read both wait on a token');
+    hold.q.shift()(); await flush(); await flush();
+    assert.equal(fav.reads(), 0, 'premise: the released token was the book read\'s, not the favorites read\'s');
     assert.ok(S.ui.state.member && hold.q.length === 1 && fav.reads() === 0, 'premise: admitted; the read waits on its token');
     const readTok = hold.q.shift();
     await reEnterHome(S); assert.equal(heartOf(S, 'x_pizza'), false, 'premise: the cached row, x_pizza not a favorite');
@@ -5945,6 +6378,32 @@ test('PUSH-SHELL-12c (Codex r1 P1-4): a COLD restore as another person (B\'s ses
     } finally { S.w.close(); }
   }
 });
+// r3 moved the ADMITTED sign-out into leave() (its pre forgets the token). On a COLD start, a mount that never admitted anyone,
+// these two branches are the only guard: the device still holds a previous member's live token (her own opt-in, the real writer)
+test('PUSH-SHELL-12d (cold, guest): the app opens as a GUEST (her session gone) with her live token on the device ⇒ the token is invalidated on the phone; the server step held for her', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })), srv = pushServer3a();
+  { const { S, srv: s1 } = await pushBoot({ storage: st, srv, fake: { permission: 'granted' } }); try { await optIn(S, s1); } finally { S.w.close(); } }
+  assert.equal(pushHeld(st).owner, 'u_ana', 'premise: her live token is on the device (her own opt-in)');
+  const { S, f } = await pushBoot({ storage: st, srv, fake: { permission: 'granted' }, fbOpts: { persisted: null } });
+  try {
+    await flushN();
+    assert.equal(f.of('unregister').length, 1, '🔴 PUSH-SHELL-12d: a cold guest start invalidates her token on the phone');
+    assert.deepEqual((pushHeld(st).pending || []).map((p) => p.owner), ['u_ana'], 'the server step held for her');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-12e (cold, no mark): a RESTORED session without its completion mark, on a cold start with her live token ⇒ forgotten under that still-valid session, THEN signed out', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })), srv = pushServer3a();
+  { const { S, srv: s1 } = await pushBoot({ storage: st, srv, fake: { permission: 'granted' } }); try { await optIn(S, s1); } finally { S.w.close(); } }
+  assert.equal(srv.tokens(), 1, 'premise: her token is registered (her own opt-in)');
+  st.removeItem('capp:member_complete');
+  const { S, f, fb } = await pushBoot({ storage: st, srv, fake: { permission: 'granted' }, fbOpts: { persisted: 'u_ana' } });
+  try {
+    await flushN();
+    assert.equal(srv.tokens(), 0, '🔴 PUSH-SHELL-12e: forgotten under the still-valid session on a cold start');
+    assert.equal(f.of('unregister').length, 1, 'and the phone');
+    assert.ok(fb.calls.out >= 1, 'then signed out');
+  } finally { S.w.close(); }
+});
 const p26 = () => {   // 3a's REAL handlers; the prefs read can be HELD (its answer computed first — a late, older read) or answered prefs: null
   const srv = pushServer3a(), h0 = srv.handler, ctl = { hold: null, nullPrefs: false };
   srv.handler = async (u, i) => { const r = await h0(u, i); if (/getCustomerPushPrefs/.test(u)) { if (ctl.nullPrefs) { const b = await r.json(); return { status: r.status, json: async () => ({ ...b, prefs: null }) }; } if (ctl.hold) await ctl.hold; } return r; };
@@ -6029,6 +6488,1065 @@ test('PUSH-SHELL-15 (Codex r1 P2-8): a tapped push for a past order NOT in «Ped
     assert.ok(txt(S.q('.mk-num')).startsWith('Orden #52'), 'its number');
     S.click('[data-act="order-close"]'); await flush();
     f.tap({ order_id: 'XP-NONE1' }); await until(() => S.q('.pagehead h1') && txt(S.q('.pagehead h1')) === 'Pedidos', 6000);
+  } finally { S.w.close(); }
+});
+
+// r3 helpers: the SDK's own sign-out (the 'guest' callback), and a pin draft on Casa
+const signOutNow = async (fb) => { const { authMod } = await fb.loadSdk(); await authMod.signOut(); await flush(); await flush(); };
+// ── direcciones r3 BATCH 2 — CONFIRM-FIRST (owner-APPROVED prototype; PLAN-3a-addr-rev @805a5015; Codex #153). A tap never switches
+// anything: the tapped row carries the spinner in its right slot, every other address control is disabled until the server answers,
+// and «en uso» moves ONLY on a 200. Every non-200 (offline, a timeout, a refusal, a 409) ends in the OWNED profile re-read: the pick is
+// the re-read's selection ⇒ success; otherwise the calm sand line «No pudimos cambiar la dirección. Probá de nuevo.» and the book is the
+// server's. A 409 body is trusted for NOTHING but «stale» (owner 11-18) ──
+const SAND = 'No pudimos cambiar la dirección. Probá de nuevo.';
+const held = () => { const q = []; return { q, gate: () => new Promise((r) => q.push(r)), release: () => { for (const r of q.splice(0)) r(); } }; };
+const dirRow = (S, id) => S.q(`.addrlist [data-act="addr-use"][data-id="${id}"]`);
+const sheetRow = (S, id) => S.q(`#layer [data-act="addr-use"][data-id="${id}"]`);
+const off = (el) => !!el && el.getAttribute('aria-disabled') === 'true';
+const sandOf = (S, root) => { const x = S.q(`${root} .sandline[role="status"]`); return x ? txt(x) : null; };
+const enUso = (S) => dirRows(S).filter((r) => / · en uso$/.test(r[2])).map((r) => r[2].replace(/ · en uso$/, ''));
+const noProblems = (addr) => assert.deepEqual(addr.problems, [], 'every write is a request the real handler was recorded answering');
+test('r3 (a) Codex #153 DIR-CONFIRM: a tap in «Direcciones» keeps «Casa · en uso», spins in Trabajo\'s right slot, disables every other control; «en uso» moves only on the 200', async () => {
+  const h = held();
+  const { S, addr, st } = await dirBoot({ ugate: () => h.gate() });
+  try {
+    await toDirecciones(S);
+    S.click(dirRow(S, AID.trabajo)); await flush();
+    assert.ok(addrWrites(addr).length >= 1, '🔴 R3-CONFIRM: the tap sends the pick to the server');
+    assert.deepEqual(enUso(S), ['Casa'], '🔴 R3-CONFIRM: nothing switches on the tap');
+    const t = dirRow(S, AID.trabajo);
+    assert.ok(t.querySelector('.addrspin') && t.getAttribute('aria-busy') === 'true', '🔴 R3-CONFIRM: the tapped row spins in its right slot');
+    assert.equal(t.getAttribute('aria-disabled'), 'true', '🔴 R3-CONFIRM (SBS DIR3, the prototype :444): the tapped row is disabled too — never announced as tappable while its pick is in flight');
+    assert.ok(off(dirRow(S, AID.casa)) && off(S.q('.addrlist [data-act="addr-new"]')), '🔴 R3-CONFIRM: every other control is disabled');
+    S.click(dirRow(S, AID.casa)); S.click(S.q('.addrlist [data-act="addr-new"]')); await flush();
+    assert.deepEqual(addrWrites(addr), [{ id: AID.trabajo, expected_rev: 0, expected_default: AID.casa }], '🔴 R3-CONFIRM: ONE write in flight, the exact CAS body');
+    assert.ok(dirRow(S, AID.casa), 'a disabled tap navigates nowhere');
+    h.release(); await flush(); await flush();
+    assert.deepEqual(enUso(S), ['Trabajo'], '🔴 R3-CONFIRM: the 200 moves «en uso»');
+    assert.ok(!S.q('.addrlist .addrspin') && !S.qa('.addrlist [aria-disabled="true"]').length, 'the rows are live again');
+    assert.deepEqual([addrStored(st).default_address, addrStored(st).default_address_rev], [AID.trabajo, 1], 'the device copy follows the 200 (its new rev)');
+    S.click('.tabbar [data-tab="home"]'); await flush();
+    assert.equal(txt(S.q('.addr-btn .v > span')), 'Trabajo', 'the pill reads the confirmed label');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 (a) SHEET-CONFIRM: the checkout\'s «Entregar en» spins on the tapped row (the rest disabled, «Cambiar» too once closed); the checkout keeps Casa until the 200', async () => {
+  const h = held();
+  const { S, ui, addr } = await seedCheckout({ ugate: () => h.gate() });
+  try {
+    S.click('[data-act="co-addr"]'); await flush();
+    S.click(sheetRow(S, AID.trabajo)); await flush();
+    assert.ok(S.q('#layer [data-act="addr-use"]'), '🔴 R3-SHEET: the sheet stays open while the server answers');
+    assert.ok(sheetRow(S, AID.trabajo).querySelector('.addrspin'), '🔴 R3-SHEET: the tapped row spins');
+    assert.ok(off(sheetRow(S, AID.casa)) && off(S.q('#layer [data-act="loc-use"]')) && off(S.q('#layer [data-act="addr-new"]')), '🔴 R3-SHEET: every other row is disabled');
+    assert.equal(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', '🔴 R3-SHEET: the checkout still names Casa');
+    assert.deepEqual([ui.state.flow.pin.lat, ui.state.flow.pin.lng], [casaOf().lat, casaOf().lng], '🔴 R3-SHEET: and still prices / routes Casa');
+    S.click('#layer [data-act="lclose"]'); await flush();
+    assert.ok(off(S.q('[data-act="co-addr"]')), '🔴 R3-SHEET: «Cambiar» is disabled while the pick is in flight');
+    S.click('[data-act="co-addr"]'); await flush();
+    assert.equal(S.q('#layer [data-act="addr-use"]'), null, 'a disabled «Cambiar» opens nothing');
+    h.release(); await flush(); await flush();
+    assert.equal(addrBold(S), 'Trabajo · Blvd. Morazán, Tegucigalpa', '🔴 R3-SHEET: the 200 re-seeds the checkout (the sheet closed meanwhile)');
+    assert.ok(!off(S.q('[data-act="co-addr"]')), '«Cambiar» is live again');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 (a) INICIO-LOCK: while a pick is in flight Inicio\'s «Entregar en» is disabled and opens nothing', async () => {
+  const h = held();
+  const { S, addr } = await dirBoot({ ugate: () => h.gate() });
+  try {
+    await toDirecciones(S); S.click(dirRow(S, AID.trabajo)); await flush();
+    S.click('.tabbar [data-tab="home"]'); await flush();
+    assert.ok(off(S.q('.addr-btn')), '🔴 R3-INICIO: the pill is disabled');
+    S.click('.addr-btn'); await flush();
+    assert.equal(S.q('#layer [data-act="addr-use"]'), null, '🔴 R3-INICIO: no sheet opens');
+    h.release(); await flush(); await flush();
+    assert.ok(!off(S.q('.addr-btn')) && txt(S.q('.addr-btn .v > span')) === 'Trabajo', 'live again, on the confirmed pick');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 (b) REFUSED: a 404 (the form deleted Casa meanwhile) ⇒ the sand line, «en uso» unchanged, the re-read book adopted, the rows live, no toast', async () => {
+  const { S, addr, st } = await dirBoot({ reads: ['m3_profile_trabajo', 'm3_profile_nocasa'], uses: ['m3_use_casa_gone'] });
+  try {
+    await toDirecciones(S);
+    assert.deepEqual(enUso(S), ['Trabajo'], 'premise: Trabajo in use (rev 3)');
+    S.click(dirRow(S, AID.casa)); await flush(); await flush();
+    assert.deepEqual(addrWrites(addr), [{ id: AID.casa, expected_rev: 3, expected_default: AID.trabajo }], 'premise: the CAS body');
+    assert.equal(sandOf(S, '.flow'), SAND, '🔴 R3-REFUSED: the calm sand line');
+    assert.deepEqual(enUso(S), ['Trabajo'], '🔴 R3-REFUSED: nothing switched');
+    assert.equal(addrReads(addr).length, 2, '🔴 R3-REFUSED: ONE re-read after the refusal');
+    assert.ok(!addrStored(st).addresses.some((a) => a.id === AID.casa), '🔴 R3-REFUSED: the book is the server\'s (Casa gone on the device)');
+    assert.ok(!S.qa('.addrlist [aria-disabled="true"]').length && !S.q('.toast.show'), 'the rows are live; no toast');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 (b) OFFLINE: no answer ⇒ the sand line + ONE owned re-read; the rows live; the next pick (online) succeeds and clears the line', async () => {
+  let net = 'OFFLINE';
+  const { S, addr } = await dirBoot({ ugate: () => net, reads: ['profile_default_casa'], uses: ['use_trabajo'] });
+  try {
+    await toDirecciones(S);
+    S.click(dirRow(S, AID.trabajo)); await flush(); await flush();
+    assert.equal(sandOf(S, '.flow'), SAND, '🔴 R3-OFFLINE: the sand line');
+    assert.deepEqual(enUso(S), ['Casa'], '🔴 R3-OFFLINE: «en uso» never moved');
+    assert.equal(addrReads(addr).length, 2, '🔴 R3-OFFLINE: the owned re-read');
+    net = null; S.click(dirRow(S, AID.trabajo)); await flush();
+    assert.equal(sandOf(S, '.flow'), null, '🔴 R3-OFFLINE: the line clears the moment the next pick starts');
+    await flush();
+    assert.deepEqual(enUso(S), ['Trabajo'], 'the next pick lands');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 (owner 409) SPECULATIVE: a 409 naming MY id at expected_rev + 1 while the server does NOT have it ⇒ the sand line and the server\'s state — the body is never trusted', async () => {
+  const { S, addr, st } = await dirBoot({ reads: ['profile_default_casa', 'profile_after_back'], uses: ['use_trabajo_again'] });
+  try {
+    await toDirecciones(S); S.click(dirRow(S, AID.trabajo)); await flush(); await flush();
+    assert.equal(sandOf(S, '.flow'), SAND, '🔴 R3-409-BODY: a 409 is never success by its body');
+    assert.deepEqual(enUso(S), ['Casa'], '🔴 R3-409-BODY: the re-read\'s selection');
+    assert.deepEqual([addrStored(st).default_address, addrStored(st).default_address_rev], [AID.casa, 2], '🔴 R3-409-BODY: the re-read\'s pair (never the body\'s)');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 (owner 409) LANDED: a 409 when the server REALLY has my pick (the re-read shows it) ⇒ success, no sand line', async () => {
+  const { S, addr, st } = await dirBoot({ reads: ['profile_default_casa', 'profile_after_use'], uses: ['use_trabajo_again'] });
+  try {
+    await toDirecciones(S); S.click(dirRow(S, AID.trabajo)); await flush(); await flush();
+    assert.equal(sandOf(S, '.flow'), null, '🔴 R3-409-LANDED: no sand line');
+    assert.deepEqual(enUso(S), ['Trabajo'], '🔴 R3-409-LANDED: the pick holds');
+    assert.deepEqual([addrStored(st).default_address, addrStored(st).default_address_rev], [AID.trabajo, 1], 'the re-read pair');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 FORM-CHANGE: the form moved the selection between the read and the pick ⇒ 409 ⇒ the sand line + the re-read (Mamá) ⇒ the next pick, sent with the re-read pair, succeeds', async () => {
+  const { S, addr } = await dirBoot({ reads: ['m3_profile_casa', 'm3_profile_mama'], uses: ['m3_use_trabajo_stale', 'm3_use_trabajo_ok'] });
+  try {
+    await toDirecciones(S); S.click(dirRow(S, AID.trabajo)); await flush(); await flush();
+    assert.equal(sandOf(S, '.flow'), SAND, '🔴 R3-FORM: the sand line');
+    assert.deepEqual(enUso(S), ['Mamá'], '🔴 R3-FORM: the server\'s selection now shows');
+    S.click(dirRow(S, AID.trabajo)); await flush(); await flush();
+    assert.deepEqual(addrWrites(addr)[1], { id: AID.trabajo, expected_rev: 2, expected_default: AID.mama }, '🔴 R3-FORM: the retry carries the RE-READ pair');
+    assert.deepEqual([sandOf(S, '.flow'), enUso(S)], [null, ['Trabajo']], 'it lands');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 (e) Codex #153 #7 TIMEOUT: the 12 s cap ⇒ UNKNOWN (sand line, re-read, rows live) ⇒ a new pick lands ⇒ the OLD write lands late, gets the 409 and changes nothing — final = the server\'s state', async () => {
+  const h = held(); let n0 = true;
+  const { S, addr, st } = await dirBoot({ ugate: () => (n0 ? (n0 = false, h.gate()) : null), reads: ['profile_default_casa'], uses: ['use_trabajo', 'use_trabajo_again'] });
+  try {
+    await toDirecciones(S); S.click(dirRow(S, AID.trabajo)); await flush();
+    await flush(12500);
+    assert.equal(sandOf(S, '.flow'), SAND, '🔴 C153-7: the cap ends the wait as UNKNOWN');
+    assert.ok(!S.qa('.addrlist [aria-disabled="true"]').length, '🔴 C153-7: the rows are live again (never stuck on a hung socket)');
+    S.click(dirRow(S, AID.trabajo)); await flush(); await flush();
+    assert.deepEqual(enUso(S), ['Trabajo'], 'the new pick lands (200, rev 1)');
+    h.release(); await flush(); await flush();
+    assert.equal(addrWrites(addr).length, 2, 'premise: the old write reached the server late');
+    assert.deepEqual(enUso(S), ['Trabajo'], '🔴 C153-7: the late reply changes nothing');
+    assert.equal(sandOf(S, '.flow'), null, '🔴 C153-7: and draws no sand line');
+    assert.deepEqual([addrStored(st).default_address, addrStored(st).default_address_rev], [AID.trabajo, 1], '🔴 C153-7: client = server (Trabajo, rev 1)');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 Codex #153 #1 (P1): a switch landing while the pick waits on its token ⇒ nothing is sent or read with the next member\'s token; the proven switch leaves ONCE and removes her book (never another account\'s data)', async () => {
+  const hold = { on: false, q: [] }, gate = { on: false, q: [] };
+  const { S, fb, addr, st } = await dirBoot({ fbOpts: { hold, notifyGate: gate } });
+  try {
+    await toDirecciones(S);
+    assert.ok(addrStored(st), 'premise: her book is on the device (the real read)');
+    hold.on = true; S.click(dirRow(S, AID.trabajo)); await flush();
+    assert.ok(hold.q.length >= 1, 'premise: the pick waits on its token');
+    hold.on = false; gate.on = true;
+    const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush();   // the SDK is Bob's; the shell not told yet
+    for (const r of hold.q.splice(0)) r(); await flush(); await flush(); await flush();
+    assert.deepEqual(addrWrites(addr), [], '🔴 C153-1: the pick is never sent once the SDK is no longer hers (owned token)');
+    assert.deepEqual(addr.calls.filter((c) => c.who === 'u_bob').map((c) => c.ep), [], '🔴 C153-1: no write and no read under Bob\'s token while the book is Ana\'s');
+    assert.equal(addrStored(st), null, '🔴 C153-1: the proven switch (owned read, Codex #197) REMOVES her book with the leave — her copy never holds another account\'s data');
+    gate.on = false; for (const e of gate.q.splice(0)) e(); await flush(); await flush();
+    assert.deepEqual([S.replaced.length, txt(S.q('#swap p'))], [1, 'Cambiando de cuenta…'], '🔴 C153-1: ONE leave, reason switch — the shell told a moment later never leaves (or wipes) again');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #153 #1 (P1): a switch that landed in the SDK BEFORE the pick (the shell not told yet) ⇒ the token is the next member\'s, so nothing is sent with it', async () => {
+  const gate = { on: false, q: [] };
+  const { S, fb, addr, st } = await dirBoot({ fbOpts: { notifyGate: gate } });
+  try {
+    await toDirecciones(S);
+    assert.ok(addrStored(st), 'premise: her book is on the device (the real read)');
+    gate.on = true;
+    const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush();   // the SDK is Bob's; the shell still shows Ana's book
+    assert.ok(dirRow(S, AID.trabajo), 'premise: Ana\'s «Direcciones» is still on screen');
+    S.click(dirRow(S, AID.trabajo)); await flush(); await flush(); await flush();
+    assert.deepEqual(addrWrites(addr), [], '🔴 C153-1: a token owned by another member never carries her pick');
+    assert.deepEqual(addr.calls.filter((c) => c.who === 'u_bob').map((c) => c.ep), [], '🔴 C153-1: no write and no read under Bob\'s token while the book is Ana\'s');
+    assert.equal(addrStored(st), null, '🔴 C153-1: the proven switch (owned read, Codex #197) REMOVES her book with the leave — her copy never holds another account\'s data');
+    gate.on = false; for (const e of gate.q.splice(0)) e(); await flush(); await flush();
+    assert.deepEqual([S.replaced.length, txt(S.q('#swap p'))], [1, 'Cambiando de cuenta…'], '🔴 C153-1: ONE leave, reason switch — the shell told a moment later never leaves (or wipes) again');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #197 (re-anchor r3-b-04): her pick FAILS after the SDK switched to Bob (the shell not told) ⇒ the book re-read is never made under Bob\'s token; her copy never holds his book; ONE leave, reason switch', async () => {
+  const gate = { on: false, q: [] }, fail = [];
+  const { S, fb, addr, st } = await dirBoot({ fbOpts: { notifyGate: gate }, ugate: () => new Promise((_, rej) => fail.push(() => rej(new Error('offline')))) });
+  try {
+    await toDirecciones(S);
+    assert.ok(addrStored(st), 'premise: her book is on the device (the real read)');
+    S.click(dirRow(S, AID.trabajo)); await flush(); await flush();
+    assert.equal(addrWrites(addr).length, 1, 'premise: her pick is in flight (her own token)');
+    gate.on = true;
+    const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush();   // the SDK is Bob's; the shell not told yet
+    assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: the shell still holds Ana');
+    for (const f of fail.splice(0)) f(); await flush(); await flush(); await flush();   // the pick fails ⇒ the re-read
+    assert.deepEqual(addr.calls.filter((c) => c.who === 'u_bob').map((c) => c.ep), [], '🔴 C197-BOOK: no profile re-read under Bob\'s token while the book is Ana\'s');
+    assert.equal(addrStored(st), null, '🔴 C197-BOOK: the proven switch removes her book with the leave — her copy never holds his');
+    gate.on = false; for (const e of gate.q.splice(0)) e(); await flush(); await flush();
+    assert.deepEqual([S.replaced.length, txt(S.q('#swap p'))], [1, 'Cambiando de cuenta…'], '🔴 C197-BOOK: ONE leave, reason switch');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #153 #5 (P2): an UNKNOWN pick made in the checkout leaves the checkout exactly where the shell is (Casa) — row, pin and price', async () => {
+  const { S, ui, addr } = await seedCheckout({ ugate: () => 'OFFLINE', reads: ['profile_default_casa'], uses: [] });
+  try {
+    S.click('[data-act="co-addr"]'); await flush(); S.click(sheetRow(S, AID.trabajo)); await flush(); await flush();
+    assert.equal(sandOf(S, '#layer'), SAND, 'premise: the sheet shows the sand line');
+    assert.equal(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', '🔴 C153-5: the row is the shell\'s selection');
+    assert.deepEqual([ui.state.flow.pin.lat, ui.state.flow.pin.lng], [casaOf().lat, casaOf().lng], '🔴 C153-5: and the pin that prices the order');
+    assert.ok(sheetRow(S, AID.casa).classList.contains('on'), 'the sheet marks Casa in use');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #153 #6 (P2): a checkout entered while a Direcciones pick is in flight is seeded from the CONFIRMED address; the 200 re-seeds it, a failure leaves it', async () => {
+  for (const ok of [true, false]) {
+    const h = held();
+    const { S, ui, addr } = await dirBoot({ ugate: () => (ok ? h.gate() : h.gate().then(() => { throw new Error('offline'); })), reads: ['profile_default_casa'], uses: ok ? ['use_trabajo'] : [] });
+    try {
+      await toDirecciones(S); S.click(dirRow(S, AID.trabajo)); await flush();
+      S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+      const u = S.ui.store().ui; u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render();
+      S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush(); await flush();
+      assert.equal(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', `🔴 C153-6: seeded from the CONFIRMED Casa (${ok ? 'ok' : 'fail'})`);
+      h.release(); await flush(); await flush();
+      assert.equal(addrBold(S), ok ? 'Trabajo · Blvd. Morazán, Tegucigalpa' : 'Casa · Col. Trejo, San Pedro Sula', `🔴 C153-6: ${ok ? 'the 200 re-seeds it' : 'a failure leaves it'}`);
+      noProblems(addr);
+    } finally { S.w.close(); }
+  }
+});
+test('r3 Codex #153 #2 (P1): «Enviando» shows the address the order was SENT with — a pick landing during the send never changes it', async () => {
+  const h = held(); let release = null; const co = [];
+  const apiFetch = (u, i) => (u.startsWith('/x/q') ? quoteOk(u, i) : u.startsWith('/x/c') ? new Promise((r) => { co.push(JSON.parse(i.body)); release = () => r({ status: 200, ok: true, json: async () => ({ ok: true, order_id: JSON.parse(i.body).order_id, tracking_token: 'tok_abcdefgh12' }) }); }) : new Promise(() => {}));
+  const { S, ui, addr } = await dirBoot({ ugate: () => h.gate(), apiFetch });
+  try {
+    await toDirecciones(S); S.click(dirRow(S, AID.trabajo)); await flush();
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    const u = S.ui.store().ui; u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render();
+    S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush(); await flush();
+    if (S.q('[data-act="pay"][data-val="cash"]')) { S.click('[data-act="pay"][data-val="cash"]'); await flush(); }
+    S.click('#cta'); await flush(); S.click('#layer [data-act="placing-go"]'); await flush(); await flush(); await flush(700);
+    assert.equal(u.state.screen, 'sending', 'premise: «Enviando»');
+    const sent = co[0] && co[0].delivery ? co[0].delivery : co[0];
+    h.release(); await flush(); await flush();
+    assert.ok(/Casa · Col\. Trejo/.test(txt(S.q('.sndcard'))), '🔴 C153-2: «Enviando» still names Casa — the address SENT');
+    assert.ok(!/Trabajo/.test(txt(S.q('.sndcard'))), '🔴 C153-2: never the pick that landed after');
+    assert.ok(JSON.stringify(co[0]).includes(String(casaOf().lat)), 'premise: the order body carried Casa');
+    if (release) release();
+  } finally { S.w.close(); }
+});
+test('r3 STALE-READ: a profile read that STARTED before a pick landed never overrides that pick (the device copy carries the revision)', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true }));
+  const first = await dirBoot({ storage: st }); first.S.w.close();
+  assert.deepEqual([addrStored(st).default_address, addrStored(st).default_address_rev], [AID.casa, 0], 'premise: the v2 device copy (Casa, rev 0)');
+  let open = null; const pgate = new Promise((r) => { open = r; });
+  const { S, addr } = await dirBoot({ storage: st, pgate, uses: ['use_trabajo'] });
+  try {
+    await toDirecciones(S);
+    assert.equal(addrReads(addr).length, 1, 'premise: the read after paint is in flight (held)');
+    S.click(dirRow(S, AID.trabajo)); await flush(); await flush();
+    assert.deepEqual(enUso(S), ['Trabajo'], 'premise: the pick landed (200, rev 1)');
+    open(); await flush(); await flush();
+    assert.deepEqual(enUso(S), ['Trabajo'], '🔴 R3-STALE-READ: the older read (Casa, rev 0) never overrides the newer pick');
+    assert.deepEqual([addrStored(st).default_address, addrStored(st).default_address_rev], [AID.trabajo, 1], '🔴 R3-STALE-READ: nor the device copy');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+
+// Ana's member CARD send on the real writers: her seeded checkout → card → tip 0 → «Hacer pedido»; createOrder answers, then the charge
+// (/x/p) answers with the hosted checkout — or is HELD until the test releases it
+async function memberCardSend({ holdCharge = false } = {}) {
+  const sent = []; let releaseCharge = null;
+  const pay = { checkout_url: 'https://pay.test/1', poll_token: 'pt_1', attempt_id: 'a1' };
+  const apiFetch = (u, i) => { const body = i && i.body ? JSON.parse(i.body) : null; sent.push([u.split('?')[0], body]);
+    if (u.startsWith('/x/q')) return quoteOk(u, i);
+    if (u.startsWith('/x/c')) return Promise.resolve({ status: 200, ok: true, json: async () => ({ ok: true, order_id: body.order_id }) });
+    if (u.startsWith('/x/p')) { const r = { status: 200, ok: true, json: async () => pay }; return holdCharge ? new Promise((res) => { releaseCharge = () => res(r); }) : Promise.resolve(r); }
+    return new Promise(() => {}); };
+  const b = await seedCheckout({ apiFetch });
+  const { S } = b; await flush(); await flush();
+  if (S.q('[data-act="pay"][data-val="online"]')) { S.click('[data-act="pay"][data-val="online"]'); await flush(); }
+  S.click('#cta'); await flush();
+  await until(() => S.q('[data-act="tipc"][data-val="0"]'), 4000).catch(() => {}); if (S.q('[data-act="tipc"][data-val="0"]')) { S.click('[data-act="tipc"][data-val="0"]'); await flush(); }
+  if (S.q('[data-act="tip-place"]')) { S.click('[data-act="tip-place"]'); await flush(); }   // the tip step's own «Hacer pedido»
+  if (S.q('#layer [data-act="placing-go"]')) { S.click('#layer [data-act="placing-go"]'); await flush(); await flush(); }
+  await flush(700);
+  return { ...b, sent, release: () => releaseCharge && releaseCharge() };
+}
+// ── r3 WIPE + RESTART (owner 11-19, Codex #173 → rule 36; MOCKUP-capp-identity-restart): a member ADMITTED here who leaves — the
+// «Cerrar sesión» row, the SDK's own sign-out, another account — gets the quiet overlay, the push exit, then EVERY record of hers
+// leaves the device and the app starts again at its root (location.replace(origin + '/')). Nothing of hers survives in memory, so
+// Codex #173 #1–#3 are proven on a FRESH boot over the same device. A boot whose unkeyed records are stamped to a member (or not
+// stamped) holds them until its identity settles: a match restores them, a mismatch wipes them (no restart: nothing was read) ──
+const OWNER = 'capp:member_owner';
+const UNKEYED = /^capp:(?:active_order|rate_nudge|rate_done|return|guest_loc|recent|store_handoff|[^:]+:(?:pending_place|pending_pay|placed|cart|sent_order))$/;
+const keysOf = (st) => [...st._m.keys()].sort();
+const unkeyedOf = (st) => keysOf(st).filter((k) => UNKEYED.test(k));
+const relaunch = (st, persisted, extra = {}) => pedidosBoot({}, { storage: st, fbOpts: { persisted }, ...extra });
+const viaRow = async (fb, S) => { S.ui.nav.tab({ name: 'account' }); await flush(); S.click('[data-act="signout"]'); await flush(); await flush(); };
+const LEAVES = [['the «Cerrar sesión» row', viaRow, null], ['the SDK signing her out', (fb) => signOutNow(fb), null], ['an ACCOUNT SWITCH', (fb, S, st) => switchTo(S, fb, st, 'u_bob'), 'u_bob']];
+test('r3 RESTART-ROOT: the restart replaces the page with the app\'s ROOT — the origin + «/», no path, no search (a ?pay= never re-fires), no hash', async () => {
+  const { S, fb } = await dirBoot({ url: 'https://app.test/r/x_pizza/pago?pay=complete&order=XP-1&t=pt_1#top' });
+  try {
+    await signOutNow(fb);
+    assert.deepEqual(S.replaced, ['https://app.test/'], '🔴 R3-ROOT: ONE replace, to the origin root');
+  } finally { S.w.close(); }
+});
+for (const [how, go, next] of LEAVES) {
+  test(`r3 RESTART: ${how} ⇒ the overlay («${next ? 'Cambiando de cuenta…' : 'Cerrando sesión…'}», a status, the app inert), every record of hers off the device, the stamp gone, the restart`, async () => {
+    const { S, fb, st } = await seedCheckout();
+    try {
+      for (const k of ['capp:recent', 'capp:guest_loc', 'capp:active_order', 'capp:rate_nudge', 'capp:rate_done', 'capp:return', 'capp:store_handoff', 'capp:la_musa:pending_place', 'capp:la_musa:pending_pay', 'capp:la_musa:placed', 'capp:la_musa:sent_order', 'capp:fav:u_ana']) st.setItem(k, '{"v":1}');
+      S.w.sessionStorage.setItem('sherpa_reload_snapshot', '{"v":1}');
+      S.click('[data-act="type"][data-val="delivery"]'); await flush();   // the store's own cart writer (a mode tap persists it)
+      assert.ok(st.getItem('capp:x_pizza:cart') && st.getItem('capp:addr:u_ana') && st.getItem('capp:member_profile'), 'premise: her cart, book and profile (the real writers)');
+      await go(fb, S, st);
+      const ov = S.q('#swap');
+      assert.ok(ov && ov.getAttribute('role') === 'status', '🔴 R3-RESTART: the overlay, a status');
+      assert.equal(txt(ov), next ? 'Cambiando de cuenta…' : 'Cerrando sesión…', '🔴 R3-RESTART: its one line');
+      assert.ok(S.q('#app').hasAttribute('inert'), '🔴 R3-RESTART: the app behind it takes no input');
+      assert.deepEqual(unkeyedOf(st), [], '🔴 R3-RESTART: no unkeyed record of hers (every class) is left');
+      for (const k of ['capp:addr:u_ana', 'capp:fav:u_ana', 'capp:member_profile', OWNER]) assert.equal(st.getItem(k), null, `🔴 R3-RESTART: ${k} is gone`);
+      assert.equal(S.w.sessionStorage.getItem('sherpa_reload_snapshot'), null, '🔴 R3-RESTART: no self-update snapshot can bring her checkout back');
+      assert.deepEqual(S.replaced, ['https://app.test/'], '🔴 R3-RESTART: the app starts again at its root');
+      if (next) assert.equal((JSON.parse(st.getItem('capp:member_complete') || 'null') || {}).uid, next, 'the next member\'s completion mark stays (he is restored after the restart)');
+      else assert.equal(st.getItem('capp:member_complete'), null, '🔴 R3-RESTART: her completion mark is gone');
+    } finally { S.w.close(); }
+  });
+}
+test('r3 SWITCH-KEEP: A → B keeps ONLY the records whose uid IS B (exact) — B\'s mark, book and favourites; every record of A, and of a uid B merely prefixes, goes', async () => {
+  const { S, fb, st } = await dirBoot();
+  try {
+    for (const k of ['capp:addr:u_bob', 'capp:fav:u_bob', 'capp:addr:u_bobby', 'capp:fav:u_bobby', 'capp:fav:u_ana']) st.setItem(k, '{"v":1}');
+    await switchTo(S, fb, st, 'u_bob');
+    for (const k of ['capp:addr:u_bob', 'capp:fav:u_bob']) assert.ok(st.getItem(k), `🔴 R3-SWITCH-KEEP: B's ${k} stays`);
+    assert.equal((JSON.parse(st.getItem('capp:member_complete') || 'null') || {}).uid, 'u_bob', '🔴 R3-SWITCH-KEEP: B\'s completion mark stays');   // null-safe (Codex #178 #6)
+    for (const k of ['capp:addr:u_ana', 'capp:fav:u_ana', 'capp:member_profile', 'capp:addr:u_bobby', 'capp:fav:u_bobby']) assert.equal(st.getItem(k), null, `🔴 R3-SWITCH-KEEP: ${k} is gone`);
+  } finally { S.w.close(); }
+});
+test('r3 RESTART-REJECT: a REFUSED sign-out changes nothing — the overlay goes, she is still the member, every record stays, no restart', async () => {
+  const { S, st } = await dirBoot({ fbOpts: { failSignOut: 1 } });
+  try {
+    const before = keysOf(st);
+    await viaRow(null, S);
+    assert.equal(S.q('#swap'), null, '🔴 R3-REJECT: no overlay left');
+    assert.ok(!S.q('#app').hasAttribute('inert'), '🔴 R3-REJECT: the app takes input again');
+    assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', '🔴 R3-REJECT: she is still the member');
+    assert.deepEqual(keysOf(st), before, '🔴 R3-REJECT: nothing wiped');
+    assert.deepEqual(S.replaced, [], '🔴 R3-REJECT: no restart');
+  } finally { S.w.close(); }
+});
+test('r3 RESTART-ORDER: nothing is wiped (and no restart) while the push exit / sign-out is still in flight — the wipe comes after it', async () => {
+  const { S, fb, st } = await dirBoot();
+  try {
+    const { authMod } = await fb.loadSdk(); const real = authMod.signOut; let go = null;
+    authMod.signOut = (...a) => new Promise((r) => { go = () => r(real(...a)); });
+    for (const k of ['capp:recent', 'capp:x_pizza:cart', 'capp:active_order']) st.setItem(k, '{"v":1}');
+    const recs = () => keysOf(st).filter((k) => !k.startsWith('capp:addr:'));   // the device book copy goes with dropMember (C-DIR-1's own hook)
+    const before = recs();
+    await toAccount(S); S.click('[data-act="signout"]'); await flush(); await flush();
+    assert.ok(S.q('#swap'), '🔴 R3-ORDER: the overlay is up at once');
+    assert.ok(go, 'premise: the sign-out is in flight');
+    assert.deepEqual(recs(), before, '🔴 R3-ORDER: nothing wiped before the sign-out completes');
+    assert.deepEqual(S.replaced, [], '🔴 R3-ORDER: no restart before it');
+    go(); await flush(); await flush();
+    assert.equal(st.getItem('capp:addr:u_ana'), null, 'then the wipe'); assert.equal(S.replaced.length, 1, 'then the restart');
+  } finally { S.w.close(); }
+});
+for (const [how, go, next] of LEAVES) {
+  test(`r3 Codex #173 #1 (P1): ${how} with Inicio's pin editor open on Casa — «Listo» after it lands nothing; the fresh app has no pin of hers`, async () => {
+    const { S, fb, st } = await dirBoot();
+    try {
+      S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush(); S.click('#layer [data-act="addr-new"]'); await flush();
+      assert.ok(S.q('[data-act="pin-done"]'), 'premise: Inicio\'s pin editor is open');
+      await go(fb, S, st);
+      if (S.q('[data-act="pin-done"]')) { S.click('[data-act="pin-done"]'); await flush(); }   // a tap that slipped through (jsdom ignores inert)
+      assert.equal(st.getItem('capp:guest_loc'), null, '🔴 C173-1: her coordinates never land on the device');
+    } finally { S.w.close(); }
+    const { S: F } = await relaunch(st, next);
+    try {
+      F.click('.tabbar [data-tab="home"]'); await flush();
+      assert.equal(F.q('.addr-btn').getAttribute('aria-label'), 'Dirección de entrega: Agregá tu dirección', '🔴 C173-1: the fresh app holds no location of hers');
+    } finally { F.w.close(); }
+  });
+  test(`r3 Codex #173 #2 (P1): ${how} from an open checkout — the fresh app's checkout has none of her name, phone or email`, async () => {
+    const { S, ui, fb, st } = await seedCheckout();
+    try {
+      assert.ok(/Ana/.test(ui.state.flow.name || ''), `premise: her name in the checkout (${ui.state.flow.name})`);
+      await go(fb, S, st);
+      assert.equal(S.replaced.length, 1, '🔴 C173-2: the page holding her checkout is replaced — nothing of it survives in memory');
+    } finally { S.w.close(); }
+    const { S: F } = await relaunch(st, next);
+    try {
+      await until(() => F.q('.rlist .rcard[data-rid="x_pizza"]')); F.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+      const u = F.ui.store().ui; u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render();
+      F.click('#cart-bar'); F.click('[data-act="checkout"]'); await flush(); await flush();
+      const f = u.state.flow || {};
+      for (const t of ['Ana', '9612', '96123344', 'ana.perez']) {
+        assert.ok(![f.name, f.phone, f.email].some((v) => String(v || '').includes(t)), `🔴 C173-2: «${t}» is in none of the fresh checkout's fields`);
+        assert.ok(!F.qa('input').some((i) => String(i.value).includes(t)), `🔴 C173-2: no visible field reads «${t}»`);
+      }
+    } finally { F.w.close(); }
+  });
+  test(`r3 Codex #173 #3 (P1): ${how} after her cash order — no active order of hers on the device; the fresh app shows no card and no tracking token`, async () => {
+    const apiFetch = (u, i) => (u.startsWith('/x/q') ? quoteOk(u, i) : u.startsWith('/x/c') ? Promise.resolve({ status: 200, ok: true, json: async () => ({ ok: true, order_id: JSON.parse(i.body).order_id, tracking_token: 'tok_abcdefgh12' }) }) : new Promise(() => {}));
+    const { S, fb, st } = await seedCheckout({ apiFetch });
+    try {
+      await flush(); await flush();
+      if (S.q('[data-act="pay"][data-val="cash"]')) { S.click('[data-act="pay"][data-val="cash"]'); await flush(); }
+      S.click('#cta'); await flush(); S.click('#layer [data-act="placing-go"]'); await flush(); await flush(); await flush(700);
+      assert.ok(st.getItem('capp:active_order'), 'premise: the real writer kept her active order (token + snapshot)');
+      await go(fb, S, st);
+      assert.equal(st.getItem('capp:active_order'), null, '🔴 C173-3: her active order left the device');
+    } finally { S.w.close(); }
+    const { S: F } = await relaunch(st, next);
+    try {
+      await flush(); await flush();
+      assert.equal(F.ui.state.order, null, '🔴 C173-3: the fresh app holds no order of hers');
+      assert.ok(!F.w.document.body.innerHTML.includes('tok_abcdefgh12'), '🔴 C173-3: her tracking token is nowhere');
+    } finally { F.w.close(); }
+  });
+}
+// ── r3 the COLD gate (owner 11-19 rulings 1–4, A): a boot whose unkeyed records are a member's (or nobody's) reads none of them, and holds
+// every control that would write one (a store tap: pressed; «Entregar en»: disabled), until the session settles ──
+const gateQ = () => ({ q: [] }), release = async (g) => { for (const f of g.q.splice(0)) f(); await flush(); await flush(); };
+const memberWithOrder = async () => {   // her cash order through the REAL writers (active order + stamp), then the app is simply closed
+  const apiFetch = (u, i) => (u.startsWith('/x/q') ? quoteOk(u, i) : u.startsWith('/x/c') ? Promise.resolve({ status: 200, ok: true, json: async () => ({ ok: true, order_id: JSON.parse(i.body).order_id, tracking_token: 'tok_abcdefgh12' }) }) : new Promise(() => {}));
+  const { S, st } = await seedCheckout({ apiFetch });
+  try {
+    await flush(); await flush();
+    if (S.q('[data-act="pay"][data-val="cash"]')) { S.click('[data-act="pay"][data-val="cash"]'); await flush(); }
+    S.click('#cta'); await flush(); S.click('#layer [data-act="placing-go"]'); await flush(); await flush(); await flush(700);
+    if (S.q('[data-act="order-close"]')) { S.click('[data-act="order-close"]'); await flush(); }
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush(); S.click('#layer [data-act="addr-new"]'); await flush(); S.click('[data-act="pin-done"]'); await flush(); await flush();
+  } finally { S.w.close(); }
+  assert.ok(st.getItem('capp:active_order'), 'premise: her active order (the real writer)');
+  assert.ok(st.getItem('capp:guest_loc'), 'premise: her pin on the device (the real writer, Inicio\'s editor)');
+  return st;
+};
+test('r3 GATE-GUEST: a GUEST\'s device (stamp «guest») boots exactly as today — its location and cart at once, nothing held, «Entregar en» live, a store tap enters', async () => {
+  const st = memStorage({ [OWNER]: 'guest', 'capp:guest_loc': JSON.stringify({ lat: 15.52, lng: -88.04, confirmed: true, source: 'pin', v: 1 }), ...cartOf('x_pizza', anyDish().key) });
+  const g = gateQ(); const { S } = await relaunch(st, null, { fbOpts: { persisted: null, authGate: g } });
+  try {
+    assert.equal(S.ui.state.loc && S.ui.state.loc.lat, 15.52, '🔴 R3-GATE-GUEST: the guest\'s location at once (before auth)');
+    assert.equal(S.q('.addr-btn').getAttribute('aria-disabled'), null, '🔴 R3-GATE-GUEST: «Entregar en» live');
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    assert.equal(S.ui.store() && S.ui.store().rid, 'x_pizza', '🔴 R3-GATE-GUEST: a store tap enters at once (not held)');
+    assert.equal(S.ui.store().ui.cart.count(), 1, '🔴 R3-GATE-GUEST: its cart restored at once');
+  } finally { S.w.close(); }
+});
+test('r3 GATE-MATCH: her device, her session restoring — nothing of hers is read before it settles (no order, no location; the store tap HELD, «Entregar en» disabled); once it is hers: the order, and the held tap opens ONCE', async () => {
+  const st = await memberWithOrder();
+  const g = gateQ(); const { S } = await relaunch(st, 'u_ana', { fbOpts: { persisted: 'u_ana', authGate: g } });
+  try {
+    assert.equal(S.ui.state.order, null, '🔴 R3-GATE-MATCH: her active order is not read before the session settles');
+    assert.equal(S.ui.state.loc, null, '🔴 R3-GATE-READ: her pin is not read before the session settles');
+    assert.equal(S.q('.addr-btn').getAttribute('aria-disabled'), 'true', '🔴 R3-GATE-MATCH: «Entregar en» disabled while held');
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 R3-GATE-MATCH: the store tap is held (no store, no cart read)');
+    assert.equal(S.ui.state.held && S.ui.state.held.rid, 'x_pizza', 'the tap is held (pressed)');
+    await release(g);
+    assert.ok(S.ui.state.order && S.ui.state.order.order_id, '🔴 R3-GATE-MATCH: her order once her session settled');
+    assert.ok(S.ui.state.loc, '🔴 R3-GATE-MATCH: and her pin');
+    assert.equal(S.ui.store() && S.ui.store().rid, 'x_pizza', '🔴 R3-GATE-MATCH: the held tap opened');
+    assert.equal(st.getItem(OWNER), 'u:u_ana', 'still hers'); assert.deepEqual(S.replaced, [], 'no restart');
+  } finally { S.w.close(); }
+});
+for (const who of [null, 'u_bob']) {
+  test(`r3 GATE-MISMATCH: her device opened by ${who ? 'ANOTHER member' : 'a guest'} — her records are wiped before anything reads them (no restart), the held tap is DROPPED, the stamp ${who ? 'names him' : 'is «guest»'}${who ? ', his own mark kept' : ''}`, async () => {
+    const st = await memberWithOrder();
+    if (who) st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: who }));
+    const g = gateQ(); const { S } = await relaunch(st, who, { fbOpts: { persisted: who, authGate: g } });
+    try {
+      await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+      assert.equal(S.ui.store(), null, '🔴 R3-GATE-MISMATCH: the tap is held until the session settles');
+      await release(g);
+      assert.deepEqual(unkeyedOf(st), [], '🔴 R3-GATE-MISMATCH: none of her unkeyed records is left');
+      for (const k of ['capp:addr:u_ana', 'capp:member_profile']) assert.equal(st.getItem(k), null, `🔴 R3-GATE-MISMATCH: ${k} is gone`);
+      assert.equal(S.ui.state.order, null, '🔴 R3-GATE-MISMATCH: her order never shown');
+      assert.equal(S.ui.store(), null, '🔴 R3-GATE-MISMATCH: the held tap is dropped, never replayed');
+      assert.equal(st.getItem(OWNER), who ? 'u:' + who : 'guest', '🔴 R3-GATE-MISMATCH: stamped to who settled — after the wipe');
+      if (who) assert.equal(JSON.parse(st.getItem('capp:member_complete')).uid, who, 'his own mark stays');
+      assert.deepEqual(S.replaced, [], '🔴 R3-GATE-MISMATCH: no restart (nothing of hers was read)');
+    } finally { S.w.close(); }
+  });
+}
+test('r3 GATE-UNSTAMPED (upgrade): records with NO stamp are nobody\'s — the settling guest gets none of them', async () => {
+  const st = memStorage(cartOf('x_pizza', anyDish().key));
+  const { S } = await relaunch(st, null);
+  try {
+    await flush(); await flush();
+    assert.equal(st.getItem('capp:x_pizza:cart'), null, '🔴 R3-GATE-UNSTAMPED: an unstamped record is wiped at settle (a missing stamp is a mismatch)');
+    assert.equal(st.getItem(OWNER), 'guest', 'then stamped');
+  } finally { S.w.close(); }
+});
+test('r3 GATE-UNAVAILABLE: the session never settles (the SDK silent past its 10 s) ⇒ fail CLOSED — nothing of hers read, the tap still held, nothing wiped', async () => {
+  const st = await memberWithOrder();
+  const g = gateQ(); const { S } = await relaunch(st, 'u_ana', { fbOpts: { persisted: 'u_ana', authGate: g } });
+  try {
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    await flush(11000);
+    assert.equal(S.ui.state.order, null, '🔴 R3-GATE-UNAVAILABLE: still nothing of hers');
+    assert.equal(S.ui.store(), null, '🔴 R3-GATE-UNAVAILABLE: the tap still held');
+    assert.ok(st.getItem('capp:active_order'), '🔴 R3-GATE-UNAVAILABLE: nothing wiped on a guess');
+  } finally { S.w.close(); }
+});
+test('r3 GATE-ROUTE: a cold /r/x_pizza on her device mounts NO store before her session settles; then it mounts once, her cart in it', async () => {
+  const { S: A, st } = await seedCheckout();
+  try { A.click('[data-act="type"][data-val="delivery"]'); await flush(); } finally { A.w.close(); }   // the store's own cart writer
+  assert.ok(st.getItem('capp:x_pizza:cart'), 'premise: her cart (the real writer)');
+  const g = gateQ(); const { S } = await relaunch(st, 'u_ana', { fbOpts: { persisted: 'u_ana', authGate: g }, url: 'https://app.test/r/x_pizza', routing: true });
+  try {
+    await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 R3-GATE-ROUTE: no store mounted before the session settles');
+    await release(g); await until(() => S.ui.store());
+    assert.equal(S.ui.store().rid, 'x_pizza', '🔴 R3-GATE-ROUTE: then the route mounts it');
+    assert.equal(S.ui.store().ui.cart.count(), 1, '🔴 R3-GATE-ROUTE: with her cart');
+  } finally { S.w.close(); }
+});
+for (const who of [null, 'u_bob']) {
+  test(`r3 Codex #173 #4 (P1): she left for the hosted payment; ${who ? 'another member' : 'a guest'} opens the payment return — no poll with her capability, nothing of hers shown, her records gone`, async () => {
+    const { S, st, sent } = await memberCardSend();
+    let oid = null;
+    try { const ch = sent.find((x) => x[0] === '/x/p' && x[1] && x[1].order_id); assert.ok(ch, 'premise: her charge'); oid = ch[1].order_id; } finally { S.w.close(); }   // the page left for PixelPay: no sign-out ran
+    if (who) st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: who }));
+    const calls = [];
+    const apiFetch = (u, i) => { calls.push(u.split('?')[0]); return u.startsWith('/x/q') ? quoteOk(u, i) : new Promise(() => {}); };
+    const { S: B } = await relaunch(st, who, { apiFetch, search: `?pay=complete&order=${oid}&t=pt_1` });
+    try {
+      await flush(); await flush(700);
+      assert.deepEqual(calls.filter((u) => u === '/x/s'), [], '🔴 C173-4: no payment poll for her order');
+      assert.deepEqual(unkeyedOf(st), [], '🔴 C173-4: her order records are gone');
+      const shown = B.w.document.body.textContent + JSON.stringify((B.ui.store() && B.ui.store().ui.state.flow) || {});
+      for (const t of ['Casa azul', 'Col. Trejo', 'Ana']) assert.ok(!shown.includes(t), `🔴 C173-4: «${t}» (hers) is nowhere`);
+    } finally { B.w.close(); }
+  });
+}
+test('r3 GUEST-SIGNIN-KEEP: a guest who signs in keeps her own cart and location (the «guest» stamp is adopted, then names her) — no wipe, no restart', async () => {
+  const fb = fakeFirebase(); const srv = signupServer(ANA);
+  const st = memStorage({ [OWNER]: 'guest', 'capp:guest_loc': JSON.stringify({ lat: 15.52, lng: -88.04, confirmed: true, source: 'pin', v: 1 }), ...cartOf('x_pizza', anyDish().key) });
+  const S = bootShell({ auth: 'unresolved', storage: st, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: srv.fetch } });
+  try {
+    await flush(); await flush();
+    await signInViaSheet(S); S.click(suHost(S).querySelector('[data-su="finish"]')); await flush(); await flush();
+    assert.ok(st.getItem('capp:x_pizza:cart') && st.getItem('capp:guest_loc'), '🔴 R3-SIGNIN-KEEP: her guest cart and location stay');
+    assert.equal(st.getItem(OWNER), 'u:u_ana', '🔴 R3-SIGNIN-KEEP: the stamp now names her');
+    assert.deepEqual(S.replaced, [], 'no restart');
+  } finally { S.w.close(); }
+});
+// ── r3 Codex #173 P2/P3 (the picker; not identity — the restart does not touch them) ──
+test('r3 Codex #173 #7 (P2): the owned token held by the SDK never holds the picker — the pick settles at the transport\'s cap (UNKNOWN: sand line, rows live), and the late token sends nothing', async () => {
+  const hold = { on: false, q: [] };
+  const { S, addr } = await dirBoot({ fbOpts: { hold } });
+  try {
+    await toDirecciones(S); await flush();
+    hold.on = true;
+    S.click(dirRow(S, AID.trabajo)); await flush();
+    assert.ok(S.ui.state.addrPick, 'premise: the pick waits on its owned token');
+    await flush(25000);
+    assert.equal(S.ui.state.addrPick, null, '🔴 C173-7: the pick settled (bounded by the cap)');
+    assert.equal(sandOf(S, '.flow'), SAND, '🔴 C173-7: the calm sand line (UNKNOWN)');
+    assert.ok(!S.qa('.addrlist [aria-disabled="true"]').length, '🔴 C173-7: the rows are live again');
+    hold.on = false; for (const f of hold.q.splice(0)) f(); await flush(); await flush();
+    assert.deepEqual(addrWrites(addr), [], '🔴 C173-7: the late token sends nothing');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 Codex #173 #9 (P2): Inicio\'s open «Entregar en» sheet paints the pick — the spinner on the tapped row (the rest disabled) while it waits, the sand line on a refusal', async () => {
+  const h = held();
+  const { S, addr } = await dirBoot({ uses: ['use_trabajo_late'], ugate: () => h.gate() });
+  try {
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush();
+    S.click(sheetRow(S, AID.trabajo)); await flush();
+    assert.equal(sheetRow(S, AID.trabajo).getAttribute('aria-busy'), 'true', '🔴 C173-9: the tapped row spins in the open sheet');
+    assert.ok(off(sheetRow(S, AID.casa)), '🔴 C173-9: the other row is disabled');
+    h.release(); await flush(); await flush(); await flush();
+    assert.equal(sandOf(S, '#layer'), SAND, '🔴 C173-9: the refusal\'s sand line in the open sheet');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 Codex #173 #5 (P2): a refused pick whose re-read ADOPTS another selection (the form chose Mamá) re-seeds the editable checkout with it — row, pin and the open sheet\'s selection', async () => {
+  const mama = ADX.scenarios.m3_profile_mama.body.addresses.find((a) => a.id === AID.mama);
+  const { S, ui, addr } = await seedCheckout({ reads: ['m3_profile_casa', 'm3_profile_mama'], uses: ['m3_use_trabajo_stale'] });
+  try {
+    assert.equal(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', 'premise: Casa seeds the checkout');
+    S.click('[data-act="co-addr"]'); await flush();
+    S.click(sheetRow(S, AID.trabajo)); await flush(); await flush(); await flush();
+    assert.equal(sandOf(S, '#layer'), SAND, 'premise: the refusal\'s sand line (409 ⇒ the re-read adopted Mamá)');
+    assert.deepEqual([ui.state.flow.pin.lat, ui.state.flow.pin.lng], [mama.lat, mama.lng], '🔴 C173-5: the checkout prices / routes the address now in use (Mamá)');
+    assert.ok(/^Mamá · /.test(addrBold(S) || ''), `🔴 C173-5: its row names Mamá (${addrBold(S)})`);
+    assert.ok(sheetRow(S, AID.mama) && sheetRow(S, AID.mama).classList.contains('on'), '🔴 C173-5: the open sheet marks Mamá in use');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 Codex #173 #6 (P2): a pick in flight holds EVERY pin / location control of the checkout — the map and its row are disabled and open no editor', async () => {
+  const h = held();
+  const { S, ui, addr } = await seedCheckout({ ugate: () => h.gate() });
+  try {
+    S.click('[data-act="co-addr"]'); await flush(); S.click(sheetRow(S, AID.trabajo)); await flush(); S.click('#layer [data-act="lclose"]'); await flush();
+    const map = S.q('.map[data-act="pin"]'); assert.ok(map, 'premise: the checkout map');
+    assert.ok(off(map), '🔴 C173-6: the map is disabled while the pick is in flight');
+    S.click(map); await flush();
+    assert.notEqual(ui.state.layerKind, 'pin', '🔴 C173-6: «Ajustar pin» opens no editor mid-pick');
+    h.release(); await flush(); await flush();
+    assert.ok(!off(S.q('.map[data-act="pin"]')), 'live again after the 200');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 Codex #173 #8 (P2): the address ALREADY in use, picked again after a device location, goes through the CAS (the real handler\'s 200) and puts the saved address back in use', async () => {
+  const { S, addr } = await dirBoot({ uses: ['use_casa_same'] });
+  try {
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush(); S.click('#layer [data-act="addr-new"]'); await flush(); S.click('[data-act="pin-done"]'); await flush(); await flush();
+    assert.equal(S.ui.state.locPick, 'device', 'premise: a device location took over');
+    S.click('.addr-btn'); await flush(); S.click(sheetRow(S, AID.casa)); await flush(); await flush(); await flush();
+    assert.deepEqual(addrWrites(addr), [{ id: AID.casa, expected_rev: 0, expected_default: AID.casa }], '🔴 C173-8: the same id is written through the CAS (the fence)');
+    assert.equal(S.ui.state.locPick, 'saved', '🔴 C173-8: the saved address is back in use');
+    assert.equal(txt(S.q('.addr-btn .v > span')), 'Casa', '🔴 C173-8: the pill names it');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+test('r3 Codex #173 #10 (P2): a confirmed pick landing while the card TIP step is open (not yet sent) re-seeds the flow — the tip step is editable, «Enviando» is not', async () => {
+  const h = held();
+  const { S, ui, addr } = await seedCheckout({ ugate: () => h.gate() });
+  try {
+    S.click('[data-act="co-addr"]'); await flush(); S.click(sheetRow(S, AID.trabajo)); await flush(); S.click('#layer [data-act="lclose"]'); await flush();
+    if (S.q('[data-act="pay"][data-val="online"]')) { S.click('[data-act="pay"][data-val="online"]'); await flush(); }
+    S.click('#cta'); await flush(); await until(() => ui.state.screen === 'tip', 4000).catch(() => {});
+    assert.equal(ui.state.screen, 'tip', 'premise: the card tip step (nothing sent)');
+    h.release(); await flush(); await flush();
+    assert.equal(ui.state.flow.saved && ui.state.flow.saved.label, 'Trabajo', '🔴 C173-10: the undispatched flow takes the confirmed pick');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+
+// ── r3 Codex #178 (HIGH, REVISE): the cross-tab stale writer, the SDK switch before the listener, a refused sign-out's caches, a member-
+// stamped device with no records yet, a recovery at the same pin ──
+test('r3 Codex #178 #1 (P1): another TAB of the device signs her out while this tab\'s charge is in flight — the late reply writes nothing back, this tab seals itself and restarts, and the guest\'s return shows nothing of hers', async () => {
+  const { S: A, st, sent, release } = await memberCardSend({ holdCharge: true });
+  let oid = null;
+  try {
+    const ch = sent.find((x) => x[0] === '/x/p' && x[1] && x[1].order_id); assert.ok(ch, 'premise: her charge is in flight (held)'); oid = ch[1].order_id;
+    const { S: B, fb: fbB } = await relaunch(st, 'u_ana');   // tab B: the same device storage, its own SDK instance
+    try { await flush(); await signOutNow(fbB); assert.equal(B.replaced.length, 1, 'premise: tab B wiped and restarted'); } finally { B.w.close(); }
+    release(); await flush(); await flush(); await flush(700);   // tab A's late reply — A's SDK has not told A yet
+    assert.equal(st.getItem('capp:x_pizza:pending_pay'), null, '🔴 C178-1: the stale tab writes no payment record back');
+    assert.equal(st.getItem('capp:x_pizza:sent_order'), null, '🔴 C178-1: nor her sent order');
+    assert.equal(A.replaced.length, 1, '🔴 C178-1: the stale tab sealed itself and restarted');
+  } finally { A.w.close(); }
+  const calls = [];
+  const apiFetch = (u, i) => { calls.push(u.split('?')[0]); return u.startsWith('/x/q') ? quoteOk(u, i) : new Promise(() => {}); };
+  const { S: G } = await relaunch(st, null, { apiFetch, search: `?pay=complete&order=${oid}&t=pt_1` });
+  try {
+    await flush(); await flush(700);
+    assert.deepEqual(calls.filter((u) => u === '/x/s'), [], '🔴 C178-1: the guest\'s boot polls nothing of hers');
+    for (const t of ['Casa azul', 'Col. Trejo']) assert.ok(!G.w.document.body.textContent.includes(t), `🔴 C178-1: «${t}» (hers) is nowhere`);
+  } finally { G.w.close(); }
+});
+test('r3 Codex #178 #2 (P1): the SDK switched to Bob BEFORE the shell heard (the listener held) — Ana\'s order is never dispatched (never with Bob\'s token) and the app leaves', async () => {
+  const notifyGate = { on: false, q: [] }, co = [];
+  const apiFetch = (u, i) => { if (u.startsWith('/x/c')) co.push((i.headers || {})['x-firebase-id-token'] || null);
+    return u.startsWith('/x/q') ? quoteOk(u, i) : u.startsWith('/x/c') ? Promise.resolve({ status: 200, ok: true, json: async () => ({ ok: true, order_id: JSON.parse(i.body).order_id, tracking_token: 'tok_abcdefgh12' }) }) : new Promise(() => {}); };
+  const { S, fb } = await seedCheckout({ apiFetch, fbOpts: { notifyGate } });
+  try {
+    await flush(); await flush();
+    if (S.q('[data-act="pay"][data-val="cash"]')) { S.click('[data-act="pay"][data-val="cash"]'); await flush(); }
+    notifyGate.on = true; const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bob');
+    assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: the SDK is Bob, the shell still holds Ana (the listener is held)');
+    S.click('#cta'); await flush(); if (S.q('#layer [data-act="placing-go"]')) S.click('#layer [data-act="placing-go"]'); await flush(); await flush(); await flush(700);
+    assert.ok(!co.some((t) => subOf(t) === 'u_bob'), '🔴 C178-2: Bob\'s token never carries her order');
+    assert.deepEqual(co, [], '🔴 C178-2: her order is not dispatched at all');
+    assert.ok(S.q('#swap'), '🔴 C178-2: the app leaves (the overlay)');
+  } finally { S.w.close(); }
+});
+// Codex #189 #1 (P1): the SDK's answer that its user CHANGED (switched, or signed out) is a refusal — never Ana's cached token; a token
+// that merely failed (network / timeout) keeps today's path. Codex's two repros: the switch lands while her token is in flight, and the
+// SDK signs out before the token is asked
+for (const [how, flip, line] of [
+  ['the SDK switches to Bob while her token is IN FLIGHT', async (authMod) => authMod.signInWithCustomToken(null, 'ct:u_bob'), 'Cambiando de cuenta…'],
+  ['the SDK signs out BEFORE her token is asked', null, 'Cerrando sesión…'],
+]) {
+  test(`r3 Codex #189 #1 (P1): ${how} (the listener held) — her order is never dispatched with her cached token, and the app leaves`, async () => {
+    const notifyGate = { on: false, q: [] }, hold = { on: false, q: [] }, co = [];
+    const apiFetch = (u, i) => { if (u.startsWith('/x/c')) co.push((i.headers || {})['x-firebase-id-token'] || null);
+      return u.startsWith('/x/q') ? quoteOk(u, i) : u.startsWith('/x/c') ? Promise.resolve({ status: 200, ok: true, json: async () => ({ ok: true, order_id: JSON.parse(i.body).order_id, tracking_token: 'tok_abcdefgh12' }) }) : new Promise(() => {}); };
+    const { S, fb } = await seedCheckout({ apiFetch, fbOpts: { notifyGate, hold } });
+    try {
+      await flush(); await flush();
+      if (S.q('[data-act="pay"][data-val="cash"]')) { S.click('[data-act="pay"][data-val="cash"]'); await flush(); }
+      assert.ok(S.ui.state.member && S.ui.state.member.idToken, 'premise: her token is cached (the fallback a transient failure keeps)');
+      const { authMod } = await fb.loadSdk(); notifyGate.on = true;
+      const held = () => assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: the SDK moved, the shell still holds Ana (the listener is held)');
+      if (!flip) { await authMod.signOut(null); held(); }
+      else hold.on = true;
+      S.click('#cta'); await flush(); if (S.q('#layer [data-act="placing-go"]')) S.click('#layer [data-act="placing-go"]'); await flush();
+      if (flip) { assert.ok(hold.q.length > 0, 'premise: her token read is in flight'); await flip(authMod); held(); hold.on = false; for (const r of hold.q.splice(0)) r(); }
+      await flush(); await flush(); await flush();
+      assert.deepEqual(co, [], '🔴 C189-1: her order is not dispatched (never with her cached token)');
+      assert.equal(txt(S.q('#swap p')), line, '🔴 C189-1: the app leaves (the overlay)');
+    } finally { S.w.close(); }
+  });
+}
+// Codex #193 (P1): a token of ANOTHER user must never leave with her request — whatever path cached it. (a) Codex's repro: the SDK is
+// Bob (listener held), her token reaches its refresh, the refresh runs, then every owned read fails and she submits; (b) the SINK: a
+// foreign token sits in her cache through the transport's ONE setter (any path, today's or a future one) and the owned read fails
+const c193 = () => {
+  const clock = { t: T0 }, L = longTimers(), sent = [], net = { down: false, once: false }, notifyGate = { on: false, q: [] };
+  const fb = fakeFirebase({ persisted: 'u_ana', tokExp: T0 + 120e3, rotate: true, notifyGate, failIf: () => (net.once ? (net.once = false) : net.down) });
+  const apiFetch = (u, i) => { sent.push([u.split('?')[0], (i && i.headers && i.headers['x-firebase-id-token']) || null]);
+    return u.startsWith('/x/q') ? quoteOk(u, i) : u.startsWith('/x/c') ? Promise.resolve({ status: 200, ok: true, json: async () => ({ ok: true, order_id: JSON.parse(i.body).order_id, tracking_token: 'tok_abcdefgh12' }) }) : new Promise(() => {}); };
+  return { clock, L, sent, net, notifyGate, fb, S: memberBoot({ fb, apiFetch, now: clock, timers: L.T }) };
+};
+const c193Submit = async (S) => { S.click('#cta'); await flush(); if (S.q('#layer [data-act="placing-go"]')) S.click('#layer [data-act="placing-go"]'); await flush(); await flush(); await flush(); };
+test('r3 Codex #193 (P1) repro: the SDK is Bob (listener held) and her token\'s REFRESH runs, then the owned read fails — Bob\'s token never carries her request, and the app leaves', async () => {
+  const { clock, L, sent, net, notifyGate, fb, S } = c193();
+  try {
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
+    await toShellCheckout(S); S.click('#app [data-act="type"][data-val="pickup"]'); await flush(); await flush();
+    const { authMod } = await fb.loadSdk(); notifyGate.on = true; net.down = true; await authMod.signInWithCustomToken(null, 'ct:u_bob');
+    assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: the SDK is Bob, the shell still holds Ana (the listener is held)');
+    const exp = [...L.pend.keys()]; assert.equal(exp.length, 1, 'premise: only her token\'s expiry is armed');
+    sent.length = 0; clock.t = T0 + exp[0].ms; L.fire(); await flush(); await flush();   // her token's refresh threshold: the expiry fires
+    net.once = true; L.fire(); await flush(); await flush(); await flush();   // the refresh runs (one SDK read answers), then the network is down
+    if (!S.q('#swap')) await c193Submit(S);
+    assert.ok(!sent.some(([, t]) => subOf(t) === 'u_bob'), '🔴 C193: Bob\'s token never carries her request');
+    assert.ok(S.q('#swap'), '🔴 C193: the app leaves (the overlay)');
+  } finally { S.w.close(); }
+});
+// #236 P2's void is scoped: a MOUNTED member's token timers stay hers until the exit is confirmed (#178 #3) — a refused sign-out leaves
+// her refresh live
+test('r3 Codex #236 P2 (scope): a REFUSED sign-out keeps her token refresh live — the expiry still re-reads her token', async () => {
+  const clock = { t: T0 }, L = longTimers();
+  const fb = fakeFirebase({ persisted: 'u_ana', tokExp: T0 + 120e3, rotate: true, failSignOut: 1 });
+  const S = memberBoot({ fb, apiFetch: (u, i) => (u.startsWith('/x/q') ? quoteOk(u, i) : new Promise(() => {})), now: clock, timers: L.T });
+  try {
+    await until(() => S.ui.state.member); await flush();
+    const exp = [...L.pend.keys()]; assert.equal(exp.length, 1, 'premise: her token\'s expiry is armed');
+    await viaRow(null, S); await flush();
+    assert.deepEqual(S.replaced, [], 'premise: the sign-out was refused (no restart)');
+    assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: she is still the member');
+    const r0 = fb.calls.reads; clock.t = T0 + exp[0].ms + 1;
+    for (let i = 0; i < 3; i++) { L.fire(); await flush(); await flush(); }
+    assert.ok(fb.calls.reads > r0, '🔴 C236-P2-SCOPE: after a refused sign-out her token refresh still runs');
+  } finally { S.w.close(); }
+});
+// Codex #236 P2 (single tab, native too): an admission already waiting on its token when this tab LEAVES never lands — the SDK switched
+// (its listener held, so the auth state still names her): the owned read inside the admission is the leave; S.member stays empty
+test('r3 Codex #236 P2: her restored admission waits on its token; the SDK switches to Bob (listener held) ⇒ the owned read leaves, and the admission never lands — no member in the leaving tab', async () => {
+  const hold = { on: true, q: [] }, gate = { on: false, q: [] };
+  const { S, fb } = await pedidosBoot({}, { fbOpts: { hold, notifyGate: gate }, noFlush: true });
+  try {
+    await until(() => hold.q.length >= 1); await flush();
+    assert.equal(S.ui.state.member || null, null, 'premise: her admission waits on its token');
+    gate.on = true; hold.on = false;
+    const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush();   // the SDK is Bob's; the shell not told
+    for (const r of hold.q.splice(0)) r(); await flush(); await flush(); await flush();   // her token read answers: another user ⇒ the leave
+    assert.equal(S.replaced.length, 1, 'premise: the tab left (switch)');
+    assert.equal(S.ui.state.member || null, null, '🔴 C236-P2: an admission that resumes after the leave never repopulates the member');
+    gate.on = false; for (const e of gate.q.splice(0)) e(); await flush(); await flush();
+    assert.equal(S.ui.state.member || null, null, 'and none after the listener is told');
+  } finally { S.w.close(); }
+});
+test('r3 (re-anchor r3-rs-21) leave() ends her identity IN MEMORY before the restart (the checkout mounted): the shell holds no member, her token timers are void — a refresh due after the leave never reads the SDK', async () => {
+  const { clock, L, fb, S } = c193();
+  try {
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
+    await toShellCheckout(S); await flush();
+    assert.ok(S.ui.store(), 'premise: her checkout is mounted');
+    const exp = [...L.pend.keys()]; assert.equal(exp.length, 1, 'premise: her token\'s expiry is armed');
+    const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush(); await flush();
+    assert.equal(S.replaced.length, 1, 'premise: the switch left (the restart is recorded; the page is still alive)');
+    assert.equal(S.ui.state.member, null, '🔴 C178-DROP: the shell holds no member after the leave');
+    assert.ok(!L.pend.has(exp[0]), '🔴 C178-DROP: her token expiry is cancelled');
+    const r0 = fb.calls.reads; clock.t = T0 + exp[0].ms + 60e3;
+    for (let i = 0; i < 4; i++) { L.fire(); await flush(); await flush(); }
+    assert.equal(fb.calls.reads, r0, '🔴 C178-DROP: a refresh due after the leave never reads the SDK');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #193 (P1) SINK: a foreign token in her cache (through the ONE setter) and a failed owned read — her request is never sent with it; she leaves', async () => {
+  const { sent, net, S } = c193();
+  try {
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && S.ui.state.member); await flush();
+    await toShellCheckout(S); S.click('#app [data-act="type"][data-val="pickup"]'); await flush(); await flush();
+    const A = require('./capp-api.js'); assert.ok(A.acceptToken(S.ui.state.member, TOK('u_bob'), T0), 'premise: the ONE setter took a usable token of another user');
+    net.down = true; sent.length = 0;
+    await c193Submit(S);
+    assert.ok(!sent.some(([, t]) => subOf(t) === 'u_bob'), '🔴 C193-SINK: a token whose user is not hers never leaves with her request');
+    assert.ok(S.q('#swap'), '🔴 C193-SINK: the app leaves (the overlay)');
+  } finally { S.w.close(); }
+});
+// Codex #197 (P1, the CLASS): EVERY member request outside the transport takes its token through the shell's ONE owned accessor — the SDK
+// switched to Bob while the shell's listener is held, an action of Ana's never carries Bob's token and the app leaves. Codex's repro
+// (togglePromos) + one representative per caller family: push (tokFor), the member reads (Pedidos), the favorite write, the pay
+// adjustment (payHeaders), the signup's completeProfile (its expected user = the account the sheet just signed in)
+const bobHeld = async (fb, gate) => { const { authMod } = await fb.loadSdk(); gate.on = true; await authMod.signInWithCustomToken(null, 'ct:u_bob'); };
+const anaHeld = (S) => assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: the SDK is Bob, the shell still holds Ana (the listener is held)');
+test('r3 Codex #197 (P1) repro: Notificaciones «Por correo y WhatsApp» after the SDK switched to Bob — setPromos never carries Bob\'s token (his consent untouched); the app leaves', async () => {
+  const gate = { on: false, q: [] }; const ok = await g7Boot({ fbOpts: { notifyGate: gate } }); await toNotifsG7(ok.S);
+  try {
+    await bobHeld(ok.fb, gate); anaHeld(ok.S);
+    ok.S.click('[data-act="promos"]'); await flush(); await flush(); await flush();
+    assert.ok(!ok.srv.sent.some((x) => x[0] === 'setPromos' && subOf(x[2]) === 'u_bob'), '🔴 C197-promos: Ana\'s toggle never writes with Bob\'s token');
+    assert.ok(ok.S.q('#swap'), '🔴 C197-promos: the app leaves (the overlay)');
+  } finally { ok.S.w.close(); }
+});
+test('r3 Codex #197 (P1) push (tokFor): «Pedidos» notifications switched on after the SDK switched to Bob — no push call carries Bob\'s token; the app leaves', async () => {
+  const gate = { on: false, q: [] }; const { S, srv, fb } = await pushBoot({ fake: { permission: 'granted' }, fbOpts: { notifyGate: gate } });
+  try {
+    await toNotifs(S); await until(() => srv.calls.some((c) => c.name === 'getCustomerPushPrefs')); await flush(); await flush();
+    const n0 = srv.calls.length; await bobHeld(fb, gate); anaHeld(S);
+    S.click('.switch[data-k="pedidos"]'); await flush(); await flush(); await flush(); await flush();
+    assert.ok(!srv.calls.slice(n0).some((c) => subOf(c.headers['x-firebase-id-token']) === 'u_bob'), '🔴 C197-push: no push call with Bob\'s token');
+    assert.ok(S.q('#swap'), '🔴 C197-push: the app leaves (the overlay)');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #197 (P1) member reads: «Pedidos» opened after the SDK switched to Bob — getMyOrders never carries Bob\'s token (his history never read for her); the app leaves', async () => {
+  const gate = { on: false, q: [] }; const { S, mo, fb } = await pedidosBoot({ u_ana: {}, u_bob: {} }, { fbOpts: { notifyGate: gate } });
+  try {
+    await bobHeld(fb, gate); anaHeld(S); const n0 = mo.calls.length;
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush(); await flush();
+    assert.ok(!mo.calls.slice(n0).some((c) => subOf(c.headers['x-firebase-id-token']) === 'u_bob'), '🔴 C197-reads: getMyOrders never with Bob\'s token');
+    assert.ok(S.q('#swap'), '🔴 C197-reads: the app leaves (the overlay)');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #197 (P1) favorite write: the store heart tapped after the SDK switched to Bob — setFavorite never carries Bob\'s token; the app leaves', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: ['x_pizza'], recent: [] }));
+  const fav = favServer({ favs: ['x_pizza'] }), gate = { on: false, q: [] };
+  const { S, fb } = await pedidosBoot({}, { fav, storage: st, fbOpts: { notifyGate: gate } });
+  try {
+    await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    await bobHeld(fb, gate); anaHeld(S); const n0 = fav.calls.length;
+    S.click(S.q('.store-nav [data-act="fav"]')); await flush(); await flush(); await flush();
+    assert.ok(!fav.calls.slice(n0).some((c) => subOf(c.tok) === 'u_bob'), '🔴 C197-fav: setFavorite never with Bob\'s token');
+    assert.ok(S.q('#swap'), '🔴 C197-fav: the app leaves (the overlay)');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #197 (P1) pay adjustment (payHeaders): a pending adjustment read after the SDK switched to Bob — getPayAdjust never carries Bob\'s Bearer; the app leaves', async () => {
+  const exp = T0 + 10 * 60e3, gate = { on: false, q: [] };
+  const { S, srv, made, TOKEN, fb } = payMember({ fbOpts: { notifyGate: gate }, reply: (e) => e.method === 'GET' ? { view: payInc(2, 'pending'), server_now: exp - 120000 } : { outcome: 'action_required', view: payInc(3, 'action_required'), server_now: exp - 100000 } });
+  try {
+    await until(() => S.ui.state.member && made.some((e) => e.url.includes('/order_pay_view/'))); await flush();
+    await bobHeld(fb, gate); anaHeld(S);
+    made.find((e) => e.url === `https://rtdb.test/order_pay_view/${TOKEN}.json`).emit('put', '/', payInc(2, 'pending')); await flush(); await flush(); await flush();
+    assert.ok(!srv.log.some((e) => subOf(String(e.auth || '').replace(/^Bearer /, '')) === 'u_bob'), '🔴 C197-pay: no adjustment call with Bob\'s Bearer');
+    assert.ok(S.q('#swap'), '🔴 C197-pay: the app leaves (the overlay)');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #197 (P1) signup: a NEW account\'s «Guardar» after the SDK switched to another user — completeProfile never carries that user\'s token (the sheet\'s own account is the expected one)', async () => {
+  const gate = { on: false, q: [] }, fb = fakeFirebase({ notifyGate: gate }), srv = signupServer({ ...ANA, is_new: true, completion: 'needed', profile: null });
+  const S = bootShell({ auth: 'unresolved', storage: memStorage(), runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: srv.fetch } }); await flush(); await flush();
+  try {
+    await signInViaSheet(S); const h = suHost(S);
+    const em = h.querySelector('#su-email'); em.value = 'ana@gmail.com'; em.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+    S.click(h.querySelector('[data-su="email-go"]')); await flush();
+    const nm = h.querySelector('#su-name'); nm.value = 'Ana Pérez'; nm.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+    const c = h.querySelector('#su-terms'); c.checked = true; c.dispatchEvent(new S.w.Event('change', { bubbles: true })); await flush();
+    await bobHeld(fb, gate);
+    S.click(h.querySelector('[data-su="save"]')); await flush(); await flush(); await flush();
+    assert.ok(!srv.heads.some((x) => x[0] === 'completeProfile' && subOf(x[1]) === 'u_bob'), '🔴 C197-signup: completeProfile never with another user\'s token');
+  } finally { S.w.close(); }
+});
+// Codex #189 P2-2 / P2-3 (owner 11-19: option A — two one-place checks). Codex #189's exact repros.
+test('r3 Codex #189 P2-2: a STALE tab\'s delayed sign-out (tab B already left; a guest built a cart since) never wipes the device — the guest\'s cart and stamp stay; the stale tab restarts', async () => {
+  const { S: A, fb: fbA, st } = await dirBoot();
+  try {
+    const { S: B, fb: fbB } = await relaunch(st, 'u_ana'); try { await signOutNow(fbB); assert.equal(B.replaced.length, 1, 'premise: tab B wiped and restarted'); } finally { B.w.close(); }
+    const { S: G } = await relaunch(st, null);
+    try {
+      G.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); const u = G.ui.store().ui; u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render();
+      G.click('.seg [data-val="delivery"]'); await flush();   // the store's own cart writer
+      const cart = st.getItem('capp:x_pizza:cart'); assert.ok(cart, 'premise: the guest\'s cart is on the device'); assert.equal(st.getItem(OWNER), 'guest', 'premise: the device is the guest\'s');
+      await signOutNow(fbA); await flush();   // tab A's sign-out lands late (before any storage event reached it)
+      assert.equal(st.getItem('capp:x_pizza:cart'), cart, '🔴 C189-P2-2: the guest\'s cart is never wiped by a stale tab');
+      assert.equal(st.getItem(OWNER), 'guest', '🔴 C189-P2-2: the device\'s stamp stays the guest\'s');
+      assert.deepEqual(A.replaced, ['https://app.test/'], 'the stale tab restarts at the root');
+    } finally { G.w.close(); }
+  } finally { A.w.close(); }
+});
+test('r3 Codex #189 P2-3: a device whose owner stamp cannot be PERSISTED (quota) — two fresh guest boots never restart on their own; member records fail closed', async () => {
+  const base = memStorage(), storage = { ...base, setItem(k, v) { if (k === OWNER) throw new Error('QuotaExceededError'); base.setItem(k, v); }, get length() { return base.length; } };
+  const rows = [];
+  for (let i = 0; i < 2; i++) {
+    const { S } = await relaunch(storage, null);
+    try {
+      await flush();
+      S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); const u = S.ui.store() && S.ui.store().ui;
+      if (u) { u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render(); S.click('.seg [data-val="delivery"]'); await flush(); }
+      rows.push({ restarts: S.replaced.length, overlay: !!S.q('#swap'), cart: base.getItem('capp:x_pizza:cart') !== null });
+    } finally { S.w.close(); }
+  }
+  assert.deepEqual(rows.map((r) => [r.restarts, r.overlay]), [[0, false], [0, false]], '🔴 C189-P2-3: a failed stamp write is never an ownership change (no restart, no overlay)');
+  assert.ok(rows.every((r) => !r.cart), 'fails closed: no member record is written on a device whose stamp could not be stored');
+});
+test('r3 Codex #178 #3 (P2): a REFUSED sign-out keeps her device book byte for byte and the address in use — even when her profile can no longer be re-read', async () => {
+  const { S, st, addr } = await dirBoot({ fbOpts: { failSignOut: 1 } });
+  try {
+    const book0 = st.getItem('capp:addr:u_ana'); assert.ok(book0, 'premise: her book on the device (the real read)');
+    addr.handler = async () => { throw new Error('offline'); };   // every later read fails
+    await viaRow(null, S); await flush(); await flush();
+    assert.deepEqual(S.replaced, [], 'premise: the sign-out was refused (no restart)');
+    assert.equal(st.getItem('capp:addr:u_ana'), book0, '🔴 C178-3: her book is kept byte for byte');
+    S.ui.nav.tab({ name: 'home' }); await flush();
+    assert.equal(txt(S.q('.addr-btn .v > span')), 'Casa', '🔴 C178-3: the address in use is still Casa');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #178 #4 (P2): a device stamped to a member with NO records yet is gated too — a store tap before the (signed-out) session settles is HELD; after it opens, the cart built is kept', async () => {
+  const st = owned({ 'capp:member_complete': JSON.stringify({ v: 1, uid: 'u_ana' }) }, 'u:u_ana');
+  const g = gateQ(); const { S } = await relaunch(st, null, { fbOpts: { persisted: null, authGate: g } });
+  try {
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    assert.equal(S.ui.store(), null, '🔴 C178-4: the store tap is held before the session settles');
+    await release(g); await until(() => S.ui.store());
+    const u = S.ui.store().ui; u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render();
+    S.click('.seg [data-val="delivery"]'); await flush();   // the store's own cart writer
+    assert.ok(st.getItem('capp:x_pizza:cart'), '🔴 C178-4: the cart built after the settle is kept on the device');
+    assert.equal(st.getItem(OWNER), 'guest', 'stamped to who settled');
+  } finally { S.w.close(); }
+});
+test('r3 Codex #178 #5 (P2): a recovery that adopts ANOTHER saved address at the SAME pin (Mamá at Casa\'s door) re-seeds the checkout by the address — never kept because the coordinates match', async () => {
+  const m4 = ADX.scenarios.m4_profile_mama_samepin.body.addresses.find((a) => a.id === AID.mama_samepin);
+  const { S, ui, addr } = await seedCheckout({ reads: ['profile_default_casa', 'm4_profile_mama_samepin'], uses: ['m4_use_trabajo_stale'] });
+  try {
+    assert.equal(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', 'premise: Casa seeds the checkout');
+    assert.deepEqual([m4.lat, m4.lng], [casaOf().lat, casaOf().lng], 'premise: the real writer saved Mamá at Casa\'s pin');
+    S.click('[data-act="co-addr"]'); await flush(); S.click(sheetRow(S, AID.trabajo)); await flush(); await flush(); await flush();
+    assert.equal(sandOf(S, '#layer'), SAND, 'premise: the refusal (409 ⇒ the re-read adopted Mamá)');
+    assert.equal(ui.state.flow.saved && ui.state.flow.saved.label, 'Mamá', '🔴 C178-5: the checkout names Mamá (same pin as Casa)');
+    assert.equal(ui.state.flow.details, m4.details, '🔴 C178-5: and carries Mamá\'s instructions');
+    noProblems(addr);
+  } finally { S.w.close(); }
+});
+
+// ── BOOK-STATE (PLAN-capp-book-state r0, OWNER-APPROVED 11-23, MOCKUP-capp-book-state Q1–Q5 all (a)): the book is KNOWN, LOADING or
+// UNREADABLE — never «empty» by default. ONE state on the shell's book (S.book.load) read by every renderer. Only a phone WITHOUT a
+// usable copy (first sign-in here, a v1 copy) ever loads; the real getMyProfile fixture (3a's handler) answers, held or failed ──
+const LOADLINE = 'Cargando tus direcciones…', FAILLINE = 'No pudimos cargar tus direcciones. Reintentar';
+const offlineOnce = (held) => (n) => (n === 0 ? Promise.reject(new Error('offline')) : held ? held.p : undefined);
+test('BOOK-LOAD-1 (Q1 a, Q2 a, Q5 a): a book still loading draws «Cargando tus direcciones…» with «Agregar dirección» disabled — never an empty book; it fills in place ONCE when the book lands', async () => {
+  const held = deferred(), { S, addr } = await dirBoot({ pgate: held.p });
+  try {
+    await toDirecciones(S);
+    assert.equal(txt(S.q('.addrlist .aload')), LOADLINE, '🔴 BOOK-LOAD-1: the loading line in the list\'s place');
+    assert.equal(S.qa('.addrlist [data-act="addr-use"]').length, 0, 'no rows yet');
+    assert.equal(S.q('.addrlist [data-act="addr-new"]').getAttribute('aria-disabled'), 'true', '🔴 BOOK-LOAD-1: «Agregar dirección» waits while the book loads (no duplicate add)');
+    S.click('.addrlist [data-act="addr-new"]'); await flush();
+    assert.ok(!S.q('[data-act="pin-done"]'), '🔴 BOOK-LOAD-1: a tap on the disabled «Agregar dirección» opens nothing');
+    held.resolve(); await flush(); await flush(); await flush();
+    assert.deepEqual(dirRows(S).map((r) => r[2]), ['Casa · en uso', 'Trabajo', 'Agregar dirección Poné el pin en tu puerta y describí la referencia'], '🔴 BOOK-LOAD-1 (Q5): the open list fills in place once');
+    assert.equal(S.q('.addrlist .aload'), null, 'the loading line leaves');
+    assert.equal(S.q('.addrlist [data-act="addr-new"]').getAttribute('aria-disabled'), null, '«Agregar dirección» is live again');
+    assert.equal(addrReads(addr).length, 1, 'ONE read');
+  } finally { S.w.close(); }
+});
+test('BOOK-LOAD-1b (Q1 a, Q2 a, owner: «Usar mi ubicación actual» stays live): Inicio\'s «Entregar en» sheet while loading — the line in the rows\' place, «Agregar dirección» disabled, the location row LIVE; it fills in place', async () => {
+  const held = deferred(), { S } = await dirBoot({ pgate: held.p });
+  try {
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush();
+    assert.equal(txt(S.q('#layer nav .aload')), LOADLINE, '🔴 BOOK-LOAD-1b: the sheet\'s loading line');
+    assert.equal(S.q('#layer [data-act="addr-new"]').getAttribute('aria-disabled'), 'true', '🔴 BOOK-LOAD-1b: «Agregar dirección» waits');
+    assert.equal(S.q('#layer [data-act="loc-use"]').getAttribute('aria-disabled'), null, '🔴 BOOK-LOAD-1b: «Usar mi ubicación actual» never waits for the book');
+    held.resolve(); await flush(); await flush(); await flush();
+    assert.deepEqual(S.qa('#layer [data-act="addr-use"]').map((b) => b.dataset.id), [AID.casa, AID.trabajo], '🔴 BOOK-LOAD-1b (Q5): the open sheet fills in place');
+    assert.equal(S.q('#layer nav .aload'), null, 'the line leaves');
+  } finally { S.w.close(); }
+});
+test('BOOK-LOAD-2 (Q3 a): a read that FAILS draws «No pudimos cargar tus direcciones.» + «Reintentar» — never the empty book; ONE tap = ONE read, and the list appears', async () => {
+  const held = deferred(), { S, addr } = await dirBoot({ pgate: offlineOnce(held) });
+  try {
+    await toDirecciones(S); await flush();
+    assert.equal(txt(S.q('.sandline.act')), FAILLINE, '🔴 BOOK-LOAD-2: the calm line + «Reintentar»');
+    assert.equal(S.q('.addrlist .aload'), null, 'not «loading» forever');
+    assert.equal(S.q('.addrlist [data-act="addr-new"]').getAttribute('aria-disabled'), 'true', '🔴 BOOK-LOAD-2: «Agregar dirección» waits while the book is unreadable');
+    assert.equal(addrReads(addr).length, 1, 'premise: the one failed read — no retry loop');
+    S.click('[data-act="book-retry"]'); await flush();
+    assert.equal(addrReads(addr).length, 2, '🔴 BOOK-LOAD-2: «Reintentar» = ONE read');
+    assert.equal(txt(S.q('.addrlist .aload')), LOADLINE, 'loading again while it runs'); assert.equal(S.q('.sandline.act'), null);
+    held.resolve(); await flush(); await flush(); await flush();
+    assert.deepEqual(dirRows(S).map((r) => r[1]), [AID.casa, AID.trabajo, null], '🔴 BOOK-LOAD-2: the book, in place');
+  } finally { S.w.close(); }
+});
+test('BOOK-LOAD-3: a v1 device copy (no revision) is LOADING — never drawn as an empty book', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })), body = ADX.scenarios.profile_default_casa.body;
+  st.setItem('capp:addr:u_ana', JSON.stringify({ v: 1, addresses: body.addresses, default_address: body.default_address }));
+  const held = deferred(), { S } = await dirBoot({ storage: st, pgate: held.p });
+  try {
+    await toDirecciones(S);
+    assert.equal(txt(S.q('.addrlist .aload')), LOADLINE, '🔴 BOOK-LOAD-3: a v1 copy waits for the read');
+  } finally { held.resolve(); S.w.close(); }
+});
+test('BOOK-LOAD-4: a KNOWN empty book (the server said zero addresses) is the REAL empty state — no loading line, no sand line, «Agregar dirección» live', async () => {
+  const { S } = await dirBoot({ reads: ['profile_empty'] });
+  try {
+    await toDirecciones(S);
+    assert.deepEqual(dirRows(S).map((r) => r[0]), ['addr-new'], 'premise: no saved address');
+    assert.equal(S.q('.aload'), null, '🔴 BOOK-LOAD-4: not «loading»'); assert.equal(S.q('.sandline.act'), null, '🔴 BOOK-LOAD-4: not «unreadable»');
+    assert.equal(S.q('.addrlist [data-act="addr-new"]').getAttribute('aria-disabled'), null, '🔴 BOOK-LOAD-4: «Agregar dirección» is live');
+    await toAccount(S);
+    assert.equal(txt(S.q('.rows [data-act="addresses"] .t')), 'Direcciones Agregá tu dirección', '🔴 BOOK-LOAD-4: a KNOWN empty book keeps Cuenta\'s approved line «Agregá tu dirección»');
+  } finally { S.w.close(); }
+});
+test('BOOK-LOAD-5 (Q4 a): while the book loads, the Inicio pill SAYS so to a screen reader — never «Agregá tu dirección»; nothing changes on screen', async () => {
+  const held = deferred(), { S } = await dirBoot({ pgate: held.p });
+  try {
+    S.click('.tabbar [data-tab="home"]'); await flush();
+    const pill = S.q('.addr-btn');
+    assert.equal(pill.getAttribute('aria-label'), 'Dirección de entrega: cargando tu dirección', '🔴 BOOK-LOAD-5: the spoken label');
+    assert.equal(txt(pill), 'Entregar en Tu ubicación', 'the visible pill is unchanged (zero shift)');
+    await toAccount(S);
+    assert.equal(txt(S.q('.rows [data-act="addresses"] .t')), 'Direcciones', '🔴 BOOK-LOAD-5: Cuenta\'s «Direcciones» row has no sub-line while the book loads (never the spoken label as text)');
+    S.click('.tabbar [data-tab="home"]'); await flush();
+    held.resolve(); await flush(); await flush(); await flush();
+    assert.equal(S.q('.addr-btn').getAttribute('aria-label'), 'Dirección de entrega: Casa · Col. Trejo, San Pedro Sula', 'the book landed: the address in use');
+  } finally { S.w.close(); }
+});
+// why the checkout's own sheet carries no book state (6c): its «Cambiar» exists ONLY on a flow seeded from a SAVED address (capp-ui
+// addrRow), i.e. from a KNOWN book, and a book never becomes unknown again under a mounted checkout (only an identity change resets it,
+// and that leaves the checkout). This cell pins that premise: while the book is not known the checkout offers the pin step, no sheet
+test('BOOK-LOAD-6 (premise): while the book is loading or unreadable the checkout offers NO «Cambiar» — its «Entregar en» sheet only ever opens on a KNOWN book', async () => {
+  for (const pgate of [deferred().p, offlineOnce(null)]) {
+    const { S } = await seedCheckout({ pgate });
+    try {
+      assert.equal(S.q('[data-act="co-addr"]'), null, '🔴 BOOK-LOAD-6: no «Cambiar» over a book that is not known');
+      assert.ok(S.q('.urow[data-act="pin"]'), 'the pin step instead (the guest-shaped row)');
+    } finally { S.w.close(); }
+  }
+});
+test('BOOK-LOAD-7: a KNOWN book never turns «unreadable» — a pick whose write AND owned re-read both fail keeps the list (the pick\'s own sand line only)', async () => {
+  const { S } = await dirBoot({ pgate: (n) => (n === 1 ? Promise.reject(new Error('offline')) : undefined), ugate: () => 'OFFLINE' });
+  try {
+    await toDirecciones(S);
+    S.click(`.addrlist [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush(); await flush(); await flush(); await flush();
+    assert.equal(txt(S.q('.sandline')), 'No pudimos cambiar la dirección. Probá de nuevo.', 'premise: the pick failed (its own sand line)');
+    assert.equal(S.q('.sandline.act'), null, '🔴 BOOK-LOAD-7: a known book is never drawn «unreadable»');
+    assert.equal(S.q('.addrlist [data-act="addr-new"]').getAttribute('aria-disabled'), null, '🔴 BOOK-LOAD-7: a known book is never drawn «unreadable» — «Agregar dirección» stays live');
+    assert.deepEqual(dirRows(S).map((r) => r[1]), [AID.casa, AID.trabajo, null], 'the list stays');
+  } finally { S.w.close(); }
+});
+test('BOOK-LOAD-1c (Codex #271 P2): the book landing under an OPEN «Entregar en» sheet patches it IN PLACE — the same sheet node (no replayed entrance), the focused control keeps focus; a failed read and its «Reintentar» too', async () => {
+  const held = deferred(), { S } = await dirBoot({ pgate: offlineOnce(held) });
+  try {
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush(); await flush();
+    const sheet = S.q('#layer .sheet'), loc = S.q('#layer [data-act="loc-use"]');
+    assert.ok(S.q('#layer .sandline.act'), 'premise: the read failed — the unreadable line');
+    loc.focus(); assert.equal(S.w.document.activeElement, loc, 'premise: focus on «Usar mi ubicación actual»');
+    const retry = S.q('#layer [data-act="book-retry"]'); retry.focus(); retry.click(); await flush();
+    assert.equal(S.q('#layer .sheet'), sheet, '🔴 BOOK-LOAD-1c: «Reintentar» keeps the sheet node');
+    assert.equal(S.w.document.activeElement, loc, '🔴 BOOK-LOAD-1c: the focus leaves with «Reintentar» to «Usar mi ubicación actual» (never lost to the page)');
+    assert.ok(S.q('#layer nav .aload'), 'loading again');
+    held.resolve(); await flush(); await flush(); await flush();
+    assert.equal(S.q('#layer .sheet'), sheet, '🔴 BOOK-LOAD-1c: the landing book keeps the sheet node (no replayed entrance)');
+    assert.equal(S.w.document.activeElement, loc, '🔴 BOOK-LOAD-1c: the focused control keeps focus');
+    assert.deepEqual(S.qa('#layer nav .navrow').map((b) => [b.dataset.act, b.dataset.id || null]), [['addr-use', AID.casa], ['addr-use', AID.trabajo], ['loc-use', null], ['addr-new', null]], 'the rows in place, in v6\'s order');
+    assert.equal(S.q('#layer [data-act="addr-new"]').getAttribute('aria-disabled'), null, '«Agregar dirección» live again');
   } finally { S.w.close(); }
 });
 
