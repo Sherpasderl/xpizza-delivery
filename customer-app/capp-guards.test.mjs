@@ -37,9 +37,11 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // BASE → 31f05c8a4 (advisor 11-18, ruling (A); feat/capp-direcciones-r2, rebuilt on it): a capp lane cut from post-asm11 main pins its OWN range — BASE = its merge base with
 // origin/main as a LITERAL sha (never computed at run time, so the guard cannot drift lax), CAPP_TIP = the lane tip. The offers-r20 /
 // push pins (827373d6..2b4aae89) and their merges landed on main with asm11 and sit below BASE now (MERGE_ALLOW pruned to above BASE).
+// BASE → fd205309a (asm14, advisor ruling (A) 11-24): feat/capp-asm14 is cut from the asm13 tip fd205309a (train 18efaf24a + the asm13
+// re-pin), so it pins its OWN range from that cut point — a pin on the train line would pull the asm12/asm13 trains into the lane range.
 // Both are FULL commit ids, never a prefix (Codex #288: an 8-char prefix can name two commits or be shadowed by a ref).
-const BASE = '31f05c8a40c35fe0c442be8839593954c3afc8b1';
-const CAPP_TIP = '9a7a3506ca917729553ca08ffcc40c7f46393f68';
+const BASE = 'fd205309aea6909363f6fda48e775228f5d5b912';
+const CAPP_TIP = 'ac6a9d6e165fd9a0fb0de3002dc6ecfdcf82b8e1';
 // ASSEMBLY STEPS (asm11 step 4, advisor 11-17): a capp commit made ON THE TRAIN line, before the lane's merge — it can't be the pin (a pin on
 // the train line pulls the train into the lane range). Each is listed by full sha with its EXACT file set: excused from the «after the pin» walk
 // only while that set is unchanged, and only while it is in HEAD's history (a step that left the tree is a stale entry). None touches a live
@@ -271,30 +273,9 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // reviewed, and an entry that no longer hits is stale and fails. The guard file's own pin conflicts are listed too, never exempt
 // (advisor 11-23 Q1: a hand-resolved guard is the weakest point). Git's CLEAN merges never hit, so they need no entry.
 const MERGE_ALLOW = {
-  // none above BASE 31f05c8a (advisor 11-18): the offers-r20 / push / asm11 entries (b63d58a0, fc0f3213, 1adc6541, 8839193d) landed with asm11.
-  // asm14 re-pin (cell 7 carried onto asm13 18efaf24a + fd205309a): the walk now reaches every merge above BASE — the asm12 train + the
-  // merge-forwards it brought in, and asm13 step 04. Each entry was re-read with `git show --remerge-diff` (every one is a content conflict).
-  // merge-forwards of main 31f05c8a4 into the rider / dish-stats lanes (advisor 11-18); reasons as the lanes ruled them
-  '6fe745ffa52bb1e3e2ce0cb63ce9d67859df919c customer-app/capp-guards.test.mjs': "rider merge-forward: the lane's BASE / CAPP_TIP pin conflict resolved to main's side (= parent 2: the 827373d6 BASE block + ASSEMBLY_STEPS); the lane re-pinned after",
-  '6fe745ffa52bb1e3e2ce0cb63ce9d67859df919c customer-app/capp.css': "rider merge-forward (advisor 11-18): main's Figtree `.rate h2` (var(--fig)) + the lane's `.rate .rrow2 .t .who{white-space:nowrap}` line — both parents' lines, 0 new",
-  '0895a17c315d08ba4724c375037bc3a3642e2c4f customer-app/capp-checkout.js': 'dish-stats merge-forward: the fingerprint leaves out BOTH decorations: 1 line from no parent — `const { dish_stats: _stats, offers: _offers, ...content } = envelope.menu;` (+ both parents\' comments); of-13 / ds1-fp',
-  '0895a17c315d08ba4724c375037bc3a3642e2c4f customer-app/capp-guards.test.mjs': "dish-stats merge-forward: the lane's BASE / CAPP_TIP pin conflict resolved to main's side (= parent 2: the 827373d6 BASE block + ASSEMBLY_STEPS); the lane re-pinned after",
-  '0895a17c315d08ba4724c375037bc3a3642e2c4f customer-app/capp-menu.js': "dish-stats merge-forward: the lane's `dishStats,` line + main's `offers` block — both parents' lines, 0 from no parent",
-  '0895a17c315d08ba4724c375037bc3a3642e2c4f customer-app/capp-ui.js': "dish-stats merge-forward: the lane's `S.upsellDesk = null` reset + main's empty-cart return with `trimNote` — both parents' lines, 0 from no parent",
-  '0895a17c315d08ba4724c375037bc3a3642e2c4f customer-app/capp-s7a2.test.mjs': "dish-stats merge-forward: end-of-file appends on an empty base: union (the lane's dish-stats cells + main's), 0 from no parent",
-  '0895a17c315d08ba4724c375037bc3a3642e2c4f customer-app/capp-ui.test.mjs': "dish-stats merge-forward: end-of-file appends on an empty base: union (the lane's dish-stats cells + main's), 0 from no parent",
-  // asm12 train steps 13–16 (advisor 11-19; proofs in the asm12 re-pin's commit message)
-  'aa5cde1195a7bf436b29a1d1a201228f5f563a3f customer-app/capp-guards.test.mjs': 'asm12 step 13: the ASSEMBLY_STEPS comment ours ⊇ theirs; the 275dcaf2 / b1a95926 / cfc688d8 step entries from one parent; no line from no parent (remerge 6)',
-  '45f1aebb87e221a863d2a036360a1495ccaafefc customer-app/capp-guards.test.mjs': 'asm12 step 14: the same ASSEMBLY_STEPS comment conflict; --cc 0 (remerge 59)',
-  '520614c6cfe9fc4227dac106fecdcb14aa89af72 customer-app/capp-guards.test.mjs': "asm12 step 15: pins/comment, MERGE_ALLOW = ours (6fe745ff ×2) + theirs (0895a17c ×6); drops a doubled phrase from one parent's text; no line from no parent (remerge 59)",
-  '520614c6cfe9fc4227dac106fecdcb14aa89af72 customer-app/capp-ui.test.mjs': "asm12 step 15: both sides' end-of-file appends kept (the pay-labels cells + the dish-stats DS-T cells) on an empty base; no line from no parent (remerge 4)",
-  '6dccdf27486f8b67e92eef62062323703590869e customer-app/capp-guards.test.mjs': 'asm12 step 16: hand-resolved union — pins = the banner (bdadf82f), the ASSEMBLY_STEPS comment ours ⊇ theirs, MERGE_ALLOW = union; --cc 0 lines from no parent (remerge 59)',
-  // asm13 step 04 (advisor ruling, as in asm12; git's clean 3-way files no longer hit under the re-merge criterion)
-  '5a9d55385c3533aa7555cea55868a252c27036f5 customer-app/capp-guards.test.mjs': 'asm13 step 04: hand-resolved union — registry line once + MERGE_ALLOW = union (remerge-diff 11 lines)',
-  '5a9d55385c3533aa7555cea55868a252c27036f5 customer-app/capp-s7a2.test.mjs': 'asm13 step 04: hand-resolved — hunk1 ours+capp, hunk2 capp cells BEFORE the COUNTERFACTUAL guard (runs last); 427 tests = 357-12+82',
-  '5a9d55385c3533aa7555cea55868a252c27036f5 customer-app/capp-sbs-fixes.test.mjs': 'asm13 step 04: hand-resolved — ours + capp tests (union)',
-  // the r3 lane line
-  'd13a0bb71fb71551617b7140f8e8e5115e503a72 customer-app/capp-guards.test.mjs': "banner→r3 merge: the BASE / CAPP_TIP pin conflict resolved to r3's own pin (parent 1); the banner's pin (bdadf82f) is its lane's, not r3's",
+  // none above BASE fd205309a (asm14 re-pin, advisor ruling (A) 11-24, the asm11 «pruned to above BASE» precedent): the 17 entries re-derived
+  // in f995943d2 (rider 6fe745ff ×2, dish-stats 0895a17c ×6, asm12 aa5cde11 / 45f1aebb / 520614c6 ×2 / 6dccdf27, asm13 5a9d5538 ×3, r3
+  // d13a0bb7) all sit below the lane's cut point now; their proofs stay in that commit's message
 };
 // The walk + the criterion (PLAN-capp-guards-cell7 r0, advisor 11-23; Codex #288). The walk is EVERY merge reachable from the head and
 // not from BASE: the lane-line + after-the-pin walk never saw a train merge made BEFORE the lane came in (asm12 13–15). A shallow repository
