@@ -275,13 +275,19 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 const MERGE_ALLOW = {
   // above BASE 31f05c8a only. asm12 (advisor 11-19): the rider 6fe745ff ×2 and dish-stats 0895a17c ×6 merge-forward entries left the walk at
   // T 6de4b94c9 (their merges are on those lanes' own lines, neither on the banner lane line nor after its pin) — their rulings stay in the
-  // lanes' history (and in this re-pin's commit message)
-  // asm12 step 16 (advisor 11-19): the banner merge 6dccdf27 — proven at train T 6de4b94c9 (`git show --remerge-diff` / `--cc`)
-  '6dccdf27 customer-app/capp-guards.test.mjs': 'hand-resolved union: pins = banner, comment ours ⊇ theirs, MERGE_ALLOW = union; --cc 0 lines from no parent',
-  '6dccdf27 customer-app/capp-s7a2.test.mjs': 'clean 3-way, remerge-diff empty, --cc 0',
-  '6dccdf27 customer-app/capp.css': 'clean 3-way, remerge-diff empty, --cc 0',
+  // lanes' history (and in this re-pin's commit message). asm13 (advisor ruling, as in asm12): the asm12 step-16 banner merge 6dccdf27 ×3
+  // left the walk at asm13 — it is on the asm12 TRAIN line, neither an ancestor of CAPP_TIP 9a7a3506 nor a merge after it; its ruling
+  // stays in asm12's history (and in this re-pin's commit message)
   'd13a0bb7 customer-app/capp-home.js': "banner→r3 merge: git's clean 3-way merge of both lanes' edits; remerge-diff empty (no hand resolution)",
   'd13a0bb7 customer-app/capp-s7a2.test.mjs': "banner→r3 merge: git's clean 3-way merge of both lanes' edits; remerge-diff empty (no hand resolution)",
+  // asm13 step 04 (advisor ruling, as in asm12): the r3 merge 5a9d5538 (feat/capp-direcciones-r3 8ac5f729a into train/asm13) — proven with
+  // `git show --remerge-diff` per file
+  '5a9d5538 customer-app/capp-guards.test.mjs': 'asm13 step 04: hand-resolved union — registry line once + MERGE_ALLOW = union (remerge-diff 11 lines)',
+  '5a9d5538 customer-app/capp-s7a2.test.mjs': 'asm13 step 04: hand-resolved — hunk1 ours+capp, hunk2 capp cells BEFORE the COUNTERFACTUAL guard (runs last); 427 tests = 357-12+82',
+  '5a9d5538 customer-app/capp-sbs-fixes.test.mjs': 'asm13 step 04: hand-resolved — ours + capp tests (union)',
+  '5a9d5538 customer-app/capp-ui.js': "asm13 step 04: git's clean 3-way merge; remerge-diff empty (no hand resolution)",
+  '5a9d5538 customer-app/capp-ui.test.mjs': "asm13 step 04: git's clean 3-way merge; remerge-diff empty (no hand resolution)",
+  '5a9d5538 customer-app/capp.css': "asm13 step 04: git's clean 3-way merge; remerge-diff empty (no hand resolution)",
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..${CAPP_TIP} + the merges after the pin`, () => {
   const [, tip] = capRange(), synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
