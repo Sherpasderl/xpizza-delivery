@@ -2969,6 +2969,7 @@
   "delivery/pricing-admin-core.js",
   "delivery/pricing-admin-functions.js",
   "delivery/zone-resume.js",
+  "delivery/zone-shape.js",
   "delivery/zones-lock.js",
   "delivery/zones.js",
   "directory/directory-deps.js",
@@ -4299,6 +4300,10 @@
    "lifts": []
   },
   "delivery/zone-resume.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "delivery/zone-shape.js": {
    "pins": [],
    "lifts": []
   },
