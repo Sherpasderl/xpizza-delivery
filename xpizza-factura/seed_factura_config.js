@@ -4,13 +4,11 @@
  * Seed /restaurants/{RID}/factura_config with TEMP (FACTURA DE PRUEBA) values so the whole
  * pipeline can be exercised before SAR issues X. Pizza's real CAI. Run ONCE.
  *
- * SAFETY: self-aborts if a live counter exists (seq.last_reserved >= range_start) so it can
- * never clobber issued numbers. To go live, update fields individually (see FACTURA_PLAN §11),
- * do NOT re-run this. Config via .env: FB_DATABASE_URL, GOOGLE_APPLICATION_CREDENTIALS, RESTAURANT_ID.
+ * SAFETY (PLAN-manual-factura r3 §13, Codex #251-3): CREATE-ONLY. ONE transaction writes the TEMP config only when NO
+ * factura_config exists; any existing node (a counter, the real CAI, factura_config/manual records) is refused and left
+ * byte-identical. Never an unconditional .set on that parent. To go live, update fields individually (see FACTURA_PLAN
+ * §11). Config via .env: FB_DATABASE_URL, GOOGLE_APPLICATION_CREDENTIALS, RESTAURANT_ID.
  */
-
-require('dotenv').config();
-const admin = require('firebase-admin');
 
 const RID = process.env.RESTAURANT_ID || 'x_pizza';
 const RANGE_START = 1;
@@ -38,22 +36,29 @@ const TEMP_CONFIG = {
   seq: { last_reserved: RANGE_START - 1, pending: {} },
 };
 
+// create-only: the transaction writes only onto a null node (RTDB re-runs a speculative-null commit against the server
+// value, so an existing config always reaches the `undefined` branch and aborts unchanged)
+async function seedCreateOnly(db, rid) {
+  const tx = await db.ref(`restaurants/${rid}/factura_config`).transaction((cur) => (cur === null ? TEMP_CONFIG : undefined));
+  return tx.committed ? { created: true } : { created: false, reason: 'exists' };
+}
+
 async function main() {
+  require('dotenv').config();
+  const admin = require('firebase-admin');
   admin.initializeApp({
     credential: admin.credential.applicationDefault(),
     databaseURL: process.env.FB_DATABASE_URL,
   });
-  const ref = admin.database().ref(`restaurants/${RID}/factura_config`);
-  const existing = (await ref.once('value')).val();
-
-  if (existing && existing.seq && existing.seq.last_reserved >= RANGE_START) {
-    console.error(`ABORT: live counter present (seq.last_reserved=${existing.seq.last_reserved}). Refusing to clobber. Update fields individually instead.`);
+  const r = await seedCreateOnly(admin.database(), RID);
+  if (!r.created) {
+    console.error(`ABORT: /restaurants/${RID}/factura_config already exists. Refusing to overwrite (create-only). Update fields individually instead.`);
     process.exit(1);
   }
-
-  await ref.set(TEMP_CONFIG);
   console.log(`Seeded /restaurants/${RID}/factura_config (is_temp=true, range ${RANGE_START}-${RANGE_END}).`);
   process.exit(0);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });
+
+module.exports = { seedCreateOnly, TEMP_CONFIG };

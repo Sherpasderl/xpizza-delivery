@@ -1,5 +1,5 @@
 /**
- * Drift guard: the four factura logic modules here must stay byte-identical to their
+ * Drift guard: the five factura logic modules here must stay byte-identical to their
  * source of truth in xpizza-factura/src/ (which carries the full unit-test suite).
  * Run: `node factura/sync.test.js`.
  */
@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SRC = path.join(__dirname, '..', '..', 'xpizza-factura', 'src');
-const MODULES = ['money.js', 'allocate.js', 'build-record.js', 'factura-helpers.js'];
+const MODULES = ['money.js', 'allocate.js', 'build-record.js', 'factura-helpers.js', 'print-recovery.js'];
 
 let pass = 0;
 const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };

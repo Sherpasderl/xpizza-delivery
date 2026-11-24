@@ -2982,7 +2982,9 @@
   "extra-payment-repair.js",
   "factura/build-record.js",
   "factura/eligibility.js",
+  "factura/manual-core.js",
   "factura/pricing.js",
+  "factura/print-recovery.js",
   "form-signal.js",
   "hosted-charge-flow.js",
   "index.js",
@@ -4370,7 +4372,15 @@
    "pins": [],
    "lifts": []
   },
+  "factura/manual-core.js": {
+   "pins": [],
+   "lifts": []
+  },
   "factura/pricing.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "factura/print-recovery.js": {
    "pins": [],
    "lifts": []
   },
@@ -7426,6 +7436,7 @@
     "xpizza-functions/directory/directory-endpoint.test.js",
     "xpizza-functions/driver-callable-guard-coverage.guard.test.js",
     "xpizza-functions/factura-catalog-cutover.test.js",
+    "xpizza-functions/factura/manual-core.test.js",
     "xpizza-functions/fail-closed-reject.test.js",
     "xpizza-functions/hosted-refusal-reused-hold.test.js",
     "xpizza-functions/identity-shadow-placement.test.js",
