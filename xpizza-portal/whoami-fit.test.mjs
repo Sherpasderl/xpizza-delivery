@@ -17,11 +17,13 @@ const HTML = readFileSync(join(DIR, 'index.html'), 'utf8');
 const LINK = '<link rel="stylesheet" href="./styles.css">';
 assert.ok(HTML.includes(LINK), 'premise: the page links the stylesheet');
 
-test('the footer email is set as the mockups draw it: 12px, letter-spacing −.01em — in FULL, never ellipsized (D3 = A, owner 11-14)', () => {
+test('the footer email is set as the mockups draw it: 12px, letter-spacing −.01em — in FULL, never ellipsized (D3 owner 11-14; layout A 11-23)', () => {
   const dom = new JSDOM(HTML.replace(LINK, `<style>${CSS}</style>`).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, ''), { pretendToBeVisual: true });
   const e = dom.window.document.getElementById('whoami');
   assert.ok(e && e.closest('.sfoot .sinfo'), 'premise: b#whoami in the account footer');
   const s = dom.window.getComputedStyle(e);
   assert.deepEqual([s.fontSize, s.letterSpacing], ['12px', '-0.12px'], 'the mockup\'s type for the email: 12px, −.01em (computed: −0.12px) — was 12.5px, no tracking');
-  assert.deepEqual([s.whiteSpace === 'nowrap', s.textOverflow === 'ellipsis', s.overflowWrap], [false, false, 'anywhere'], '🔴 the owner\'s D3 = A: the full email, never «…» (overflow-wrap only as the fallback past the «@» break)');
+  assert.deepEqual([s.whiteSpace === 'nowrap', s.textOverflow === 'ellipsis'], [false, false], '🔴 the owner\'s D3: the full email, never «…»');
+  const part = dom.window.document.createElement('span'); part.className = 'p'; e.append(part);
+  assert.equal(dom.window.getComputedStyle(part).overflowWrap, 'anywhere', 'D3 = A (11-23): overflow-wrap only inside a part (the fallback past the «@» break)');
 });

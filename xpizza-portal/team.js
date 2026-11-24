@@ -17,7 +17,7 @@ import { getMyBranches, memberList, memberInvite, memberReissueInvite, memberCan
 import { sendInviteLink } from './invite-mail.js';
 import { el, svg, icon, button, pill, topBlock, errBox, skeleton, OFFLINE } from './ops-dom.js';
 import * as TL from './team-logic.js';
-import { trapTab, inertBehind, focusKey, refocus } from './marketing-focus.js';   // Codex #279: the portal's ONE focus helper
+import { focusKey, refocus } from './marketing-focus.js';   // the portal's ONE focus helper: a refresh keeps the focused control (Codex #279 / #281)
 
 const ICON_D = 'M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0zM4 21a8 8 0 0 1 16 0';
 const S = {
@@ -62,8 +62,8 @@ function release(mine) { if (S.busy === mine) { S.busy = null; if (S.resync) S.r
 function wipe() {
   S.list = null; S.branches = []; S.modal = null; S.kept = null; S.inviteError = false; S.opError = false; S.status = 'idle';
   S.person = null; S.quietOpen = false;
-  if (S.sheet) S.sheet.replaceChildren();
-  if (S.layer) S.layer.replaceChildren();
+  layerClear(S.sdlg);
+  layerClear(S.mdlg);
   if (S.body) S.body.replaceChildren();
   clearToast();
 }
@@ -88,7 +88,7 @@ async function load() {
     S.list = list;
     S.branches = (e1 && Array.isArray(e1.branches) ? e1.branches : []).filter((b) => b && b.brand_id === g.brandId && !b.degraded);
     S.status = 'ready';
-    if (S.modal && S.layer && !S.layer.firstChild) paintModal(false);   // a restored draft: painted once its branch list is here
+    if (S.modal && S.mdlg && !S.mdlg.firstChild) paintModal(false);   // a restored draft: painted once its branch list is here
   } catch (err) {
     if (obsolete(g, err)) return;
     if (!S.list) S.status = 'error'; else S.opError = true;
@@ -219,41 +219,43 @@ function openPerson(key, from) {
 function closePerson({ fromBack = false } = {}) {
   const p = S.person;
   if (!p) return;
-  S.person = null;
-  if (S.sheet) S.sheet.replaceChildren();
+  S.person = null; S.sheetFocus = null;
+  layerClear(S.sdlg);
   if (p.pushed && !fromBack) { try { history.back(); } catch (_) { /* nothing to pop */ } }
   const back = p.from && p.from.isConnected ? p.from
     : [...((S.body && S.body.querySelectorAll('button.tp-row')) || [])].find((b) => b.dataset.key === p.key);
   if (back && back.focus) back.focus();
 }
 window.addEventListener('popstate', () => { if (S.person) closePerson({ fromBack: true }); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.person && !S.modal) closePerson(); });
-// Codex #279 P2-1: the sheet and the shipped modals stacked on it are REAL modals. The topmost one (a modal over the sheet, else the
-// sheet) keeps Tab / Shift+Tab, and everything behind it is inert — re-synced whenever either layer is painted or cleared (one observer,
-// so no paint path can forget it); closed, exactly what was inert before is inert again.
-const topLayer = () => (S.layer && S.layer.firstChild ? S.layer : (S.sheet && S.sheet.firstChild ? S.sheet : null));
-const topDialog = () => { const l = topLayer(); return l ? l.querySelector('[role="dialog"]') : null; };
-let unInert = null;
-function syncInert() {
-  if (unInert) { unInert(); unInert = null; }
-  const l = topLayer();
-  if (l && l.isConnected) unInert = inertBehind(l);
+// OWNER 11-23 (Codex #281, rule 36: the simpler option): the person sheet and the shipped modals stacked on it are NATIVE <dialog>s opened
+// with showModal() — the browser owns the focus trap, the inert background, Escape («cancel») and the top-layer stacking. Each layer is ONE
+// persistent, transparent, full-viewport dialog holding today's scrim + panel markup (the look is unchanged; ::backdrop is transparent),
+// so a repaint swaps its content and never closes / reopens it.
+function dialogLayer(onCancel) {
+  const d = document.createElement('dialog');
+  d.className = 'tp-dlg';
+  d.addEventListener('cancel', (e) => { e.preventDefault(); onCancel(); });   // Escape: OUR close (history, focus), never the bare default
+  return d;
 }
-const MO = globalThis.MutationObserver;   // read as availability.js does (portal-wiring: a page global, never a bare call)
-const layersWatch = typeof MO === 'function' ? new MO(syncInert) : null;
-document.addEventListener('keydown', (e) => { if (e.key === 'Tab') { const d = topDialog(); if (d) trapTab(e, d); } });
+function layerShow(d, label, ...nodes) {
+  d.replaceChildren(...nodes);
+  if (label) d.setAttribute('aria-labelledby', label); else d.removeAttribute('aria-labelledby');
+  if (!d.open && d.isConnected) d.showModal();
+}
+function layerClear(d) { if (!d) return; d.replaceChildren(); if (d.open) d.close(); }
 
 function paintSheet(focus) {
   if (!S.sheet) return;
-  const kept = focus ? null : focusKey(S.sheet);   // Codex #279 P2-2: the control that had focus before this repaint (a refresh)
-  if (!S.person || S.status !== 'ready') { S.sheet.replaceChildren(); return; }
+  // Codex #281 P2-2: the control that had focus before this repaint — captured by busyBtn BEFORE it disabled the button (a disabled
+  // control can lose focus to the page before the refresh repaints); else whatever is focused in the sheet now
+  const kept = focus ? null : (S.sheetFocus || focusKey(S.sdlg)); S.sheetFocus = null;
+  if (!S.person || S.status !== 'ready') { layerClear(S.sdlg); return; }
   const r = TL.rowsFrom(S.list, S.branches, Date.now()).find((x) => x.key === S.person.key);
   if (!r) { closePerson(); return; }   // removed / cancelled: the person is gone from the list
   const v = TL.personView(r, S.branches, factura());
   const scrim = el('div', 'tp-scrim');
   scrim.addEventListener('click', () => closePerson());
   const sh = el('aside', 'tp-sheet');
-  sh.setAttribute('role', 'dialog'); sh.setAttribute('aria-modal', 'true'); sh.setAttribute('aria-labelledby', 'tp-t');
   const hd = el('div', 'tp-hd');
   const who = el('div', 'tp-who');
   const wt = el('div', 'tp-wt');
@@ -288,15 +290,16 @@ function paintSheet(focus) {
   if (r.self) acts.append(el('span', 'tp-dn', 'Sos vos'));
   if (acts.firstChild) { const d = el('div', 'tp-sec'); d.append(acts); body.append(d); }
   sh.append(hd, body);
-  S.sheet.replaceChildren(scrim, sh);
+  layerShow(S.sdlg, 'tp-t', scrim, sh);   // the <dialog> is the modal (its label: the person's name)
   if (focus && x.focus) x.focus();
-  else if (kept && !refocus(S.sheet, kept) && x.focus) x.focus();   // the same action again; gone ⇒ ×, never the page
+  else if (kept && !refocus(S.sdlg, kept) && x.focus) x.focus();   // the same action again; gone ⇒ ×, never the page
 }
 
 const busy = new Set();
 function busyBtn(cls, label, key, fn) {
   const b = button(cls, label, async () => {
     if (busy.has(key)) return;
+    if (S.sdlg && S.sdlg.contains(b)) S.sheetFocus = focusKey(S.sdlg);   // Codex #281 P2-2: before the disable can drop focus
     busy.add(key); b.disabled = true;
     try { await fn(); } finally { busy.delete(key); b.disabled = false; }
   });
@@ -327,12 +330,11 @@ async function resend(row) {
 function openInvite() { if (can('team.invite')) { S.modal = { kind: 'invite', draft: TL.newDraft() }; paintModal(true); } }
 function openEdit(row) { if (can('team.invite')) { S.modal = { kind: 'invite', draft: TL.editDraft(row) }; paintModal(true); } }
 function openRemove(row) { if (can('team.revoke')) { S.modal = { kind: 'remove', row }; paintModal(true); } }
-function closeModal() { S.modal = null; S.resync = null; if (S.layer) S.layer.replaceChildren(); }
+function closeModal() { S.modal = null; S.resync = null; layerClear(S.mdlg); }
 
 function shell(titleId, small) {
   const scrim = el('div', 'scrim show');
   const m = el('div', small ? 'modal sm' : 'modal');
-  m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-labelledby', titleId);
   scrim.append(m);
   return { scrim, m };
 }
@@ -340,7 +342,7 @@ function shell(titleId, small) {
 function paintModal(focus) {
   if (!S.layer) return;
   S.resync = null;
-  if (!S.modal) { S.layer.replaceChildren(); return; }
+  if (!S.modal) { layerClear(S.mdlg); return; }
   if (S.modal.kind === 'remove') return paintRemove();
   const d = S.modal.draft;
   const v = TL.inviteView(d, S.branches, factura());
@@ -426,7 +428,7 @@ function paintModal(focus) {
     sync();
     S.resync = sync;
     m.append(mh, mb, mf);
-    S.layer.replaceChildren(scrim);
+    layerShow(S.mdlg, 'in-t', scrim);
     if (focus) { const f = refs.iname || (brBtns[0] && brBtns[0].btn); if (f && f.focus) f.focus(); }
     return;
   }
@@ -440,7 +442,7 @@ function paintModal(focus) {
   const done = button('btn accent', 'Listo', closeModal);
   mf.append(foot, done);
   m.append(mh, mb, mf);
-  S.layer.replaceChildren(scrim);
+  layerShow(S.mdlg, 'in-t', scrim);
   if (focus && done.focus) done.focus();
 }
 
@@ -523,7 +525,7 @@ function paintRemove() {
   S.resync = () => { ok.disabled = S.busy !== null; };
   mf.append(cancel, ok);
   m.append(mh, mb, mf);
-  S.layer.replaceChildren(scrim);
+  layerShow(S.mdlg, 'rm-t', scrim);
   if (cancel.focus) cancel.focus();
 }
 
@@ -541,9 +543,10 @@ registerView({
     S.body = el('div');
     S.sheet = el('div');   // D1: the person sheet's layer
     S.layer = el('div');   // the modal layer: a sibling of the body, so a list re-render never touches an open form
+    S.sdlg = dialogLayer(() => closePerson()); S.sheet.append(S.sdlg);   // owner 11-23: native modal dialogs (Escape = our close)
+    S.mdlg = dialogLayer(() => closeModal()); S.layer.append(S.mdlg);
     wrap.append(S.body, S.sheet, S.layer);
     host.replaceChildren(wrap);
-    if (layersWatch) { layersWatch.disconnect(); for (const l of [S.sheet, S.layer]) layersWatch.observe(l, { childList: true }); }   // Codex #279
     S.status = 'idle'; S.list = null; S.inviteError = false; S.opError = false; S.modal = null; S.person = null;
     const key = keyOf();
     if (S.kept && S.kept.key === key) { S.modal = S.kept.modal; }
@@ -557,13 +560,10 @@ registerView({
     bump();
     clearToast();
     S.modal = null; S.resync = null; S.person = null;
-    if (S.sheet) S.sheet.replaceChildren();
-    if (S.layer) S.layer.replaceChildren();
+    layerClear(S.sdlg); layerClear(S.mdlg);
     if (S.body) S.body.replaceChildren();
     S.list = null; S.branches = [];
-    S.host = null; S.body = null; S.sheet = null; S.layer = null;
-    if (layersWatch) layersWatch.disconnect();
-    syncInert();   // Codex #279: leaving the view releases whatever the sheet / a modal made inert, at once
+    S.host = null; S.body = null; S.sheet = null; S.layer = null; S.sdlg = null; S.mdlg = null; S.sheetFocus = null;
   },
   canLeave: () => true,
 });

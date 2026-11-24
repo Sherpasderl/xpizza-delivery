@@ -269,11 +269,11 @@ test('functional declarations the read-only portal depends on survive a re-skin'
     ['.price', 'font-variant-numeric', 'tabular figures — prices in a column must align digit-for-digit'],
     ['.price', 'white-space', 'no-wrap — "Sin precio" must not break across lines mid-row'],
     ['.price', 'color', 'the read-only price is ink, not the wrapper default'],
-    ['.sfoot .sinfo', 'min-width', 'min-width:0 — without it a flex child refuses to shrink and the email cannot wrap'],
-    ['.sfoot .sinfo', 'flex', 'the account block takes the free space between avatar and logout'],
-    // slot-1114 D3 (advisor 11-14, rule 16b): the email is shown in FULL, never «dueno@ejemplo.t…» — it breaks onto a second line
-    ['.sfoot .sinfo b', 'overflow-wrap', 'anywhere — a long merchant email breaks onto its second line instead of overrunning the logout button'],
-    ['.sfoot .sinfo', 'min-height', 'two email lines + the role reserved — a wrapping email never makes the footer jump'],
+    // D3 = A (owner 11-23, MOCKUP-portal-footer-email-D3): row 1 avatar · role · logout, row 2 the email at full width, breaking only at «@»
+    ['.sfoot', 'flex-direction', 'column — the footer stacks its two rows (row 2: the email alone, at the full width)'],
+    ['.sfoot .frow .cv', 'min-width', 'min-width:0 — without it the role line refuses to shrink and cannot ellipsize beside the logout button'],
+    ['.sfoot .sinfo b .p', 'display', 'inline-block — each email part (local, «@domain») is one block, so the email breaks ONLY between them (the <wbr>)'],
+    ['.sfoot .sinfo b .p', 'overflow-wrap', 'anywhere — only a part wider than the whole footer may break inside itself, never overrunning'],
     ['.switch .chev', 'opacity', 'the base state the carried `.switch.multi .chev{opacity:1}` overrides — without it the chevron shows for single-restaurant accounts'],
     ['.empty b', 'display', 'block — the empty-state heading and its body otherwise run together on one line'],
   ];

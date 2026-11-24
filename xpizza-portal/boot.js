@@ -132,9 +132,11 @@
     if (inn) {
       showError('');
       $('pass').value = '';                   // do not leave a password sitting in the DOM
-      // D3 = A (OWNER 11-14): the email in FULL; a long one breaks at the «@» — the local part, a <wbr>, «@domain», as TEXT nodes
+      // D3 (owner 11-14 «Final», 11-23 layout A): the email in FULL; a long one breaks at the «@» — the local part, a <wbr>, «@domain»
       const em = user.email || '', at = em.lastIndexOf('@');
-      if (at > 0) $('whoami').replaceChildren(em.slice(0, at), document.createElement('wbr'), em.slice(at));
+      // D3 = A (owner 11-23): each part an inline-block span (TEXT, never markup), so the email breaks only at the «@»
+      const part = (t) => { const s = document.createElement('span'); s.className = 'p'; s.textContent = t; return s; };
+      if (at > 0) $('whoami').replaceChildren(part(em.slice(0, at)), document.createElement('wbr'), part(em.slice(at)));
       else $('whoami').textContent = em || user.uid;
       $('whoami').title = em;   // the full address in the tooltip too
       $('avatar').textContent = (user.email || '?').slice(0, 1).toUpperCase();

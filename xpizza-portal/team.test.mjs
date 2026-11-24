@@ -59,6 +59,20 @@ async function loadAll() {
 async function page({ e1 = E1(), list = LIST(), on = {} } = {}) {
   const dom = new JSDOM(HTML, { url: 'https://portal.test/', pretendToBeVisual: true });
   const w = dom.window;
+  // the browser's MODAL <dialog> (jsdom has no showModal): the spec's own rules the view relies on, no laxer — showModal refuses a
+  // detached dialog or one already open non-modally (InvalidStateError), is a no-op on an open modal one, opens it and puts it in the
+  // TOP LAYER; show() opens it non-modally (never the top layer); close() leaves the top layer and fires `close`; escape() is the
+  // browser's Escape: the TOPMOST modal gets a cancelable `cancel` and is closed unless the page prevented it
+  const top = [];
+  const DP = w.HTMLDialogElement.prototype;
+  DP.showModal = function () {
+    if (!this.isConnected) throw new w.DOMException('not connected', 'InvalidStateError');
+    if (this.open) { if (top.includes(this)) return; throw new w.DOMException('open, not modal', 'InvalidStateError'); }
+    this.setAttribute('open', ''); top.push(this);
+  };
+  DP.show = function () { if (!this.open) this.setAttribute('open', ''); };
+  DP.close = function () { if (!this.open) return; this.removeAttribute('open'); const i = top.indexOf(this); if (i >= 0) top.splice(i, 1); this.dispatchEvent(new w.Event('close')); };
+  const escape = () => { const t = top[top.length - 1]; if (!t) return; if (t.dispatchEvent(new w.Event('cancel', { cancelable: true }))) t.close(); };
   w.scrollTo = () => {};
   for (const k of ['window', 'document', 'CustomEvent', 'Event', 'HTMLElement', 'Node', 'MutationObserver', 'sessionStorage', 'localStorage']) {
     Object.defineProperty(globalThis, k, { value: k === 'window' ? w : w[k], configurable: true, writable: true });
@@ -81,7 +95,7 @@ async function page({ e1 = E1(), list = LIST(), on = {} } = {}) {
   const host = () => reg().main;
   const text = () => host().textContent.replace(/\s+/g, ' ');
   const btn = (label, root = host()) => [...root.querySelectorAll('button')].find((b) => b.textContent.trim() === label);
-  const modal = () => host().querySelector('[role="dialog"]');
+  const modal = () => host().querySelector('dialog[open] .modal');   // the shipped modal, inside its native modal <dialog>
   const n = (fn) => calls.filter((c) => c.fn === fn);
   const signIn = async (uid = 'uOwnerT1') => {
     d.dispatchEvent(new w.CustomEvent('portal:auth', { detail: { uid } }));
@@ -90,7 +104,7 @@ async function page({ e1 = E1(), list = LIST(), on = {} } = {}) {
   };
   const open = async () => { reg().nav.click(); await settle(); };
   const type = (id, v) => { const i = d.getElementById(id); i.value = v; i.dispatchEvent(new w.Event('input')); };
-  return { dom, w, d, mods, st, calls, reg, host, text, btn, modal, n, signIn, open, type };
+  return { dom, w, d, mods, st, calls, reg, host, text, btn, modal, n, signIn, open, type, topLayer: () => [...top], escape };
 }
 
 // ── pure logic ───────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -450,7 +464,7 @@ test('D1 logic: the phone row line and the person sheet view — shipped copy on
 const tphone = (p) => p.host().querySelector('.tp-phone');
 const prow = (p, name) => [...tphone(p).querySelectorAll('button.tp-row')].find((b) => b.querySelector('.tp-n').textContent === name);
 const sheet = (p) => p.host().querySelector('.tp-sheet');
-const dlg = (p) => [...p.host().querySelectorAll('[role="dialog"]')].find((x) => !x.classList.contains('tp-sheet')) || null;   // the shipped modal, above the sheet
+const dlg = (p) => p.host().querySelector('dialog[open] .modal');   // the shipped modal (its own native <dialog>), above the sheet
 test('D1 phone list: one row per person (name + one line), the pending sand dot, the disclosure; the desktop table unchanged beside it', async () => {
   const p = await page();
   await p.signIn(); await p.open();
@@ -473,8 +487,9 @@ test('D1 person sheet: a manager — facts, Editar / Quitar acceso (the shipped 
   const row = prow(p, 'Jorge Ayala');
   row.click(); await settle();
   const s = sheet(p);
-  assert.ok(s && s.getAttribute('role') === 'dialog' && s.getAttribute('aria-modal') === 'true', 'a modal dialog');
-  assert.equal(p.d.getElementById(s.getAttribute('aria-labelledby')).textContent, 'Jorge Ayala');
+  const D = s && s.closest('dialog');
+  assert.ok(D && D.open && p.topLayer().includes(D), '🔴 a MODAL dialog: the native <dialog>, opened with showModal (in the top layer)');
+  assert.equal(p.d.getElementById(D.getAttribute('aria-labelledby')).textContent, 'Jorge Ayala', 'labelled by the person\'s name');
   assert.deepEqual([...s.querySelectorAll('.tp-sub > span')].map((x) => [x.textContent, x.className]), [['jorge@m.hn', ''], ['Activo', 'tp-st']]);
   assert.equal(s.querySelector('.tp-st .tp-sdot').className, 'tp-sdot tp-mint', 'the mint status dot');
   assert.deepEqual([...s.querySelectorAll('.tp-sec .tp-dl')].map((x) => x.textContent), ['Rol', 'Sucursales', 'Menú y precios']);
@@ -491,8 +506,9 @@ test('D1 person sheet: a manager — facts, Editar / Quitar acceso (the shipped 
   assert.equal(sheet(p), null, '× closes it');
   assert.equal(p.d.activeElement, prow(p, 'Jorge Ayala'), 'focus returns to the row');
   prow(p, 'Jorge Ayala').click(); await settle();
-  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape' })); await settle();
-  assert.equal(sheet(p), null, 'Escape closes it');
+  p.escape(); await settle();
+  assert.equal(sheet(p), null, 'Escape (the dialog\'s cancel) closes it — through OUR close');
+  assert.equal(p.d.activeElement, prow(p, 'Jorge Ayala'), 'focus back on the row');
   prow(p, 'Jorge Ayala').click(); await settle();
   p.w.dispatchEvent(new p.w.PopStateEvent('popstate', { state: null })); await settle();
   assert.equal(sheet(p), null, 'the Android back (popstate) closes it');
@@ -554,42 +570,38 @@ test('D1 styles: below 920 px the phone list replaces the table; one-line rows, 
   assert.match(rule(media, '.teamv .modal.tp-cf .mf .btn') || '', /flex:1/, 'its two buttons side by side');
 });
 
-// ── Codex #279 (a11y): the sheet is a REAL modal — Tab / Shift+Tab stay in the TOPMOST dialog (the sheet, or the shipped modal stacked
-// on it), everything behind it is inert while it is open (restored exactly on close), and a refresh keeps the focused action ──
-const tab = (p, shift = false) => { const e = new p.w.KeyboardEvent('keydown', { key: 'Tab', shiftKey: shift, bubbles: true, cancelable: true }); p.d.activeElement.dispatchEvent(e); return e; };
-const tabbables = (n) => [...n.querySelectorAll('button, input, select, textarea, a[href], [tabindex]')].filter((x) => !x.disabled && x.getAttribute('tabindex') !== '-1');
-const inertNow = (p) => [...p.d.querySelectorAll('[inert]')];
-test('Codex #279 P2-1: Tab / Shift+Tab cycle inside the sheet; the list and the portal\'s nav are inert behind it; a stacked modal takes the trap; close restores exactly', async () => {
+// ── Codex #281 → OWNER 11-23 (the simpler option): the sheet and its stacked modals are NATIVE modal <dialog>s — the browser traps focus,
+// makes the background inert and stacks them (proven in Chrome by the slot's keyboard check); these cells pin what the VIEW must do ──
+test('#281 native dialogs: the sheet opens with showModal (top layer); a stacked edit modal is its own modal dialog ABOVE it; Escape closes only the top one, through our close', async () => {
   const p = await page();
   await p.signIn(); await p.open();
-  const before = inertNow(p);
   prow(p, 'Jorge Ayala').click(); await settle();
-  const s = sheet(p); const f = tabbables(s);
-  assert.ok(f.length >= 3, 'premise: × + Editar + Quitar acceso');
-  f[f.length - 1].focus(); tab(p);
-  assert.equal(p.d.activeElement, f[0], '🔴 Tab past the last control wraps to the first — focus never leaves the sheet');
-  tab(p, true);
-  assert.equal(p.d.activeElement, f[f.length - 1], '🔴 Shift+Tab before the first wraps to the last');
-  assert.ok(prow(p, 'Jorge Ayala').closest('[inert]'), '🔴 the list behind the sheet is inert');
-  assert.ok(p.d.getElementById('navprod').closest('[inert]'), '🔴 the portal\'s nav behind the sheet is inert');
-  assert.equal(s.closest('[inert]'), null, 'the sheet itself is live');
-  p.btn('Editar', s).click(); await settle();
-  const m = dlg(p); const g = tabbables(m);
-  g[g.length - 1].focus(); tab(p);
-  assert.equal(p.d.activeElement, g[0], '🔴 the stacked modal takes the trap');
-  assert.ok(s.closest('[inert]'), '🔴 the sheet is inert under the modal');
-  p.btn('Cancelar', dlg(p)).click(); await settle();
-  assert.equal(sheet(p).closest('[inert]'), null, '🔴 the modal closed: the sheet is live again');
-  const f2 = tabbables(sheet(p)); f2[f2.length - 1].focus(); tab(p);
-  assert.equal(p.d.activeElement, f2[0], 'and the trap is the sheet\'s again');
-  sheet(p).querySelector('.tp-x').click(); await settle();
-  assert.deepEqual(inertNow(p), before, '🔴 closed: exactly what was inert before is inert now');
+  const S1 = sheet(p).closest('dialog');
+  assert.deepEqual(p.topLayer(), [S1], '🔴 the sheet is a modal dialog (showModal, never show)');
+  assert.equal(p.d.activeElement, sheet(p).querySelector('.tp-x'), 'focus on × at open');
+  p.btn('Editar', sheet(p)).click(); await settle();
+  const M1 = dlg(p).closest('dialog');
+  assert.deepEqual(p.topLayer(), [S1, M1], '🔴 the edit modal is its own modal dialog, stacked above the sheet');
+  p.escape(); await settle();
+  assert.equal(dlg(p), null, 'Escape closed the modal…');
+  assert.ok(sheet(p) && S1.open && p.topLayer().length === 1, '…and only the modal: the sheet stays');
+  p.escape(); await settle();
+  assert.equal(sheet(p), null, 'a second Escape closes the sheet');
+  assert.deepEqual(p.topLayer(), [], '🔴 nothing left in the top layer');
+  assert.equal(p.d.activeElement, prow(p, 'Jorge Ayala'), 'focus back on the row that opened it');
 });
-test('Codex #279 P2-2: «Reenviar» refreshes the sheet and focus stays on «Reenviar» — never dropped to the page', async () => {
+test('#281 P2-2: «Reenviar» — the focus identity is taken BEFORE the button is disabled; after the refresh focus is on «Reenviar», never the page', async () => {
   const p = await page({ on: { memberReissueInvite: () => okJson({ ok: true, inviteId: INV(9), email: 'ana@m.hn', name: 'Ana Reyes' }) } });
   await p.signIn(); await p.open();
   prow(p, 'Ana Reyes').click(); await settle();
-  const re = p.btn('Reenviar', sheet(p)); re.focus(); re.click(); await settle(60);
+  const re = p.btn('Reenviar', sheet(p));
+  re.focus();
+  // a real browser drops focus off a control once it is disabled (its focus fixup), well before a network refresh answers — modelled
+  // at its worst, synchronously at the disable, so the focus identity MUST be taken before the button is disabled
+  const own = Object.getOwnPropertyDescriptor(p.w.HTMLButtonElement.prototype, 'disabled');
+  Object.defineProperty(re, 'disabled', { configurable: true, get() { return own.get.call(this); },
+    set(v) { if (v && p.d.activeElement === this) this.blur(); own.set.call(this, v); } });   // (jsdom's blur() is a no-op once disabled)
+  re.click(); await settle(60);
   assert.ok(sheet(p), 'premise: the sheet is still open after the refresh');
   assert.notEqual(p.d.activeElement, p.d.body, '🔴 focus is not dropped to the body');
   assert.ok(sheet(p).contains(p.d.activeElement) && p.d.activeElement.textContent === 'Reenviar', '🔴 the focused action keeps focus across the repaint');

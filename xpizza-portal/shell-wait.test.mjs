@@ -86,10 +86,11 @@ test('D3 — the footer email: the exact address, a <wbr> right before the «@»
   globalThis.__authCb({ uid: 'u1', email: LONG });
   assert.equal(who().textContent, LONG, '🔴 the exact address, in full');
   assert.equal(who().title, LONG, 'the full address in the tooltip too');
-  assert.deepEqual([...who().childNodes].map((n) => n.nodeName), ['#text', 'WBR', '#text'], '🔴 local part, <wbr>, «@domain»');
-  assert.deepEqual([who().childNodes[0].data, who().childNodes[2].data], ['administracion.general', '@restaurante-ejemplo.test'], '🔴 the break opportunity sits right before the «@»');
+  // D3 = A (owner 11-23): each part an inline-block span (class p) around the <wbr> — the email breaks only at the «@»
+  assert.deepEqual([...who().childNodes].map((n) => n.nodeName + (n.className ? `.${n.className}` : '')), ['SPAN.p', 'WBR', 'SPAN.p'], '🔴 local part, <wbr>, «@domain» — each part its own block');
+  assert.deepEqual([who().childNodes[0].textContent, who().childNodes[2].textContent], ['administracion.general', '@restaurante-ejemplo.test'], '🔴 the break opportunity sits right before the «@»');
   globalThis.__authCb({ uid: 'u2', email: '<img src=x onerror=alert(1)>@x.test' });
-  assert.equal(who().querySelectorAll('*:not(wbr)').length, 0, '🔴 the address is text, never markup');
+  assert.equal(who().querySelectorAll('*:not(wbr):not(span.p)').length + who().querySelectorAll('span.p *').length, 0, '🔴 the address is text, never markup');
   assert.equal(who().textContent, '<img src=x onerror=alert(1)>@x.test', 'the next sign-in replaces the last one');
   globalThis.__authCb({ uid: 'u3', email: '' });
   assert.deepEqual([who().textContent, who().querySelectorAll('wbr').length], ['u3', 0], 'no email ⇒ the uid, as before');

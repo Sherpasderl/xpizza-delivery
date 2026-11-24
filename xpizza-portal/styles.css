@@ -93,7 +93,8 @@
   .nav:active{transform:scale(.985)}
   .nav.on{background:var(--tint2);color:var(--accent)}
   .nav svg{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round}
-  .sfoot{margin-top:auto;padding-top:14px;border-top:1px solid var(--line2);display:flex;align-items:center;gap:11px}
+  .sfoot{margin-top:auto;padding-top:14px;border-top:1px solid var(--line2);display:flex;flex-direction:column;align-items:stretch;gap:8px}   /* D3 = A (owner 11-23): two rows */
+  .sfoot .frow{display:flex;align-items:center;gap:11px}
   .av{width:30px;height:30px;border-radius:50%;background:var(--card-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--ink);flex:none}
 
   /* ── main ── */
@@ -903,13 +904,13 @@
    mock carries its own, inverted for the light default.
    ───────────────────────────────────────────────────────────────────────────── */
   .price{font-variant-numeric:tabular-nums;font-weight:650;color:var(--ink);white-space:nowrap}
-  .sfoot .sinfo{min-width:0;flex:1}
-  /* slot-1114 D3 = A (OWNER 11-14 «Final»; advisor 11-23: supersedes the 11-12 truncation note for the EMAIL): the signed-in email is shown
-     in FULL — never «dueno@ejemplo.t…» — in the mockups' type (12px / −.01em, advisor 11-16). boot.js puts a <wbr> before the «@», so a long
-     email breaks there first; overflow-wrap:anywhere is only the fallback for one part wider than the line. The info block reserves two
-     email lines + the role line (and centres a short email) so the footer never jumps */
-  .sfoot .sinfo b{display:block;overflow-wrap:anywhere;font-size:12px;letter-spacing:-.01em;line-height:1.35}
-  .sfoot .sinfo{display:flex;flex-direction:column;justify-content:center;min-height:calc(3 * 12px * 1.35 + 2px)}
+  /* D3 = A (OWNER 11-23, MOCKUP-portal-footer-email-D3, artifact QY4YwiuGUh7qhxoZThoE8W): row 2 is the signed-in email ALONE at the
+     footer's full width, in FULL, in the mockups' type (12px / −.01em, advisor 11-16), 1.5 line height. boot.js writes it as two parts
+     (local part, «@domain») around a <wbr>; each part is an inline-block, so a long email breaks ONLY at the «@» — overflow-wrap:anywhere
+     is left only for a single part wider than the whole footer. The role (row 1) still truncates on one line (the 11-12 rule). */
+  .sfoot .sinfo{display:block;padding:0 1px 2px}
+  .sfoot .sinfo b{display:block;font-size:12px;letter-spacing:-.01em;line-height:1.5;color:var(--ink)}
+  .sfoot .sinfo b .p{display:inline-block;max-width:100%;overflow-wrap:anywhere;vertical-align:top}
   .switch .chev{opacity:0;transition:opacity .15s}
   .empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:6px}
   /* .rowchev ships as a real <button> so the row's opener is keyboard-reachable; the mock uses a
@@ -982,9 +983,10 @@
   /* OWNER 11-12 (live: the footer looked crammed — the admin label showed UNDER «Dueño» on every view and wrapped): ONE role line,
      never wrapping — the brand role, or «Admin Sherpa» instead of it on a Sherpa-admin view; each line truncates with the full value
      in its tooltip; room before the logout button (standing rule 16b) */
-  .sfoot .sinfo .cv{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.35;margin-top:2px}
-  .sfoot .sinfo .cv.admonly{display:none}
-  .app.admview .sfoot .sinfo .cv.admonly{display:block}
+  .sfoot .frow .cv{flex:1;min-width:0;display:block;font-size:12px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* row 1's role (D3 = A) */
+  .sfoot .frow .frole{color:var(--mute)}   /* its ink: its OWN class (the colour grammar: no crossing with .switch .cv) */
+  .sfoot .frow .cv.admonly{display:none}
+  .app.admview .sfoot .frow .cv.admonly{display:block}
   .sfoot .tbtn{flex:none}
 
   /* ═══ VENTAS (Stats S2) — the owner-only sales page; built to the approved mockup (APPROVED-S2-mockup-Ventas) ═══ */
@@ -1784,6 +1786,11 @@
   .teamv .tp-quiet summary svg{width:16px;height:16px;stroke:var(--mute2);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none;transition:transform .18s}
   .teamv .tp-quiet[open] summary svg{transform:rotate(180deg)}
   .teamv .tp-quiet p{font-size:13px;color:var(--mute);line-height:1.55;padding:0 0 14px;text-wrap:pretty}
+  /* owner 11-23 (Codex #281): the sheet and its stacked modals are native <dialog>s (showModal: the browser's trap, inert background, Escape,
+     top layer). Each is a transparent full-viewport box around today's scrim + panel, so the look is unchanged; the native backdrop is clear */
+  .teamv .tp-dlg{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;background:transparent;color:var(--ink);overflow:visible}   /* the page's ink, as body (the UA default would be CanvasText) */
+  .teamv .tp-dlg:not([open]){display:none}
+  .teamv .tp-dlg::backdrop{background:transparent}
   .teamv .tp-scrim{position:fixed;inset:0;background:rgba(8,7,6,.38);backdrop-filter:blur(2px);z-index:18;cursor:pointer}
   .teamv .tp-sheet{position:fixed;top:0;right:0;bottom:0;width:min(460px,100%);background:var(--card);border-left:1px solid var(--line);box-shadow:var(--shadow-lg);display:flex;flex-direction:column;z-index:19;animation:tp-in .26s cubic-bezier(.2,.75,.3,1)}
   @keyframes tp-in{from{transform:translateX(102%)}to{transform:none}}

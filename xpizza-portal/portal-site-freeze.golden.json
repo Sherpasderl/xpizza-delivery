@@ -189,8 +189,8 @@
    "bytes": 20184
   },
   "index.html": {
-   "sha256": "8a7b5933c45699a10845ad8b234954c89d932ece9c665788947916efc052d838",
-   "bytes": 14972
+   "sha256": "86ea9722aa27003cf30fe7af75a966b483f33149c8d594c7eafd02155189b850",
+   "bytes": 15163
   },
   "netlify.toml": {
    "sha256": "19d652c8a70380312a0de8a1bc681a5b3cf6401c4b1d7141e8ab57d2be4eb9da",
@@ -221,8 +221,8 @@
    "bytes": 841
   },
   "styles.css": {
-   "sha256": "0e4cdd0cf988648013d267ac0ad3bc901c111ea001e83b5462db178344549c01",
-   "bytes": 236795
+   "sha256": "2e46ec92e1c8c2a24cea276fbf5a544587558c80acd8d2400a7f184ff78502d1",
+   "bytes": 237727
   }
  },
  "diff_aid": {
@@ -6644,6 +6644,18 @@
    ],
    [
     "",
+    ".sfoot .frow .frole",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".sfoot .sinfo b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
     ".shop",
     "background",
     "var(--board-2)"
@@ -6911,6 +6923,24 @@
     ".teamv .tp-dl",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".teamv .tp-dlg",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".teamv .tp-dlg",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".teamv .tp-dlg::backdrop",
+    "background",
+    "transparent"
    ],
    [
     "",

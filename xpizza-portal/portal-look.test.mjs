@@ -398,6 +398,8 @@ const PINNED_COMPLEX = {
   '::-webkit-scrollbar-thumb': ['background:var(--line)'],
   '::-webkit-scrollbar-thumb:hover': ['background:var(--mute2)'],
   '::-webkit-scrollbar-track': ['background:transparent'],
+  // owner 11-23 (Codex #281): the team sheet's NATIVE modal <dialog> keeps today's own scrim; its UA backdrop is cleared, nothing more
+  '.teamv .tp-dlg::backdrop': ['background:transparent'],
   '.fld>label': ['color:var(--mute2)'],
   '.fld input[type=text]': ['background:var(--board-2);color:var(--ink)'],
   '.hours input[type=time]': ['background:var(--board-2);color:var(--ink)'],
