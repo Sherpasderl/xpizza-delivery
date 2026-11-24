@@ -329,11 +329,14 @@ const c7Hits = (head, { scopes = ['customer-app/'], shallow = () => git('rev-par
     return c7HandPaths(m, scopes).map((f) => ({ m, f }));
   });
 };
+// one key for a hit, the live cell's and C7-PLANT's alike (Codex #288 P2): «<full merge id> <path>», never a prefix — so the full-id keying
+// is proven on planted merges even when the lane range holds none (asm14 rebase: BASE..HEAD has no merge, MERGE_ALLOW is empty)
+const c7Key = ({ m, f }) => `${m} ${f}`;
 test(`no capp edit hidden in a merge resolution: every merge in ${BASE}..HEAD, judged by git's own re-merge`, () => {
   capRange(); const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
   for (const { src, dst } of synced) assert.ok(sameBytes(dst, src), `🔴 ${dst} differs from (or is missing beside) its source ${src} — the merge exemption no longer holds`);
   for (const [f, sources] of Object.entries(PORTED)) for (const src of sources) assert.ok(sameBytes(`customer-app/${f}`, src), `🔴 customer-app/${f} differs from (or is missing beside) ${src} — the merge exemption no longer holds`);
-  const hits = c7Hits('HEAD').filter(({ f }) => !exempt.has(f)).map(({ m, f }) => `${m} ${f}`);
+  const hits = c7Hits('HEAD').filter(({ f }) => !exempt.has(f)).map(c7Key);
   const unlisted = hits.filter((h) => !(h in MERGE_ALLOW)), stale = Object.keys(MERGE_ALLOW).filter((k) => !hits.includes(k));
   assert.equal(unlisted.join('\n'), '', `🔴 customer-app/ edit(s) made in a merge resolution (differ from every parent; not in MERGE_ALLOW):\n${unlisted.join('\n')}`);
   assert.equal(stale.join('\n'), '', `🔴 stale MERGE_ALLOW entr(ies) — no longer a resolution edit:\n${stale.join('\n')}`);
@@ -372,8 +375,9 @@ const c7Plant = () => {
   return { base, head, s1, a2, m1, m2, m3, m4, m5, m6, j: plantCommit([m6, head], head, {}, 'the lane comes in') };
 };
 test('C7-PLANT: cell 7 walks EVERY merge in range and judges it by git\'s own re-merge (PLAN-capp-guards-cell7 r0)', () => {
-  const P = c7Plant(), hits = c7Hits(P.j).map(({ m, f }) => `${m} ${f}`), walked = c7Walk(P.j);
+  const P = c7Plant(), hits = c7Hits(P.j).map(c7Key), walked = c7Walk(P.j);
   assert.ok(['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].every((k) => walked.includes(P[k])), '🔴 C7-WALK: a train merge made BEFORE the lane is not walked');
+  assert.ok(hits.length > 0 && hits.every((h) => /^[0-9a-f]{40} customer-app\//.test(h)), `🔴 C7-HITKEY: a cell-7 hit is not keyed «<full merge id> <path>»:\n${hits.join('\n')}`);
   assert.ok(hits.includes(`${P.m1} ${C7_CSS}`), '🔴 C7-EVIL: a line added by hand in a clean merge\'s resolution is not seen');
   assert.ok(!hits.includes(`${P.m2} ${C7_CSS}`) && !hits.includes(`${P.m6} ${C7_MD}`), "🔴 C7-CLEAN: git's own clean merge is flagged as a hand resolution");
   assert.ok(hits.includes(`${P.m3} ${C7_CSS}`), "🔴 C7-ONE-SIDE: a conflict resolved to one side (the other side's change dropped) is not seen");

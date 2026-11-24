@@ -43810,10 +43810,10 @@
  {
   "id": "cell7-08",
   "slice": "cell7",
-  "label": "capp-guards cell 7 (Codex #288 P2): hits keyed by an 8-char prefix, not the full merge id",
+  "label": "capp-guards cell 7 (Codex #288 P2): hits keyed by an 8-char prefix, not the full merge id (the one c7Key, proven on planted merges)",
   "file": "../customer-app/capp-guards.test.mjs",
-  "from": "c7Hits('HEAD').filter(({ f }) => !exempt.has(f)).map(({ m, f }) => `${m} ${f}`);",
-  "to": "c7Hits('HEAD').filter(({ f }) => !exempt.has(f)).map(({ m, f }) => `${m.slice(0, 8)} ${f}`);",
+  "from": "const c7Key = ({ m, f }) => `${m} ${f}`;",
+  "to": "const c7Key = ({ m, f }) => `${m.slice(0, 8)} ${f}`;",
   "command": [
    "node",
    "--test",
@@ -43821,7 +43821,7 @@
    "../customer-app/capp-guards.test.mjs"
   ],
   "kills_with": [
-   "made in a merge resolution"
+   "C7-HITKEY: a cell-7 hit is not keyed"
   ]
  },
  {
