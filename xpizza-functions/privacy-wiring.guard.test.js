@@ -15,7 +15,7 @@ assert.ok(FILES.length >= 1 && HUNKS.length >= 1, 'PRIVACY: non-vacuity — the 
 // asm12 step 06 (advisor A′, 11-19): the per-site layers that landed on the train AFTER this layer's base are peeled AFTER privacy (privacy
 // stays innermost on the raw read) before the comparison — addr-rev's memberreads insertion (unapplyAfter 099c280e4, the ledgers1-wiring
 // shape). The privacy hunks, MANIFEST and inverse are unchanged; a planted privacy-hunk change still goes RED (proof in the merge message).
-const laterLayers = (F, src) => require('./tools/post-asm11-layers').stripPostAsm11(F, require('./tools/memberreads-module-inverse').unapplyAfter(F, src, '099c280e4'));   // + step 07: the post-asm11 hook (order-owner)
+const laterLayers = (F, src) => require('./tools/post-asm11-layers').stripPostAsm11(F, require('./tools/memberreads-module-inverse').unapplyAfter(F, require('./tools/mrr-module-inverse').unapplyMrrModule(F, require('./tools/cpark-module-inverse').unapplyCparkModule(F, require('./tools/ratt-module-inverse').unapplyRattModule(F, src))), '099c280e4'));   // asm13: + 5f review's mrr / cpark / ratt (disjoint on index.js)   // + step 07: the post-asm11 hook (order-owner)
 for (const F of FILES) {
   const disk = fs.readFileSync(path.join(__dirname, F), 'utf8');
   const base = git(['show', `${baseOf(F)}:xpizza-functions/${F}`]);   // asm12 step 04 (RULING A): cards.js = BASE + cardclean (c41b29ce6)

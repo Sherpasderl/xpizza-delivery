@@ -89,6 +89,11 @@
       }
     },
 
+    "manual_review_episodes": {
+      "$order_id": {
+        ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('dispatchers').child(auth.uid).exists()"
+      }
+    },
     "orders": {
       ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true",
       ".indexOn": ["status", "created_at", "order_type", "restaurant_id", "delivered_by_driver_uid", "delivered_by_uid", "delivered_at", "cancelled_at", "completed_at", "refunded_at", "fulfilled_offline_at", "extra_payment_review"],

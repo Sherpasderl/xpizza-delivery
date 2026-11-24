@@ -24,7 +24,7 @@ for (const f of FILES) {
   const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
   const b = git(['show', `${BASE}:xpizza-functions/${f}`]);
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
-  assert.strictEqual(unapplyS4sectModule(f, src), b, `🔴 S4SECT-BASE: ${f} minus the s4sect hunks is not ${BASE}:${f}`);
+  assert.strictEqual(require('./tools/rewardgroups-module-inverse').unapplyRewardGroupsModule(f, unapplyS4sectModule(f, src)), b, `🔴 S4SECT-BASE: ${f} minus the s4sect hunks (then asm12's reward-groups layer, below it on choice-compare.js) is not ${BASE}:${f}`);
   if (!INSERTS.has(f)) assert.strictEqual(src.split('\n').length, b.split('\n').length, `🔴 ${f}: same-line edits only (no line added or moved)`);
   for (const h of HUNKS.filter((x) => x.file === f)) {
     const k = h.now.search(/[A-Za-z]/);
@@ -53,7 +53,9 @@ const peel = (x) => {
 };
 const walk = (x, cb) => { if (!x || typeof x.type !== 'string') return; cb(x); for (const k of Object.keys(x)) { const v = x[k]; if (Array.isArray(v)) v.forEach((y) => walk(y, cb)); else if (v && typeof v.type === 'string') walk(v, cb); } };
 // the declared own-guard sites (each peels s4sect directly under its own owner's bare call, or on a raw read with no owner in the chain)
-const DECLARED = { 's3-served.test.mjs': 1, 'xpizza-functions/s2bext-wiring.guard.test.js': 1, 'xpizza-functions/extrasflip-wiring.guard.test.js': 1 };
+// asm13 merge: extrasflip-wiring's raw-read chain now carries s4sect directly inside reward-groups (its innermost owner: by the rule, not
+// declared); reward-groups' OWN guard peels s4sect on its raw read (declared)
+const DECLARED = { 's3-served.test.mjs': 1, 'xpizza-functions/s2bext-wiring.guard.test.js': 1, 'xpizza-functions/rewardgroups-wiring.guard.test.js': 1 };
 const top = git(['rev-parse', '--show-toplevel']).trim();
 const files = git(['ls-files', '*.js', '*.mjs'], top).split('\n').filter((f) => f && !/(^|\/)tools\/[a-z0-9-]+-inverse\.js$/.test(f) && f !== 'xpizza-functions/s4sect-wiring.guard.test.js');
 // the next peel BELOW a peel: its src argument, followed THROUGH non-layer wrappers (a call that hands its last argument on —

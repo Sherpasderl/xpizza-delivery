@@ -3138,9 +3138,9 @@ exports.reconcilePayments = onSchedule(
       if (o.status === 'scheduled' || o.status === 'releasing') {
         const ov = SCHED.scheduledOverdue(o, now);
         if (ov.overdue) breaches.push({ orderId, kind: ov.kind });
-        continue;
+        if (!require('./alert-prune').unresolvedMoney(o)) continue;   // Codex #211 P2-4: an unresolved money state is never exempt — it meets the aged rules below
       }
-      if (o.payment_method !== 'online') continue;
+      if (o.payment_method !== 'online' && o.payment_status !== 'manual_review') continue;   // owner 11-19: a review (cash-labelled too) gets its daily reminder
       const a = o.active_attempt_id ? attempts[o.active_attempt_id] : null;
       // I2: a confirmed online order must have a VERIFIED payment — a verified hosted callback
       // (hosted_callback_verified) or, for legacy auth+capture orders, a captured attempt.
@@ -3149,7 +3149,7 @@ exports.reconcilePayments = onSchedule(
       }
       // Aged operator-queue states.
       const age = now - (Number(o.charged_at || o.created_at) || now);
-      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' });
+      if (o.payment_status === 'manual_reconciliation' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_manual_reconciliation' }); if (o.payment_status === 'manual_review' && age > 6 * 3600 * 1000 && !(await require('./payments/review-attest').isClosed(db, orderId))) breaches.push({ orderId, kind: 'aged_manual_review' });   // + cancel-park option A: a parked (manual_review) order is re-raised daily
       if (o.payment_status === 'refund_pending' && age > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_refund_pending' });
       if (MR.isResolving(o.payment_status) && (now - (Number(o.resolving_claimed_at) || 0)) > 6 * 3600 * 1000) breaches.push({ orderId, kind: 'aged_resolving' }); // [D] sweep-recovery backstop
 
@@ -3308,7 +3308,7 @@ exports.resolveManualReconciliation = onRequest(
     });
     return res.status(result.status).json(result.body);
   }
-);
+);   exports.attestManualReview = require('./payments/review-attest').endpoint({ onRequest, authorize: authorizeDispatcherActionWithUid, getDatabase, sanitizeText }); exports.markReviewEpisodeOnPaymentStatus = onValueWritten({ ref: '/orders/{orderId}/payment_status', region: 'us-central1', retry: true, timeoutSeconds: 60 }, (event) => require('./payments/review-attest').onPaymentStatus(getDatabase(), { orderId: event.params.orderId, before: event.data.before.val(), after: event.data.after.val(), eventTime: Date.parse(event.time) }));   // «Marcar como revisado» (owner 11-19, option B): a recorded attestation only
 
 // ============================================================
 // materializeOnConfirm — recovery trigger (crash between confirm-claim + materialize)

@@ -188,7 +188,7 @@ async function voidPaid(deps, { orderId, attemptId, hostedOrderId, uuid, amount,
       [`orders/${orderId}/status`]: 'cancelled',
       [`orders/${orderId}/payment_status`]: 'manual_review',
     });
-    return { code: 200, outcome: 'cancelled_no_uuid_manual_review' };
+    await db.ref(`orders/${orderId}`).transaction((cur) => (cur === null ? null : (!cur || cur.payment_status !== 'manual_review' || cur.blocked_reason) ? undefined : { ...cur, blocked_reason: 'paid_after_cancel_no_uuid' })); return { code: 200, outcome: 'cancelled_no_uuid_manual_review' };   // the reason: ONE order tx, only if still in review AND reason-less (Codex #225)
   }
   let voided = false;
   try {

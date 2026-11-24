@@ -15,7 +15,7 @@ for (const F of FILES) {
   // S-ADDR-2 (3a, merged forward onto 31f05c8a4, after this pin): the member-reads hunks marked after 099c280e4 (the useMyAddress export,
   // a pure insertion disjoint from every D4 hunk) are peeled on the raw read — the dirwire shape
   const raw = require('./tools/privacy-module-inverse').unapplyPrivacyModule(F, fs.readFileSync(path.join(__dirname, F), 'utf8'));   // fix/privacy-gaps-5f innermost on the raw read (asm12 06, NOTES §H2)
-  const disk = require('./tools/memberreads-module-inverse').unapplyAfter(F, raw, '099c280e4');
+  const disk = require('./tools/memberreads-module-inverse').unapplyAfter(F, require('./tools/mrr-module-inverse').unapplyMrrModule(F, require('./tools/cpark-module-inverse').unapplyCparkModule(F, require('./tools/ratt-module-inverse').unapplyRattModule(F, raw))), '099c280e4');   // asm13 merge: + minus cancel-park + the manual_review reasons (5f review, newer; disjoint) inside the member-reads peel, over privacy (as in dirwire)
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
   assert.notStrictEqual(disk, base, `LEDGER-S1: non-vacuity — ${F} carries the ledger S1 hunks`);
   assert.strictEqual(unapplyLedgerS1Module(F, disk), base, `LEDGER-S1: 🔴 ${F} minus the ledger S1 hunks is not ${BASE}:${F}`);

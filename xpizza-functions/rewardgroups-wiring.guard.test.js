@@ -14,7 +14,8 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 assert.ok(FILES.length >= 1 && HUNKS.length >= 1, 'REWARDGROUPS: non-vacuity — the layer owns files');
 for (const F of FILES) {
-  const disk = fs.readFileSync(path.join(__dirname, F), 'utf8');
+  const raw = fs.readFileSync(path.join(__dirname, F), 'utf8');
+  const disk = require('./tools/s4sect-module-inverse').unapplyS4sectModule(F, raw);   // asm13 merge: S4's s4sect sits ABOVE this layer on choice-compare.js (peeled first, the owner rule); a raw variable (d4-wiring's INNER rule)
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
   assert.notStrictEqual(disk, base, `REWARDGROUPS: non-vacuity — ${F} carries the hunks`);
   assert.strictEqual(unapplyRewardGroupsModule(F, disk), base, `🔴 REWARDGROUPS-BASE: ${F} minus the reward-groups hunks is not ${BASE}:${F}`);
@@ -58,7 +59,7 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} reward-groups hunks === ${
   for (const f of files) {
     const s = fs.readFileSync(path.join(__dirname, f), 'utf8');
     if (f === 'extrasflip-wiring.guard.test.js') {   // the layer guard's own raw read
-      if (!/const disk = require\('\.\/tools\/rewardgroups-module-inverse'\)\.unapplyRewardGroupsModule\(F, require\('\.\/tools\/statscmp-module-inverse'\)\.unapplyStatsCmpModule\(F, require\('\.\/tools\/dirwire-module-inverse'\)\.unapplyDirwireModule\(F, require\('\.\/tools\/salesmulti-module-inverse'\)\.unapplySalesMultiModule\(F, require\('\.\/tools\/d4-intake-inverse'\)\.unapplyD4Module\(F, /.test(s)) bare.push(`${f}: its raw read`);
+      if (!/const disk = require\('\.\/tools\/rewardgroups-module-inverse'\)\.unapplyRewardGroupsModule\(F, require\('\.\/tools\/s4sect-module-inverse'\)\.unapplyS4sectModule\(F, require\('\.\/tools\/mrr-module-inverse'\)\.unapplyMrrModule\(F, require\('\.\/tools\/cpark-module-inverse'\)\.unapplyCparkModule\(F, require\('\.\/tools\/ratt-module-inverse'\)\.unapplyRattModule\(F, require\('\.\/tools\/statscmp-module-inverse'\)\.unapplyStatsCmpModule\(F, require\('\.\/tools\/dirwire-module-inverse'\)\.unapplyDirwireModule\(F, require\('\.\/tools\/salesmulti-module-inverse'\)\.unapplySalesMultiModule\(F, require\('\.\/tools\/d4-intake-inverse'\)\.unapplyD4Module\(F, /.test(s)) bare.push(`${f}: its raw read`);
       continue;
     }
     const re = /unapplyExtrasflipModule\(/g; let m;
