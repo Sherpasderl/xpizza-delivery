@@ -667,9 +667,6 @@
   "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#confirmCancelOrder~2": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#confirmCancelOrder~3": {
-   "status": "pending"
-  },
   "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#detectNewPending": {
    "status": "pending"
   },
@@ -725,9 +722,6 @@
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#getActiveOrders>anon@self": {
-   "status": "pending"
-  },
-  "xpizza-dispatch/index.html<script@0>#getDeliveredTodayCount>anon@self": {
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#getDeliveryQueue>anon@self": {
@@ -832,9 +826,6 @@
   "xpizza-dispatch/index.html<script@0>#renderDriversSection@xpizza-dispatch/index.html<script@0>#subscribeAll>anon": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#renderMessageRow@self": {
-   "status": "pending"
-  },
   "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon@self": {
    "status": "pending"
   },
@@ -914,9 +905,6 @@
    "status": "pending"
   },
   "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver@xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon": {
-   "status": "pending"
-  },
-  "xpizza-dispatch/xpizza-delivery.js#cancelOrderRemote@xpizza-dispatch/index.html<script@0>#confirmCancelOrder": {
    "status": "pending"
   },
   "xpizza-dispatch/xpizza-delivery.js#coordsMatch@xpizza-dispatch/xpizza-delivery.js#resolvePickupHub": {
@@ -1035,7 +1023,7 @@
   },
   "xpizza-driver/cash-helpers.js#shiftDeliveries@xpizza-driver/index.html<script@0>#drv2DayEarned": {
    "status": "pending",
-   "reason": "2f \u00abGanado hoy\u00bb metadata (87eed83c, 11b): drv2DayEarned is THE one-source day-earnings read/derive (HN-day, resolved-only); pure, no persistence; not a gate-A observable. Display only."
+   "reason": "2f «Ganado hoy» metadata (87eed83c, 11b): drv2DayEarned is THE one-source day-earnings read/derive (HN-day, resolved-only); pure, no persistence; not a gate-A observable. Display only."
   },
   "xpizza-driver/cash-helpers.js#shiftDeliveries@xpizza-driver/index.html<script@0>#renderHistoryModal": {
    "status": "pending"
@@ -1207,7 +1195,7 @@
   },
   "xpizza-driver/pay-rate.js#shiftEarningsCents@xpizza-driver/index.html<script@0>#drv2DayEarned": {
    "status": "pending",
-   "reason": "2e-applied under 2f's blanket ruling (87eed83c, 11b: \u00abapply pending to the whole drv2DayEarned-era set\u00bb) \u2014 NOT in 2f's enumerated list (2f expected the PR alias to hide it); FLAGGED to 2f for confirmation. The PAGOS-gated \u00abGanado hoy\u00bb amount derived in drv2DayEarned; informativo pay, never persisted/collected. Display only."
+   "reason": "2e-applied under 2f's blanket ruling (87eed83c, 11b: «apply pending to the whole drv2DayEarned-era set») — NOT in 2f's enumerated list (2f expected the PR alias to hide it); FLAGGED to 2f for confirmation. The PAGOS-gated «Ganado hoy» amount derived in drv2DayEarned; informativo pay, never persisted/collected. Display only."
   },
   "xpizza-driver/single-order-view.js#itemLines@xpizza-driver/single-order-view.js#svItems": {
    "status": "pending"
@@ -3295,6 +3283,36 @@
   "xpizza-driver/pay-rate.js#shiftEarningsCents@xpizza-driver/index.html<script@0>#renderGanancias>anon": {
    "status": "pending",
    "reason": "2f driver NOTE (A1 money-path, per-site): The \"Ganado hoy/semana\" earnings + per-row amounts; PAGOS-gated (PAGOS_LIVE && a known rate; blank otherwise), never a persisted/collected figure — it's informativo pay, paid aparte from the cash. Display only. [the ×3 renderGanancias sites; explicit in the note A1 id list]"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#openDetail@xpizza-dispatch-mobile/index.html<script@0>#openDriverInfo>anon>anon": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#classifyDriverForAssign@xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#classifyDriverForAssign>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#confirmCancelOrder@xpizza-dispatch/index.html<script@0>#action": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#confirmCancelOrder@xpizza-dispatch/index.html<script@0>#action~2": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#confirmCancelOrder@xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#onConfirm": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#onConfirm~2": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#forceOffShift>anon@self": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/xpizza-delivery.js#cancelOrderRemote@xpizza-dispatch/index.html<script@0>#onConfirm": {
+   "status": "pending"
   }
  }
 }
