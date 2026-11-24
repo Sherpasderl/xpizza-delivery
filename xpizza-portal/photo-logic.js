@@ -226,7 +226,8 @@ export function renewIn(previews, pids, now) {
 // ── review (§2.4) ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // A diff line {surface:'item', key, field:'photo', old, new} with <state> ∈ {kind:'legacy'} | {kind:'pid',pid} | {kind:'removed'}.
 // A legacy state HAS a photo exactly when the server gave a legacy preview for that key.
-export const isPhotoLine = (c) => !!(c && c.field === 'photo');
+import './review-lines.js';   // defines the ReviewLines global (the one review line model)
+export const isPhotoLine = (c) => globalThis.ReviewLines.isPhotoLine(c);   // ONE source: review-lines.js (PLAN-portal-review-lines-r0 D2)
 const stateHas = (s, key, legacy) => !!(s && (s.kind === 'pid' || (s.kind === 'legacy' && legacyHas(legacy, key))));
 export function lineKind(c, legacy) {
   const before = stateHas(c.old, c.key, legacy);

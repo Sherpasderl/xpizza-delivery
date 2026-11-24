@@ -27,6 +27,7 @@ import { REND_BASE, REND_FOLD } from './rend-fold.mjs';
 import { RGB_BASE, RGB_FOLD } from './rgb-fold.mjs';
 import { RGUI_BASE, RGUI_FOLD } from './rgui-fold.mjs';
 import { STR34_BASE, STR34_FOLD } from './str34-fold.mjs';
+import { RL_BASE, RL_FOLD } from './rl-fold.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const BASE = '613f7e08';
@@ -41,7 +42,18 @@ const BASE = '613f7e08';
 // and every older pin judge exactly what they judged before; the RP test pins the layer itself on disk.
 // «Rendimiento» (P-1 nav, owner 11-13 map Q4) was the NEWEST layer, above RP — RETIRED 11-14 (Nav B): its fold is empty, the
 // REND test pins ventas.js back at REND_BASE.
-const diskFile = (f) => readFileSync(join(DIR, f), 'utf8');
+// THE REVIEW LINE MODEL (rl-fold.mjs, PLAN-portal-review-lines-r0, advisor 11-23) is the NEWEST layer of all, above STR34: folded out of the
+// raw bytes at the very lowest read, so STR34, RGB, REND and every older pin judge exactly what they judged before; the RL test pins it on disk.
+const diskBytes = (f) => readFileSync(join(DIR, f), 'utf8');
+function withoutRL(f, src) {
+  let out = src;
+  for (const [now, was] of RL_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `RL hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+const diskFile = (f) => withoutRL(f, diskBytes(f));
 function withoutREND(f, src) {
   let out = src;
   for (const [now, was] of REND_FOLD[f] || []) {
@@ -251,6 +263,18 @@ function withoutSw(src) {
 }
 // train asm3 (2e): the shell-wait layer (newest) is folded out of app.js before every older fold below
 const readSw = (f) => (f === 'app.js' ? withoutSw(read(f)) : read(f));
+test('the review line model layer: app.js / review.js / photo-logic.js / render.js / item-edit-logic.js gain exactly the named hunks — folding them out gives RL_BASE byte-for-byte', () => {
+  assert.deepEqual(Object.keys(RL_FOLD), ['app.js', 'review.js', 'photo-logic.js', 'render.js', 'item-edit-logic.js'], 'the layer touches these five files only');
+  for (const f of Object.keys(RL_FOLD)) {
+    const was = execFileSync('git', ['show', `${RL_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.notEqual(withoutRL(f, diskBytes(f)), diskBytes(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(withoutRL(f, diskBytes(f)), was, `${f} minus the layer ≠ ${RL_BASE}`);
+    assert.notEqual(withoutRL(f, diskBytes(f) + '\n// stray\n'), was, `non-vacuity: a stray edit to ${f} survives the fold (and fails the pin)`);
+  }
+  assert.throws(() => withoutRL('review.js', diskBytes('review.js').replace("import './review-lines.js';", "import './review-lines.js'; ")), 'an edit INSIDE a review.js hunk breaks the fold');
+  assert.throws(() => withoutRL('app.js', diskBytes('app.js').replace('productRemoval: state.productRemoval === true, categoryName', 'productRemoval: true, categoryName')), 'an edit INSIDE an app.js hunk breaks the fold');
+});
+
 test('shell-wait (Codex r2 P1 + r3): app.js gains exactly the read-generation hunks + the portal:abandon listener; nothing else', () => {
   // train asm3: through the older folds (DISH PHOTOS B incl. held-state, then T1) to T1_BASE — the base every pin below agrees on
   const was = execFileSync('git', ['show', `${T1_BASE}:xpizza-portal/app.js`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
