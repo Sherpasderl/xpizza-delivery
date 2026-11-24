@@ -918,8 +918,11 @@ const itemsOf = async () => (await val('pending_paid_alerts')) || {};
     const basePath = pathx.join(__dirname, '..', '.cancel-order-core.base-8f1e017.tmp.js');
     // DRYRUN (2e, TRAIN-NEXT2 A4): the next train's newer layers (P5a edits this file) are stripped first, newest innermost
     // (SDK pay, the newest, innermost before them), then stackseq T8 (3c23e0fa, newer than H0) is undone before H0; the result
-    // must be the 8f1e017 blob byte for byte
-    const baseSrc = INV.unapplyH0Module('cancel-order-core.js', require('../tools/stackseq-module-inverse').unapplyStackseqModule('cancel-order-core.js', require('../tools/_asm-next2-layers').stripNewer('cancel-order-core.js', require('../tools/sdkpay-module-inverse').unapplySdkPayModule('cancel-order-core.js', fsx.readFileSync(realPath, 'utf8')))));
+    // must be the 8f1e017 blob byte for byte. asm13 (2e, advisor 11-24): 5f's cancel-park (cpark) and review-reasons (mrr) layers are the
+    // newest on this file — peeled first, mrr then cpark, on the raw read (d4-wiring INNER rule: a raw variable, never a nested readFileSync)
+    const disk = fsx.readFileSync(realPath, 'utf8');
+    const raw = require('../tools/cpark-module-inverse').unapplyCparkModule('cancel-order-core.js', require('../tools/mrr-module-inverse').unapplyMrrModule('cancel-order-core.js', disk));
+    const baseSrc = INV.unapplyH0Module('cancel-order-core.js', require('../tools/stackseq-module-inverse').unapplyStackseqModule('cancel-order-core.js', require('../tools/_asm-next2-layers').stripNewer('cancel-order-core.js', require('../tools/sdkpay-module-inverse').unapplySdkPayModule('cancel-order-core.js', raw))));
     // sha256 of `git show 8f1e017:xpizza-functions/cancel-order-core.js` (codex sdkpay-cell23 r1 P2)
     const BASE_8F1E017_SHA256 = '0adf3c5fa0a8fe6bbab101225d01b38ce3ab02a16c88280edc024475ef7e1469';
     const baseSha = require('crypto').createHash('sha256').update(baseSrc).digest('hex');
