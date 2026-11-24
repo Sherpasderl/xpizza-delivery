@@ -186,6 +186,10 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
      extrasCatalog — the SAME constant editCatalog's choiceOn enforces, so the portal keeps S3 choice editing dark while it is off. */
   let choiceEdit = false;
   try { choiceEdit = require('./platform-structure').structureCapabilities().choiceEdit === true; } catch (_) { choiceEdit = false; }
+  /* S4 (PLAN-structure-S4-r4 §0, R2.4): the platform sections switch, ALWAYS stated and fail-closed exactly like extrasCatalog — the
+     SAME constant every S4 judgment site reads, so the portal keeps section creation / moves / reorders dark while it is off. */
+  let sections = false;
+  try { sections = require('./platform-structure').structureCapabilities().sections === true; } catch (_) { sections = false; }
   /* S2-core (S2 UI plan review #1): what the save requires to remove an existing extra — the deletion baseline the save checks
      deleted_ids_loaded_base against (the SAME pointer read: catalog-firestore getActivePointer; null when unreadable, and the save then
      refuses deleted_ids_unbound) and the adopted claim's ids, normalized (the store keeps an object { ids, base_version, … }; a client may
@@ -358,6 +362,7 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     extrasCatalog,
     ...(rewardGroups ? { rewardGroups } : {}),   // portal «Agregar extra» R1
     choiceEdit,
+    sections,
     deletionBase,
     deletionClaim: { ids: (Array.isArray(source && source.deleted_ids) ? source.deleted_ids : (source && source.deleted_ids && Array.isArray(source.deleted_ids.ids) ? source.deleted_ids.ids : [])).map(String).sort() },
     ...photoOut,   // DISH PHOTOS A2 step 9 (E-P3)

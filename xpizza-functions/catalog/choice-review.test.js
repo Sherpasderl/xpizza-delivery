@@ -54,7 +54,7 @@ cell('CR-CHOICES: ON, the group row names its label, membership and «Recomendad
   assert.deepStrictEqual(d.choices, [{ launcher: PAD, name: LM.items.find((i) => i.key === PAD).display.name,
     label: { old: LM.structure.variant_items[PAD].label, new: 'Elegí la proteína' },
     members: { added: ['noodle_01_tofu'], removed: [opts[2]] },
-    recommended: { old: [], new: [opts[0]] } }]);
+    recommended: { old: [], new: [opts[0]] }, app_only: null }]);   // Q-B: a new option is a facet; no rid here ⇒ unknown (null)
 }));
 cell('CR-D3: ON, a dish losing its group is a `plain` row; its reprice to the option price is in fiscal.repriced', () => ON(() => {
   const d = diffOf('la_musa', LM, apply(LM, { op: 'choice.remove', launcher: PAD, price_from: opts[1] }));

@@ -63,7 +63,7 @@ function world(rid, { live: liveSource = null, reserved = () => require('../cata
   const tokenFor = async () => {
     const { source, updateTime } = await draft();
     const D = buildSourceCandidate(rid, source);
-    const diff = require('../catalog/review-diff').reviewDiff({ live: { ...L.built, extras: L.inputs.extras }, liveExtraRecords: L.built.extras,
+    const diff = require('../catalog/review-diff').reviewDiff({ rid, live: { ...L.built, extras: L.inputs.extras }, liveExtraRecords: L.built.extras,
       draftBuilt: { ...D.built, extras: D.inputs.extras }, draftExtraRecords: D.built.extras, extrasCatalog: SW.extrasCatalog });
     return { token: issueEditToken({ rid, baseActiveVersionId: 'v1', sourceUpdateTime: updateTime, sourceHash: sha256(source), diff }), diff };
   };

@@ -81,6 +81,21 @@ cell('CC-ON-LABEL-MARK: a group label change with its one mark passes; the label
   assert.ok(judge('la_musa', LM, d));
   refusedWith(() => judge('la_musa', LM, apply(LM, { op: 'choice.label', launcher: PAD, label: 'Elegí la proteína' })), 'choice_recommended_required');
 }));
+cell('CC-ON-LABEL-MAX (advisor 11-13, Q-A): a group label over 40 (CATEGORY_NAME_MAX) is label_too_long — a changed label and a NEW group\'s; 40 passes; an unchanged live label is not re-judged; OFF is today\'s answer', () => {
+  const L41 = 'Elegí '.padEnd(41, 'x'); const L40 = L41.slice(0, 40);
+  const long = apply(marked(LM), { op: 'choice.label', launcher: PAD, label: L41 });
+  ON(() => {
+    const e = refusedWith(() => judge('la_musa', LM, long), 'label_too_long');
+    assert.deepStrictEqual([e.field, e.key], ['label', PAD], 'the refusal names the group');
+    assert.ok(judge('la_musa', LM, apply(marked(LM), { op: 'choice.label', launcher: PAD, label: L40 })), '40 passes');
+    refusedWith(() => judge('x_pizza', XP, settle(apply(XP, { ...D2(XP_PLAIN), label: L41 }))), 'label_too_long');
+    assert.notStrictEqual(outcome(() => judge('x_pizza', XP, settle(apply(XP, { ...D2(XP_PLAIN), label: L40 })))).code, 'label_too_long', 'a new group at 40');
+    const liveLong = clone(LM); liveLong.structure.variant_items[PAD].label = L41;   // a live label already over 40 (written before the cap)
+    const price = clone(liveLong); price.items.find((i) => i.key === PAD).price = 420; price.items.find((i) => i.key === PAD).display.price = 420;
+    assert.ok(judge('la_musa', liveLong, price), 'an unchanged live label is not re-judged');
+  });
+  assert.deepStrictEqual(outcome(() => judge('la_musa', LM, long)), outcome(() => today('la_musa', LM, long)), 'OFF: today\'s answer');
+});
 cell('CC-ON-RENAME: an option rename (key kept, composed name) passes; a name that is not «{dish} - {choice}» is choice_name_not_derived', () => ON(() => {
   const d = marked(apply(LM, { op: 'option.rename', key: padOpts(LM)[1], choice: 'Pollo al Wok' }));
   assert.ok(judge('la_musa', LM, d));

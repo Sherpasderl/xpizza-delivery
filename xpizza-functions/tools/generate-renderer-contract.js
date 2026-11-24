@@ -44,7 +44,7 @@ function deriveContract(restaurantId, root) {
   // the badges the shared group PICKER can draw on a CHOICE row — derived from the same strict marker as render, never a
   // per-restaurant flag. A card cannot show them, so they live apart from `badges`.
   const choiceBadges = formShipsPicker(restaurantId, root) ? CHOICE_BADGES.slice() : [];
-  return { categoriesNamed, badges, renderedCategories: renderedCategoriesOf(src), choiceBadges };
+  return { categoriesNamed, badges, renderedCategories: renderedCategoriesOf(src), choiceBadges, categoriesGeneric: categoriesGenericOf(src), choicesGeneric: choicesGenericOf(src, formShipsPicker(restaurantId, root)) };
 }
 
 // 1D add-product A §1 — WHICH CATEGORIES DOES THE RENDERER ACTUALLY DRAW? A category the catalog accepts but
@@ -81,6 +81,41 @@ function renderedCategoriesOf(src) {
   return out;
 }
 
+// S4 (PLAN-structure-S4-r4 §1.6, S0-3) — DOES THE FORM DRAW ANY SERVED CATEGORY? Only when all three hold: renderMenu walks CATEGORIES
+// filtering `p.cat === <walker>.id`, CATEGORIES is booted from the served bundle (`let CATEGORIES = _bootSelect('categories', …)`), and the
+// live menu re-applies it (LIVE_MENU_GLOBALS lists 'CATEGORIES') — and renderMenu filters NO literal category id. A form failing any is not
+// generic: a category the store adds is invisible there («Solo en la app Sherpa»). A review LABEL only — never an authorization (R3.1).
+function categoriesGenericOf(src) {
+  const start = src.search(/function\s+renderMenu\s*\(/);
+  if (start === -1) return false;
+  const open = src.indexOf('{', start);
+  if (open === -1) return false;
+  let depth = 0; let end = -1;
+  for (let i = open; i < src.length; i += 1) {
+    if (src[i] === '{') depth += 1;
+    else if (src[i] === '}') { depth -= 1; if (depth === 0) { end = i; break; } }
+  }
+  if (end === -1) return false;
+  const body = src.slice(open, end + 1);
+  const m = body.match(/CATEGORIES\.forEach\(\s*\(?\s*(\w+)\s*\)?\s*=>/);
+  const walk = !!m && new RegExp(`p\\.cat\\s*===\\s*${m[1]}\\.id\\b`).test(body);
+  const literal = /p\.cat\s*===\s*(['"])[^'"\\]+\1/.test(body);
+  const boot = /let\s+CATEGORIES\s*=\s*_bootSelect\(\s*'categories'/.test(src);
+  const live = /LIVE_MENU_GLOBALS\s*=\s*\[[^\]]*'CATEGORIES'/.test(src);
+  return walk && boot && live && !literal;
+}
+
+// Q-B (advisor 11-13) — DOES THE FORM DRAW ANY SERVED REQUIRED-CHOICE GROUP? Generic when the shared group picker ships (formShipsPicker:
+// the strict GROUP_PICKER_V1 marker — its rows are built from the variant map, no literal group), VARIANT_ITEMS is booted from the served
+// bundle (`_bootSelect('variant_items'` or an initializer returning `_BUNDLE.variant_items`), and the live menu re-applies it
+// (LIVE_MENU_GLOBALS lists 'VARIANT_ITEMS'). Not generic ⇒ a new option / a dish gaining or losing its group is «Solo en la app Sherpa».
+// A review LABEL only (choice rows' app_only) — never an authorization.
+function choicesGenericOf(src, shipsPicker) {
+  const boot = /let\s+VARIANT_ITEMS\s*=\s*(?:_bootSelect\(\s*'variant_items'|\(function\s*\(\)\s*\{[\s\S]{0,400}?return\s+_BUNDLE\.variant_items\s*;)/.test(src);
+  const live = /LIVE_MENU_GLOBALS\s*=\s*\[[^\]]*'VARIANT_ITEMS'/.test(src);
+  return !!shipsPicker && boot && live;
+}
+
 const deriveContracts = (brands = BRANDS) => {
   const out = {};
   for (const rid of brands) out[rid] = deriveContract(rid);
@@ -99,6 +134,10 @@ const RENDER = (contracts) => `'use strict';
 //                     list means the brand has no badge renderer, so no tag on it can be honoured.
 //   renderedCategories — the category ids its renderMenu actually DRAWS. A product may be ADDED only to one
 //                     of these (an unrendered category would hold a priced, invisible product). [] = none.
+//   categoriesGeneric — S4: the form draws ANY served category (a generic walk, booted from the bundle, live-applied, no literal filter);
+//                     false ⇒ a new category's dishes are «Solo en la app Sherpa». A review label only, never an authorization.
+//   choicesGeneric  — Q-B: the form draws ANY served required-choice group (the shared picker shipped, VARIANT_ITEMS booted from the bundle,
+//                     live-applied); false ⇒ a new option / a dish gaining or losing its group is «Solo en la app Sherpa». A review label only.
 //   choiceBadges    — the badges the shared group picker draws on a CHOICE row (a variant), present only when the form
 //                     ships the picker. A variant's tags may come from badges ∪ choiceBadges; any other item's from badges.
 module.exports = ${JSON.stringify(contracts, null, 2)};
@@ -223,5 +262,5 @@ function writePlatformRender(target) {
 }
 
 if (require.main === module) { console.log(`wrote ${writeContract()}`); console.log(`wrote ${writeFallbackGroups()}`); console.log(`wrote ${writePlatformRender()}`); }
-module.exports = { deriveContract, deriveContracts, writeContract, RENDER, BRANDS, renderedCategoriesOf,
+module.exports = { deriveContract, deriveContracts, writeContract, RENDER, BRANDS, renderedCategoriesOf, categoriesGenericOf, choicesGenericOf,
   deriveFallbackGroups, RENDER_FALLBACK_GROUPS, writeFallbackGroups, deriveRender, formShipsPicker, activeScripts, codeOnly, CHOICE_BADGES, RENDER_PLATFORM, writePlatformRender };

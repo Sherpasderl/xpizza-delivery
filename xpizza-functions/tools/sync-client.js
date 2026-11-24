@@ -35,6 +35,8 @@ fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'catalog', 'choice-transitio
 // Z2 §A (PLAN-portal-zones-protocol-v3-r4): the ONE zone shape check → the portal (preview only; the server judges), byte-identical
 // (delivery/zone-shape-sync.guard.test.js)
 fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'delivery', 'zone-shape.js'), path.join(ROOT, 'xpizza-portal', 'zone-shape.js'));
+// S4 (PLAN-structure-S4-r4; advisor 11-13 rule 4): the ONE slug + promotion-order module → the portal, byte-identical (catalog/section-transitions-sync.guard.test.js)
+fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'catalog', 'section-transitions.js'), path.join(ROOT, 'xpizza-portal', 'section-transitions.js'));
 // S2-core (Codex build r1 P1-2): the capp serializer — the ONE extra-label predicate — → the functions, byte-identical (catalog/capp-serialize-sync.guard.test.js)
 fs.copyFileSync(path.join(ROOT, 'customer-app', 'capp-serialize.js'), path.join(ROOT, 'xpizza-functions', 'catalog', 'capp-serialize.js'));
 // ENVÍO (PLAN-portal-envio-step1 r2 §1b): the ONE portal↔map message module and the map labels' face (Figtree latin, owner 11-13) → the map site's

@@ -166,7 +166,7 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 220)}`;
     const { issueEditToken, sha256 } = require('./catalog-edit');
     const stored = AP.allocateAdditions({ incoming: apply(XP, D2(reward)), stored: XP, activeItems: XP.items, keyMode: 'name', hwm: null, registryHasKey: () => false, authoring: true, prepareExisting: CC.prepareExistingGroups }).source;
     const L = await liveRead('x_pizza')(); const { inputs: i, built: b } = buildSourceCandidate('x_pizza', stored);
-    const diff = require('./review-diff').reviewDiff({ live: L.built, liveExtraRecords: L.extraRecords, draftBuilt: { ...b, extras: i.extras }, draftExtraRecords: b.extras, extrasCatalog: false });
+    const diff = require('./review-diff').reviewDiff({ rid: 'x_pizza', live: L.built, liveExtraRecords: L.extraRecords, draftBuilt: { ...b, extras: i.extras }, draftExtraRecords: b.extras, extrasCatalog: false });
     const token = issueEditToken({ rid: 'x_pizza', baseActiveVersionId: ACTIVE, sourceUpdateTime: T1, sourceHash: sha256(stored), diff });
     const p = publishDeps('x_pizza', stored);
     const pub = await publishEditedCore(p.deps, { restaurantId: 'x_pizza', token, acknowledgedChanges: diff.largeChangeSet, fiscalAck: true }, {});

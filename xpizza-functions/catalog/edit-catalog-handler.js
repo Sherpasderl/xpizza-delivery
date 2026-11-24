@@ -144,7 +144,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
      `source.photos` is taken OFF the candidate (the builder never sees it), re-keyed from tmp refs to the keys allocated
      above, validated against this draft's item keys, and put back on the stored draft only when non-empty. Flag OFF: a map
      that DIFFERS from the stored draft's is refused; the unchanged stored map always passes, so other edits never block. */
-  let photoMap = null; if (textEdit) { const pf = await require('./edit-preflight').runEditPreflight({ rid, draft: candidate, live, addProduct, mint: MO.mintCapabilities().enabled, renderedCategories: rendererContract(rid).renderedCategories }); if (pf) return reply(pf.status, { ...pf.body, ...(pf.body.key && !pf.body.ref && Object.prototype.hasOwnProperty.call(refOfKey, pf.body.key) ? { ref: refOfKey[pf.body.key] } : {}) }); }   // S2 (§2 r1 E/F): with the switch on, ONE ordered preflight answers the first refusal, field-tagged — the publish runs the same pass
+  let photoMap = null; if (textEdit) { const pf = await require('./edit-preflight').runEditPreflight({ rid, draft: candidate, live, addProduct, mint: MO.mintCapabilities().enabled, renderedCategories: rendererContract(rid).renderedCategories, stored }); if (pf) return reply(pf.status, { ...pf.body, ...(pf.body.key && !pf.body.ref && Object.prototype.hasOwnProperty.call(refOfKey, pf.body.key) ? { ref: refOfKey[pf.body.key] } : {}) }); }   // S2 (§2 r1 E/F): with the switch on, ONE ordered preflight answers the first refusal, field-tagged — the publish runs the same pass
   if (photos) {
     const raw = candidate.photos;
     delete candidate.photos;
@@ -359,7 +359,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
     try { activePhotos = await photos.readActive(rid, baseActiveVersionId); } catch (_) { return reply(503, { error: 'live_version_unavailable', retryable: true }); }
   }
   try {
-    require('./source-accounting').accountAuthored({ next, stored, draftRecords: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); AP.assertSameAuthoredFields(next.structure, stored.structure, { activeHasVariantItems: live.structure && live.structure.variant_items !== undefined });   // S2-core (Codex build r1 P1-3): the AUTHORED source is accounted first
+    require('./source-accounting').accountAuthored({ next, stored, draftRecords: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); AP.assertSameAuthoredFields(next.structure, stored.structure, { activeHasVariantItems: live.structure && live.structure.variant_items !== undefined, stagedFree: require('./platform-structure').structureCapabilities().sections === true });   // S2-core (Codex build r1 P1-3): the AUTHORED source is accounted first
     require('./choice-compare').compareToActive(rid, {
       draftBuilt: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure, ...(photos ? { photos: photoMap } : {}) },
       activeBuilt: { items: live.items, extras: liveRes.extraRecords, structure: live.structure, ...(photos ? { photos: activePhotos } : {}) },
@@ -424,7 +424,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   // Everything below is read-only and in memory: the live catalog and the built draft were read and built
   // BEFORE the write (above).
   // DISH PHOTOS A2 step 9: the reviewed diff carries the photo lines (active meta/photos vs the stored draft map) when wired
-  const diff = require('./review-diff').reviewDiff({ live, liveExtraRecords: liveRes.extraRecords, draftBuilt, draftExtraRecords, photos: photos ? { active: activePhotos, draft: photoMap } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, removal: require('./catalog-edit').removalDiffOptions(live, next) });   // S2-core §1.6: THE one canonical review diff (consequences ungated; the publish and the manager request compute the same)
+  const diff = require('./review-diff').reviewDiff({ rid, live, liveExtraRecords: liveRes.extraRecords, draftBuilt, draftExtraRecords, photos: photos ? { active: activePhotos, draft: photoMap } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, removal: require('./catalog-edit').removalDiffOptions(live, next) });   // S2-core §1.6: THE one canonical review diff (consequences ungated; the publish and the manager request compute the same)
   /* 🔴 THE TOKEN MUST HASH WHAT PUBLISH WILL HASH, AND THAT IS THE STORED DRAFT — NOT THE BODY.
      This hashed the incoming `source`, and publish hashes the draft it reads BACK. Those agreed only
      while the two were the same bytes, which stopped being true the moment the server began owning a

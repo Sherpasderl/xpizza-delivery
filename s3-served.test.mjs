@@ -76,7 +76,7 @@ const HIST = { la_musa: { withGroup: LM, d3: LM_D3, dish: PAD }, x_pizza: { with
     assert.throws(() => AP.assertSameAuthoredFields(dropped, stored, { activeHasVariantItems: true }), (e) => e.code === 'structure_changed', `(b) ${rid}`);
   }
   assert.doesNotThrow(() => AP.assertSameAuthoredFields({ ...XP.structure, variant_items: {} }, XP.structure, { activeHasVariantItems: false }), 'a brand with no groups may gain the field (today\'s exemption)');
-  const handler = readFileSync(new URL('./xpizza-functions/catalog/edit-catalog-handler.js', import.meta.url), 'utf8');
+  const handler = require('./tools/s4sect-module-inverse').unapplyS4sectModule('catalog/edit-catalog-handler.js', readFileSync(new URL('./xpizza-functions/catalog/edit-catalog-handler.js', import.meta.url), 'utf8'));   // minus S4's s4sect (newest layer, test-only)
   assert.ok(handler.includes("AP.assertSameAuthoredFields(next.structure, stored.structure, { activeHasVariantItems: live.structure && live.structure.variant_items !== undefined })"), '(b) the save binds the check to the LIVE version\'s field');
   ok('(b) a draft dropping variant_items while the live version has it is structure_changed (the save\'s own check, bound to the live version)');
 
