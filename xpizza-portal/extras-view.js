@@ -3,6 +3,7 @@
 // Names are TEXT in S2-core (no rename control: S2b). Built from the approved classes: .railitem / .rtext / .rcount, .dhead / .dtitle /
 // .dcount, .mk-xwarn > .mgshared, .irow.mk-xrow > .iinfo .nm (+ .tag), .price (.chg) > .cur + input, button.del.
 import { dropIndexAt } from './extras-logic.js';
+import { sheetOpened, sheetClosed } from './sheets.js';   // Codex #196-3: the Extras confirm registers like every sheet
 const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
 const svg = (paths) => { const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
@@ -149,7 +150,7 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
 // (extras-logic moveGroupOrder → null), which writes nothing
 function endState(btn, atEnd) { if (atEnd) { btn.setAttribute('aria-disabled', 'true'); btn.classList.add('mk-udend'); } }
 // the grip's six dots (MOCKUP x4b)
-function dots() {
+export function dots() {
   const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
   for (const cx of [9, 15]) for (const cy of [6, 12, 18]) { const c = document.createElementNS(NS, 'circle'); c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', '1.6'); s.append(c); }
   return s;
@@ -157,17 +158,21 @@ function dots() {
 // X4 the drag on a grip: a mouse / pen drags after 4px of travel; a touch after a long press (450 ms, the phone's grip is always
 // shown); the dragged group lifts (.mk-drag, the grip .mk-gripon), ONE .mk-dropline marks where it lands; the drop → on.drop(group,
 // index among the others). A drag is not a click: the click that follows it is consumed.
-function dragOn(grip, rr, g, railHost, on) {
+// `sel` (STRUCTURE S4 reuses it on the sections rail, the subsection heads and the dishes — ONE drag): the rows (`row`), the node that lifts
+// (`lift`, inside the row; null ⇒ the row itself) and the node the line goes before at the end (`tail`); the defaults are the Extras rail's
+export function dragOn(grip, rr, g, railHost, on, sel = {}) {
+  const S = { row: '.rrow', lift: '.railitem', tail: '.railadd', ...sel };
   let st = null, eat = false;
   const mid = (n) => { const b = n.getBoundingClientRect(); return b.top + b.height / 2; };
-  const others = () => [...railHost.querySelectorAll('.rrow')].filter((x) => x !== rr);
-  const begin = () => { st.live = true; rr.querySelector('.railitem').classList.add('mk-drag'); grip.classList.add('mk-gripon'); };
+  const others = () => [...railHost.querySelectorAll(S.row)].filter((x) => x !== rr);
+  const liftOf = () => (S.lift ? rr.querySelector(S.lift) : rr);
+  const begin = () => { st.live = true; liftOf().classList.add('mk-drag'); grip.classList.add('mk-gripon'); };
   const end = (commit) => {
     if (!st) return;
     clearTimeout(st.timer);
     const s = st; st = null;
     const ln = railHost.querySelector('.mk-dropline'); if (ln) ln.remove();
-    rr.querySelector('.railitem').classList.remove('mk-drag'); grip.classList.remove('mk-gripon');
+    liftOf().classList.remove('mk-drag'); grip.classList.remove('mk-gripon');
     if (!s.live) return;
     eat = true; setTimeout(() => { eat = false; }, 0);
     if (commit && s.idx !== undefined) on.drop(g, s.idx);
@@ -189,7 +194,7 @@ function dragOn(grip, rr, g, railHost, on) {
     const os = others(); const idx = dropIndexAt(os.map(mid), e.clientY);
     let ln = railHost.querySelector('.mk-dropline');
     if (!ln) { ln = el('div', 'mk-dropline'); ln.setAttribute('aria-hidden', 'true'); ln.append(el('span', 'mk-dropdot')); }
-    railHost.insertBefore(ln, idx < os.length ? os[idx] : railHost.querySelector('.railadd'));
+    railHost.insertBefore(ln, idx < os.length ? os[idx] : railHost.querySelector(S.tail));
     st.idx = idx;
   });
   grip.addEventListener('pointerup', () => end(true));
@@ -250,11 +255,11 @@ export function openXConfirm(o) {
   const p = body ? el('p', 'eqbody', body) : null; if (p) p.id = 'xcf-d';
   const mf = el('div', sheet ? 'mk-sheeta' : 'mf');
   let parts;
-  if (sheet) parts = [el('div', 'mk-handle'), t, ...(s ? [s] : []), ...(p ? [p] : []), ...(line ? [line] : []), mf];
+  if (sheet) parts = [el('div', 'mk-handle'), t, ...(s ? [s] : []), ...(p ? [p] : []), ...(line ? [].concat(line) : []), mf];
   else {
     const mh = el('div', 'mh'); mh.append(t); if (s) mh.append(s);
     parts = [mh];
-    if (p || line) { const mb = el('div', 'mb'); if (p) mb.append(p); if (line) mb.append(line); parts.push(mb); }
+    if (p || line) { const mb = el('div', 'mb'); if (p) mb.append(p); if (line) mb.append(...[].concat(line)); parts.push(mb); }
     parts.push(mf);
   }
   if (sheet) parts[0].setAttribute('aria-hidden', 'true');
@@ -262,7 +267,7 @@ export function openXConfirm(o) {
   const focusables = [];
   let first = null;
   const close = (refocus) => {
-    xscrimClose = null;
+    xscrimClose = null; sheetClosed('xconfirm');
     scrim.classList.remove('show'); modal.replaceChildren();
     if (sheet) { scrim.classList.remove('mk-sheetscrim'); modal.className = modalClass; }
     if (over) scrim.classList.remove('mk-over');
@@ -288,7 +293,7 @@ export function openXConfirm(o) {
   if (over) scrim.classList.add('mk-over');   // over the still-open drawer (26): the mockup's .mk-over
   modal.replaceChildren(...parts);
   document.addEventListener('keydown', onKey, true); scrim.addEventListener('click', onScrim);
-  xscrimClose = () => close(false);
+  xscrimClose = () => close(false); sheetOpened('xconfirm', closeXConfirm);
   scrim.classList.add('show');
   (first || focusables[0]).focus();
 }
@@ -309,10 +314,12 @@ export function openDiscardConfirm({ onDiscard, onKeep, returnTo }) {
 const R2_BODY = 'Desaparece del menú al publicar. Tus pedidos pasados no cambian. Para volver a venderlo, crealo como un producto nuevo.';
 const R5_LINE = 'Este producto se canjea con recompensas; al quitarlo deja de estar disponible como premio.';
 const STAR = ['M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z'];
-export function openRemoveProductConfirm({ name, place, reward = false, onConfirm, onCancel = null, returnTo = null }) {
+// `note` (STRUCTURE S4-D): one more sentence after the approved body — the dish is the last of a section new in this draft
+export function openRemoveProductConfirm({ name, place, reward = false, note = null, onConfirm, onCancel = null, returnTo = null }) {
   const sheet = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width:560px)').matches;
   let line = null;
   if (reward) { line = el('div', 'mk-sandline'); line.append(svg(STAR), el('span', null, R5_LINE)); }
+  if (note) { const n = el('p', 'eqbody', note); line = line ? [line, n] : n; }
   openXConfirm({ title: [`¿Quitar «${name}» `, el('span', 'nw', 'del menú?')], titleClass: 'mk-cft', sub: place || null, body: R2_BODY, line, sheet, over: true, returnTo,
     onGo: onConfirm, onCancel,
     buttons: [{ label: 'Volver', mods: ['ghost'], sheetMods: [], act: 'cancel', focus: true }, { label: 'Quitar', mods: ['ghost', 'mk-quiet-danger'], sheetMods: ['danger'], act: 'go' }] });
@@ -472,7 +479,7 @@ export function openDeletionsReview({ rows, line = null, onGo, onCancel, returnT
   mf.append(cancelBtn, goBtn);
   modal.replaceChildren(mh, mb, mf);
   const focusables = () => [cancelBtn, goBtn].filter((b) => !b.disabled);
-  const close = () => { xscrimClose = null; scrim.classList.remove('show'); modal.replaceChildren(); document.removeEventListener('keydown', onKey, true); scrim.removeEventListener('click', onScrim); };
+  const close = () => { xscrimClose = null; sheetClosed('xconfirm'); scrim.classList.remove('show'); modal.replaceChildren(); document.removeEventListener('keydown', onKey, true); scrim.removeEventListener('click', onScrim); };
   const cancel = () => { close(); if (returnTo && returnTo.isConnected) returnTo.focus(); onCancel(); };
   const onKey = (e) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); return; }
@@ -484,7 +491,7 @@ export function openDeletionsReview({ rows, line = null, onGo, onCancel, returnT
   cancelBtn.addEventListener('click', cancel);
   goBtn.addEventListener('click', () => { close(); onGo(); });
   document.addEventListener('keydown', onKey, true); scrim.addEventListener('click', onScrim);
-  xscrimClose = close;
+  xscrimClose = close; sheetOpened('xconfirm', closeXConfirm);
   scrim.classList.add('show');
   (goBtn.disabled ? cancelBtn : goBtn).focus();
 }

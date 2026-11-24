@@ -26,6 +26,7 @@ import { RP_BASE, RP_FOLD } from './rp-fold.mjs';
 import { REND_BASE, REND_FOLD } from './rend-fold.mjs';
 import { RGB_BASE, RGB_FOLD } from './rgb-fold.mjs';
 import { RGUI_BASE, RGUI_FOLD } from './rgui-fold.mjs';
+import { STR34_BASE, STR34_FOLD } from './str34-fold.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const BASE = '613f7e08';
@@ -69,7 +70,19 @@ function withoutRGUI(f, src) {
   }
   return out;
 }
-const fileOnDisk = (f) => withoutREND(f, withoutRGB(f, withoutRGUI(f, diskFile(f))));
+// STRUCTURE S3 UI + S4 writer (non-drawing halves, advisor 11-13) is the NEWEST layer of all, above RGB: folded out at the very lowest
+// read, so RGB and every older pin judge exactly what they judged before; the STR34 test pins the layer itself on disk.
+function withoutSTR34(f, src) {
+  let out = src;
+  for (const [now, was] of STR34_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `STR34 hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+// asm13 merge: BOTH are newer than RGB. STR34 peels FIRST (innermost): S3/S4's app.js lines sit inside RGUI's matched text, so RGUI
+// finds its hunk only after STR34 is folded out (the other order fails: RGUI app.js 0×).
+const fileOnDisk = (f) => withoutREND(f, withoutRGB(f, withoutRGUI(f, withoutSTR34(f, diskFile(f)))));
 function withoutRP(f, src) {
   let out = src;
   for (const [now, was] of RP_FOLD[f] || []) {
@@ -470,23 +483,43 @@ test('the «Ventas» layer (Nav B 11-14 + the V3b handover): app.js keeps ONE hu
 
 test('the «reward group» refusal: review.js gains exactly ONE hunk (the reward_group_add_blocked row) — folding it out gives RGB_BASE byte-for-byte', () => {
   assert.deepEqual(Object.keys(RGB_FOLD), ['review.js'], 'the layer touches review.js only');
+  // STR34 (S3/S4, the newest layer) sits ABOVE RGB and also edits review.js: RGB is judged on review.js minus STR34
+  const onRGB = (f) => withoutSTR34(f, diskFile(f));
   const was = execFileSync('git', ['show', `${RGB_BASE}:xpizza-portal/review.js`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
-  assert.notEqual(withoutRGB('review.js', diskFile('review.js')), diskFile('review.js'), 'non-vacuity: the fold changes something');
-  assert.equal(withoutRGB('review.js', diskFile('review.js')), was, `review.js minus the layer ≠ ${RGB_BASE}`);
-  assert.notEqual(withoutRGB('review.js', diskFile('review.js') + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold (and fails the pin)');
-  assert.throws(() => withoutRGB('review.js', diskFile('review.js').replace('agregarle extras nuevos', 'agregarle extras')), 'an edit INSIDE the row breaks the fold');
+  assert.notEqual(withoutRGB('review.js', onRGB('review.js')), onRGB('review.js'), 'non-vacuity: the fold changes something');
+  assert.equal(withoutRGB('review.js', onRGB('review.js')), was, `review.js minus the layer ≠ ${RGB_BASE}`);
+  assert.notEqual(withoutRGB('review.js', onRGB('review.js') + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold (and fails the pin)');
+  assert.throws(() => withoutRGB('review.js', onRGB('review.js').replace('agregarle extras nuevos', 'agregarle extras')), 'an edit INSIDE the row breaks the fold');
+});
+
+test('STRUCTURE S3 UI + S4 writer: editor.js gains exactly the named hunks — folding them out gives STR34_BASE byte-for-byte', () => {
+  // asm13 merge (cross-lane, test-only): the «Agregar extra» RGUI layer (asm12) sits BELOW STR34 on app.js / extras-logic.js /
+  // extras-view.js; both layers' base is 31f05c8a4, so STR34 is judged as: minus STR34, then minus RGUI ⇒ STR34_BASE byte-for-byte
+  const belowSTR34 = (f, s) => withoutRGUI(f, s);
+  for (const f of Object.keys(STR34_FOLD)) {
+    const was = execFileSync('git', ['show', `${STR34_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.notEqual(withoutSTR34(f, diskFile(f)), diskFile(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(belowSTR34(f, withoutSTR34(f, diskFile(f))), was, `${f} minus the STR34 hunks (then RGUI) ≠ ${STR34_BASE}`);
+    assert.notEqual(belowSTR34(f, withoutSTR34(f, diskFile(f) + '\n// stray\n')), was, 'non-vacuity: a stray edit survives the fold');
+  }
+  const hunks = STR34_FOLD['editor.js'].map(([now]) => now);
+  for (const fn of ['export function applyChoiceOps(', 'export function moveItem(']) assert.ok(hunks.some((t) => t.includes(fn)), `premise: ${fn} is in a hunk`);
+  const inside = hunks.find((t) => t.includes('export function applyChoiceOps('));
+  assert.throws(() => withoutSTR34('editor.js', diskFile('editor.js').replace(inside, inside.replace("'choice_edit_off'", "'choice_edit_offX'"))), 'an edit inside a hunk breaks it');
 });
 
 test('the «Agregar extra» reward-group layer: app.js / extras-logic.js / extras-view.js gain exactly the named hunks — folding them out gives RGUI_BASE byte-for-byte', () => {
   assert.deepEqual(Object.keys(RGUI_FOLD), ['app.js', 'extras-logic.js', 'extras-view.js'], 'the layer touches these three files only');
+  // asm13 merge (cross-lane, test-only): STR34 (S3/S4) sits ABOVE this layer on all three files: RGUI is judged on each file minus STR34 (as RGB is)
+  const onRGUI = (f) => withoutSTR34(f, diskFile(f));
   for (const f of Object.keys(RGUI_FOLD)) {
     const was = execFileSync('git', ['show', `${RGUI_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
-    assert.notEqual(withoutRGUI(f, diskFile(f)), diskFile(f), `non-vacuity: the ${f} fold changes something`);
-    assert.equal(withoutRGUI(f, diskFile(f)), was, `${f} minus the layer ≠ ${RGUI_BASE}`);
-    assert.notEqual(withoutRGUI(f, diskFile(f) + '\n// stray\n'), was, `non-vacuity: a stray edit to ${f} survives the fold (and fails the pin)`);
+    assert.notEqual(withoutRGUI(f, onRGUI(f)), onRGUI(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(withoutRGUI(f, onRGUI(f)), was, `${f} minus the layer ≠ ${RGUI_BASE}`);
+    assert.notEqual(withoutRGUI(f, onRGUI(f) + '\n// stray\n'), was, `non-vacuity: a stray edit to ${f} survives the fold (and fails the pin)`);
   }
-  assert.throws(() => withoutRGUI('app.js', diskFile('app.js').replace('state.rewardGroups.has(g)', 'state.rewardGroups.has(g) || true')), 'an edit INSIDE an app.js hunk breaks the fold');
-  assert.throws(() => withoutRGUI('extras-view.js', diskFile('extras-view.js').replace('if (on.addOpen && !d.reward)', 'if (on.addOpen)')), 'an edit INSIDE an extras-view.js hunk breaks the fold');
+  assert.throws(() => withoutRGUI('app.js', onRGUI('app.js').replace('state.rewardGroups.has(g)', 'state.rewardGroups.has(g) || true')), 'an edit INSIDE an app.js hunk breaks the fold');
+  assert.throws(() => withoutRGUI('extras-view.js', onRGUI('extras-view.js').replace('if (on.addOpen && !d.reward)', 'if (on.addOpen)')), 'an edit INSIDE an extras-view.js hunk breaks the fold');
 });
 
 test('«Quitar del menú»: its files gain exactly the named hunks — folding them out gives RP_BASE byte-for-byte', () => {

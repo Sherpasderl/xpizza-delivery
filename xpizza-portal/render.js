@@ -80,18 +80,94 @@ const el = (tag, cls, text) => {
   return n;
 };
 
-export function renderRail(railEl, groups, selectedId, onSelect) {
+import { dragOn, dots } from './extras-view.js';   // STRUCTURE S4 (frame E): the ONE grip drag (S2's X4)
+
+// ── STRUCTURE S4 — the addendum's PROPOSED lines (MOCKUP-portal-structure-S4-addendum H3): null ⇒ «⟦s4.key⟧» on screen until the owner
+// approves them (structure-s4-ui's SHIP GATE stays red until then). Frame E's own strings are the approved base mockup's, literal.
+export const S4_COPY = Object.freeze({
+  emptyTitle: "Todavía no tiene productos", emptyBody: "Se muestra a tus clientes cuando tenga al menos uno. Agregá uno nuevo o traé uno desde otra categoría con «Mover a…».", subcatNeedsDish: "Agregá un producto primero", dropCat: "Quitar categoría", dropTitle: "¿Quitar la categoría {nombre}?", dropSub: "Categoría nueva · sin productos", dropBody: "No tiene productos y nunca se mostró a tus clientes. Podés deshacerlo hasta publicar.", nameTaken: "Ya hay una categoría con ese nombre. Elegí otro.",
+  sheetSubFirst: "{categoria} · {nprod} · primera subcategoría", sheetSub: "{categoria} · {subs}", subName: "Nombre de la subcategoría", subPh: "Ej. Rellenas, Al horno", products: "Productos", firstLine: "La primera subcategoría agrupa todos los productos de {categoria}. Después creá otra y pasá a ella los que quieras.", moveLine: "Los marcados salen de su subcategoría actual y pasan a {nueva}.", needOne: "Marcá al menos un producto para crear la subcategoría.", createSub: "Crear subcategoría",
+  subNameTaken: "Ya hay una subcategoría con ese nombre en {categoria}. Elegí otro.", subCaps: "Llegaste al máximo de 12 subcategorías en {categoria}.", menuNote: "{categoria} queda vacía y oculta hasta que tenga productos.", toastBack: "{producto} volvió a {seccion} · {categoria} queda vacía", unpromoteLine: "{categoria} queda vacía: se muestra cuando tenga productos.", barSub: " · 1 subcategoría", barSubs: " · {n} subcategorías", barOrder: " · orden",
+  mismatchBody: "Otra edición movió las categorías mientras trabajabas, así que no guardamos nada. Recargá para traer la última versión y volvé a aplicar tu cambio.", partialTitle: "{categoria} cambió mientras editabas", partialBody: "La primera subcategoría de {categoria} tiene que incluir todos sus productos, y {categoria} tiene productos nuevos que no estaban en tu lista. Recargá para traer la última versión y volvé a crear la subcategoría.", partialLine: "La primera subcategoría de {categoria} tiene que incluir todos sus productos. Recargá para ver los nuevos y volvé a crear la subcategoría.", goSection: "Ir a la sección", notAttachTitle: "{categoria} todavía no puede llevar extras", notAttachBody: "{categoria} es nueva y aún no se muestra a tus clientes. Publicala con productos primero y después asignale el grupo de extras.", notAttachLine: "{categoria} es nueva y aún no se muestra a tus clientes. Publicala con productos primero y después asignale el grupo de extras.",
+  capsCats: "Llegaste al máximo de 30 categorías. Usá una existente o quitá una vacía.", unnamedLine: "Antes de crear una categoría, poné nombre a las que no tienen.", nameAll: "Ponerles nombre",
+  rowSubcat: "Subcategoría", subAddedRow: "{sub} · {nprod}", rowCatSubcat: "{categoria} · Subcategoría", rowCatNew: "Categoría · nueva", promoteRow: "se muestra con {nprod} · pasa después de {anterior}", promoteRowFirst: "se muestra con {nprod}", rowCatEmpty: "Categoría · vacía", neverShown: "nunca se mostró a tus clientes", afterRow: "pasa después de {categoria}",
+  notAttachOption: "{categoria} · nueva · publicala con productos primero",
+});
+// «N productos» with agreement (advisor 11-19, the barSuffix ruling): the approved «N productos» strings take {nprod} = nProd(n)
+export const nProd = (n) => `${n} ${n === 1 ? 'producto' : 'productos'}`;
+export const s4Copy = (k, vars = null) => (typeof S4_COPY[k] === 'string' ? S4_COPY[k].replace(/\{(\w+)\}/g, (m, v) => (vars && Object.prototype.hasOwnProperty.call(vars, v) ? String(vars[v]) : m)) : `⟦s4.${k}⟧`);
+
+// `s4` (STRUCTURE S4, the server's `sections` switch; absent ⇒ today's rail exactly): { staged: [{id, name}] (the new sections, after
+// the declared ones), isNew(id) (a section new in this draft: the F tag «Nueva»), box: null | { value, line } (the inline «Nueva categoría»
+// box, frame E), max, onOpen(), onInput(v), onCreate(), onCancel() }. → { input, cnt, create } (the box's live nodes: the caller updates
+// them in place while the merchant types — a rebuild under the caret would break a dead-key accent). `s4.reorder`: { move(id, ±1),
+// drop(id, index among the others) } — each LIVE section gets S2's grip (drag; ↑ / ↓), a new one none (advisor ruling 4)
+export function renderRail(railEl, groups, selectedId, onSelect, s4 = null) {
   railEl.replaceChildren();
-  for (const g of groups) {
-    const b = el('button', `railitem${g.category.id === selectedId ? ' on' : ''}`);
+  const isNew = s4 && typeof s4.isNew === 'function' ? s4.isNew : () => false;
+  const item = (id, name, n, grip, staged = false) => {
+    const b = el('button', `railitem${id === selectedId ? ' on' : ''}`);
     b.type = 'button';
     const t = el('div', 'rtext');
-    t.append(el('b', null, g.category.name));
-    const c = el('div', 'rcount', String(g.items.length));
+    const nm = el('b', null, name);
+    if (s4 && isNew(id)) nm.append(el('span', 'tag new', 'Nueva'));
+    t.append(nm);
+    const c = el('div', 'rcount', String(n));
     b.append(t, c);
-    b.addEventListener('click', () => onSelect(g.category.id));
-    railEl.append(b);
+    b.addEventListener('click', () => onSelect(id));
+    if (staged) b.dataset.staged = '1';   // a new section: the drop line's end anchor (they follow the declared ones)
+    if (!grip) { railEl.append(b); return; }
+    const rr = el('div', 'rrow'); rr.append(b);
+    const gr = el('button', 'rgrip'); gr.type = 'button'; gr.dataset.grip = String(id);
+    gr.setAttribute('aria-label', `Mover ${name}`); gr.title = 'Arrastrá para ordenar';
+    gr.append(dots());
+    dragOn(gr, rr, id, railEl, { drop: (x, idx) => s4.reorder.drop(x, idx) }, { tail: '[data-staged], .railadd, .mk-newcat' });
+    gr.addEventListener('keydown', (e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); s4.reorder.move(id, e.key === 'ArrowUp' ? -1 : 1); } });
+    rr.append(gr);
+    railEl.append(rr);
+  };
+  const reorder = !!(s4 && s4.reorder);
+  for (const g of groups) item(g.category.id, g.category.name, g.items.length, reorder && !isNew(g.category.id));
+  if (!s4) return null;
+  for (const c of Array.isArray(s4.staged) ? s4.staged : []) item(c.id, c.name, 0, false, true);
+  if (!s4.box) {
+    const a = el('button', 'railadd'); a.type = 'button';
+    a.append(svgIcon('M12 5v14M5 12h14'), document.createTextNode('Nueva categoría'));
+    a.addEventListener('click', () => s4.onOpen());
+    railEl.append(a);
+    return null;
   }
+  const box = el('div', 'mk-newcat');
+  const lr = el('div', 'mk-lrow');
+  const lab = el('label', null, 'Nueva categoría'); lab.htmlFor = 'mk-newcat-in';
+  const cnt = el('span', 'mk-cnt', `${[...s4.box.value].length}/${s4.max}`); cnt.setAttribute('aria-live', 'polite');
+  lr.append(lab, cnt);
+  const input = el('input', 'mgname-in'); input.type = 'text'; input.id = 'mk-newcat-in'; input.value = s4.box.value; input.placeholder = 'Nombre de la categoría';
+  input.addEventListener('input', () => s4.onInput(input.value));
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); s4.onCreate(); } else if (e.key === 'Escape') { e.preventDefault(); s4.onCancel(); } });
+  box.append(lr, input);
+  if (s4.box.line) {
+    box.classList.add('mk-inv');
+    // the line, and — when it names a way out (S4-F categories_unnamed) — that way, as the base's quiet link
+    const text = typeof s4.box.line === 'string' ? s4.box.line : s4.box.line.text;
+    const l = el('div', 'ferr mk-ferr', text); l.setAttribute('role', 'alert'); l.id = 'mk-newcat-e';
+    if (typeof s4.box.line === 'object' && s4.box.line.link) {
+      const a = el('button', 'mk-lnk', s4.box.line.link.label); a.type = 'button';
+      a.addEventListener('click', () => s4.box.line.link.onClick());
+      l.append(a);
+    }
+    input.setAttribute('aria-invalid', 'true'); input.setAttribute('aria-describedby', l.id);
+    box.append(l);
+  }
+  const btns = el('div', 'mk-btns');
+  const cancel = el('button', 'btn ghost sm', 'Cancelar'); cancel.type = 'button';
+  cancel.addEventListener('click', () => s4.onCancel());
+  const create = el('button', 'btn accent sm', 'Crear'); create.type = 'button'; create.disabled = !s4.box.value.trim();
+  create.addEventListener('click', () => s4.onCreate());
+  btns.append(cancel, create);
+  box.append(btns);
+  railEl.append(box);
+  return { input, cnt, create };
 }
 
 // A price CELL. Read-only it is text; editable it is an input, and the two share the `.price` wrapper
@@ -177,6 +253,8 @@ const LOCK = 'M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 
 // Guardar are updated in place, so the caret stays where the merchant left it.
 const SECTION_NAME_MAX = 40;
 const NAME_PROBLEM = { empty: 'Escribí un nombre', long: `Hasta ${SECTION_NAME_MAX} letras`, markup: 'Quitá los signos < y >' };
+// STRUCTURE S4: «Nueva categoría» judges a name by the same rule and words as a rename (T1, approved) — ONE copy
+export { NAME_PROBLEM as SECTION_NAME_PROBLEM, SECTION_NAME_MAX };
 function sectionNameField(head, rename) {
   head.classList.add('secedit');
   const field = el('label', 'secfield');
@@ -250,6 +328,14 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
   //   notice   the slim line under the header that says why a control is off (a rename travels alone), or null
   //   locked   prices and «Agregar producto» are off while a name change waits to be published
   const rename = editable && opts.rename && typeof opts.rename === 'object' ? opts.rename : null;
+  // STRUCTURE S4 (absent ⇒ today's header and empty state): { isNew (the F tag after the title), subcat: null | { disabled, title,
+  // onClick } («Nueva subcategoría», quiet, before «Agregar producto»), empty: null | { title, body, dropLabel, onDrop } (a new section's page),
+  // subheads: null | [names] (frame E: the list grouped under one head per subsection, in its order — «{sub}» · its count),
+  // onMore: null | (id, button) (frame E2: a row's «Más acciones», before its chevron — existing dishes only, moreFor(it)),
+  // headLine: null | text (S4-F: a refusal that names this section, under its header — the base's refusal line),
+  // subs: null | { move(sub, ±1), drop(sub, idx), rename: { editing, value, line, onStart(sub), onInput(v), onSave(), onCancel() } }
+  // (frame E: a head's grip and pencil), items: null | { move(id, ±1), drop(id, idx) } (frame E: a dish row's grip — S2's drag) }
+  const s4 = editable && opts.s4 && typeof opts.s4 === 'object' ? opts.s4 : null;
   const locked = editable && opts.locked === true;
   const rid = (it) => (it && typeof it.key === 'string' ? it.key : (it && typeof it.ref === 'string' ? it.ref : ''));
   detailEl.replaceChildren();
@@ -271,30 +357,89 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
       else b.addEventListener('click', () => rename.onStart());
       head.append(b);
     }
+    if (s4 && s4.isNew) head.append(el('span', 'tag new mk-htag', 'Nueva'));
   }
-  if (onAdd && !(rename && rename.mode === 'edit')) {
+  if ((onAdd || (s4 && s4.subcat)) && !(rename && rename.mode === 'edit')) {
     const right = el('span', 'dright');
-    const add = el('button', 'btn', '');
-    add.type = 'button';
-    add.append(svgIcon('M12 5v14M5 12h14'), document.createTextNode('Agregar producto'));
-    if (locked) add.disabled = true;
-    else add.addEventListener('click', () => onAdd(group.category.id));
-    right.append(add);
+    if (s4 && s4.subcat) {
+      const sb = el('button', 'btn ghost', ''); sb.type = 'button';
+      sb.append(svgIcon('M12 5v14M5 12h14'), document.createTextNode('Nueva subcategoría'));
+      if (s4.subcat.disabled) { sb.disabled = true; if (s4.subcat.title) sb.title = s4.subcat.title; } else sb.addEventListener('click', () => s4.subcat.onClick());
+      right.append(sb);
+    }
+    if (onAdd) {
+      const add = el('button', 'btn', '');
+      add.type = 'button';
+      add.append(svgIcon('M12 5v14M5 12h14'), document.createTextNode('Agregar producto'));
+      if (locked) add.disabled = true;
+      else add.addEventListener('click', () => onAdd(group.category.id));
+      right.append(add);
+    }
     head.append(right);
   }
   detailEl.append(head);
+  if (s4 && typeof s4.headLine === 'string' && s4.headLine) { const hl = el('div', 'ferr mk-ferr mk-headline', s4.headLine); hl.setAttribute('role', 'alert'); detailEl.append(hl); }
   if (editable && typeof opts.notice === 'string' && opts.notice) {
     const n = el('div', 'secnote');
     n.append(svgIcon(LOCK), el('span', null, opts.notice));
     detailEl.append(n);
   }
 
-  if (group.items.length === 0) {
+  if (group.items.length === 0 && s4 && s4.empty) {
+    // S4-C: a new section's page — what it is waiting for, and its quiet «Quitar categoría»
+    const e = el('div', 'empty mk-empty');
+    e.append(el('b', null, s4.empty.title), el('span', null, s4.empty.body));
+    const acts = el('div', 'mk-emptyacts');
+    const drop = el('button', 'btn ptext mk-quiet-danger', s4.empty.dropLabel); drop.type = 'button';
+    drop.addEventListener('click', () => s4.empty.onDrop(drop));
+    acts.append(drop);
+    e.append(acts);
+    detailEl.append(e);
+  } else if (group.items.length === 0) {
     const e = el('div', 'empty');
     e.append(el('b', null, 'Esta sección está vacía'), el('span', null, 'Todavía no hay productos en esta sección.'));
     detailEl.append(e);
   }
-  for (const it of group.items) {
+  const subheads = s4 && Array.isArray(s4.subheads) && s4.subheads.length ? s4.subheads : null;
+  // frame E: a subsection head — its grip (drag among the heads; ↑ / ↓), its name and pencil (renamed in place), its count
+  const subHead = (sub, n) => {
+    const h = el('div', 'mk-subh'); h.dataset.sub = sub;
+    const sx = s4 && s4.subs ? s4.subs : null;
+    const ren = sx && sx.rename && sx.rename.editing === sub ? sx.rename : null;
+    if (sx) {
+      const g = el('button', 'mk-grip'); g.type = 'button'; g.dataset.grip = `sub:${sub}`;
+      g.setAttribute('aria-label', `Mover ${sub}`); g.title = 'Arrastrá para ordenar'; g.append(dots());
+      dragOn(g, h, sub, detailEl, { drop: (x, idx) => sx.drop(x, idx) }, { row: '.mk-subh', lift: null, tail: '.addrow' });
+      g.addEventListener('keydown', (e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); sx.move(sub, e.key === 'ArrowUp' ? -1 : 1); } });
+      h.append(g);
+    }
+    if (ren) {
+      const inp = el('input', 'mk-subin'); inp.type = 'text'; inp.value = ren.value; inp.setAttribute('aria-label', `Nombre de ${sub}`);
+      inp.addEventListener('input', () => ren.onInput(inp.value));
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ren.onSave(); } else if (e.key === 'Escape') { e.preventDefault(); ren.onCancel(); } });
+      h.append(inp);
+    } else {
+      h.append(el('span', 'mk-sn', sub));
+      if (sx && sx.rename) {
+        // base E's .dpen look, its own class (no colour crossing)
+        const pen = el('button', 'mk-subpen'); pen.type = 'button'; pen.setAttribute('aria-label', `Cambiar nombre de ${sub}`); pen.append(svgIcon(PENCIL));
+        pen.addEventListener('click', () => sx.rename.onStart(sub));
+        h.append(pen);
+      }
+    }
+    h.append(el('span', 'mk-n', String(n)));
+    if (ren && ren.line) { const l = el('div', 'ferr mk-ferr mk-subline', ren.line); l.setAttribute('role', 'alert'); return [h, l]; }
+    return [h];
+  };
+  const subOf = (it) => (it && it.display && typeof it.display.subcat === 'string' ? it.display.subcat : null);
+  const subRank = (it) => { const i = subheads ? subheads.indexOf(subOf(it)) : -1; return i === -1 ? -1 : i; };
+  const listed = subheads ? [...group.items].sort((a, b) => subRank(a) - subRank(b)) : group.items;
+  let curSub;
+  for (const it of listed) {
+    if (subheads && subOf(it) !== curSub && subRank(it) !== -1) {
+      curSub = subOf(it);
+      detailEl.append(...subHead(curSub, group.items.filter((x) => subOf(x) === curSub).length));
+    }
     const pend = editable ? pendingOf(it) : null;
     const row = el('div', pend ? 'irow mk-pend' : 'irow');
     const info = el('div', 'iinfo');
@@ -356,8 +501,19 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
       info.addEventListener('click', () => onOpen(id));
       // A real <button>, not the mock's <span>: this is the row's only keyboard-reachable way into the
       // editor, and a merchant who cannot use a mouse still has to be able to change a price.
+      if (s4 && typeof s4.onMore === 'function' && (typeof s4.moreFor !== 'function' || s4.moreFor(it))) {
+        const mo = el('button', 'mk-more'); mo.type = 'button';
+        mo.setAttribute('aria-label', `Más acciones: ${label}`); mo.setAttribute('aria-haspopup', 'menu'); mo.setAttribute('aria-expanded', 'false');
+        const NS = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+        for (const cy of [5, 12, 19]) { const c = document.createElementNS(NS, 'circle'); c.setAttribute('cx', '12'); c.setAttribute('cy', String(cy)); c.setAttribute('r', '2'); svg.append(c); }
+        mo.append(svg);
+        mo.addEventListener('click', () => s4.onMore(id, mo));
+        cells.push(mo);
+      }
       const chev = el('button', 'rowchev');
       chev.type = 'button';
+      if (s4 && s4.items && (typeof s4.moreFor !== 'function' || s4.moreFor(it))) row.dataset.rowgrip = '1';
       chev.setAttribute('aria-label', `Editar ${label}`);
       chev.append(svgIcon('M9 6l6 6-6 6'));
       chev.addEventListener('click', () => onOpen(id));
@@ -368,12 +524,23 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
       surface: 'item', key: id,
     });
     row.append(...cells.slice(0, 1), info, pcell, ...cells.slice(1));
+    let unitEl = row;
     if (grp && Array.isArray(grp.options) && grp.options.length) {
       // ONE product row with its choices nested beneath (mockup screen 2): the pair is one unit in the list
       const unit = el('div', 'grow');
       unit.append(row, groupKids(grp));
-      detailEl.append(unit);
+      detailEl.append(unit); unitEl = unit;
     } else detailEl.append(row);
+    // frame E: the dish's grip, first in its row — the unit drags among the section's dishes (S2's drag; ↑ / ↓)
+    if (row.dataset.rowgrip) {
+      delete row.dataset.rowgrip;
+      unitEl.dataset.row = id;
+      const g = el('button', 'mk-rgrip'); g.type = 'button'; g.dataset.grip = `row:${id}`;
+      g.setAttribute('aria-label', `Mover ${label}`); g.title = 'Arrastrá para ordenar'; g.append(dots());
+      dragOn(g, unitEl, id, detailEl, { drop: (x, idx) => s4.items.drop(x, idx) }, { row: '[data-row]', lift: null, tail: '.addrow' });
+      g.addEventListener('keydown', (e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); s4.items.move(id, e.key === 'ArrowUp' ? -1 : 1); } });
+      row.prepend(g);
+    }
   }
   if (onAdd) {
     const addRow = el('div', 'addrow');

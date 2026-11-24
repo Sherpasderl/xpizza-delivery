@@ -11,7 +11,8 @@ import { pendingTexts, loadedName } from './editor.js';   // S4 — the session'
 // PLAN-public-menu-display T1 — a section's display NAME (owner-approved mockup «Cambiar nombre de sección», 2026-10-25)
 import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
-import { groupByCategory, renderRail, renderDetail } from './render.js';
+import { groupByCategory, renderRail, renderDetail, s4Copy, nProd, SECTION_NAME_PROBLEM, SECTION_NAME_MAX } from './render.js';
+import { addCategory, dropStagedCategory, sectionIsNew, addSubcat, moveItem, pendingSections, reorderSections, reorderSubcats, reorderItems, renameSubcat, stagedName } from './editor.js';   // STRUCTURE S4 (the drawing half)
 import { movedGroups, reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
 // DISH PHOTOS B (PLAN-dish-photos r2 §3) — the photo state, field, crop step and upload controller
@@ -78,10 +79,12 @@ function showEmpty(title, detail) {
 }
 import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
 // a drawer's top-right close: the approved 32×32 X icon box (aria-label «Cerrar», no text) — ONE builder (ops-dom), shared with photo.js; availability.js's .adwx is the same button + icon('close')
-import { closeIcon } from './ops-dom.js';
+import { closeIcon, icon } from './ops-dom.js';
 // STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM
 import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders, extrasOutcomeCtx, deletionRows, rekeyId } from './extras-logic.js';
-import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, openDeletionsReview, enProductos, closeXConfirm, openRemoveProductConfirm } from './extras-view.js';
+import { openXConfirm } from './extras-view.js';   // S4-D: the drop confirm is E3's small confirm
+import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, openDeletionsReview, enProductos, openRemoveProductConfirm } from './extras-view.js';
+import { sheetOpened, sheetClosed, closeAllSheets } from './sheets.js';   // Codex #196-3: the ONE registry of open sheets
 import { applyExposureOps, mergeDeletionClaim } from './editor.js';
 import { canRemoveProduct, removeProduct, undoRemoveProduct, pendingRemovalsOf, removalListSource, removedRowOf, removalDishRows } from './editor.js';   // «Quitar del menú» (PLAN-portal-remove-product r3)
 
@@ -572,6 +575,10 @@ function applyAddProductFacts(data) {
   // «Agregar extra» R1 (MOCKUP-portal-extras-reward-group, 5f getEditableCatalog rewardGroups): the groups whose NEW extra the save refuses
   // (reward_group_add_blocked) — strictly the server's; absent ⇒ none (an older server: the button stays and the save's refusal decides)
   state.rewardGroups = new Set(data && Array.isArray(data.rewardGroups) ? data.rewardGroups.filter((g) => typeof g === 'string') : []);
+  // STRUCTURE S3 (UI-r0 :45): the server's required-choice switch (getEditableCatalog choiceEdit); absent / not true ⇒ OFF — S1's card
+  state.choiceEdit = !!(data && data.choiceEdit === true);
+  // STRUCTURE S4 (PLAN-portal-structure-S4-writer r0 §0.3): the server's sections switch (getEditableCatalog sections); absent ⇒ OFF — today's rail
+  state.sections = !!(data && data.sections === true);
   // STRUCTURE S2 (§3.4, P-1): the deletion baseline the save checks a removal claim against — served verbatim, null when unreadable
   const db0 = data && data.deletionBase;
   state.deletionBase = db0 && typeof db0 === 'object' && typeof db0.version === 'string' && Number.isInteger(db0.generation) ? { version: db0.version, generation: db0.generation } : null;
@@ -814,7 +821,8 @@ const isTmpRow = (it) => !!(it && typeof it.ref === 'string' && it.ref.startsWit
 function isAddition(it) {
   return isTmpRow(it) || !!(it && typeof it.key === 'string' && state.additionKeys && state.additionKeys.has(it.key));
 }
-const canAddTo = (catId) => state.renderedCategories.includes(catId);   // always an array: declared [] and set from data
+const canAddTo = (catId) => state.renderedCategories.includes(catId)   // always an array: declared [] and set from data
+  || (state.sections === true && !!state.draft && isNewSection(catId));   // S4-C: an addition promotes a new section (advisor 11-13)
 const categoriesOf = () => { const st = (draftSource(state.draft) || {}).structure || {}; return Array.isArray(st.categories) ? st.categories : []; };
 // ── PLAN-public-menu-display T1 — A SECTION'S NAME ──────────────────────────────────────────────────────────────────────
 // A RENAME PUBLISHES ALONE (server: rename_not_alone). The two sides are kept apart HERE, where the merchant can still see
@@ -934,10 +942,11 @@ function openNameAll() {
   }));
   modal.append(mh, mb, mf);
   sync();
-  $('namescrim').classList.add('show');
+  $('namescrim').classList.add('show'); sheetOpened('names', closeNameAll);
   if (inputs.length) inputs[0][1].focus();
 }
 function closeNameAll() {
+  sheetClosed('names');
   const scrim = $('namescrim');
   if (scrim) scrim.classList.remove('show');
   const modal = $('namemodal');
@@ -981,6 +990,8 @@ function holdDrawerForRename() {
   for (const c of $('drawer').querySelectorAll('button.uploader, .phph2b button, .phacts button, .pherr button, .phrm button')) if (!c.closest('[data-held]')) lockControl(c, true);
 }
 const categoryName = (id) => { const c = categoriesOf().find((x) => x && String(x.id) === String(id)); return (c && typeof c.name === 'string' && c.name.trim()) ? c.name : String(id); };
+// the outcome panels' context: the extras facts (extras-logic) + the draft's category NAMES for the S4 lines that name one (S4-B / S4-F)
+const outcomeCtx = () => ({ ...extrasOutcomeCtx(state.draft), sectionNameOf: (id) => stagedName(state.draft, id) || categoryName(id) });   // staged names first (as structure.categoryName)
 // What a NEW product inherits from its section — said in the review so the owner knows before publishing.
 function inheritedRules(catId) {
   const st = (draftSource(state.draft) || {}).structure || {};
@@ -1038,7 +1049,7 @@ function onAddProduct(catId) {
   if (!state.draft || !canAddTo(catId) || renamesPending()) return;   // R3b: a name change travels alone
   const ref = `tmp:${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`;
   const cat = categoriesOf().find((c) => c && String(c.id) === String(catId));
-  addProduct(state.draft, { ref, cat: catId, subcat: (cat && Array.isArray(cat.subcats) && cat.subcats.length === 1) ? cat.subcats[0] : null });
+  addProduct(state.draft, { ref, cat: catId, subcat: (cat && Array.isArray(cat.subcats) && cat.subcats.length === 1) ? cat.subcats[0] : null }, { sections: state.sections === true });
   if (!draftSource(state.draft).items.some((i) => i && i.ref === ref)) return;   // refused (the draft is owned)
   state.drawerError = null;
   repaintFromDraft();
@@ -1170,6 +1181,14 @@ function refreshBar() {
   // S4 (mockup B) — «1 cambio sin publicar · 1 producto»: the products with unpublished text, said where the count is
   const nTexts = n > 0 ? new Set([...textEditedKeys().keys(), ...pendingRemovalMap().keys()]).size : 0;   // «Quitar del menú»: a dish edited AND removed counts once
   if (nTexts) { const sfx = document.createElement('span'); sfx.textContent = ` · ${nTexts} ${nTexts === 1 ? 'producto' : 'productos'}`; $('rbtxt').append(sfx); }
+  // STRUCTURE S4 (S4-G) — after «· N productos»: «· N categorías» (E, approved), the subsections and «orden» (the addendum's, proposed):
+  // the draft's own counts (pendingSections), the server's diff decides at «Revisar y publicar»
+  const secs = n > 0 && state.sections === true && state.draft ? pendingSections(state.draft) : [];
+  const nCats = secs.filter((x) => x.kind === 'category').length, nSubs = secs.filter((x) => x.kind === 'subcat').length;
+  const sfx4 = (t) => { const sp = document.createElement('span'); sp.textContent = t; $('rbtxt').append(sp); };
+  if (nCats) sfx4(` · ${nCats} ${nCats === 1 ? 'categoría' : 'categorías'}`);
+  if (nSubs) sfx4(s4Copy(nSubs === 1 ? 'barSub' : 'barSubs', { n: nSubs }));
+  if (secs.some((x) => x.kind === 'order')) sfx4(s4Copy('barOrder'));
   // T-d (mockup v8 D2): who publishes, said where the merchant decides — text only
   if (state.publishViaRequest) { const note = document.createElement('span'); note.textContent = ' · el dueño confirma y publica con la autorización fiscal'; $('rbtxt').append(note); }
   // Nothing typed, nothing to throw away. The review is the way forward here; discard would be a
@@ -1249,11 +1268,12 @@ function x3Key(e) {
 function x3Scrim(e) { if (e.target === $('xcreate') && !$('xscrim').classList.contains('show')) x3Dismiss(); }
 function openCreateGroup() {
   createForm = createGroupForm(); createError = null;
-  $('xcreate').classList.add('show');
+  $('xcreate').classList.add('show'); sheetOpened('xcreate', () => closeCreateGroup(false));
   document.addEventListener('keydown', x3Key, true); $('xcreate').addEventListener('click', x3Scrim);
   paintCreateGroup(true);
 }
 function closeCreateGroup(refocus) {
+  sheetClosed('xcreate');
   createForm = null; createError = null;
   $('xcreate').classList.remove('show'); $('xcreate').querySelector('.modal').replaceChildren();
   document.removeEventListener('keydown', x3Key, true); $('xcreate').removeEventListener('click', x3Scrim);
@@ -1281,7 +1301,7 @@ function paintCreateGroup(first) {
   const ae = document.activeElement; const k = ae && ae.dataset ? ae.dataset.k : null;
   const at = ae && typeof ae.selectionStart === 'number' ? ae.selectionStart : null;
   createForm = settleForm(draftSource(state.draft), createForm);
-  const v = { ...createGroupView(state.draft, createForm), formError: createError };
+  const v = { ...createGroupView(state.draft, createForm, { sections: state.sections === true, newLabel: (n) => s4Copy('notAttachOption', { categoria: n }) }), formError: createError };
   const r = renderCreateGroup(modal, v, {
     name: bound((x) => x3Set('name', x)), row: bound((i, patch) => x3Set('row', { i, ...patch })), addRow: bound(() => x3Set('addRow')),
     removeRow: bound((i) => x3Set('removeRow', i)), mode: bound((m) => x3Set('mode', m)), cat: bound((c) => x3Set('cat', c)),
@@ -1371,11 +1391,12 @@ function bKey(e) {
 function bScrim(e) { if (e.target === $('xattach')) bClose(true); }
 function bOpen(s, action, after) {
   attachPick = { s, action, after, checked: new Set() };
-  $('xattach').classList.add('show');
+  $('xattach').classList.add('show'); sheetOpened('xattach', () => bClose(false));
   document.addEventListener('keydown', bKey, true); $('xattach').addEventListener('click', bScrim);
   bPaint(true);
 }
 function bClose(refocus) {
+  sheetClosed('xattach');
   const p = attachPick; attachPick = null;
   $('xattach').classList.remove('show'); $('xattach').querySelector('.modal').replaceChildren();
   document.removeEventListener('keydown', bKey, true); $('xattach').removeEventListener('click', bScrim);
@@ -1399,6 +1420,124 @@ function bPaint(first) {
   if (first) { r.first.focus(); return; }
   const back = k ? [...$('xattach').querySelectorAll('[data-k]')].find((x) => x.dataset.k === k) : null;
   if (back) back.focus();
+}
+
+// STRUCTURE S3 D2 — «Agregar elección requerida» (MOCKUP-portal-structure-edit D2, owner-approved; B5: the primary is «Agregar
+// elección»): the dish's own sheet (#xchoice, the attach sheet's modal). The dish's price passes to the first option, «Recomendada»
+// (the writer's rule); the merchant names the choice and each option. TYPING edits the sheet's state in place (no rebuild under the
+// caret); a structural press (add a row, trash, pill, the flag) repaints and returns the caret by its data-k. «Agregar elección» is
+// on once the choice and every option have a name and a price: then IE.choiceAdd records it in the COPY (never the draft).
+let choicePick = null;
+const d2Ready = (p) => !!p.label.trim() && p.rows.length >= 2 && p.rows.every((r) => r.choice.trim() && parsePrice(r.price) !== null);
+function d2Focusables() { return [...$('xchoice').querySelectorAll('input, button')].filter((x) => !x.disabled); }
+function d2Key(e) {
+  if (!choicePick) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); d2Close(true); return; }
+  if (e.key !== 'Tab') return;
+  const f = d2Focusables(); const i = f.indexOf(document.activeElement);
+  if (i === -1 || (e.shiftKey && i === 0) || (!e.shiftKey && i === f.length - 1)) { e.preventDefault(); f[e.shiftKey ? f.length - 1 : 0].focus(); }
+}
+function d2Scrim(e) { if (e.target === $('xchoice')) d2Close(true); }
+function d2Open(s, action) {
+  const v = IE.view(state.draft, s);
+  choicePick = { s, action, dish: v.fields.name, price: v.fields.price, label: '', marked: 0,
+    rows: [{ ref: tmpRef(), choice: '', price: v.fields.price }, { ref: tmpRef(), choice: '', price: '' }] };
+  $('xchoice').classList.add('show'); sheetOpened('xchoice', () => d2Close(false));
+  document.addEventListener('keydown', d2Key, true); $('xchoice').addEventListener('click', d2Scrim);
+  d2Paint('d2:name');
+}
+function d2Close(refocusAction) {
+  sheetClosed('xchoice');
+  const p = choicePick; choicePick = null;
+  $('xchoice').classList.remove('show'); $('xchoice').querySelector('.modal').replaceChildren();
+  document.removeEventListener('keydown', d2Key, true); $('xchoice').removeEventListener('click', d2Scrim);
+  if (refocusAction && p && p.action && p.action.isConnected) p.action.focus();
+}
+function d2Paint(focusK) {
+  const p = choicePick;
+  if (!p) return;
+  const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const modal = $('xchoice').querySelector('.modal');
+  const mh = mk('div', 'mh'); const t = mk('div', 'mt', 'Agregar elección requerida'); t.id = 'xch-t';
+  mh.append(t, mk('div', 'ms', `Para ${p.dish} · hoy tiene un solo precio`));
+  const mb = mk('div', 'mb mscroll mk-form');
+  const ex = mk('div', 'gexplain'); ex.append(mk('b', null, 'Elección requerida.'), document.createTextNode(' El cliente elige 1. El precio del producto pasa a ser el de la opción elegida.'));
+  const fName = mk('div', 'fld');
+  // the approved D2 field (MOCKUP-portal-structure-edit gn-d2 / S3 addendum gn-sd2): «n/40» beside the label, the server's cap (label_too_long)
+  const cnt = mk('span', 'mk-cnt'); cnt.setAttribute('aria-live', 'polite');
+  const lr = mk('div', 'mk-lrow'); const lab = mk('label', null, 'Nombre de la elección'); lab.htmlFor = 'xch-name'; lr.append(lab, cnt);
+  const d2Name = document.createElement('input');
+  d2Name.className = 'mgname-in'; d2Name.id = 'xch-name'; d2Name.type = 'text'; d2Name.value = p.label; d2Name.placeholder = 'Ej. Tamaño, Término, Porción'; d2Name.dataset.k = 'd2:name';
+  d2Name.maxLength = IE.CHOICE_LABEL_MAX;
+  const count = () => { cnt.textContent = `${[...d2Name.value].length}/${IE.CHOICE_LABEL_MAX}`; };
+  count();
+  fName.append(lr, d2Name);
+  const fOpts = mk('div', 'fld');
+  const lr2 = mk('div', 'mk-lrow'); lr2.append(mk('label', null, 'Opciones'), mk('span', 'mk-cnt', 'precio por opción'));
+  const grp = mk('div', 'mk-mgroup');
+  const d2Go = document.createElement('button'); d2Go.type = 'button'; d2Go.className = 'btn accent'; d2Go.textContent = 'Agregar elección'; d2Go.dataset.k = 'd2:add';
+  const sync = () => { d2Go.disabled = !d2Ready(p); };
+  d2Name.addEventListener('input', bound(() => { p.label = d2Name.value; count(); sync(); }));
+  const few = p.rows.length <= 2;
+  p.rows.forEach((r, i) => {
+    const row = mk('div', 'mopt');
+    const d2OptName = document.createElement('input');
+    d2OptName.className = 'moname'; d2OptName.type = 'text'; d2OptName.value = r.choice; d2OptName.dataset.k = `d2:opt:${r.ref}`;
+    d2OptName.setAttribute('aria-label', 'Nombre de la opción'); d2OptName.placeholder = 'Nombre de la opción';
+    d2OptName.addEventListener('input', bound(() => { r.choice = d2OptName.value; sync(); }));
+    const pr = mk('span', 'mopr');
+    const d2OptPrice = document.createElement('input');
+    d2OptPrice.type = 'text'; d2OptPrice.inputMode = 'numeric'; d2OptPrice.setAttribute('aria-label', 'Precio'); d2OptPrice.value = r.price; d2OptPrice.dataset.k = `d2:pr:${r.ref}`;
+    d2OptPrice.addEventListener('input', bound(() => { r.price = d2OptPrice.value; p.same = false; sync(); }));
+    pr.append(mk('span', 'mc', 'L'), d2OptPrice);
+    const d2RecPill = document.createElement('button'); d2RecPill.type = 'button'; d2RecPill.className = 'recpill'; d2RecPill.classList.toggle('recpill-on', p.marked === i);
+    d2RecPill.textContent = 'Recomendada'; d2RecPill.setAttribute('aria-pressed', String(p.marked === i)); d2RecPill.dataset.k = `d2:rec:${r.ref}`;
+    d2RecPill.addEventListener('click', bound(() => { p.marked = i; d2Paint(`d2:rec:${r.ref}`); }));
+    const d2OptTrash = document.createElement('button'); d2OptTrash.type = 'button'; d2OptTrash.className = 'model'; d2OptTrash.dataset.k = `d2:rm:${r.ref}`;
+    d2OptTrash.setAttribute('aria-label', `Quitar ${r.choice.trim() || 'opción'}`); d2OptTrash.append(svgTrashIcon());
+    if (few) { d2OptTrash.disabled = true; d2OptTrash.title = IE.s3Copy('tooFew'); }
+    d2OptTrash.addEventListener('click', bound(() => {
+      p.rows.splice(i, 1);
+      if (p.marked === i) p.marked = 0; else if (p.marked > i) p.marked -= 1;
+      d2Paint('d2:more');
+    }));
+    row.append(d2OptName, pr, d2RecPill, d2OptTrash);
+    grp.append(row);
+  });
+  const d2More = document.createElement('button'); d2More.type = 'button'; d2More.className = 'mgadd'; d2More.dataset.k = 'd2:more';
+  d2More.append(svgPlusIcon(), document.createTextNode('Agregar opción'));
+  d2More.addEventListener('click', bound(() => { const r = { ref: tmpRef(), choice: '', price: '' }; p.rows.push(r); d2Paint(`d2:opt:${r.ref}`); }));
+  const flag = mk('label', 'mgflag');
+  const d2Same = document.createElement('input'); d2Same.type = 'checkbox'; d2Same.checked = p.same === true; d2Same.dataset.k = 'd2:same';
+  // «Mismo precio para todas» (the drawer's rule): on → every option takes the cheapest usable price
+  d2Same.addEventListener('change', bound(() => {
+    p.same = d2Same.checked;
+    if (p.same) { const ps = p.rows.map((r) => parsePrice(r.price)).filter((x) => x !== null); if (ps.length) { const v = String(Math.min(...ps)); for (const r of p.rows) r.price = v; } }
+    d2Paint('d2:same');
+  }));
+  flag.append(d2Same, document.createTextNode('Mismo precio para todas'));
+  fOpts.append(lr2, grp, d2More, flag);
+  const note = mk('div', 'mk-note');
+  note.append(mk('b', null, 'El precio actual pasa a la primera opción'), document.createTextNode(`${p.dish} cuesta L ${p.price} hoy; esa es la opción recomendada al crear la elección. Ajustá cada precio antes de guardar.`));
+  mb.append(ex, fName, fOpts, note);
+  const mf = mk('div', 'mf');
+  const d2Cancel = document.createElement('button'); d2Cancel.type = 'button'; d2Cancel.className = 'btn ghost'; d2Cancel.textContent = 'Cancelar'; d2Cancel.dataset.k = 'd2:cancel';
+  d2Cancel.addEventListener('click', bound(() => d2Close(true)));
+  d2Go.addEventListener('click', bound(() => {
+    if (!d2Ready(p)) return;
+    const r = IE.choiceAdd(p.s, { label: p.label.trim(), marked: p.marked, options: p.rows.map((x) => ({ ref: x.ref, choice: x.choice.trim(), price: parsePrice(x.price) })) });
+    if (!r.ok) {   // the copy moved under the sheet (a stale draft): the approved line in the sheet, nothing recorded
+      if (!mb.querySelector('.mk-stale')) { const line = mk('div', 'ferr mk-ferr mk-stale', UNDO_REFUSED); line.setAttribute('role', 'alert'); mb.append(line); }
+      return;
+    }
+    d2Close(false);
+    renderDrawer(); holdDrawerForRename(); refocus(['ie-fold::req']);
+  }));
+  mf.append(d2Cancel, d2Go);
+  sync();
+  modal.replaceChildren(mh, mb, mf);
+  const back = [...modal.querySelectorAll('[data-k]')].find((x) => x.dataset.k === focusK);
+  if (back && !back.disabled) back.focus();
 }
 
 // rule 16b (SBS 11-12): a card's subtitle wraps BETWEEN its « · » parts, never inside one — «en 4 pro…» hid the count once «Editar en
@@ -1508,12 +1647,413 @@ function paintProductTabs() {
   else if (keepG !== null && keepG !== undefined) { const g = [...$('xrail').querySelectorAll('.railitem')].find((n) => n.dataset.group === keepG); if (g) g.focus(); }
 }
 
+// ── STRUCTURE S4 — the drawing half (MOCKUP-portal-structure-edit frame E, owner-approved; the S4 addendum S4-C / S4-D, copy pending) ──
+// The rail's «Nueva categoría» box is VIEW state (newCatBox: { value, line }); typing updates its live nodes in place (newCatRefs). A new
+// section lives in structure.staged_categories until a dish is in it (then promoted, in the same draft); a section declared in THIS draft
+// is new as well (the F tag «Nueva»). Every write is editor.js's S4 writer, with the server's switch.
+let newCatBox = null;
+// S4-F «Ir a la sección»: the refusal's line under that section's header — until another section is selected
+let sectionLine = null;
+let newCatRefs = null;
+const S4ON = () => ({ sections: state.sections === true });
+const stagedNow = () => (state.draft && state.sections === true ? (((draftSource(state.draft) || {}).structure || {}).staged_categories || []) : []);
+function isNewSection(id) { return !!state.draft && sectionIsNew(state.draft, id); }
+function railS4() {
+  if (state.sections !== true || !state.draft || state.platformPending === true) return null;
+  return { staged: stagedNow().map((c) => ({ id: c.id, name: c.name })), isNew: isNewSection, box: newCatBox, max: SECTION_NAME_MAX,
+    onOpen: bound(() => { newCatBox = { value: '', line: null }; paint(); if (newCatRefs) newCatRefs.input.focus(); }),
+    onInput: bound((v) => {
+      newCatBox.value = v;
+      if (newCatBox.line) { newCatBox.line = null; paint(); if (newCatRefs) { newCatRefs.input.focus(); newCatRefs.input.setSelectionRange(v.length, v.length); } return; }
+      if (newCatRefs) { newCatRefs.cnt.textContent = `${[...v].length}/${SECTION_NAME_MAX}`; newCatRefs.create.disabled = !v.trim(); }
+    }),
+    onCreate: bound(createSection),
+    reorder: { move: bound((id, dir) => sectionsMove(id, dir)), drop: bound((id, idx) => sectionsDrop(id, idx)) },
+    onCancel: bound(() => { newCatBox = null; paint(); const a = $('rail').querySelector('button.railadd'); if (a) a.focus(); }),
+  };
+}
+// frame E — the sections' order (reorderSections, sections switch): ↑ / ↓ one place, or a drop at an index among the others; the grip
+// keeps focus; a new (staged) section is not reordered here (its place is its anchor)
+const declaredIds = () => categoriesOf().map((c) => String(c.id));
+function sectionsReorder(ids, id) {
+  if (!reorderSections(state.draft, ids, S4ON()).ok) return;
+  refreshBar(); repaintFromDraft();
+  const g = [...$('rail').querySelectorAll('button.rgrip')].find((x) => x.dataset.grip === String(id)); if (g) g.focus();
+}
+function sectionsMove(id, dir) {
+  const ids = declaredIds(); const i = ids.indexOf(String(id)); const j = i + dir;
+  if (i === -1 || j < 0 || j >= ids.length) return;
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  sectionsReorder(ids, id);
+}
+function sectionsDrop(id, idx) {
+  const others = declaredIds().filter((x) => x !== String(id));
+  sectionsReorder([...others.slice(0, idx), String(id), ...others.slice(idx)], id);
+}
+// frame E — inside a section: the subsections' order and names, the dishes' order (sections switch). A grip keeps focus after its move.
+let subRename = null;   // { cat, sub, value, line } — the head being renamed in place (view state)
+const focusGripOf = (k) => { const g = [...$('detail').querySelectorAll('[data-grip]')].find((x) => x.dataset.grip === k); if (g) g.focus(); };
+function subsWrite(cat, names, sub) {
+  if (!reorderSubcats(state.draft, cat.id, names, S4ON()).ok) return;
+  refreshBar(); repaintFromDraft(); focusGripOf(`sub:${sub}`);
+}
+function subsMove(cat, sub, dir) {
+  const names = (cat.subcats || []).slice(); const i = names.indexOf(sub); const j = i + dir;
+  if (i === -1 || j < 0 || j >= names.length) return;
+  [names[i], names[j]] = [names[j], names[i]];
+  subsWrite(cat, names, sub);
+}
+function subsDrop(cat, sub, idx) {
+  const others = (cat.subcats || []).filter((x) => x !== sub);
+  subsWrite(cat, [...others.slice(0, idx), sub, ...others.slice(idx)], sub);
+}
+// a head's rename: T1's name rule and words; a taken name the addendum's line; every member's subsection follows (renameSubcat)
+function subRenameSave(cat) {
+  const r0 = subRename;
+  if (!r0) return;
+  const problem = categoryNameProblem(r0.value);
+  if (problem) { r0.line = SECTION_NAME_PROBLEM[problem] || SECTION_NAME_PROBLEM.empty; paint(); const i = $('detail').querySelector('input.mk-subin'); if (i) i.focus(); return; }
+  if (r0.value.trim() === r0.sub) { subRename = null; paint(); focusGripOf(`sub:${r0.sub}`); return; }
+  const r = renameSubcat(state.draft, cat.id, r0.sub, r0.value, S4ON());
+  if (!r.ok) {
+    r0.line = r.code === 'subcat_name_taken' ? s4Copy('subNameTaken', { categoria: categoryName(cat.id) }) : UNDO_REFUSED;
+    paint(); const i = $('detail').querySelector('input.mk-subin'); if (i) i.focus(); return;
+  }
+  subRename = null; refreshBar(); repaintFromDraft();
+}
+// the dishes: ↑ / ↓ swaps with the neighbour in the SAME subsection; a drop lands before the dish it was dropped on (or last), joining
+// that dish's subsection when it differs (moveItem first — its refusal is the row's line); item_order is the one order (reorderItems)
+const shownRows = () => [...$('detail').querySelectorAll('[data-row]')].map((x) => x.dataset.row);
+const rowSub = (k) => { const r = (draftSource(state.draft).items || []).find((x) => x && rowId(x) === k); return r && r.display && typeof r.display.subcat === 'string' ? r.display.subcat : null; };
+function itemsOrder(order, id) {
+  if (!reorderItems(state.draft, order, S4ON()).ok) { rowLine(id, UNDO_REFUSED); return; }
+  refreshBar(); repaintFromDraft(); focusGripOf(`row:${id}`);
+}
+function itemsMove(cat, id, dir) {
+  const rows = shownRows().filter((k) => rowSub(k) === rowSub(id));
+  const i = rows.indexOf(id); const j = i + dir;
+  if (i === -1 || j < 0 || j >= rows.length) return;
+  const order = (((draftSource(state.draft) || {}).structure || {}).item_order || []).slice();
+  const a = order.indexOf(id), b = order.indexOf(rows[j]);
+  if (a === -1 || b === -1) return;
+  [order[a], order[b]] = [order[b], order[a]];
+  itemsOrder(order, id);
+}
+function itemsDrop(cat, id, idx) {
+  const others = shownRows().filter((k) => k !== id);
+  const before = idx < others.length ? others[idx] : null;
+  const target = before || others[others.length - 1] || null;
+  const sub = target ? rowSub(target) : rowSub(id);
+  if (sub !== rowSub(id)) {
+    const m = moveItem(state.draft, id, { cat: String(cat.id), subcat: sub }, S4ON());
+    if (!m.ok) { rowLine(id, m.code === 'subsection_empty' ? IE.COPY.cat.subsection_empty : m.code === 'section_empty' ? IE.COPY.cat.section_empty : UNDO_REFUSED); return; }
+  }
+  const order = (((draftSource(state.draft) || {}).structure || {}).item_order || []).filter((k) => k !== id);
+  const at = before ? order.indexOf(before) : (target ? order.indexOf(target) + 1 : order.length);
+  order.splice(at === -1 ? order.length : at, 0, id);
+  itemsOrder(order, id);
+}
+// «Crear» (frame E): the writer judges the name (T1's words for empty / long / markup; the addendum's for a taken one); the new section
+// is selected at once, its page waiting for a dish (S4-C)
+function createSection() {
+  if (!newCatBox) return;
+  const v = newCatBox.value;
+  const problem = categoryNameProblem(v);
+  if (problem) { newCatBox.line = SECTION_NAME_PROBLEM[problem] || SECTION_NAME_PROBLEM.empty; paint(); if (newCatRefs) newCatRefs.input.focus(); return; }
+  // S4-F categories_unnamed (the server's rule, pre-judged): every section needs a name first — the line, and the way to name them
+  // (the server: ANY live section without a name refuses a new one — section-compare.js; «name all» when every one is unnamed, else the
+  // first unnamed section's own rename, T1)
+  const unnamed = categoriesOf().find((c) => c && !(typeof c.name === 'string' && c.name));
+  if (unnamed) {
+    const all = categoriesUnnamed(state.draft);
+    newCatBox.line = { text: s4Copy('unnamedLine'), link: { label: s4Copy('nameAll'), onClick: bound(() => {
+      newCatBox = null;
+      if (all) { paint(); openNameAll(); } else { state.selectedCat = String(unnamed.id); paint(); renameStart(String(unnamed.id)); }
+    }) } };
+    paint(); if (newCatRefs) newCatRefs.input.focus(); return;
+  }
+  const before = new Set(stagedNow().map((c) => String(c.id)));
+  const r = addCategory(state.draft, v, {}, S4ON());
+  if (!r.ok) { newCatBox.line = r.code === 'category_name_taken' ? s4Copy('nameTaken') : r.code === 'structure_caps' ? s4Copy('capsCats') : UNDO_REFUSED; paint(); if (newCatRefs) newCatRefs.input.focus(); return; }
+  const made = stagedNow().find((c) => !before.has(String(c.id)));
+  newCatBox = null;
+  if (made) state.selectedCat = made.id;
+  refreshBar(); paint();
+}
+// S4-C: a new section's header and page (the F tag; «Nueva subcategoría» off until a dish is in it; the empty state with «Quitar categoría»)
+function detailS4(staged) {
+  if (state.sections !== true || !state.draft) return null;
+  if (staged) {
+    return { isNew: true, subcat: { disabled: true, title: s4Copy('subcatNeedsDish') },
+      empty: { title: s4Copy('emptyTitle'), body: s4Copy('emptyBody'), dropLabel: s4Copy('dropCat'), onDrop: bound((from) => dropSection(staged, from)) } };
+  }
+  const cat = categoriesOf().find((c) => c && String(c.id) === String(state.selectedCat));
+  if (!cat) return null;
+  // a declared section: «Nueva subcategoría» (S4-A / S4-B) and its list under one head per subsection (frame E)
+  return { isNew: isNewSection(cat.id), subcat: { disabled: false, onClick: bound((from) => subOpen(cat, from)) },
+    subheads: Array.isArray(cat.subcats) ? cat.subcats.slice() : null,
+    onMore: bound((id, from) => menuOpen(id, from)), moreFor: (it) => !isAddition(it) && !(state.drawerKey && state.drawerKey === rowId(it)),
+    headLine: sectionLine && String(sectionLine.cat) === String(cat.id) ? sectionLine.text : null,
+    subs: Array.isArray(cat.subcats) && cat.subcats.length ? {
+      move: bound((sub, dir) => subsMove(cat, sub, dir)), drop: bound((sub, idx) => subsDrop(cat, sub, idx)),
+      rename: { editing: subRename && String(subRename.cat) === String(cat.id) ? subRename.sub : null, value: subRename ? subRename.value : '', line: subRename ? subRename.line : null,
+        onStart: bound((sub) => { subRename = { cat: cat.id, sub, value: sub, line: null }; paint(); const i = $('detail').querySelector('input.mk-subin'); if (i) i.focus(); }),
+        onInput: bound((v) => { subRename.value = v; if (subRename.line) { subRename.line = null; paint(); const i = $('detail').querySelector('input.mk-subin'); if (i) { i.focus(); i.setSelectionRange(v.length, v.length); } } }),
+        onSave: bound(() => subRenameSave(cat)), onCancel: bound(() => { const sub = subRename && subRename.sub; subRename = null; paint(); focusGripOf(`sub:${sub}`); }) } } : null,
+    items: { move: bound((id, dir) => itemsMove(cat, id, dir)), drop: bound((id, idx) => itemsDrop(cat, id, idx)) } };
+}
+// E2 — a row's menu (.mk-pop, role=menu): «Mover a» every section (each subsection its own entry, the current one inert «actual», a new one
+// «nueva»), S4-D's line when the dish is the last of a section declared in THIS draft, «Quitar del menú» (the approved R2 flow). Esc / a
+// press outside closes it and returns focus to «Más acciones». A move is moveItem (sections switch); a refusal says its approved line under
+// the row; moving the last dish out of a draft-only section un-promotes it and the toast says so.
+let rowMenu = null;
+const moveTargets = () => {
+  const out = [];
+  for (const c of categoriesOf()) {
+    if (!c) continue;
+    const subs = Array.isArray(c.subcats) ? c.subcats : [];
+    if (subs.length) for (const sub of subs) out.push({ cat: String(c.id), subcat: sub, label: `${categoryName(String(c.id))} \u00b7 ${sub}` });
+    else out.push({ cat: String(c.id), subcat: null, label: categoryName(String(c.id)) });
+  }
+  for (const c of stagedNow()) out.push({ cat: String(c.id), subcat: null, label: c.name, isNew: true });
+  return out;
+};
+function menuClose(refocus) {
+  sheetClosed('rowmenu');
+  const m = rowMenu; rowMenu = null;
+  if (!m) return;
+  m.pop.remove();
+  m.from.setAttribute('aria-expanded', 'false'); m.from.classList.remove('mk-moreopen');
+  document.removeEventListener('keydown', menuKey, true); document.removeEventListener('click', menuOutside, true);
+  window.removeEventListener('resize', menuAway, true); window.removeEventListener('scroll', menuAway, true);
+  if (refocus && m.from.isConnected) m.from.focus();
+}
+function menuAway(e) { const t = e && e.type === 'scroll' ? e.target : null; if (rowMenu && !(t && t.nodeType === 1 && rowMenu.pop.contains(t))) menuClose(false); }   // a fixed layer does not follow its row: a page scroll / resize closes it — never the menu's OWN scroll (#183-8)
+function menuKey(e) { if (rowMenu && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); menuClose(true); } }
+function menuOutside(e) { if (rowMenu && !rowMenu.pop.contains(e.target) && e.target !== rowMenu.from && !rowMenu.from.contains(e.target)) menuClose(false); }
+function menuOpen(key, from) {
+  if (rowMenu) { const same = rowMenu.key === key; menuClose(false); if (same) return; }
+  const row = (draftSource(state.draft).items || []).find((r) => r && rowId(r) === key);
+  if (!row || !row.display) return;
+  const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const pop = mk('div', 'mk-pop'); pop.setAttribute('role', 'menu');
+  pop.append(mk('div', 'mk-pl', 'Mover a'));
+  const here = { cat: String(row.display.cat), subcat: typeof row.display.subcat === 'string' ? row.display.subcat : null };
+  const targets = moveTargets();
+  const curI = targets.findIndex((t) => t.cat === here.cat && (t.subcat === here.subcat || (!t.subcat && !here.subcat)));
+  const ordered = curI === -1 ? targets : [targets[curI], ...targets.filter((_, i) => i !== curI)];
+  let first = null;
+  for (const t of ordered) {
+    const cur = t.cat === here.cat && t.subcat === here.subcat;
+    const menuMove = document.createElement('button'); menuMove.type = 'button'; menuMove.className = 'mk-popi'; menuMove.setAttribute('role', 'menuitem');
+    menuMove.append(document.createTextNode(t.label));
+    if (cur) { menuMove.classList.add('mk-cur'); menuMove.setAttribute('aria-disabled', 'true'); menuMove.append(mk('span', 'mk-sub2', 'actual')); }
+    else {
+      if (t.isNew) menuMove.append(mk('span', 'mk-sub2', 'nueva'));
+      menuMove.addEventListener('click', bound(() => menuMoveTo(key, t)));
+      if (!first) first = menuMove;
+    }
+    pop.append(menuMove);
+  }
+  // S4-D: this dish is the last of a section declared in this draft — moving it out returns the section to «Nueva»
+  const others = (draftSource(state.draft).items || []).some((r) => r && r !== row && r.display && r.display.variantOf == null && String(r.display.cat) === here.cat);
+  if (!others && isNewSection(here.cat)) pop.append(mk('div', 'mk-popnote', s4Copy('menuNote', { categoria: categoryName(here.cat) })));
+  const rp = canRemoveProduct(state.draft, key, removalOn(), state.liveOrder, state.additionKeys);
+  if (rp.show) {
+    pop.append(mk('div', 'mk-popsep'));
+    const menuRemove = document.createElement('button'); menuRemove.type = 'button'; menuRemove.className = 'mk-popi danger'; menuRemove.setAttribute('role', 'menuitem');
+    menuRemove.append(svgTrashIcon(), document.createTextNode('Quitar del menú'));
+    menuRemove.addEventListener('click', bound(() => {
+      menuClose(false);
+      if (rp.enabled) openRemoveProduct(key, from);
+      else rowLine(key, rp.code === 'section_empty' ? IE.COPY.cat.section_empty : 'No pudimos leer el menú publicado. Recargá la página.');
+    }));
+    pop.append(menuRemove);
+  }
+  // a layer OUTSIDE the list (.detail clips: overflow hidden for its corners) — fixed, under «Más acciones», right-aligned to it; flipped
+  // upward when the window has no room below. Placed through the CSSOM (the strict CSP: no style attribute in the markup)
+  document.body.append(pop);
+  // Codex #183-8: a long list (30 sections, many subsections) never runs off the viewport — it opens on the side with MORE room when it
+  // does not fit below, its height is capped to that room (the list scrolls inside it), and it is placed by that capped height
+  const b = from.getBoundingClientRect(); const h = pop.offsetHeight; const vh = window.innerHeight || 0; const vw = window.innerWidth || 0;
+  const below = vh - 8 - (b.bottom + 4), above = b.top - 4 - 8;
+  const up = vh > 0 && h > below && above > below;
+  const room = vh > 0 ? Math.max(0, up ? above : below) : h;
+  if (vh > 0 && h > room) pop.style.maxHeight = `${room}px`;
+  const hh = Math.min(h, room);
+  pop.style.top = `${Math.max(8, up ? b.top - 4 - hh : b.bottom + 4)}px`;
+  pop.style.right = `${Math.max(8, vw - b.right)}px`;
+  pop.classList.toggle('mk-popup', up);
+  rowMenu = { key, from, pop }; sheetOpened('rowmenu', () => menuClose(false));
+  from.setAttribute('aria-expanded', 'true'); from.classList.add('mk-moreopen');
+  document.addEventListener('keydown', menuKey, true); document.addEventListener('click', menuOutside, true);
+  window.addEventListener('resize', menuAway, true); window.addEventListener('scroll', menuAway, true);
+  (first || pop.querySelector('button')).focus();
+}
+// a refusal said under the dish's row (the approved lines; no confirm, nothing written)
+function rowLine(key, text) {
+  const cell = [...$('detail').querySelectorAll('[data-k]')].find((x) => x.dataset.k === `item::${key}`);   // the row's price cell names it
+  const row = cell && cell.closest('.irow');
+  if (!row) return;
+  const at = row.closest('.grow') || row;
+  if (at.nextElementSibling && at.nextElementSibling.classList.contains('mk-rowline')) at.nextElementSibling.remove();
+  const line = document.createElement('div'); line.className = 'ferr mk-ferr mk-rowline'; line.setAttribute('role', 'alert'); line.textContent = text;
+  at.after(line);
+}
+function menuMoveTo(key, t) {
+  menuClose(false);
+  const row = (draftSource(state.draft).items || []).find((r) => r && rowId(r) === key);
+  const from = row && row.display ? String(row.display.cat) : null;
+  const wasNew = from !== null && isNewSection(from);
+  const r = moveItem(state.draft, key, { cat: t.cat, subcat: t.subcat }, S4ON());
+  if (!r.ok) {
+    rowLine(key, r.code === 'section_empty' ? IE.COPY.cat.section_empty : r.code === 'subsection_empty' ? IE.COPY.cat.subsection_empty : UNDO_REFUSED);
+    return;
+  }
+  const backToStaged = wasNew && stagedNow().some((c) => String(c.id) === from);
+  repaintFromDraft();
+  if (backToStaged) sayToast(s4Copy('toastBack', { producto: row.display.name, seccion: t.label, categoria: stagedName(state.draft, from) || categoryName(from) }));   // a staged section's name (categoryName alone falls back to the id)
+}
+// the shared toast (#opstoast, shell.js's look): written here directly — app.js cannot import shell.js (shell imports app; the cycle)
+let toastTimer = null;
+function sayToast(text) {
+  const t = $('opstoast');
+  if (!t) return;
+  t.replaceChildren(icon('check'), document.createTextNode(text));
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+// S4-A / S4-B — «Nueva subcategoría» (#xsubcat, X3's sheet pattern). The FIRST subsection of an ungrouped section takes every dish (rows
+// checked and locked: the portal can never send a partial first subsection); a further one takes the dishes the merchant marks. Typing
+// edits the sheet's state in place; a mark repaints by data-k. «Crear subcategoría» writes through addSubcat (sections switch).
+let subPick = null;
+function subKey(e) {
+  if (!subPick) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); subClose(true); return; }
+  if (e.key !== 'Tab') return;
+  const f = [...$('xsubcat').querySelectorAll('input, button')].filter((x) => !x.disabled); const i = f.indexOf(document.activeElement);
+  if (i === -1 || (e.shiftKey && i === 0) || (!e.shiftKey && i === f.length - 1)) { e.preventDefault(); f[e.shiftKey ? f.length - 1 : 0].focus(); }
+}
+function subScrim(e) { if (e.target === $('xsubcat')) subClose(true); }
+function subOpen(cat, from) {
+  const sec = groupByCategory(draftSource(state.draft)).find((g) => String(g.category.id) === String(cat.id));   // the list's order
+  const rows = ((sec && sec.items) || []).filter((it) => it && it.display && it.display.variantOf == null);
+  const first = !(Array.isArray(cat.subcats) && cat.subcats.length);
+  subPick = { cat, from, first, name: '', line: null, nameLine: null, marked: new Set(first ? rows.map(rowId) : []),
+    rows: rows.map((it) => ({ id: rowId(it), name: it.display.name || rowId(it), sub: typeof it.display.subcat === 'string' ? it.display.subcat : null })) };
+  $('xsubcat').classList.add('show'); sheetOpened('xsubcat', () => subClose(false));
+  document.addEventListener('keydown', subKey, true); $('xsubcat').addEventListener('click', subScrim);
+  subPaint('sub:name');
+}
+function subClose(refocus) {
+  sheetClosed('xsubcat');
+  const p = subPick; subPick = null;
+  $('xsubcat').classList.remove('show'); $('xsubcat').querySelector('.modal').replaceChildren();
+  document.removeEventListener('keydown', subKey, true); $('xsubcat').removeEventListener('click', subScrim);
+  if (refocus && p && p.from && p.from.isConnected) p.from.focus();
+}
+function subPaint(focusK) {
+  const p = subPick;
+  if (!p) return;
+  const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const modal = $('xsubcat').querySelector('.modal');
+  const mh = mk('div', 'mh'); const t = mk('div', 'mt', 'Nueva subcategoría'); t.id = 'xsc-t';
+  mh.append(t, mk('div', 'ms', p.first ? s4Copy('sheetSubFirst', { categoria: p.cat.name, nprod: nProd(p.rows.length) }) : s4Copy('sheetSub', { categoria: p.cat.name, subs: (p.cat.subcats || []).join(' \u00b7 ') })));
+  const mb = mk('div', 'mb mk-form');
+  const fN = mk('div', 'fld'); const lr = mk('div', 'mk-lrow');
+  const lab = mk('label', null, s4Copy('subName')); lab.htmlFor = 'xsc-name';
+  const cnt = mk('span', 'mk-cnt', `${[...p.name].length}/${SECTION_NAME_MAX}`); cnt.setAttribute('aria-live', 'polite');
+  lr.append(lab, cnt);
+  const subName = document.createElement('input');
+  subName.className = 'mgname-in'; subName.id = 'xsc-name'; subName.type = 'text'; subName.value = p.name; subName.placeholder = s4Copy('subPh'); subName.dataset.k = 'sub:name';
+  subName.addEventListener('input', bound(() => {
+    p.name = subName.value; cnt.textContent = `${[...p.name].length}/${SECTION_NAME_MAX}`;
+    paintMoveLine();   // the S4-B line follows the typed name in place (no rebuild under the caret)
+    if (p.nameLine) { p.nameLine = null; subPaint('sub:name'); }
+  }));
+  fN.append(lr, subName);
+  if (p.nameLine) { const l = mk('div', 'ferr mk-ferr', p.nameLine); l.setAttribute('role', 'alert'); fN.append(l); subName.setAttribute('aria-invalid', 'true'); }
+  const fP = mk('div', 'fld'); const lr2 = mk('div', 'mk-lrow');
+  const tally = `${p.marked.size} de ${p.rows.length}`;
+  lr2.append(mk('label', null, s4Copy('products')), mk('span', 'mk-cnt', tally));
+  const box = mk('div', `mk-pick${p.line ? ' mk-inv' : ''}`); box.setAttribute('role', 'group'); box.setAttribute('aria-label', s4Copy('products'));
+  const hd = mk('div', 'mk-subh'); hd.append(mk('span', 'mk-sn', p.cat.name), mk('span', 'mk-n', tally));
+  if (!p.first) {
+    const subAll = document.createElement('button'); subAll.type = 'button'; subAll.className = 'mk-lnk'; subAll.textContent = 'Marcar todos'; subAll.dataset.k = 'sub:all';
+    subAll.setAttribute('aria-label', `Marcar todos en ${p.cat.name}`);
+    subAll.addEventListener('click', bound(() => { for (const r of p.rows) p.marked.add(r.id); p.line = null; subPaint('sub:all'); }));
+    hd.append(subAll);
+  }
+  box.append(hd);
+  for (const r of p.rows) {
+    const row = mk('label', `modopt${p.first ? ' mk-fixed' : ''}`);
+    const subMark = document.createElement('input'); subMark.type = 'checkbox'; subMark.checked = p.marked.has(r.id); subMark.disabled = p.first; subMark.dataset.k = `sub:${r.id}`;
+    subMark.addEventListener('change', bound(() => { if (subMark.checked) p.marked.add(r.id); else p.marked.delete(r.id); p.line = null; subPaint(`sub:${r.id}`); }));
+    const nm = mk('span', 'mognm', r.name);
+    if (!p.first && r.sub) nm.append(mk('span', 'mogsub', r.sub));
+    row.append(subMark, nm);
+    box.append(row);
+  }
+  fP.append(lr2, box);
+  if (p.line) { const l = mk('div', 'ferr mk-ferr', p.line); l.setAttribute('role', 'alert'); fP.append(l); }
+  if (p.first) fP.append(mk('p', 'mk-sub', s4Copy('firstLine', { categoria: p.cat.name })));
+  // S4-B: «…pasan a {nueva}.» only once a name is typed (advisor 11-19: never «…pasan a .»), kept current as the merchant types
+  const moveLine = p.first ? null : mk('p', 'mk-sub', '');
+  function paintMoveLine() {
+    if (!moveLine) return;
+    const t = typeof p.name === 'string' ? p.name.trim() : '';
+    if (t) { moveLine.textContent = s4Copy('moveLine', { nueva: t }); if (!moveLine.isConnected) fP.append(moveLine); } else moveLine.remove();
+  }
+  paintMoveLine();
+  mb.append(fN, fP);
+  const mf = mk('div', 'mf');
+  const subCancel = document.createElement('button'); subCancel.type = 'button'; subCancel.className = 'btn ghost'; subCancel.textContent = 'Cancelar'; subCancel.dataset.k = 'sub:cancel';
+  subCancel.addEventListener('click', bound(() => subClose(true)));
+  const subGo = document.createElement('button'); subGo.type = 'button'; subGo.className = 'btn accent'; subGo.textContent = s4Copy('createSub'); subGo.dataset.k = 'sub:go';
+  subGo.addEventListener('click', bound(subCreate));
+  mf.append(subCancel, subGo);
+  modal.replaceChildren(mh, mb, mf);
+  const back = [...modal.querySelectorAll('[data-k]')].find((x) => x.dataset.k === focusK);
+  if (back && !back.disabled) back.focus();
+}
+// «Crear subcategoría»: the name by T1's rule and words; no member ⇒ the line in place (subcat_empty, the writer's own refusal); a taken
+// name under the name; a subsection the move would empty ⇒ the approved «sección vacía» line; the 12-subsection cap its line; the rest: the stale-press line
+function subCreate() {
+  const p = subPick;
+  if (!p) return;
+  const problem = categoryNameProblem(p.name);
+  if (problem) { p.nameLine = SECTION_NAME_PROBLEM[problem] || SECTION_NAME_PROBLEM.empty; subPaint('sub:name'); return; }
+  const r = addSubcat(state.draft, p.cat.id, p.name, [...p.marked], S4ON());
+  if (!r.ok) {
+    if (r.code === 'subcat_name_taken') { p.nameLine = s4Copy('subNameTaken', { categoria: p.cat.name }); subPaint('sub:name'); return; }
+    p.line = r.code === 'subcat_empty' ? s4Copy('needOne') : r.code === 'subsection_empty' ? IE.COPY.cat.section_empty   // the approved line, verbatim (S4-B note)
+      : r.code === 'structure_caps' ? s4Copy('subCaps', { categoria: p.cat.name }) : UNDO_REFUSED;
+    subPaint('sub:go'); return;
+  }
+  subClose(false);
+  repaintFromDraft();
+}
+// S4-D: dropping a new section asks first (E3's small confirm, «Cancelar» focused); it leaves the rail at once
+function dropSection(staged, from) {
+  openXConfirm({ title: s4Copy('dropTitle', { nombre: staged.name }), sub: s4Copy('dropSub'), body: s4Copy('dropBody'), returnTo: from,
+    onGo: bound(() => {
+      const r = dropStagedCategory(state.draft, staged.id, S4ON());
+      if (!r.ok) return;
+      const first = state.groups[0];
+      state.selectedCat = first ? first.category.id : null;
+      refreshBar(); paint();
+    }),
+    buttons: [{ label: 'Cancelar', mods: ['ghost'], act: 'cancel', focus: true }, { label: s4Copy('dropCat'), mods: ['ghost', 'mk-quiet-danger'], act: 'go' }] });
+}
+
 function paint() {
+  if (rowMenu) menuClose(false);   // E2: the rows are rebuilt — the menu belongs to a row that no longer exists
   paintProductTabs();
   // the held-state mockup (Codex r1): the drawer's hold follows the pending name on EVERY paint — publish, discard and undo all
   // repaint — not only on a drawer render, so it can never outlive the name change it marks
   $('drawer').classList.toggle('namehold', renamesPending());
-  renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; if (state.renameEdit && state.renameEdit.catId !== id) state.renameEdit = null; paint(); });
+  newCatRefs = renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; if (state.renameEdit && state.renameEdit.catId !== id) state.renameEdit = null; if (sectionLine && String(sectionLine.cat) !== String(id)) sectionLine = null; paint(); }, railS4());
   const changed = new Set(pendingChanges(state.draft, state.additionKeys).map((c) => `${c.surface}::${c.key}`));
   const pend = pendingRemovalMap();
   paintNameCall();
@@ -1532,7 +2072,9 @@ function paint() {
     onSave: bound((v) => renameSave(catId, v)),
     onCancel: bound(renameCancel),
   } : null;
-  renderDetail($('detail'), state.groups.find((g) => g.category.id === state.selectedCat), state.extras, {
+  const staged = stagedNow().find((c) => String(c.id) === String(state.selectedCat));
+  renderDetail($('detail'), staged ? { category: { id: staged.id, name: staged.name }, items: [] } : state.groups.find((g) => g.category.id === state.selectedCat), state.extras, {
+    s4: detailS4(staged),
     rename,
     locked: nameHold || state.platformPending === true,   // F-2: Sherpa is updating the menu — prices and «Agregar producto» read-only
     notice: nameHold ? RENAME_NOTICE.renames : (otherHold && (rename || categoriesUnnamed(state.draft)) ? RENAME_NOTICE.others : null),
@@ -1803,7 +2345,8 @@ function endEditSession() {
 // — key → the fields; empty without the switch (today's list).
 // ── «Quitar del menú» (PLAN-portal-remove-product r3 §3.3 / §4 / §9; MOCKUP-portal-remove-product frames R1–R5) ─────────────────
 // §2's switches (the server's, with the text-edit drawer; the readable baseline) — the served collections travel positionally
-const removalOn = () => ({ on: state.productRemoval === true && state.textEditEnabled === true, baseReadable: state.deletionBase !== null });
+const removalOn = () => ({ on: state.productRemoval === true && state.textEditEnabled === true, baseReadable: state.deletionBase !== null,
+  sections: state.sections === true });   // S4 3(b): a LIVE section's last dish says the approved line, never a round trip
 // The dishes pending removal, key → a COPY of what «Deshacer» restores (this session's snapshot first, else the saved draft's P-R1 entry)
 const pendingRemovalMap = () => (state.productRemoval === true && state.draft ? pendingRemovalsOf(state.draft, state.removalStash, state.pendingRemovals) : new Map());
 // The list's DISPLAY projection (never sent): the pending rows back at their live places, by the same rebuild a restore runs
@@ -1822,7 +2365,12 @@ function openRemoveProduct(key, from) {
   const row = (draftSource(state.draft).items || []).find((r) => r && r.key === key);
   if (!row) return;
   const reward = state.rewardKeys.has(key);
+  // S4-D: the last dish of a section new in this draft — the section goes back to «Nueva» with it (removeProduct's 3(a)); the confirm says so
+  const cat = row.display ? row.display.cat : null;
+  const lastOfNew = state.sections === true && isNewSection(cat)
+    && !(draftSource(state.draft).items || []).some((r) => r && r !== row && r.display && r.display.variantOf == null && String(r.display.cat) === String(cat));
   openRemoveProductConfirm({ name: `${row.display.name}`, place: dishPlace(row), reward, returnTo: from,
+    note: lastOfNew ? s4Copy('unpromoteLine', { categoria: categoryName(cat) }) : null,
     onConfirm: bound(() => confirmRemoveProduct(key)) });
 }
 // «Quitar»: the removal (all or nothing), its snapshot stashed for «Deshacer», the dish's upload stopped, and the drawer closed — the
@@ -1846,7 +2394,7 @@ const UNDO_REFUSED = 'No pudimos aplicar el cambio. Recargá la página.';
 function undoRemoval(key) {
   const snap = pendingRemovalMap().get(key);
   if (!snap) return;
-  const r = undoRemoveProduct(state.draft, key, snap, state.liveOrder);
+  const r = undoRemoveProduct(state.draft, key, snap, state.liveOrder, S4ON());   // Codex #183-3: S4 3(a) — a staged section is promoted again
   if (!r.ok) { undoRefused = key; paint(); return; }   // nothing restored; the row says so
   undoRefused = null;
   state.removalStash.delete(key);
@@ -1887,6 +2435,13 @@ function productReviewCtx() {
   // server sends S2 fields only for an S2 op
   const structure = { nameOf: (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },
     categoryName, sectionOf: (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r ? { cat: r.display.cat == null ? null : `${r.display.cat}`, subcat: typeof r.display.subcat === 'string' ? `${r.display.subcat}` : null } : { cat: null, subcat: null }; } };
+  // STRUCTURE S4-E: how many dishes a section (or one of its subsections) holds now, and a section's name that only the staged list knows
+  structure.dishesIn = (id, sub = null) => items.filter((r) => r.display.variantOf == null && String(r.display.cat) === String(id) && (sub == null || r.display.subcat === sub)).length;
+  structure.categoryName = (id) => stagedName(state.draft, id) || categoryName(id);
+  // STRUCTURE S3 (B3): an option's choice text (a removed one from the loaded rows) and a dish's choice label now, from the draft
+  structure.choiceOf = (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r && typeof r.display.choice === 'string' ? `${r.display.choice}` : String(k); };
+  structure.priceOf = (k) => { const r = items.find((x) => x.key === k); return r && Number.isInteger(r.price) ? r.price : null; };   // Codex #183-6: the saved price (the S3 «queda con un solo precio» row)
+  structure.choiceLabel = (k) => { const g = choiceGroup(state.draft, k); return g && typeof g.label === 'string' ? `${g.label}` : null; };
   // Codex S2 UI r1 P1-4: each extra's group, so a checklist key its group's detach drops folds into that «Estructura» row
   const extraGroups = new Map((draftSource(state.draft).extras || []).filter((x) => x && typeof x.key === 'string' && x.display && x.display.cat != null).map((x) => [x.key, `${x.display.cat}`]));
   return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0), extraName: (k) => extraNames.get(k) || null,
@@ -1903,10 +2458,6 @@ function productReviewOpts() {
 // pair), every open sheet / confirm on #xscrim with its document listeners, the armed acknowledged resend and the view state. Nothing
 // person A typed, opened or acknowledged survives for person B; no continuation runs (the confirms close without onGo / onCancel).
 function resetExtrasLocal() {
-  closeXConfirm();
-  // a page without the S2 markup (today's trimmed shells) has no sheets to close
-  if ($('xcreate') && (createForm || $('xcreate').classList.contains('show'))) closeCreateGroup(false);
-  if ($('xattach') && (attachPick || $('xattach').classList.contains('show'))) bClose(false);
   createForm = null; createError = null; attachPick = null;
   extraAdd = null; extraAddK = null; extraAddError = null;
   railOpen = null; railError = null; extrasRowError = null;
@@ -1916,10 +2467,17 @@ function resetExtrasLocal() {
   if ($('xrail')) $('xrail').replaceChildren();
   if ($('xdetail')) $('xdetail').replaceChildren();
 }
+// the S3 / S4 view state ends with the world (its sheets close through the registry, closeAllSheets): the inline «Nueva categoría» box and
+// a subsection rename in place — another person never sees A's typed names
+function resetStructureLocal() {
+  newCatBox = null; newCatRefs = null; subRename = null;
+}
 function resetEditFacts() {
   state.textEditEnabled = false;
   state.extrasAuthoring = false;
   state.extrasCatalog = false;
+  state.choiceEdit = false;
+  state.sections = false;
   state.deletionBase = null;
   state.reservedNames = null;
   state.savedTexts = [];
@@ -1930,7 +2488,9 @@ function resetEditFacts() {
   state.rewardGroups = new Set();
   state.removalStash = new Map();
   undoRefused = null;   // a refused «Deshacer» line ends with the world
+  closeAllSheets();     // Codex #196-3: EVERY open catalog sheet / menu — each registered itself as it opened (sheets.js)
   resetExtrasLocal();
+  resetStructureLocal();
   endEditSession();
 }
 // The product's photo as this drawer shows it: the draft's map with the copy's entry in place of the stored one.
@@ -1965,6 +2525,228 @@ function opcNameLine(options, g) {
   return `En el menú cada opción se llama «${a.fullName}»${b ? `, «… - ${b.choice}»` : ''}: el nombre se arma solo.`;
 }
 const opcFolded = new Set();
+// STRUCTURE S3 — VIEW state, per drawer session: the required choice's editor is open (the pencil … «Listo»); «Guardar» held by B2
+const choiceEditing = new Set();
+let choiceHeld = null;
+// a press the writer refuses on a STALE copy (the draft moved under the drawer): the approved line, inline where it was pressed (B6);
+// nothing is recorded — the next rebuild drops the line
+function pressFailed(el) {
+  const at = (el && (el.closest('.mopt') || el.closest('.mk-gf') || el)) || null;
+  if (!at || (at.nextElementSibling && at.nextElementSibling.classList.contains('mk-stale'))) return;
+  const line = document.createElement('div'); line.className = 'ferr mk-ferr mk-stale'; line.setAttribute('role', 'alert'); line.textContent = UNDO_REFUSED;
+  at.after(line);
+}
+const tmpRef = () => `tmp:${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`;
+// panel D (MOCKUP-portal-structure-edit :1797, owner-approved: its strings are literal) + the addendum's B2 line (⟦s3.key⟧ until approved):
+// the choice's name, one row per option (name · L price · «Recomendada» · trash; a new one «Solo en la app Sherpa»), «Agregar opción»,
+// «Mismo precio para todas», the naming line; the foot «Quitar elección» · «Listo». TYPING edits the copy in place (choiceSet /
+// choiceUpdateNew: one op per slot, the same input node); a structural press (add, trash, pill) rebuilds and returns the caret by key.
+function choiceEditorCard(s, key, cm, { mk, header, relayout, R }) {
+  const label = cm.label && cm.label.trim() ? cm.label : 'Elección';
+  const card = mk('div', 'mk-grp mk-req mk-open chg');
+  card.append(header('req', label, OPC_COPY.req, 'mk-gts mk-greq', true).gh);
+  const ge = mk('div', 'mk-ge');
+  const gnId = `ie-cg-${s.id}`;
+  const lab = mk('label', 'mgname-lbl', 'Nombre de la elección'); lab.htmlFor = gnId;
+  const ieChoiceName = document.createElement('input');
+  ieChoiceName.className = 'mgname-in'; ieChoiceName.id = gnId; ieChoiceName.type = 'text'; ieChoiceName.value = cm.label || ''; ieChoiceName.placeholder = 'Ej. Tamaño, Término, Porción';
+  ieChoiceName.addEventListener('input', bound(() => { IE.choiceSet(s, { op: 'choice.label', launcher: key, label: ieChoiceName.value }); syncEdit(); }));
+  focusKey(ieChoiceName, 'ie-cg-name');
+  ge.append(lab, ieChoiceName);
+  const v = IE.view(state.draft, s);
+  const prices = new Map((v.prices || []).map((o) => [o.id, o.raw]));   // Codex #196: every input from THE group's price model
+  const few = cm.options.length <= 2;
+  R.opts = []; R.prices = new Map(); R.optCnt = mk('span', 'mk-cnt');
+  const nameRows = [];
+  let last = null;
+  for (const o of cm.options) {
+    const row = mk('div', `mopt${o.isNew ? ' chg' : ''}`);
+    const ieOptName = document.createElement('input');
+    ieOptName.className = 'moname'; if (o.isNew) ieOptName.classList.add('mk-chgname'); ieOptName.type = 'text'; ieOptName.value = o.choice || '';
+    ieOptName.setAttribute('aria-label', 'Nombre de la opción'); ieOptName.placeholder = 'Nombre de la opción';
+    ieOptName.addEventListener('input', bound(() => {
+      if (o.isNew) IE.choiceUpdateNew(s, o.id, { choice: ieOptName.value });
+      else IE.choiceSet(s, { op: 'option.rename', key: o.id, choice: ieOptName.value });
+      syncEdit();
+    }));
+    focusKey(ieOptName, `ie-cg-opt::${o.id}`);
+    const pr = mk('span', 'mopr');
+    const ieOptPrice = document.createElement('input');
+    ieOptPrice.type = 'text'; ieOptPrice.inputMode = 'numeric'; ieOptPrice.setAttribute('aria-label', 'Precio'); if (o.isNew) ieOptPrice.classList.add('mk-chgpr');
+    ieOptPrice.value = prices.has(o.id) ? prices.get(o.id) : '';
+    // the one writer, new options included (a price alone is not an S3 edit, S3-r4 :127)
+    ieOptPrice.addEventListener('input', bound(() => { IE.set(s, 'optionPrice', { key: o.id, raw: ieOptPrice.value }); syncEdit(); }));
+    R.prices.set(o.id, ieOptPrice);
+    focusKey(ieOptPrice, `ie-cg-pr::${o.id}`);
+    pr.append(mk('span', 'mc', 'L'), ieOptPrice);
+    const ieRecPill = document.createElement('button'); ieRecPill.type = 'button'; ieRecPill.className = 'recpill'; ieRecPill.classList.toggle('recpill-on', o.marked);
+    ieRecPill.textContent = 'Recomendada'; ieRecPill.setAttribute('aria-pressed', String(o.marked));
+    // exactly one: a tap marks this option (the marked one stays marked — a group never goes back to zero)
+    ieRecPill.addEventListener('click', bound(() => {
+      if (!o.marked && !IE.choiceSet(s, { op: 'choice.recommended', launcher: key, option: o.id }).ok) { pressFailed(ieRecPill); return; }
+      relayout(); refocus([`ie-cg-rec::${o.id}`]);
+    }));
+    focusKey(ieRecPill, `ie-cg-rec::${o.id}`);
+    const ieOptTrash = document.createElement('button'); ieOptTrash.type = 'button'; ieOptTrash.className = 'model';
+    ieOptTrash.setAttribute('aria-label', `Quitar ${o.choice || 'opción'}`); ieOptTrash.append(svgTrashIcon());
+    if (few) { lockControl(ieOptTrash, true); ieOptTrash.title = IE.s3Copy('tooFew'); }   // locked: the inert pass keeps it off
+    ieOptTrash.addEventListener('click', bound(() => {
+      const r = o.isNew ? IE.choiceDropNew(s, o.id) : IE.choiceOp(s, { op: 'option.remove', key: o.id });
+      if (!r.ok) { pressFailed(ieOptTrash); return; }
+      relayout(); refocus(['ie-cg-add']);
+    }));
+    row.append(ieOptName, pr, ieRecPill, ieOptTrash);
+    // no «Solo en la app Sherpa» on a choice / option (5f 11-13: both order forms render choices generically — choicesGeneric)
+    ge.append(row);
+    if (!o.isNew) R.opts.push({ key: o.id, row, cnt: mk('span', 'mk-cnt'), pi: ieOptPrice });
+    nameRows.push({ id: o.id, row, input: ieOptName, line: null });
+    last = row;
+  }
+  const ieAddOption = document.createElement('button'); ieAddOption.type = 'button'; ieAddOption.className = 'mgadd';
+  ieAddOption.append(svgPlusIcon(), document.createTextNode('Agregar opción'));
+  ieAddOption.addEventListener('click', bound(() => {
+    const ref = tmpRef();
+    if (IE.choiceOp(s, { op: 'option.add', launcher: key, ref, choice: '', price: null }).ok) { relayout(); refocus([`ie-cg-opt::${ref}`]); } else pressFailed(ieAddOption);
+  }));
+  focusKey(ieAddOption, 'ie-cg-add');
+  const flag = mk('label', 'mgflag');
+  const ieSame = document.createElement('input'); ieSame.type = 'checkbox';
+  ieSame.addEventListener('change', bound(() => { IE.set(s, 'samePrice', ieSame.checked); syncEdit(); }));
+  focusKey(ieSame, 'ie-same');
+  flag.append(ieSame, document.createTextNode('Mismo precio para todas'));
+  R.same = ieSame;
+  const sub = mk('div', 'mk-sub');
+  ge.append(ieAddOption, flag, sub);
+  R.choice = { s, key, ge, after: last, add: ieAddOption, sub, card, line: null, rows: nameRows, label: { id: null, row: ieChoiceName, input: ieChoiceName, line: null } };
+  const gf = mk('div', 'mk-gf');
+  const ieQuitChoice = document.createElement('button'); ieQuitChoice.type = 'button'; ieQuitChoice.className = 'btn ghost mk-quiet-danger sm'; ieQuitChoice.textContent = 'Quitar elección';
+  ieQuitChoice.addEventListener('click', bound(() => openChoiceRemove(s, ieQuitChoice)));
+  focusKey(ieQuitChoice, 'ie-cg-quit');
+  const ieChoiceDone = document.createElement('button'); ieChoiceDone.type = 'button'; ieChoiceDone.className = 'btn sm'; ieChoiceDone.textContent = 'Listo';
+  ieChoiceDone.addEventListener('click', bound(() => { choiceEditing.delete(s.id); relayout(); refocus(['ie-cg-pen']); }));
+  gf.append(ieQuitChoice, mk('span', 'mk-sp'), ieChoiceDone);
+  card.append(ge, gf);
+  syncChoice(R);
+  return card;
+}
+// D3 «Quitar elección» (MOCKUP-portal-structure-edit :1857, owner-approved) + the addendum's B2b: the in-drawer confirm (the
+// unsaved-edits card's scrim, inert background, Tab ring and Esc). A MARKED group keeps the recommended option's price (the approved
+// sentence); with NO mark the card lists the options and «Quitar elección» waits for a pick. «Cancelar» holds focus. Confirming queues
+// choice.remove with that price_from in the copy: the dish shows one price, editable before publish.
+function openChoiceRemove(s, from) {
+  const plan = IE.choiceRemovePlan(state.draft, s);
+  const cm = IE.choiceModel(state.draft, s);
+  const d = $('drawer');
+  if (!plan || !cm || d.querySelector('.mk-cfscrim')) return;
+  const mkEl = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const dish = IE.view(state.draft, s).fields.name;
+  const label = cm.label && cm.label.trim() ? cm.label : 'Elección';
+  let pick = plan.priceFrom;
+  const scrim = mkEl('div', 'mk-cfscrim');
+  const cfCard = mkEl('div', 'mk-cf');
+  cfCard.setAttribute('role', 'dialog'); cfCard.setAttribute('aria-modal', 'true');
+  cfCard.setAttribute('aria-labelledby', 'mk-cf-t'); cfCard.setAttribute('aria-describedby', 'mk-cf-d');
+  const h = mkEl('h3', null, `¿Quitar la elección ${label}?`); h.id = 'mk-cf-t';
+  const marked = plan.options.find((o) => o.id === plan.priceFrom);
+  const p = mkEl('p', null, marked ? `${dish} queda con un solo precio: L ${marked.price}, el de la opción recomendada. Podés cambiarlo antes de publicar.` : IE.s3Copy('removePick', { nombre: dish })); p.id = 'mk-cf-d';
+  const acts = mkEl('div', 'mk-cfa');
+  const cfCancel = document.createElement('button'); cfCancel.className = 'btn ghost'; cfCancel.type = 'button'; cfCancel.textContent = 'Cancelar';
+  const cfQuit = document.createElement('button'); cfQuit.className = 'btn ghost mk-quiet-danger'; cfQuit.type = 'button'; cfQuit.textContent = 'Quitar elección';
+  const ring = [cfCancel, cfQuit];
+  cfCard.append(h, p);
+  if (!marked) {
+    const pf = mkEl('div', 'mk-pf'); pf.setAttribute('role', 'radiogroup'); pf.setAttribute('aria-label', IE.s3Copy('pickAria'));
+    const name = `mk-pf-${s.id}`;
+    const radios = [];
+    for (const o of plan.options) {
+      const row = mkEl('label', 'optrow mk-pfrow');
+      const cfPick = document.createElement('input'); cfPick.type = 'radio'; cfPick.name = name;
+      cfPick.addEventListener('change', bound(() => {
+        pick = o.id;
+        for (const r of radios) r.row.classList.toggle('sel', r.id === pick);
+        cfQuit.disabled = false; cfQuit.removeAttribute('title');
+      }));
+      row.append(cfPick, mkEl('span', 'ogname', o.choice), mkEl('span', 'mk-rp', `L ${o.price}`));
+      pf.append(row); radios.push({ id: o.id, row }); ring.splice(ring.length - 1, 0, cfPick);
+    }
+    cfCard.append(pf);
+    cfQuit.disabled = true; cfQuit.title = IE.s3Copy('pickTitle');
+  }
+  acts.append(cfCancel, cfQuit);
+  cfCard.append(acts);
+  scrim.append(cfCard);
+  const inerted = [];
+  for (const el of [...d.children, ...document.body.children]) {
+    if (el === d || el.hasAttribute('inert')) continue;
+    el.setAttribute('inert', ''); inerted.push(el);
+  }
+  const close = () => {
+    if (activeConfirm === close) activeConfirm = null;
+    scrim.remove();
+    for (const el of inerted) el.removeAttribute('inert');
+    document.removeEventListener('keydown', cfKey, true);
+  };
+  const dismiss = () => { close(); if (from && from.isConnected) from.focus(); };
+  const cfKey = bound((e) => {
+    if (e.key === 'Escape') { e.preventDefault(); dismiss(); return; }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const live = ring.filter((x) => !x.disabled);
+      const at = live.indexOf(document.activeElement);
+      const to = e.shiftKey ? (at <= 0 ? live.length - 1 : at - 1) : (at === live.length - 1 ? 0 : at + 1);
+      live[to].focus();
+    }
+  });
+  cfCancel.addEventListener('click', bound(() => dismiss()));
+  cfQuit.addEventListener('click', bound(() => {
+    if (!pick) return;
+    close();
+    if (IE.choiceRemove(s, pick).ok) { choiceEditing.delete(s.id); renderDrawer(); holdDrawerForRename(); refocus(['ie-price']); } else pressFailed(from);
+  }));
+  d.append(scrim);
+  document.addEventListener('keydown', cfKey, true);
+  activeConfirm = close;
+  cfCancel.focus();
+}
+// the editor's live parts, after every keystroke: the naming line (the dish's typed name), and B2's line — quiet while the merchant
+// edits, the refusal style once «Guardar» held; gone the moment a pill is on
+function syncChoice(R) {
+  const c = R && R.choice;
+  if (!c) return;
+  const cm = IE.choiceModel(state.draft, c.s);
+  if (!cm || cm.removed) return;
+  c.card.classList.add('chg');   // the editing ring (syncEdit's field pass toggles .chg by today's fields only)
+  const v = IE.view(state.draft, c.s);
+  const o = cm.options.find((x) => x.marked) || cm.options[0];
+  c.sub.textContent = o ? `En el menú cada opción se llama «${v.fields.name} - ${o.choice}»: el nombre se arma solo y cambia con el producto.` : '';
+  // the server's NAME rules (B6 placement: under the box concerned): a duplicate shows at once; an empty name once «Guardar» held
+  const np = IE.choiceNameProblems(state.draft, c.s) || { label: null, options: {} };
+  const held = choiceHeld === c.s.id;
+  const fieldLine = (slot, key, lineId) => {
+    if (!key) { if (slot.line) { slot.line.remove(); slot.line = null; } slot.input.removeAttribute('aria-invalid'); slot.input.removeAttribute('aria-describedby'); return; }
+    if (!slot.line) {
+      slot.line = document.createElement('div'); slot.line.className = 'ferr mk-ferr'; slot.line.setAttribute('role', 'alert'); slot.line.id = lineId;
+      slot.row.after(slot.line);
+    }
+    slot.line.textContent = IE.s3Copy(key);
+    slot.input.setAttribute('aria-invalid', 'true'); slot.input.setAttribute('aria-describedby', lineId);
+  };
+  fieldLine(c.label, np.label === 'long' ? 'labelTooLong' : np.label && held ? 'labelRequired' : null, `ie-cg-err-${c.s.id}`);   // too long: at once (5f label_too_long)
+  c.rows.forEach((r, i) => { const pr = np.options[r.id]; fieldLine(r, pr === 'duplicate' ? 'dupName' : pr === 'empty' && held ? 'optNameRequired' : null, `ie-cg-err-${c.s.id}-${i}`); });
+  const named = !np.label && !Object.keys(np.options).length;
+  if (!cm.hold) { if (named && held) choiceHeld = null; if (c.line) { c.line.remove(); c.line = null; } return; }
+  const text = IE.s3Copy(cm.hold.reason === 'recommended_removed' ? 'recRemoved' : 'recRequired');
+  if (!c.line) {
+    c.line = document.createElement('div'); c.line.setAttribute('role', 'status');
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+    const pth = document.createElementNS(NS, 'path'); pth.setAttribute('d', 'M6 3h12v18l-6-4-6 4z'); svg.append(pth);
+    c.line.append(svg, document.createElement('span'));
+    c.ge.insertBefore(c.line, c.add);
+  }
+  c.line.className = `mk-recline${choiceHeld === c.s.id ? ' ferr' : ''}`;
+  c.line.lastChild.textContent = text;
+}
 const opcN = (n) => `${n} ${n === 1 ? 'opción' : 'opciones'}`;
 const opcProducts = (n) => `en ${n} ${n === 1 ? 'producto' : 'productos'}`;
 // an extras card's header line: open → the group's reach; folded (A3) → also how many are active here, or how many there are
@@ -1978,7 +2760,7 @@ function renderEditDrawer(d, it, keepScroll) {
     endEditSession();
     // the copy carries BOTH server switches: extrasCatalog turns on its group ops (B's attach, «Quitar de este producto») — without it
     // setGroupAttached stays dark by design, so an app that forgot to pass it would record nothing
-    editSess = IE.open(state.draft, key, state.reservedNames, { extrasAuthoring: state.extrasAuthoring === true, extrasCatalog: state.extrasCatalog === true });
+    editSess = IE.open(state.draft, key, state.reservedNames, { extrasAuthoring: state.extrasAuthoring === true, extrasCatalog: state.extrasCatalog === true, choiceEdit: state.choiceEdit === true });
   }
   const s = editSess;
   if (!s) return false;                       // not a product this drawer edits (an option, an unsaved addition): today's drawer
@@ -2056,8 +2838,11 @@ function renderEditDrawer(d, it, keepScroll) {
     body.append(fSub);
   }
 
+  // STRUCTURE S3: with choiceEdit the COPY says whether the dish has a choice now (D2 adds one, D3 removes it); without it, today's
+  const cm0 = s.choiceEdit ? IE.choiceModel(state.draft, s) : null;
+  const hasChoice = cm0 ? cm0.label !== null && !cm0.removed : !!v0.options;
   // a plain product: its price, as today (a product with a required choice prices its options, in «Opciones» below)
-  if (!v0.options) {
+  if (!hasChoice) {
     const fPr = mk('div', 'fld pr');
     fPr.append(mk('label', null, 'Precio'), mk('span', 'cur2', 'L'));
     const iePrice = document.createElement('input');
@@ -2075,7 +2860,7 @@ function renderEditDrawer(d, it, keepScroll) {
   const ex = v0.extras;
   // S2 (Codex S2 UI r1 P2-5): with the server's Extras page the field stays for a dish with ZERO groups — its «Agregar grupo de extras»
   // is the only way to attach one
-  if (v0.options || ex.show || state.extrasCatalog === true) {
+  if (hasChoice || ex.show || state.extrasCatalog === true || !!cm0) {
     const fOpc = mk('div', 'fld');
     const lrO = mk('div', 'mk-lrow');
     lrO.append(mk('label', null, 'Opciones'), mk('span', 'mk-cnt', state.extrasCatalog === true ? 'El orden de los grupos se define en Extras' : 'en el orden que las ve el cliente'));   // mockup v3 (owner 11-11): the order is set on the Extras page — once that page exists
@@ -2116,14 +2901,50 @@ function renderEditDrawer(d, it, keepScroll) {
       sw.append(lbl, ieNoExtras);
       box.append(sw);
     }
-    if (v0.options) {
+    // STRUCTURE S3 (MOCKUP panel D + the S3 addendum B2): with the server's choiceEdit switch the card reads the copy's choice (its
+    // pending ops applied) and carries the pencil; the pencil opens the editor IN the card. Without it, S1's card exactly.
+    const cm = cm0 && hasChoice ? cm0 : null;
+    if (cm && choiceEditing.has(s.id)) {
+      const card = choiceEditorCard(s, key, cm, { mk, header, relayout, R });
+      R.optBlock = card;
+      errSlot(card, 'options');
+      box.append(card);
+    } else if (cm) {
+      const label = cm.label && cm.label.trim() ? cm.label : 'Elección';
+      const open = !folded('req');
+      const card = mk('div', `mk-grp mk-req${open ? ' mk-open' : ''}`);
+      const iePencil = document.createElement('button'); iePencil.type = 'button'; iePencil.className = 'mk-ib';
+      iePencil.title = 'Editar grupo'; iePencil.setAttribute('aria-label', `Editar grupo ${label}`);
+      iePencil.append(pencilIcon());
+      iePencil.addEventListener('click', bound(() => { choiceEditing.add(s.id); relayout(); refocus(['ie-cg-name']); }));
+      focusKey(iePencil, 'ie-cg-pen');
+      const h = header('req', label, `${OPC_COPY.req}${open ? '' : ` · ${opcN(cm.options.length)}`}`, 'mk-gts mk-greq', open, iePencil);
+      card.append(h.gh);
+      // R1 ends with S3: the prices are edited in the editor; the read card names each option, its mark, its price (frame A)
+      if (open) {
+        const block = mk('div', 'mk-gb');
+        const prices = new Map((v0.prices || []).map((x) => [x.id, x.raw]));   // Codex #196: THE group's price model (D2 options included)
+        for (const o of cm.options) {
+          const row = mk('div', 'mk-dopt');
+          const dn = mk('span', 'mk-dn', o.choice);
+          if (o.marked) dn.append(mk('span', 'mk-rec', 'Recomendada'));
+          const pr = parsePrice(prices.has(o.id) ? prices.get(o.id) : '');
+          row.append(dn, mk('span', 'dp', Number.isInteger(pr) && pr > 0 ? `L ${pr}` : ''));
+          block.append(row);
+        }
+        card.append(block);
+      }
+      R.optBlock = card;
+      errSlot(card, 'options');
+      box.append(card);
+    } else if (!cm0 && v0.options) {
       const g = choiceGroup(state.draft, key);
       const label = (g && typeof g.label === 'string' && g.label.trim()) ? g.label : 'Elección';
       const open = !folded('req');
       const card = mk('div', `mk-grp mk-req${open ? ' mk-open' : ''}`);
       const h = header('req', label, `${OPC_COPY.req}${open ? '' : ` · ${opcN(v0.options.length)}`}`, 'mk-gts mk-greq', open);
       card.append(h.gh);
-      R.opts = [];
+      R.opts = []; R.prices = new Map();
       R.optCnt = mk('span', 'mk-cnt');   // the F2 line's counter class (kept for syncEdit's red), not drawn
       if (open) {
         const block = mk('div', 'mk-gb');
@@ -2145,7 +2966,7 @@ function renderEditDrawer(d, it, keepScroll) {
           dp.append(pr);
           row.append(dn, cnt, dp);
           block.append(row);
-          R.opts.push({ key: o.key, row, cnt, pi: ieOptPrice });
+          R.opts.push({ key: o.key, row, cnt, pi: ieOptPrice }); R.prices.set(o.key, ieOptPrice);
         }
         const lab = mk('label', 'mgflag mgflag-same mk-gsame');
         const ieSame = document.createElement('input'); ieSame.type = 'checkbox';
@@ -2249,16 +3070,27 @@ function renderEditDrawer(d, it, keepScroll) {
     }
     // STRUCTURE S2 — B: the dish action under the cards (MOCKUP frame B: .mk-adds > .railadd), ONLY with the server's Extras page;
     // off with the writer's line when the COPY refuses an attach (the X3b predicate)
-    if (state.extrasCatalog === true) {
+    // STRUCTURE S3 D2: the dish's second action, «Agregar elección requerida» (quiet), on a plain dish with the server's choiceEdit
+    const d2 = !!cm0 && !hasChoice && !cm0.removed;
+    if (state.extrasCatalog === true || d2) {
       const adds = mk('div', 'mk-adds');
-      const sheet = IE.attachSheet(state.draft, s);
-      const ieAddGroup = document.createElement('button'); ieAddGroup.type = 'button'; ieAddGroup.className = 'railadd';
-      ieAddGroup.append(svgPlusIcon(), document.createTextNode('Agregar grupo de extras'));
-      lockControl(ieAddGroup, !ex.authoring || !sheet.canAdd);
-      ieAddGroup.addEventListener('click', bound(() => bOpen(s, ieAddGroup, () => { relayout(); refocus(['ie-badd']); })));
-      focusKey(ieAddGroup, 'ie-badd');
-      adds.append(ieAddGroup);
-      if (!sheet.canAdd && sheet.reason) adds.append(mk('div', 'ferr mk-ferr', sheet.reason));
+      if (state.extrasCatalog === true) {
+        const sheet = IE.attachSheet(state.draft, s);
+        const ieAddGroup = document.createElement('button'); ieAddGroup.type = 'button'; ieAddGroup.className = 'railadd';
+        ieAddGroup.append(svgPlusIcon(), document.createTextNode('Agregar grupo de extras'));
+        lockControl(ieAddGroup, !ex.authoring || !sheet.canAdd);
+        ieAddGroup.addEventListener('click', bound(() => bOpen(s, ieAddGroup, () => { relayout(); refocus(['ie-badd']); })));
+        focusKey(ieAddGroup, 'ie-badd');
+        adds.append(ieAddGroup);
+        if (!sheet.canAdd && sheet.reason) adds.append(mk('div', 'ferr mk-ferr', sheet.reason));
+      }
+      if (d2) {
+        const ieAddChoice = document.createElement('button'); ieAddChoice.type = 'button'; ieAddChoice.className = 'railadd mk-railq';
+        ieAddChoice.append(svgPlusIcon(), document.createTextNode('Agregar elección requerida'));
+        ieAddChoice.addEventListener('click', bound(() => d2Open(s, ieAddChoice)));
+        focusKey(ieAddChoice, 'ie-d2');
+        adds.append(ieAddChoice);
+      }
       box.append(adds);
     }
     fOpc.append(lrO, box);
@@ -2287,6 +3119,7 @@ function renderEditDrawer(d, it, keepScroll) {
   R.dirty = mk('span', 'mk-dirty', 'Cambios sin guardar');   // frame 1: the quiet mark beside «Guardar»
   R.dirty.hidden = true;
   foot.append(ieCancel, mk('span', 'mk-sp'), R.dirty, ieSave);
+  errSlot(foot, 'foot'); R.ctl.foot = [ieSave];   // S3 B6: a refusal no field can fix (choice_index_invalid) says so beside «Guardar»
 
   R.body = body;
   editRefs = R;
@@ -2337,6 +3170,9 @@ function syncEdit() {
     for (const l of v.consequences.lines) { const li = mk('li'); li.append(mk('span', 'mk-cdot'), mk('span', null, l)); ul.append(li); }
     R.note.append(mk('b', null, v.consequences.title), ul);
   }
+  // Codex #196: EVERY drawn price input follows THE group's price model (new options included); the field being typed in keeps its text
+  if (R.prices) for (const o of v.prices || []) { const pi = R.prices.get(o.id); if (pi && pi.value !== o.raw && document.activeElement !== pi) pi.value = o.raw; }
+  if (R.same) R.same.checked = v.same === true;
   if (R.opts && v.options) {
     const bad = !!v.errors.options;
     R.optBlock.classList.toggle('mk-inv', bad);
@@ -2349,9 +3185,7 @@ function syncEdit() {
       r.cnt.hidden = !(o.nearLimit || o.tooLong);   // an inline warning only near / past the limit
       r.cnt.classList.toggle('over', o.tooLong);
       r.row.classList.toggle('over', o.tooLong);
-      if (r.pi.value !== o.price && document.activeElement !== r.pi) r.pi.value = o.price;
     });
-    if (R.same) R.same.checked = v.same === true;
     if (R.gsub) R.gsub.textContent = opcNameLine(v.options, choiceGroup(state.draft, s.key));
   }
   // STRUCTURE S1 — the extras cards follow the copy in place (counts, the summary, the link, each row's check and price)
@@ -2384,12 +3218,15 @@ function syncEdit() {
   // the bar waits while the copy is dirty — repainted by syncUi (the one derivation) only when that changes: syncUi → setDrawerInert →
   // syncEdit would otherwise loop
   if (R.lastDirty !== dirty) { R.lastDirty = dirty; syncUi(); }
+  syncChoice(R);
 }
 // «Guardar»: the whole edit into the shared draft, once; the drawer closes onto the list (the row shows its tag, the bar counts it).
 function saveEdit() {
   const s = editSess;
   if (!s || s.closed) return;
   const r = IE.save(state.draft, s);
+  // B2: a touched choice with no «Recomendada» is held HERE (never sent to a sure refusal) — the editor opens on its line, refusal style
+  if (!r.ok && (r.error === 'choice_hold' || r.error === 'choice_names')) { choiceHeld = s.id; choiceEditing.add(s.id); renderDrawer(); holdDrawerForRename(); return; }
   if (!r.ok) { syncEdit(); return; }
   editSess = null; editUpload = null; editRefs = null;
   closeDrawer();
@@ -2526,7 +3363,7 @@ function renderAddDrawer(d, it, keepScroll) {
     o.value = catId; o.selected = catId === disp.cat;
     sec.append(o);
   }
-  sec.addEventListener('change', bound(() => { setAddition(state.draft, id, 'cat', sec.value); state.selectedCat = sec.value; after(); renderDrawer(); holdDrawerForRename(); }));
+  sec.addEventListener('change', bound(() => { setAddition(state.draft, id, 'cat', sec.value, { sections: state.sections === true }); state.selectedCat = sec.value; after(); renderDrawer(); holdDrawerForRename(); }));
   row2.append(field('Sección', sec, 'cat'));
   const prf = mk('div', 'fld pr');
   prf.append(mk('label', null, 'Precio'), mk('span', 'cur2', 'L'));
@@ -2594,7 +3431,7 @@ function renderAddDrawer(d, it, keepScroll) {
   quitar.type = 'button'; quitar.className = 'btn delx'; quitar.textContent = 'Quitar';
   quitar.addEventListener('click', bound(() => {
     uploader.cancel(id);                      // DISH PHOTOS B — an upload for a product being removed has nowhere to land
-    removeAddition(state.draft, id, state.additionKeys);
+    removeAddition(state.draft, id, state.additionKeys, { sections: state.sections === true });
     state.drawerError = null;
     closeDrawer(); repaintFromDraft();
   }));
@@ -2641,7 +3478,8 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
   const onIn = document.createElement('input'); onIn.type = 'radio'; onIn.name = radioName; onIn.checked = !!group; lockControl(onIn, !unsaved);
   focusKey(onIn, 'on');
   onIn.setAttribute('aria-label', 'El cliente elige 1 opción');
-  onIn.addEventListener('change', bound(() => { if (onIn.checked) { setRequiredChoice(state.draft, id, true, [newRef(), newRef()]); state.samePrice.delete(id); restructure(['label', 'on']); } }));
+  // STRUCTURE S3 B7: with the server's choiceEdit the FIRST option is «Recomendada» from the start (the server's rule for a new group)
+  onIn.addEventListener('change', bound(() => { if (onIn.checked) { setRequiredChoice(state.draft, id, true, [newRef(), newRef()], undefined, { choiceEdit: state.choiceEdit === true }); state.samePrice.delete(id); restructure(['label', 'on']); } }));
   attach.append(onIn);
   const n = group ? group.options.length : 0;
   const sub = group ? `${n} ${n === 1 ? 'opción' : 'opciones'} · define el precio · en 1 producto` : 'el cliente elige 1 opción · define el precio';
@@ -2674,7 +3512,8 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
 
   if (group && open) {
     const gb = mk('div', 'mgbody');
-    const canBadge = state.choiceBadges.includes('recommended');
+    // B7: with choiceEdit the pill is always there and is a RADIO (exactly one mark; a tap on the marked one keeps it)
+    const canBadge = state.choiceBadges.includes('recommended') || state.choiceEdit === true;
     for (const o of group.options) {
       const oid = rowId(o);
       const row = mk('div', 'mopt');
@@ -2708,7 +3547,11 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
         const pill = document.createElement('button'); pill.className = 'recpill'; if (on) pill.classList.add('recpill-on');
         pill.textContent = 'Recomendada'; pill.type = 'button'; pill.setAttribute('aria-pressed', String(on)); lockControl(pill, !unsaved);
         focusKey(pill, `pill::${oid}`);
-        pill.addEventListener('click', bound(() => { setChoiceRecommended(state.draft, oid, !on); restructure([`pill::${oid}`]); }));
+        pill.addEventListener('click', bound(() => {
+          if (state.choiceEdit === true) { if (!on) for (const sib of group.options) setChoiceRecommended(state.draft, rowId(sib), rowId(sib) === oid); }
+          else setChoiceRecommended(state.draft, oid, !on);
+          restructure([`pill::${oid}`]);
+        }));
         row.append(pill);
       }
       if (unsaved) {
@@ -2718,12 +3561,21 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
         // after a removal: the next option's name, else the previous one's, else "Agregar opción"
         const i = group.options.indexOf(o);
         const near = [group.options[i + 1], group.options[i - 1]].filter(Boolean).map((r) => `name::${rowId(r)}`);
-        x.addEventListener('click', bound(() => { removeChoice(state.draft, id, oid); restructure([...near, 'add']); }));
+        x.addEventListener('click', bound(() => { removeChoice(state.draft, id, oid, { choiceEdit: state.choiceEdit === true }); restructure([...near, 'add']); }));   // B7: the mark follows the first row
         row.append(x);
       }
       gb.append(row);
       const oErr = errAt(oid);
       if (oErr) { row.classList.add('invalid'); gb.append(mk('div', 'ferr', oErr)); }
+    }
+    // B7 (S3 addendum): the quiet line under the rows says the first is marked and how to move it — only with choiceEdit
+    if (unsaved && state.choiceEdit === true) {
+      const recLine = mk('div', 'mk-recline'); recLine.setAttribute('role', 'status');
+      const NS = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+      const pth = document.createElementNS(NS, 'path'); pth.setAttribute('d', 'M6 3h12v18l-6-4-6 4z'); svg.append(pth);
+      recLine.append(svg, mk('span', null, IE.s3Copy('b7Line')));
+      gb.append(recLine);
     }
     if (unsaved) {
       const add = document.createElement('button'); add.className = 'mgadd'; add.type = 'button';
@@ -2997,7 +3849,7 @@ async function openReviewFlow() {
       // outcomeFor means every server error on the write path lands somewhere the merchant can act on,
       // whichever call produced it. The generic durable panel catches anything unmapped.
       if (gen !== opGeneration) return;      // a stale failure must not paint over the current world
-      if (showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)))) $('scrim').classList.add('show');
+      if (showOutcome(outcomeFor(e, 'edit', outcomeCtx()))) $('scrim').classList.add('show');
   } finally {
     endWrite(writeId, lock, gen);   // settled; the ticket is the UI's again (or nobody's)
     // LIFECYCLE: the lock is held while the review is LIVE — the modal open, the merchant attesting —
@@ -3159,7 +4011,7 @@ async function runPublish() {
     out = await attempt;
   } catch (e) {
     if (gen !== opGeneration) return;     // stale: auth changed or a newer review began mid-flight
-    showOutcome(outcomeFor(e, 'publish', extrasOutcomeCtx(state.draft)));
+    showOutcome(outcomeFor(e, 'publish', outcomeCtx()));
     return;
   } finally {
     endWrite(writeId, lock, gen);
@@ -3289,7 +4141,7 @@ async function sendToOwnerFlow() {
     document.dispatchEvent(new CustomEvent('portal:publish-request-sent'));   // pubreq.js: «Enviado al dueño para publicar»
   } catch (e) {
       if (gen !== opGeneration) return;      // a stale failure must not paint over the current world
-      if (showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)))) $('scrim').classList.add('show');
+      if (showOutcome(outcomeFor(e, 'edit', outcomeCtx()))) $('scrim').classList.add('show');
   } finally {
     endWrite(writeId, lock, gen);
     releaseEditLock(lock);                   // nothing stays live: no review holds the draft on this path
@@ -3448,6 +4300,14 @@ function showOutcome(outcome) {
         const ctl = all.find((x) => x.dataset.k === `xnm:${k}`) || all.find((x) => x.dataset.k === k);
         if (ctl) ctl.focus();
       }
+      return;
+    }
+    if (id === PUBLISH_ACTIONS.FIX_SECTION) {
+      // S4-F — back to editing on the section the server named, its line under the header
+      $('scrim').classList.remove('show');
+      clearReview();
+      if (outcome.section) { state.selectedCat = outcome.section; sectionLine = { cat: outcome.section, text: outcome.sectionLine }; }
+      paint(); syncUi();
       return;
     }
     if (id === PUBLISH_ACTIONS.FIX && outcome.productLine) {

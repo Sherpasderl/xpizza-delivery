@@ -426,14 +426,22 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // undoRemoveProduct («Deshacer»); both ask the ONE predicate canRemoveProduct / canEditContent first; rebuildOrders is the ONE order
   // rebuild over the served live order. No key, id or identity stamp is written; nothing is renamed. The read side app.js paints from
   // (pendingRemovalsOf, removalListSource, removedRowOf, removalDishRows) is pure and hands back copies.
+  // STRUCTURE S3 (PLAN-portal-structure-S3-ui r0, APPROVED 11-13) — the required choice on an EXISTING dish writes ONLY through 5f's
+  // choice writer (the byte copy choice-transitions.js): applyChoiceOps (an ordered op list, all or nothing, with the server's choiceEdit
+  // switch; its removals' stamps through mergeDeletionClaim) and the pure choiceRefusalLine (the owner-approved reward line). No new key.
+  // STRUCTURE S4 — the «S4 portal writer» (PLAN-portal-structure-S4-writer r0, APPROVED 11-13): addCategory (staged; its id is 5f's
+  // categorySlug), renameCategory (a declared one through T1's setCategoryNames), dropStagedCategory, moveItem (a declared target through
+  // editItem; a staged one promoted at 5f's promotedOrder), addSubcat / renameSubcat, reorderSections / reorderSubcats / reorderItems —
+  // each all or nothing, refused without the server's sections switch, then when the draft is not owned for editing. No key is written.
+  // S4 drawing half: sectionIsNew, a pure reader (staged, or declared since load) — the F tag «Nueva».
   assert.deepStrictEqual(exported, [
-    'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addChoice', 'addProduct', 'adopt', 'applyExposureOps', 'attachRefusal', 'canEditDraft', 'canRemoveProduct', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
-    'commit', 'commitDish', 'commitTo', 'composeDish', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'draftSource', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
-    'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'mergeDeletionClaim', 'optionGroups', 'optionParentId',
-    'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRemovalsOf', 'pendingRenames', 'pendingStructure', 'pendingTexts',
-    'productsUsingGroup', 'rebuildOrders', 'removalDishRows', 'removalListSource', 'removeAddition', 'removeChoice', 'removeProduct', 'removedRowOf', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
+    'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addCategory', 'addChoice', 'addProduct', 'addSubcat', 'adopt', 'applyChoiceOps', 'applyExposureOps', 'attachRefusal', 'canEditDraft', 'canRemoveProduct', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
+    'choiceRefusalLine', 'commit', 'commitDish', 'commitTo', 'composeDish', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'draftSource', 'dropStagedCategory', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
+    'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'mergeDeletionClaim', 'moveItem', 'optionGroups', 'optionParentId',
+    'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingChoices', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRemovalsOf', 'pendingRenames', 'pendingSections', 'pendingStructure', 'pendingTexts',
+    'productsUsingGroup', 'rebuildOrders', 'removalDishRows', 'removalListSource', 'removeAddition', 'removeChoice', 'removeProduct', 'removedRowOf', 'renameCategory', 'renameSubcat', 'reorderItems', 'reorderSections', 'reorderSubcats', 'rowId', 'sectionIsNew', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
     'setChoiceRecommended', 'setExtraName', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
-    'tidyItemName', 'undoRemoveProduct',
+    'stagedName', 'tidyItemName', 'undoRemoveProduct',
   ], 'the edit state exports exactly these');
   // «Quitar del menú»: both writers ask the boundary first — removeProduct through the ONE predicate (which asks canEditContent),
   // undoRemoveProduct directly
@@ -450,6 +458,8 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // STRUCTURE S2: both S2 writers ask the same boundary first (the composition's strict mode is the one «Guardar» uses)
   const aeoBody = editor.slice(editor.indexOf('export function applyExposureOps('), editor.indexOf('export function applyExposureOps(') + 400);
   assert.ok(/if \(!canEditContent\(draft\)\) return \{ ok: false, code: 'not_editable' \};/.test(aeoBody), 'applyExposureOps refuses when the draft is not owned for editing');
+  const acoBody = editor.slice(editor.indexOf('export function applyChoiceOps('), editor.indexOf('export function applyChoiceOps(') + 400);
+  assert.ok(/if \(choiceEdit !== true\) return \{ ok: false, code: 'choice_edit_off' \};\n  if \(!canEditContent\(draft\)\) return \{ ok: false, code: 'not_editable' \};/.test(acoBody), 'applyChoiceOps refuses without the switch, then when the draft is not owned for editing');
   const cdBody = editor.slice(editor.indexOf('export function composeDish('), editor.indexOf('export function composeDish(') + 400);
   assert.ok(/if \(strict && !canEditContent\(draft\)\) return \{ ok: false, code: 'not_editable' \};/.test(cdBody), 'the strict composition refuses when the draft is not owned for editing');
   assert.ok(/export function commitDish\([^)]*\) \{\n  const r = composeDish\(draft, key, edit, ops, \{ \.\.\.opts, strict: true \}\);/.test(editor), 'commitDish is the STRICT composition');
@@ -781,8 +791,8 @@ test('#pubbtn actually publishes, through a real in-flight lock', () => {
 
 test('every publish state is wired — and edit_superseded re-reviews rather than retrying', () => {
   const app = codeOf('app.js');
-  assert.ok(/showOutcome\(outcomeFor\(e, 'publish'(?:, extrasOutcomeCtx\(state\.draft\))?\)\)/.test(app), 'a thrown publish error is routed to a designed panel, marked as a publish');
-  assert.ok(/showOutcome\(outcomeFor\(e, 'edit'(?:, extrasOutcomeCtx\(state\.draft\))?\)\)/.test(app), '...and an editCatalog failure is marked as an edit');
+  assert.ok(/showOutcome\(outcomeFor\(e, 'publish'(?:, (?:extrasOutcomeCtx\(state\.draft\)|outcomeCtx\(\)))?\)\)/.test(app), 'a thrown publish error is routed to a designed panel, marked as a publish');
+  assert.ok(/showOutcome\(outcomeFor\(e, 'edit'(?:, (?:extrasOutcomeCtx\(state\.draft\)|outcomeCtx\(\)))?\)\)/.test(app), '...and an editCatalog failure is marked as an edit');
   // 🔴 RETRY must redo the operation that FAILED, not always the publish
   const soIdx2 = app.indexOf('function showOutcome');
   const retryBranch = app.slice(app.indexOf('PUBLISH_ACTIONS.RETRY', soIdx2), app.indexOf('PUBLISH_ACTIONS.RETRY', soIdx2) + 420);
@@ -887,7 +897,7 @@ test('no server error on the write path escapes the designed panels', () => {
   // which is the 2b-2a surface for "your menu could not be loaded".
   const writeCatches = catches.filter((c) => /outcomeFor|showEmpty/.test(c));
   assert.ok(writeCatches.length >= 3, 'every catch resolves to a designed surface');
-  const routed = catches.filter((c) => /showOutcome\(outcomeFor\(e, '(edit|publish)'(?:, extrasOutcomeCtx\(state\.draft\))?\)\)/.test(c));
+  const routed = catches.filter((c) => /showOutcome\(outcomeFor\(e, '(edit|publish)'(?:, (?:extrasOutcomeCtx\(state\.draft\)|outcomeCtx\(\)))?\)\)/.test(c));
   // T-d (3a): the THIRD is sendToOwnerFlow (editCatalog + catalogRequestPublish), routed to the SAME panels as the review's save
   assert.strictEqual(routed.length, 3, 'ALL write calls — editCatalog, publishEdited and the manager\'s send — route to the panels');
 
@@ -1053,7 +1063,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.savedRenames':        [2, 'guarded', 'PLAN-public-menu-display T1 (Codex r1 #3) — the SAVED draft\u2019s unpublished section names, from the server: set in applyAddProductFacts (load / post-publish settle, behind the generation check) and in sendToOwnerFlow\u2019s settle path from the server\u2019s own diff, behind its generation check. It only HOLDS edits (prices / names), it never writes the draft'],
     'state.savedOther':          [2, 'guarded', 'PLAN-public-menu-display T1 (Codex r1 #3) — whether the SAVED draft has anything unpublished besides a name, from the server: the same two settle paths as state.savedRenames, generation-checked; it only HOLDS a rename'],
     'state.renameEdit':          [5, 'view',    'PLAN-public-menu-display T1 — WHICH section title is being edited (an id, nothing else): reset by the load path, set by «Cambiar nombre», cleared by Guardar / Cancelar and by moving to another section. Presentational: the NAME itself reaches the draft only through setCategoryNames (canEdit), from bound() callbacks'],
-    'state.selectedCat':         [6, 'view',    '[S4: + the existing-product FIX action, presentational] [1D add-product A: + the add drawer\u2019s section change and the FIX action, both presentational] which category the rail highlights — a stale write repaints, it cannot mis-price'],
+    'state.selectedCat':         [10, 'view',   '[STRUCTURE S4 drawing: + «Crear» selects the new section, + dropping one selects the first, + S4-F «Ir a la sección», + «Ponerles nombre» selects the unnamed section; all presentational] [S4: + the existing-product FIX action, presentational] [1D add-product A: + the add drawer\u2019s section change and the FIX action, both presentational] which category the rail highlights — a stale write repaints, it cannot mis-price'],
     'state.openGroups':          [6, 'view',    '[1D add-product B: + the same three for the "Elección requerida" chevron, keyed choice::<id>] which option groups are expanded in the drawer — one assignment plus the add/delete of the toggle; presentational only'],
     'state.drawerKey':           [7, 'view',    '[1D add-product A: + the add drawer\u2019s Cerrar and Listo] [1D add-product B: + renderDrawer redirecting a new product\u2019s OPTION to its product] [DISH PHOTOS B: + the crop step\u2019s Cerrar (bound), which closes the drawer and discards the picked file] which dish the drawer shows; the fields inside it are canEdit-guarded'],
     'state.restaurants':         [2, 'guarded', '[PORTAL-UI 1a: + openEditor, once per page at boot — the page\u2019s single selected restaurant] the switcher list, written by loadRestaurants behind its generation check'],
@@ -1077,6 +1087,8 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     //    set ONLY in applyAddProductFacts on the generation-checked settle paths; the server re-judges every save and publish
     'state.extrasAuthoring':     [2, 'guarded', 'STRUCTURE S1 (R5) — the server\u2019s per-product extras switch (getEditableCatalog extrasAuthoring); fail closed (the checklist and «Sin extras» dark, prices as today) until a load sets it'],
     'state.extrasCatalog':       [2, 'guarded', 'advisor Q8 (11-11) — whether the server serves the Extras page (getEditableCatalog extrasCatalog); fail closed (S1\u2019s «Opciones» line) until a load sets it; presentational'],
+    'state.choiceEdit':          [2, 'guarded', 'STRUCTURE S3 (UI-r0 :45) \u2014 the server\u2019s required-choice switch (getEditableCatalog choiceEdit); fail closed (S1\u2019s card, no pencil) until a load sets it; the server re-judges every op'],
+    'state.sections':            [2, 'guarded', 'STRUCTURE S4 (§0.3) \u2014 the server\u2019s sections switch (getEditableCatalog sections); fail closed (today\u2019s rail, no «Nueva categoría») until a load sets it; the server re-judges every op'],
     'state.deletionBase':        [3, 'guarded', 'STRUCTURE S2 (§3.4, P-1) — the deletion baseline getEditableCatalog serves (version, generation), set on the load settle path and reset with the edit facts; the 3rd is REVIEW-DELETIONS adopting the FRESH base from its generation- and rid-checked re-read (§5.2); it only RIDES a save whose draft carries a removal claim (LEDGER R-A clause 3)'],
     // «Quitar del menú» (PLAN-portal-remove-product r3 §9) — per-load server facts, set ONLY in applyAddProductFacts on the generation-checked
     // settle paths and reset with the edit facts (resetEditFacts); the server re-judges every save (the claim, the orders, the refs)
@@ -1231,6 +1243,11 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'setExtraName', 'reviewDeletio
                  // PLAN-public-menu-display T1 — a section's name: the canEdit-guarded setter and the three handlers that call it or
                  // move the view state (state.renameEdit); every one is reached only through bound()
                  'setCategoryNames', 'renameStart', 'renameSave', 'renameCancel',
+                 'createSection',   // STRUCTURE S4 (frame E): «Crear» — addCategory (sections switch), then the new section selected
+                 'subCreate',       // S4-A / S4-B: «Crear subcategoría» — addSubcat (sections switch)
+                 'menuMoveTo',      // E2: «Mover a…» — moveItem (sections switch; 3(a) un-promotes a draft-only section)
+                 'sectionsReorder', 'sectionsMove', 'sectionsDrop',   // frame E: the sections' order — reorderSections (sections switch)
+                 'subsWrite', 'subsMove', 'subsDrop', 'subRenameSave', 'itemsOrder', 'itemsMove', 'itemsDrop',   // frame E: subsections / dishes (sections switch)
                  // STRUCTURE S2 (Codex S2 UI r1 P2-10) — applyExposureOps (canEditContent-guarded, editor.js) is a mutator; the tree found its
                  // callers: x3Create (X3 «Crear grupo»), addCommit / addLeave (the inline row commits — addLeave on focus-out), x4Write /
                  // x4Move / x4Drop (the ONE group.order), and the leave paths that commit a complete inline row first (leaveExtras,
@@ -1367,6 +1384,45 @@ const LISTENERS = {
   "ieDetach::click":              ['bound', [], 'S2 A — «Quitar de este producto»: detach.item into the drawer COPY (IE.setGroupAttached false), never the draft'],
   "ieExtraPrice::input":          ['bound', [], 'S1 / R4 — an extra\u2019s price, into the working copy (IE.set extraPrice), as today until S2'],
   "ieRemove::click":              ['bound', [], '«Quitar del menú» R1 — opens the R2 confirm; the press writes nothing (the confirm\u2019s «Quitar» is confirmRemoveProduct, built with bound())'],
+  // STRUCTURE S3 — the required choice's editor (panel D): every handler writes only the WORKING COPY's choice ops (IE.choiceOp /
+  // choiceSet / choiceUpdateNew / choiceDropNew, each dry-run through the server's writer) or view state; the draft only by «Guardar»
+  "iePencil::click":              ['bound', [], 'S3 D \u2014 the pencil opens the editor: view state (choiceEditing, per drawer session) and a drawer re-render'],
+  "ieChoiceName::input":          ['bound', [], 'S3 D \u2014 «Nombre de la elección», into the working copy (IE.choiceSet choice.label: one op, the last value)'],
+  "ieOptName::input":             ['bound', [], 'S3 D \u2014 an option\u2019s name, into the working copy (a live one: option.rename via choiceSet; a new one: its own add op)'],
+  "ieRecPill::click":             ['bound', [], 'S3 D \u2014 «Recomendada», into the working copy (IE.choiceSet choice.recommended: exactly one mark); the drawer re-lays out'],
+  "ieOptTrash::click":            ['bound', [], 'S3 D \u2014 an option\u2019s trash, into the working copy (option.remove, or a new option\u2019s add op dropped); the drawer re-lays out'],
+  "ieAddOption::click":           ['bound', [], 'S3 D \u2014 «Agregar opción», into the working copy (option.add with a fresh tmp: ref); the drawer re-lays out'],
+  "ieChoiceDone::click":          ['bound', [], 'S3 D \u2014 «Listo»: closes the editor (view state); the copy keeps its ops'],
+  "ieQuitChoice::click":          ['bound', [], 'S3 D3 \u2014 «Quitar elección»: opens the in-drawer confirm; the press writes nothing'],
+  "cfCancel::click":              ['bound', [], 'S3 D3 \u2014 «Cancelar»: closes the confirm; the copy keeps its choice'],
+  "cfPick::change":               ['bound', [], 'S3 B2b \u2014 the price that stays: the card\u2019s own pick (view state) and its action turns on'],
+  "cfQuit::click":                ['bound', [], 'S3 D3 \u2014 «Quitar elección» (confirmed): IE.choiceRemove queues choice.remove with price_from in the WORKING COPY; the drawer re-lays out (one price, editable)'],
+  // S3 D2 — «Agregar elección requerida»: the sheet edits ITS OWN state (choicePick, module-private); only «Agregar elección» records,
+  // through IE.choiceAdd into the WORKING COPY (dry-run through the server's writer) — never the draft
+  "ieAddChoice::click":           ['bound', [], 'S3 D2 \u2014 opens the sheet over the drawer copy; the press writes nothing'],
+  "d2Name::input":                ['bound', [], 'S3 D2 \u2014 the choice\u2019s name, into the sheet\u2019s state; «Agregar elección» follows in place'],
+  "d2OptName::input":             ['bound', [], 'S3 D2 \u2014 an option\u2019s name, into the sheet\u2019s state'],
+  "d2OptPrice::input":            ['bound', [], 'S3 D2 \u2014 an option\u2019s price, into the sheet\u2019s state'],
+  "d2RecPill::click":             ['bound', [], 'S3 D2 \u2014 «Recomendada»: the sheet\u2019s mark (exactly one); the sheet repaints'],
+  "d2OptTrash::click":            ['bound', [], 'S3 D2 \u2014 an option row leaves the sheet (off at two); the sheet repaints'],
+  "d2More::click":                ['bound', [], 'S3 D2 \u2014 «Agregar opción»: a row in the sheet; the sheet repaints'],
+  "d2Same::change":               ['bound', [], 'S3 D2 \u2014 «Mismo precio para todas» in the sheet (the cheapest usable price)'],
+  "d2Cancel::click":              ['bound', ['d2Close'], 'S3 D2 \u2014 «Cancelar»: the sheet closes; nothing is recorded'],
+  "d2Go::click":                  ['bound', [], 'S3 D2 \u2014 «Agregar elección»: IE.choiceAdd records choice.add (+ the mark) in the WORKING COPY; the drawer re-lays out'],
+  // S4 — «Nueva categoría» (frame E) and «Nueva subcategoría» (S4-A / S4-B): the box and the sheet edit their OWN state; only «Crear» /
+  // «Crear subcategoría» write, through the S4 writer (sections switch); dropping a new section is the confirm's own press
+  "subName::input":               ['bound', [], 'S4-A \u2014 the subsection\u2019s name, into the sheet\u2019s state; the counter in place'],
+  "subAll::click":                ['bound', [], 'S4-B \u2014 «Marcar todos»: the sheet\u2019s marks; the sheet repaints'],
+  "subMark::change":              ['bound', [], 'S4-B \u2014 one product\u2019s mark, in the sheet\u2019s state; the sheet repaints'],
+  "subCancel::click":             ['bound', [], 'S4-A \u2014 «Cancelar»: the sheet closes; nothing written'],
+  "subGo::click":                 ['bound', ['subCreate'], 'S4-A \u2014 «Crear subcategoría»: addSubcat (sections switch, all or nothing); the list repaints'],
+  "$('xsubcat')::click":          ['view', ['subScrim'], 'S4-A \u2014 the backdrop cancels the sheet: it closes, nothing written'],
+  "menuMove::click":              ['bound', ['menuMoveTo'], 'E2 \u2014 «Mover a…» one entry: moveItem (sections switch, all or nothing); a refusal is its line under the row'],
+  "menuRemove::click":            ['bound', [], 'E2 \u2014 «Quitar del menú» from the row menu: the approved R2 confirm (its «Quitar» is confirmRemoveProduct), or the 3(b) line; the press writes nothing'],
+  "document::click":              ['view', ['menuOutside'], 'E2 \u2014 while a row menu is open only (added on open, removed on close): a press outside closes it; nothing is written'],
+  "window::resize":               ['view', ['menuAway'], 'E2 \u2014 while a row menu is open only: the fixed layer does not follow its row, so a resize closes it; nothing is written'],
+  "window::scroll":               ['view', ['menuAway'], 'E2 \u2014 while a row menu is open only: a scroll closes it (the layer does not follow its row); nothing is written'],
+  "$('xchoice')::click":          ['view', ['d2Scrim'], 'S3 D2 \u2014 the backdrop cancels the sheet: it closes, nothing is recorded'],
   // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html) — the in-page confirm before an exit would drop a dirty working copy
   "cfKeep::click":                ['bound', [], 'unsaved edits — «Seguir editando»: dismisses the confirm; the working copy stays exactly as it was'],
   "cfDrop::click":                ['bound', [], 'unsaved edits — «Descartar»: drops the working copy (endEditSession), then the exit it held (close / open the other product); the draft is untouched'],
@@ -1623,6 +1679,16 @@ const ALLOWED_CONSUMERS = new Set([
   'IE.attachSheet',
   // A: «Quitar de este producto»'s writer dry run over the copy's prospect — a pure reader (cell «detachRefusal is a PURE reader»)
   'IE.detachRefusal',
+  // S3: the required choice's model over the copy's ops (the writer applied to a scratch draft) — a pure reader (cell «choiceModel is a PURE reader»)
+  'IE.choiceModel',
+  // S3 D3: the price that stays when the choice goes (the marked option, or null ⇒ the card asks) — a pure reader (cell «choiceRemovePlan is a PURE reader»)
+  'IE.choiceRemovePlan',
+  // S3: the server's name rules over the copy's choice (empty / duplicate under the synced fold) — a pure reader (cell «choiceNameProblems is a PURE reader»)
+  'IE.choiceNameProblems',
+  // STRUCTURE S4: a new section / dropping a new one (sections switch, canEditContent, all or nothing) and the pure «is it new» reader
+  'addCategory', 'dropStagedCategory', 'sectionIsNew', 'addSubcat', 'moveItem', 'reorderSections', 'reorderSubcats', 'reorderItems', 'renameSubcat',
+  'pendingSections',   // S4-G: the bar's S4 counts — a pure reader (cell «pendingSections is a PURE reader»)
+  'stagedName',        // S4-E: a staged section's name for the review — a pure reader (cell «stagedName is a PURE reader»)
   // §5.2: the outcome context (which refusal target is an extra, its group) — a pure reader (cell «extrasOutcomeCtx … PURE»)
   'extrasOutcomeCtx',
   // §5.2 REVIEW-DELETIONS: the full deletion list by name — a pure reader (cell «deletionRows … PURE»)
@@ -1938,13 +2004,14 @@ test('🔴 the evidence has ONE home — nothing renders from the pre-mint local
 // the server's deletion REFUSAL CODES (review.js panels key on them, S2 §5.2) name a refusal, not the claim field
 const CLAIM = /deleted_ids(?!_loaded_base|_reviewed|_base_moved|_unbound|_stale_baseline|_malformed|_no_baseline)|deletedIds/i;
 const CLAIM_FN = 'export function mergeDeletionClaim(';
-const WRITER_COPY = 'exposure-transitions.js';
+// the server writers' byte copies (tools/sync-client): S2's Extras writer and S3's choice writer — each proven byte-identical below
+const WRITER_COPIES = ['exposure-transitions.js', 'choice-transitions.js'];
 const outsideClaimFn = (f, code) => {
   if (f !== 'editor.js' || !code.includes(CLAIM_FN)) return code;
   const i = code.indexOf(CLAIM_FN), j = code.indexOf('\n}\n', i);
   return code.slice(0, i) + code.slice(j < 0 ? code.length : j + 3);
 };
-const claimHits = (read) => JS.filter((f) => f !== WRITER_COPY && CLAIM.test(outsideClaimFn(f, read(f))));
+const claimHits = (read) => JS.filter((f) => !WRITER_COPIES.includes(f) && CLAIM.test(outsideClaimFn(f, read(f))));
 const saveCarriesBase = (read) => {
   if (!read('editor.js').includes(CLAIM_FN)) return true;
   const api = read('api.js'); const i = api.indexOf('export async function editCatalog(');
@@ -1957,7 +2024,7 @@ test('🔴 RULING A (narrowed at S2): only mergeDeletionClaim may name the remov
   assert.ok(codeOf('editor.js').split(CLAIM_FN).length <= 2, 'mergeDeletionClaim is defined at most once');
   assert.ok(saveCarriesBase(codeOf), 'a claim is merged, so every save carries deleted_ids_loaded_base');
   // the exemption is for a VERIFIED copy: byte-identical to the server's writer (the sync guard's rule, restated here)
-  assert.equal(readFileSync(join(DIR, WRITER_COPY), 'utf8'), readFileSync(join(DIR, '..', 'xpizza-functions', 'catalog', WRITER_COPY), 'utf8'), 'the exempt copy is the server writer, byte for byte');
+  for (const c of WRITER_COPIES) assert.equal(readFileSync(join(DIR, c), 'utf8'), readFileSync(join(DIR, '..', 'xpizza-functions', 'catalog', c), 'utf8'), `the exempt copy ${c} is the server writer, byte for byte`);
   // non-vacuity — each planted defect turns the rule red
   const planted = (f, extra) => (g) => (g === f ? codeOf(g) + extra : codeOf(g));
   assert.deepStrictEqual(claimHits(planted('app.js', '\nfunction sneaky(s) { s.deleted_ids = []; }\n')), ['app.js'], 'non-vacuity: a claim named in app.js');
@@ -2031,4 +2098,47 @@ test('🔴 Codex S2 UI r2 P2-10 — an enclosing bound() exempts nothing: a NEST
   assert.equal(src.split(OUTER).length, 2, 'premise: the X2 trash handler');
   const { bad: outer } = await unboundHandouts(src.replace(OUTER, '    remove: ((row, trash) => {'));
   assert.ok(!outer.some((b) => b.includes('`remove` hands out applyExposureOps')), `a writer inside a NESTED bound() belongs to that wrapper:\n  ${outer.join('\n  ')}`);
+});
+
+// Codex #196-3 — every catalog sheet ends with the world through ONE registry (sheets.js): a sheet that opens registers its closer, and
+// resetEditFacts closes whatever is registered. The sheets are DERIVED from the markup (every `.scrim` in index.html), so a new sheet that
+// opens without registering is red here. Not catalog sheets: the branch page's three (pause / device / sucursal), and #scrim — the edit
+// outcome panel behind the drawer, which the world's end closes by name. #xscrim (the Extras confirm) opens in extras-view.js.
+test('#196-3 / #201-3 every catalog sheet registers with the ONE registry as it opens (derived from the markup + every body-level popup)', () => {
+  const html = readFileSync(join(DIR, 'index.html'), 'utf8');
+  const mods = readdirSync(DIR).filter((f) => /\.js$/.test(f) && !f.includes('.test.')).map((f) => [f, readFileSync(join(DIR, f), 'utf8')]);
+  const app = mods.find(([f]) => f === 'app.js')[1];
+  const xv = mods.find(([f]) => f === 'extras-view.js')[1];
+  const NOT_CATALOG = new Set(['pausescrim', 'devscrim', 'sucscrim', 'scrim']);
+  // every backdrop in the markup — `.scrim` AND `.opsscrim` (Codex #201-3: the availability drawer's) — minus the branch page's three and #scrim
+  const ids = [...html.matchAll(/class="[^"]*scrim[^"]*" id="([a-z]+)"/g)].map((m) => m[1]).filter((id) => !NOT_CATALOG.has(id));
+  assert.ok(ids.includes('availscrim') && ids.length >= 7, `premise: the catalog backdrops are read from the markup (${ids})`);
+  for (const id of ids.filter((x) => x !== 'xscrim')) {
+    let opens = 0;
+    for (const [f, src] of mods) {
+      if (!src.includes(`'${id}'`)) continue;
+      const vars = [...src.matchAll(new RegExp(`const (\\w+) = \\$\\('${id}'\\)`, 'g'))].map((m) => m[1]);
+      const shows = (l) => [`$('${id}')`, ...vars.map((v) => `${v}.`)].some((t) => l.includes(`${t}${t.endsWith('.') ? '' : '.'}classList.add('show')`) || l.includes(`${t}${t.endsWith('.') ? '' : '.'}classList.remove('hidden')`));
+      for (const l of src.split('\n').filter(shows)) { opens += 1; assert.ok(/sheetOpened\('[a-z]+', /.test(l), `🔴 #${id} registers its closer as it opens (${f}): ${l.trim().slice(0, 90)}`); }
+    }
+    assert.ok(opens >= 1, `premise: #${id} has an opener`);
+  }
+  // a popup built on the fly and put on <body> (the «Mover a…» row menu, Codex #201-4) registers in the function that opens it
+  // not overlays: photo.js's OS file picker (a hidden <input type=file>, removed on change / cancel) and ventas-tab.js's CSV download (a
+  // hidden <a download>, clicked and removed at once)
+  const NOT_OVERLAY = new Set(['photo.js:document.body.append(input)', 'ventas-tab.js:document.body.append(a)']);
+  for (const [f, src] of mods) {
+    let at = src.indexOf('document.body.append');
+    while (at !== -1) {
+      if (NOT_OVERLAY.has(`${f}:${src.slice(at, src.indexOf(';', at))}`)) { at = src.indexOf('document.body.append', at + 1); continue; }
+      const fnStart = src.lastIndexOf('\nfunction ', at), fnEnd = src.indexOf('\nfunction ', at);
+      const body = src.slice(fnStart, fnEnd === -1 ? src.length : fnEnd);
+      assert.ok(/sheetOpened\('[a-z]+', /.test(body), `🔴 a body-level popup registers as it opens (${f}: ${body.trim().split('\n')[0].slice(0, 60)})`);
+      at = src.indexOf('document.body.append', at + 1);
+    }
+  }
+  const xOpens = (xv.match(/scrim\.classList\.add\('show'\)/g) || []).length;
+  assert.ok(xOpens >= 1, 'premise: the Extras confirm opens in extras-view.js');
+  assert.equal((xv.match(/sheetOpened\('xconfirm', closeXConfirm\)/g) || []).length, xOpens, '🔴 every Extras confirm opener registers');
+  assert.ok(/closeAllSheets\(\);/.test(app.slice(app.indexOf('function resetEditFacts()'), app.indexOf('function resetEditFacts()') + 900)), '🔴 the world\'s end closes the registry');
 });

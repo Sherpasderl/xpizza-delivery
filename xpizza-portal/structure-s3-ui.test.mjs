@@ -1,0 +1,579 @@
+// STRUCTURE S3 (UI) — the DRAWING half, step 2: the required choice's editor in the drawer, built EXACT to MOCKUP-portal-structure-edit
+// panel D (owner-approved 11-11: its strings are literal) and the S3 addendum's B2 zero-mark line (visually checked, copy PENDING the
+// owner: every string it proposes is a ⟦s3.key⟧ placeholder and the SHIP GATE below stays red until it is approved). The REAL app.js in
+// jsdom over index.html (drawer-harness.mjs), the REAL la_musa seed, the server's choiceEdit switch in getEditableCatalog's shape.
+// Run: node --test --test-force-exit structure-s3-ui.test.mjs
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { editable, settle, page, errJson } from './drawer-harness.mjs';
+
+const { S3_COPY, s3Copy } = await import('./item-edit-logic.js');
+const P = (k, v) => s3Copy(k, v);   // the shipped string (⟦s3.key⟧ while a key is still null)
+const ON = () => editable({ extrasAuthoring: true, choiceEdit: true });
+const PAD = 'noodle_01';
+const reqCard = (p) => p.drawer().querySelector('.mk-grp.mk-req');
+const pencil = (p) => reqCard(p).querySelector('.mk-gh .mk-gact button[title="Editar grupo"]');
+const ge = (p) => reqCard(p).querySelector('.mk-ge');
+const rows = (p) => [...ge(p).querySelectorAll(':scope > .mopt')];
+const nameOf = (r) => r.querySelector('input.moname').value;
+const pill = (r) => r.querySelector('button.recpill');
+const trash = (r) => r.querySelector('button.model');
+const recline = (p) => ge(p).querySelector('.mk-recline');
+const gf = (p, t) => [...reqCard(p).querySelectorAll('.mk-gf button')].find((b) => b.textContent === t);
+async function editing(p) { await p.signIn(); await p.open(PAD); pencil(p).click(); await settle(5); }
+const groupOf = (src) => { const l = src.items.find((i) => i.key === PAD); const sp = src.structure.variant_items[String(l.display.id)]; return { label: sp.label, members: sp.variantIds.map((v) => src.items.find((i) => String(i.display.id) === String(v) || i.ref === v)) }; };
+
+test('OFF (choiceEdit absent / not true): the required choice\'s card is S1\'s — no pencil, no editor', async () => {
+  for (const over of [{ extrasAuthoring: true }, { extrasAuthoring: true, choiceEdit: 'true' }, { extrasAuthoring: true, choiceEdit: false }]) {
+    const p = await page({ read: () => editable(over) });
+    await p.signIn(); await p.open(PAD);
+    assert.ok(reqCard(p), 'premise: the S1 card');
+    assert.equal(reqCard(p).querySelector('button[title="Editar grupo"]'), null, `no pencil for ${JSON.stringify(over)}`);
+    assert.equal(reqCard(p).querySelector('.mk-ge'), null);
+  }
+});
+
+test('D — the pencil opens the editor EXACT to panel D: name box, one row per option (name · L price · «Recomendada» · trash), «Agregar opción», the flag, the naming line, «Quitar elección» · «Listo»', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PAD);
+  const pen = pencil(p);
+  assert.equal(pen.getAttribute('aria-label'), 'Editar grupo Proteína');
+  pen.click(); await settle(5);
+  const card = reqCard(p);
+  assert.ok(card.classList.contains('chg') && card.classList.contains('mk-open'), 'the editing card: open, the change ring');
+  assert.equal(card.querySelector('.mk-gh button[title="Editar grupo"]'), null, 'panel D\'s header: the chevron only');
+  const g = ge(p);
+  const lbl = g.querySelector(':scope > label.mgname-lbl'); const nm = g.querySelector(':scope > input.mgname-in');
+  assert.equal(lbl.textContent, 'Nombre de la elección'); assert.equal(lbl.htmlFor, nm.id);
+  assert.equal(nm.value, 'Proteína'); assert.equal(nm.placeholder, 'Ej. Tamaño, Término, Porción');
+  assert.deepEqual(rows(p).map(nameOf), ['Sin Proteína', 'Pollo', 'Camarones']);
+  const r0 = rows(p)[0];
+  assert.equal(r0.querySelector('input.moname').getAttribute('aria-label'), 'Nombre de la opción');
+  assert.equal(r0.querySelector('input.moname').placeholder, 'Nombre de la opción');
+  assert.equal(r0.querySelector('.mopr .mc').textContent, 'L');
+  const pr = r0.querySelector('.mopr input'); assert.equal(pr.value, '307'); assert.equal(pr.getAttribute('aria-label'), 'Precio'); assert.equal(pr.inputMode, 'numeric');
+  assert.equal(pill(r0).textContent, 'Recomendada'); assert.equal(pill(r0).getAttribute('aria-pressed'), 'false', 'live data: zero marks');
+  assert.equal(trash(r0).getAttribute('aria-label'), 'Quitar Sin Proteína');
+  assert.equal(r0.querySelector('.mk-apponly'), null, 'a live option is sold everywhere');
+  assert.deepEqual([...g.children].map((c) => c.className).filter((c) => c !== 'mopt'), ['mgname-lbl', 'mgname-in', 'mgadd', 'mgflag', 'mk-sub'], 'D\'s order; no line while untouched');
+  assert.equal(g.querySelector('.mgadd').textContent, 'Agregar opción');
+  assert.equal(g.querySelector('.mgflag').textContent, 'Mismo precio para todas');
+  assert.equal(g.querySelector('.mk-sub').textContent, 'En el menú cada opción se llama «Pad Thai - Sin Proteína»: el nombre se arma solo y cambia con el producto.');
+  assert.ok(gf(p, 'Quitar elección').classList.contains('mk-quiet-danger'));
+  assert.ok(gf(p, 'Listo'));
+});
+
+test('B2 — «Agregar opción» adds a new row (app-only mark, focused name); the touched group shows the quiet line; «Guardar» HOLDS it in the refusal style; one pill tap ends it and «Guardar» saves', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  const before = JSON.stringify(p.src());
+  ge(p).querySelector('.mgadd').click(); await settle(5);
+  const nw = rows(p)[3];
+  assert.ok(nw.classList.contains('chg')); assert.equal(nw.querySelector('.mk-apponly'), null, 'no app-only mark on an option (5f: choices render generically)');
+  assert.equal(p.d.activeElement, nw.querySelector('input.moname'), 'the caret lands in the new name');
+  p.type(nw.querySelector('input.moname'), 'Tofu'); p.type(nw.querySelector('.mopr input'), '330'); await settle(5);
+  const line = recline(p);
+  assert.ok(line, '🔴 the zero-mark line'); assert.equal(line.getAttribute('role'), 'status');
+  assert.equal(line.textContent, P('recRequired')); assert.ok(!line.classList.contains('ferr'));
+  assert.equal(line.previousElementSibling, rows(p)[3], 'directly under the rows'); assert.ok(line.nextElementSibling.classList.contains('mgadd'));
+  p.btn('Guardar').click(); await settle(5);
+  assert.ok(p.drawer().classList.contains('show'), '🔴 held: the drawer stays');
+  assert.ok(recline(p).classList.contains('ferr'), 'the same words in the refusal style');
+  assert.equal(JSON.stringify(p.src()), before, 'nothing written');
+  pill(rows(p)[1]).click(); await settle(5);
+  assert.equal(pill(rows(p)[1]).getAttribute('aria-pressed'), 'true'); assert.ok(pill(rows(p)[1]).classList.contains('recpill-on'));
+  assert.equal(recline(p), null, 'one tap ends it');
+  p.btn('Guardar').click(); await settle(10);
+  const g = groupOf(p.src());
+  assert.deepEqual(g.members.map((m) => m.display.choice), ['Sin Proteína', 'Pollo', 'Camarones', 'Tofu']);
+  assert.equal(g.members[3].price, 330);
+  assert.deepEqual(g.members.filter((m) => (m.display.tags || []).includes('recommended')).map((m) => m.key), ['noodle_01_pollo']);
+});
+
+test('typing the name / an option\'s name keeps the SAME input (no rebuild under the caret) and saves the last value', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  const nm = ge(p).querySelector('input.mgname-in');
+  for (const v of ['Pro', 'Proteína a elegir']) p.type(nm, v);
+  const on = rows(p)[1].querySelector('input.moname');
+  p.type(on, 'Pollo al wok'); await settle(5);
+  assert.equal(ge(p).querySelector('input.mgname-in'), nm, 'the same node'); assert.equal(rows(p)[1].querySelector('input.moname'), on);
+  pill(rows(p)[0]).click(); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  const g = groupOf(p.src());
+  assert.equal(g.label, 'Proteína a elegir'); assert.equal(g.members[1].display.choice, 'Pollo al wok');
+});
+
+test('the trash: a live option is removed (two left ⇒ the trash turns off with the line as its title); a NEW option\'s trash drops it', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  ge(p).querySelector('.mgadd').click(); await settle(5);
+  trash(rows(p)[3]).click(); await settle(5);
+  assert.equal(rows(p).length, 3); assert.equal(recline(p), null, 'the group is as loaded: no line');
+  trash(rows(p)[2]).click(); await settle(5);
+  assert.deepEqual(rows(p).map(nameOf), ['Sin Proteína', 'Pollo']);
+  for (const r of rows(p)) { assert.equal(trash(r).disabled, true, '🔴 two options: no trash'); assert.equal(trash(r).title, P('tooFew')); }
+});
+
+test('«Listo» folds the editor back to the read card; the edits stay in the drawer\'s copy', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  p.type(ge(p).querySelector('input.mgname-in'), 'Proteína elegida'); await settle(5);
+  gf(p, 'Listo').click(); await settle(5);
+  assert.equal(reqCard(p).querySelector('.mk-ge'), null);
+  assert.equal(reqCard(p).querySelector('.mk-gtn').textContent, 'Proteína elegida', 'the read card names the edited choice');
+  assert.ok(pencil(p));
+  assert.equal(p.btn('Guardar').disabled, false, 'still unsaved');
+});
+
+// Codex #183-1: a live choice's own facts — its name, its «Recomendada» mark, an option's name — are pending work once the drawer saved
+// them into the draft: the bar counts them and the leave / reload guard holds (they exist only in memory until «Revisar y publicar»)
+test('#183-1 a choice label, a mark and an option rename are PENDING work: counted, and the leave guard holds', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  p.type(ge(p).querySelector('input.mgname-in'), 'Proteína elegida'); await settle(5);
+  p.type(rows(p)[1].querySelector('input.moname'), 'Pollo al wok'); await settle(5);
+  pill(rows(p)[2]).click(); await settle(5);
+  gf(p, 'Listo').click(); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(p.drawer().classList.contains('show'), false, 'premise: the drawer saved and closed');
+  if (p.d.activeElement && p.d.activeElement.blur) p.d.activeElement.blur();
+  const { pendingCount } = await import('./editor.js');
+  assert.equal(pendingCount(p.mods.app.state.draft, p.mods.app.state.additionKeys), 3, '🔴 the label, the mark and the option rename are three pending changes');
+  assert.equal(p.mods.app.editorCanLeave(), false, '🔴 the leave guard holds');
+});
+
+const cf = (p) => p.drawer().querySelector('.mk-cfscrim .mk-cf');
+const cfBtn = (p, t) => [...cf(p).querySelectorAll('.mk-cfa button')].find((b) => b.textContent === t);
+
+test('D3 — «Quitar elección» on a MARKED group: the approved card (title, the recommended price sentence), «Cancelar» holds focus; confirming leaves one price, editable', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  pill(rows(p)[1]).click(); await settle(5);
+  gf(p, 'Quitar elección').click(); await settle(5);
+  const c = cf(p);
+  assert.equal(c.getAttribute('role'), 'dialog'); assert.equal(c.getAttribute('aria-modal'), 'true');
+  assert.equal(c.querySelector('h3').textContent, '¿Quitar la elección Proteína?');
+  assert.equal(c.querySelector('p').textContent, 'Pad Thai queda con un solo precio: L 342, el de la opción recomendada. Podés cambiarlo antes de publicar.');
+  assert.equal(c.querySelector('.mk-pf'), null, 'a marked group: no list');
+  assert.deepEqual([...c.querySelectorAll('.mk-cfa button')].map((b) => b.textContent), ['Cancelar', 'Quitar elección']);
+  assert.equal(p.d.activeElement, cfBtn(p, 'Cancelar'));
+  assert.ok(cfBtn(p, 'Quitar elección').classList.contains('mk-quiet-danger'));
+  cfBtn(p, 'Quitar elección').click(); await settle(5);
+  assert.equal(cf(p), null);
+  assert.equal(reqCard(p), null, '🔴 the choice is gone from the drawer');
+  const pr = p.fld('Precio').querySelector('input[aria-label="Precio"]');
+  assert.equal(pr.value, '342', 'the recommended option\'s price, editable');
+  p.type(pr, '355'); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  const dish = p.src().items.find((i) => i.key === PAD);
+  assert.equal(dish.price, 355); assert.equal(p.src().structure.variant_items[String(dish.display.id)], undefined);
+});
+
+test('B2b — «Quitar elección» with ZERO marks: the pick list (radiogroup), the action off with its title until a row is picked; «Cancelar» keeps the choice', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  gf(p, 'Quitar elección').click(); await settle(5);
+  let c = cf(p);
+  assert.equal(c.querySelector('p').textContent, P('removePick', { nombre: 'Pad Thai' }));
+  const pf = c.querySelector('.mk-pf');
+  assert.equal(pf.getAttribute('role'), 'radiogroup'); assert.equal(pf.getAttribute('aria-label'), P('pickAria'));
+  const opt = [...pf.querySelectorAll('label.optrow')];
+  assert.deepEqual(opt.map((l) => [l.querySelector('.ogname').textContent, l.querySelector('.mk-rp').textContent]), [['Sin Proteína', 'L 307'], ['Pollo', 'L 342'], ['Camarones', 'L 414']]);
+  assert.ok(opt.every((l) => l.querySelector('input[type=radio]').checked === false), 'none picked');
+  const go = cfBtn(p, 'Quitar elección');
+  assert.equal(go.disabled, true); assert.equal(go.title, P('pickTitle'));
+  cfBtn(p, 'Cancelar').click(); await settle(5);
+  assert.equal(cf(p), null); assert.ok(ge(p), 'the editor stays');
+  gf(p, 'Quitar elección').click(); await settle(5);
+  c = cf(p);
+  const r2 = [...c.querySelectorAll('label.optrow')][2];
+  r2.querySelector('input').click(); await settle(5);
+  assert.ok(r2.classList.contains('sel')); assert.equal(cfBtn(p, 'Quitar elección').disabled, false);
+  cfBtn(p, 'Quitar elección').click(); await settle(5);
+  assert.equal(p.fld('Precio').querySelector('input[aria-label="Precio"]').value, '414', 'the picked price');
+});
+
+const PLAIN = 'dimsum_01';   // «Sichuan Spicy Wonton»: one price, no choice
+const d2Act = (p) => [...p.drawer().querySelectorAll('.mk-adds button.railadd')].find((b) => b.textContent === 'Agregar elección requerida');
+const sheet = (p) => p.d.querySelector('#xchoice.show .modal');
+const sRows = (p) => [...sheet(p).querySelectorAll('.mk-mgroup > .mopt')];
+const sBtn = (p, t) => [...sheet(p).querySelectorAll('.mf button')].find((b) => b.textContent === t);
+
+test('D2 — the dish\'s second action «Agregar elección requerida»: only with choiceEdit, only on a plain dish', async () => {
+  const off = await page({ read: () => editable({ extrasAuthoring: true, extrasCatalog: true }) });
+  await off.signIn(); await off.open(PLAIN);
+  assert.equal(d2Act(off), undefined, 'OFF: no action');
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PAD);
+  assert.equal(d2Act(p), undefined, 'a dish with a choice: no action');
+  await p.open(PLAIN);
+  const a = d2Act(p);
+  assert.ok(a, 'a plain dish: the action'); assert.ok(a.classList.contains('mk-railq'), 'the quiet action');
+});
+
+// Codex #183-7: the sheets end with the world — another person signs in ⇒ A's «Agregar elección requerida» is closed, its state cleared,
+// no stale listener (the Extras sheets' rule, one reset list)
+test('#183-7 «Agregar elección requerida» closes and clears when another person signs in; no stale listener', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PLAIN);
+  d2Act(p).click(); await settle(5);
+  p.type(sheet(p).querySelector('input.mgname-in'), 'Tamaño de A'); await settle(5);
+  assert.ok(p.d.querySelector('#xchoice.show'), 'premise: A has the sheet open with a name');
+  p.d.dispatchEvent(new p.w.CustomEvent('portal:auth', { detail: { uid: 'uSomeoneElse' } })); await settle(80);
+  assert.equal(p.d.querySelector('#xchoice.show'), null, '🔴 A\'s sheet is closed');
+  assert.equal(p.d.querySelector('#xchoice .modal').childElementCount, 0, 'and emptied (no A content left in the DOM)');
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+  assert.equal(p.d.querySelector('#xchoice.show'), null, 'no stale listener');
+});
+
+test('D2 — the sheet EXACT to the frame: title, subline, the explain line, the name, the options (the first prefilled with the dish\'s price and «Recomendada»), the note; «Agregar elección» off until complete; on add the Precio field gives way to the choice', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PLAIN);
+  const price = String(p.src().items.find((i) => i.key === PLAIN).price);
+  d2Act(p).click(); await settle(5);
+  const m = sheet(p);
+  assert.ok(m, 'the sheet opened');
+  assert.equal(m.querySelector('.mh .mt').textContent, 'Agregar elección requerida');
+  assert.equal(m.querySelector('.mh .ms').textContent, 'Para Sichuan Spicy Wonton · hoy tiene un solo precio');
+  assert.equal(m.querySelector('.mb .gexplain').textContent, 'Elección requerida. El cliente elige 1. El precio del producto pasa a ser el de la opción elegida.');
+  assert.equal(m.querySelector('.mb .gexplain b').textContent, 'Elección requerida.');
+  const nm = m.querySelector('input.mgname-in');
+  assert.equal(nm.placeholder, 'Ej. Tamaño, Término, Porción');
+  assert.equal(m.querySelector(`label[for="${nm.id}"]`).textContent, 'Nombre de la elección');
+  const [nCnt, oCnt] = m.querySelectorAll('.fld .mk-lrow .mk-cnt');
+  assert.equal(nCnt.textContent, `${[...nm.value].length}/40`, '🔴 the name counts «n/40» (the approved frame gn-d2)'); assert.equal(nCnt.getAttribute('aria-live'), 'polite');
+  assert.equal(nm.maxLength, 40, 'the server\'s cap (5f label_too_long)');
+  assert.equal(oCnt.textContent, 'precio por opción');
+  assert.equal(sRows(p).length, 2);
+  assert.equal(sRows(p)[0].querySelector('.mopr input').value, price, 'the dish\'s price passes to the first option');
+  assert.equal(sRows(p)[0].querySelector('.recpill').getAttribute('aria-pressed'), 'true');
+  assert.equal(m.querySelector('.mk-note b').textContent, 'El precio actual pasa a la primera opción');
+  assert.equal(m.querySelector('.mk-note').lastChild.textContent, `Sichuan Spicy Wonton cuesta L ${price} hoy; esa es la opción recomendada al crear la elección. Ajustá cada precio antes de guardar.`);
+  assert.equal(sBtn(p, 'Agregar elección').disabled, true, 'incomplete: off');
+  p.type(nm, 'Porción');
+  assert.equal(nCnt.textContent, '7/40', '🔴 the count follows the name');
+  p.type(sRows(p)[0].querySelector('input.moname'), 'Seis');
+  p.type(sRows(p)[1].querySelector('input.moname'), 'Doce');
+  p.type(sRows(p)[1].querySelector('.mopr input'), '480');
+  assert.equal(sBtn(p, 'Agregar elección').disabled, false);
+  sBtn(p, 'Agregar elección').click(); await settle(5);
+  assert.equal(sheet(p), null, 'closed');
+  assert.equal(p.fld('Precio'), undefined, '🔴 the Precio field gave way to the choice');
+  const card = reqCard(p);
+  assert.equal(card.querySelector('.mk-gtn').textContent, 'Porción');
+  assert.deepEqual([...card.querySelectorAll('.mk-dopt .dp')].map((x) => x.textContent), [`L ${price}`, 'L 480']);
+  assert.equal(card.querySelectorAll('.mk-dopt .mk-apponly').length, 0, 'no app-only mark on a choice (5f: both forms render choices generically)');
+  p.btn('Guardar').click(); await settle(10);
+  const src = p.src(); const dish = src.items.find((i) => i.key === PLAIN);
+  const ids = src.structure.variant_items[String(dish.display.id)].variantIds;
+  const mem = ids.map((v) => src.items.find((i) => i.ref === v || String(i.display.id) === String(v)));
+  assert.deepEqual(mem.map((x) => [x.display.choice, x.price, (x.display.tags || []).includes('recommended')]), [['Seis', Number(price), true], ['Doce', 480, false]]);
+});
+
+// Codex #196-1/2: «Mismo precio para todas» writes ONE prospective-group model (live options, option.add, and the options nested in a
+// choice.add) and every price input is drawn from it — what the drawer SHOWS is what «Guardar» SAVES
+const shown = (p) => rows(p).map((r) => r.querySelector('.mopr input').value);
+const sameBox = (p) => ge(p).querySelector('.mgflag input[type="checkbox"]');
+test('#196-1 Pad Thai: Tofu added at L500, then «Mismo precio para todas» ⇒ every input shows the shared price, and that is what saves', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  ge(p).querySelector('.mgadd').click(); await settle(5);
+  p.type(rows(p)[3].querySelector('input.moname'), 'Tofu'); p.type(rows(p)[3].querySelector('.mopr input'), '500'); await settle(5);
+  pill(rows(p)[1]).click(); await settle(5);
+  sameBox(p).click(); await settle(5);
+  assert.equal(sameBox(p).checked, true, 'premise: the flag is on');
+  const s = shown(p);
+  assert.equal(new Set(s).size, 1, `🔴 every input shows ONE price, Tofu included (${s.join(', ')})`);
+  p.btn('Guardar').click(); await settle(10);
+  assert.deepEqual(groupOf(p.src()).members.map((m) => String(m.price)), s, '🔴 what saves is what was shown');
+});
+test('#196-2 Sichuan Spicy Wonton: a choice added (Chico L100 · Grande L500), then «Mismo precio para todas» on that group ⇒ one price shown and saved', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PLAIN);
+  d2Act(p).click(); await settle(5);
+  p.type(sheet(p).querySelector('input.mgname-in'), 'Tamaño');
+  p.type(sRows(p)[0].querySelector('input.moname'), 'Chico'); p.type(sRows(p)[0].querySelector('.mopr input'), '100');
+  p.type(sRows(p)[1].querySelector('input.moname'), 'Grande'); p.type(sRows(p)[1].querySelector('.mopr input'), '500');
+  sBtn(p, 'Agregar elección').click(); await settle(5);
+  pencil(p).click(); await settle(5);
+  assert.deepEqual(shown(p), ['100', '500'], 'premise: the new choice\'s two prices');
+  sameBox(p).click(); await settle(5);
+  assert.equal(sameBox(p).checked, true, 'premise: the flag is on');
+  const s = shown(p);
+  assert.equal(new Set(s).size, 1, `🔴 the choice.add options take the shared price (${s.join(', ')})`);
+  p.btn('Guardar').click(); await settle(10);
+  const src = p.src(); const dish = src.items.find((i) => i.key === PLAIN);
+  const mem = src.structure.variant_items[String(dish.display.id)].variantIds.map((v) => src.items.find((i) => i.ref === v || String(i.display.id) === String(v)));
+  assert.deepEqual(mem.map((x) => String(x.price)), s, '🔴 what saves is what was shown');
+});
+
+// Codex #201 (owner: «prices live in one place»): ONE price store per drawer, keyed by row id (key OR ref) — a reopened draft finds every
+// option's price there; an unparseable price («0» included) keeps «Guardar» off, never a fallback
+const saveOn = (p) => !p.btn('Guardar').disabled;
+async function padWithTofu(p) {
+  await editing(p);
+  ge(p).querySelector('.mgadd').click(); await settle(5);
+  p.type(rows(p)[3].querySelector('input.moname'), 'Tofu'); p.type(rows(p)[3].querySelector('.mopr input'), '500'); await settle(5);
+  pill(rows(p)[1]).click(); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(groupOf(p.src()).members[3].price, 500, 'premise: Tofu saved in the draft at L500');
+  await p.open(PAD); pencil(p).click(); await settle(5);   // the draft REOPENED: Tofu is a draft row with a ref, no key
+}
+test('#201-1 a reopened draft: «Mismo precio para todas» reaches Tofu (added in an earlier drawer) — shown = saved', async () => {
+  const p = await page({ read: ON });
+  await padWithTofu(p);
+  sameBox(p).click(); await settle(5);
+  const s = shown(p);
+  assert.equal(new Set(s).size, 1, `🔴 one price shown, Tofu included (${s.join(', ')})`);
+  p.btn('Guardar').click(); await settle(10);
+  assert.deepEqual(groupOf(p.src()).members.map((m) => String(m.price)), s, '🔴 what saves is what was shown');
+});
+test('#201-1b a reopened draft: L600 typed into Tofu saves L600', async () => {
+  const p = await page({ read: ON });
+  await padWithTofu(p);
+  p.type(ge(p).querySelector('input.mgname-in'), 'Proteína elegida'); await settle(5);
+  p.type(rows(p)[3].querySelector('.mopr input'), '600'); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(groupOf(p.src()).members[3].price, 600, '🔴 the typed price is the saved price');
+});
+test('#201-1c a reopened choice.add group (Sichuan Spicy Wonton): «Mismo precio» saves what it shows', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PLAIN);
+  d2Act(p).click(); await settle(5);
+  p.type(sheet(p).querySelector('input.mgname-in'), 'Tamaño');
+  p.type(sRows(p)[0].querySelector('input.moname'), 'Chico'); p.type(sRows(p)[0].querySelector('.mopr input'), '100');
+  p.type(sRows(p)[1].querySelector('input.moname'), 'Grande'); p.type(sRows(p)[1].querySelector('.mopr input'), '500');
+  sBtn(p, 'Agregar elección').click(); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  await p.open(PLAIN); pencil(p).click(); await settle(5);
+  assert.deepEqual(shown(p), ['100', '500'], 'premise: reopened with its two prices');
+  sameBox(p).click(); await settle(5);
+  const s = shown(p);
+  assert.equal(new Set(s).size, 1, `🔴 one price shown (${s.join(', ')})`);
+  p.btn('Guardar').click(); await settle(10);
+  const src = p.src(); const dish = src.items.find((i) => i.key === PLAIN);
+  const mem = src.structure.variant_items[String(dish.display.id)].variantIds.map((v) => src.items.find((i) => i.ref === v || String(i.display.id) === String(v)));
+  assert.deepEqual(mem.map((x) => String(x.price)), s, '🔴 what saves is what was shown');
+});
+test('#201-2 «0» on a new option\'s price keeps «Guardar» off — never the dish price behind it', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PLAIN);
+  d2Act(p).click(); await settle(5);
+  p.type(sheet(p).querySelector('input.mgname-in'), 'Tamaño');
+  p.type(sRows(p)[0].querySelector('input.moname'), 'Chico'); p.type(sRows(p)[0].querySelector('.mopr input'), '100');
+  p.type(sRows(p)[1].querySelector('input.moname'), 'Grande'); p.type(sRows(p)[1].querySelector('.mopr input'), '500');
+  sBtn(p, 'Agregar elección').click(); await settle(5);
+  pencil(p).click(); await settle(5);
+  const before = JSON.stringify(p.src());
+  const inp = rows(p)[0].querySelector('.mopr input');
+  inp.focus(); p.type(inp, '0'); await settle(5);
+  assert.equal(inp.value, '0', 'premise: the input says 0');
+  assert.equal(saveOn(p), false, '🔴 «Guardar» is off for an unparseable price');
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(JSON.stringify(p.src()), before, '🔴 nothing is written');
+});
+
+// Codex #202: (1) a removal whose recommended option was added in THIS drawer — every replay carries the store's prices; (2) «new» means
+// added in THIS drawer session — a reopened draft row is an ordinary row and deletes like one
+const quitChoice = async (p) => { gf(p, 'Quitar elección').click(); await settle(5); cfBtn(p, 'Quitar elección').click(); await settle(5); };
+const plainPrice = (p, key) => { const src = p.src(); const dish = src.items.find((i) => i.key === key); return [dish.price, src.structure.variant_items[String(dish.display.id)]]; };
+test('#202-1 «Quitar elección» when the recommended option was added in this drawer (Tofu L500): the dish keeps L500', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  ge(p).querySelector('.mgadd').click(); await settle(5);
+  p.type(rows(p)[3].querySelector('input.moname'), 'Tofu'); p.type(rows(p)[3].querySelector('.mopr input'), '500'); await settle(5);
+  pill(rows(p)[3]).click(); await settle(5);
+  await quitChoice(p);
+  assert.equal(reqCard(p), null, '🔴 the choice is gone (never «No pudimos aplicar el cambio»)');
+  assert.equal(p.fld('Precio').querySelector('input[aria-label="Precio"]').value, '500');
+  p.btn('Guardar').click(); await settle(10);
+  assert.deepEqual(plainPrice(p, PAD), [500, undefined], '🔴 saved: one price, L500');
+});
+test('#202-1b the same through a choice added in this drawer (Sichuan: Chico L100 · Grande L500, Grande recommended): L500', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PLAIN);
+  d2Act(p).click(); await settle(5);
+  p.type(sheet(p).querySelector('input.mgname-in'), 'Tamaño');
+  p.type(sRows(p)[0].querySelector('input.moname'), 'Chico'); p.type(sRows(p)[0].querySelector('.mopr input'), '100');
+  p.type(sRows(p)[1].querySelector('input.moname'), 'Grande'); p.type(sRows(p)[1].querySelector('.mopr input'), '500');
+  sRows(p)[1].querySelector('.recpill').click(); await settle(5);
+  sBtn(p, 'Agregar elección').click(); await settle(5);
+  pencil(p).click(); await settle(5);
+  await quitChoice(p);
+  assert.equal(reqCard(p), null, '🔴 the choice is gone');
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(plainPrice(p, PLAIN)[0], 500, '🔴 L500, the recommended option\'s');
+});
+test('#202-2 a reopened draft option (Tofu, saved in an earlier drawer) deletes like any row', async () => {
+  const p = await page({ read: ON });
+  await padWithTofu(p);
+  trash(rows(p)[3]).click(); await settle(5);
+  assert.deepEqual(rows(p).map(nameOf), ['Sin Proteína', 'Pollo', 'Camarones'], '🔴 Tofu leaves the group');
+  p.btn('Guardar').click(); await settle(10);
+  assert.deepEqual(groupOf(p.src()).members.map((m) => m.display.choice), ['Sin Proteína', 'Pollo', 'Camarones'], '🔴 and the save drops it');
+});
+test('#202-2b a reopened choice.add group of three: one option deletes', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PLAIN);
+  d2Act(p).click(); await settle(5);
+  p.type(sheet(p).querySelector('input.mgname-in'), 'Tamaño');
+  p.type(sRows(p)[0].querySelector('input.moname'), 'Chico'); p.type(sRows(p)[0].querySelector('.mopr input'), '100');
+  p.type(sRows(p)[1].querySelector('input.moname'), 'Grande'); p.type(sRows(p)[1].querySelector('.mopr input'), '500');
+  sheet(p).querySelector('.mgadd').click(); await settle(5);
+  p.type(sRows(p)[2].querySelector('input.moname'), 'Mediano'); p.type(sRows(p)[2].querySelector('.mopr input'), '300');
+  sBtn(p, 'Agregar elección').click(); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  await p.open(PLAIN); pencil(p).click(); await settle(5);
+  assert.equal(rows(p).length, 3, 'premise: reopened with three options');
+  trash(rows(p)[2]).click(); await settle(5);
+  assert.equal(rows(p).length, 2, '🔴 the reopened option deletes');
+});
+
+test('D2 — «Cancelar» records nothing; the trash is off at two options; «Agregar opción» adds a row', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PLAIN);
+  d2Act(p).click(); await settle(5);
+  assert.ok(sRows(p).every((r) => r.querySelector('.model').disabled), 'two rows: no trash');
+  sheet(p).querySelector('.mgadd').click(); await settle(5);
+  assert.equal(sRows(p).length, 3); assert.equal(p.d.activeElement, sRows(p)[2].querySelector('input.moname'));
+  assert.ok(sRows(p).every((r) => !r.querySelector('.model').disabled));
+  sBtn(p, 'Cancelar').click(); await settle(5);
+  assert.equal(sheet(p), null);
+  assert.equal(p.btn('Guardar').disabled, true, 'nothing recorded');
+  assert.ok(p.fld('Precio'), 'the dish keeps its one price');
+});
+
+// B7 — the «Agregar producto» drawer: with choiceEdit ON a new group's FIRST option is «Recomendada» from the start, with the quiet line;
+// a pill is a radio (one tap moves the mark; the marked one stays); deleting the marked row moves it to the new first. OFF: today's.
+async function newSized(p) {
+  const btn = [...p.d.getElementById('detail').querySelectorAll('button')].find((x) => x.textContent.trim() === 'Agregar producto');
+  assert.ok(btn, 'premise: «Agregar producto» in the open section');
+  btn.click(); await settle(10);
+  const on = p.drawer().querySelector('input[aria-label="El cliente elige 1 opción"]');
+  assert.ok(on, 'premise: the new-product drawer\'s «El cliente elige 1 opción»');
+  on.click(); await settle(5);
+  return p.drawer().querySelector('.modgrp .mgbody');
+}
+const pills = (gb) => [...gb.querySelectorAll('.mopt .recpill')].map((b) => b.getAttribute('aria-pressed'));
+test('B7 — a new dish\'s group: option 1 pre-marked + the quiet line; a pill is a radio; deleting the marked row moves the mark; OFF unchanged', async () => {
+  const p = await page({ read: () => editable({ extrasAuthoring: true, choiceEdit: true, groupAuthoring: true }) });
+  await p.signIn();
+  let gb = await newSized(p);
+  assert.deepEqual(pills(gb), ['true', 'false'], '🔴 option 1 marked from the start');
+  const line = gb.querySelector('.mk-recline');
+  assert.equal(line.textContent, P('b7Line')); assert.equal(line.getAttribute('role'), 'status');
+  assert.ok(line.nextElementSibling.classList.contains('mgadd'), 'under the rows, before «Agregar opción»');
+  gb.querySelectorAll('.mopt .recpill')[1].click(); await settle(5);
+  gb = p.drawer().querySelector('.modgrp .mgbody');
+  assert.deepEqual(pills(gb), ['false', 'true'], 'one tap moves the mark');
+  gb.querySelectorAll('.mopt .recpill')[1].click(); await settle(5);
+  gb = p.drawer().querySelector('.modgrp .mgbody');
+  assert.deepEqual(pills(gb), ['false', 'true'], 'the marked pill stays marked');
+  gb.querySelectorAll('.mopt .model')[1].click(); await settle(5);
+  gb = p.drawer().querySelector('.modgrp .mgbody');
+  assert.deepEqual(pills(gb), ['true'], 'the mark follows the first row: never zero');
+  const off = await page({ read: () => editable({ extrasAuthoring: true, groupAuthoring: true, choiceBadges: ['recommended'] }) });
+  await off.signIn();
+  const gbo = await newSized(off);
+  assert.deepEqual(pills(gbo), ['false', 'false'], 'OFF: today, unmarked'); assert.equal(gbo.querySelector('.mk-recline'), null);
+});
+
+const lineAfter = (el) => { const n = el.nextElementSibling; return n && n.classList.contains('ferr') ? n : null; };
+test('a group label over 40 (5f label_too_long, counted as the server counts): its line at ONCE under the name; «Guardar» holds; 40 clears it', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  const before = JSON.stringify(p.src());
+  p.type(ge(p).querySelector('input.mgname-in'), 'P'.repeat(41)); await settle(5);
+  const l = lineAfter(ge(p).querySelector('input.mgname-in'));
+  assert.ok(l, '🔴 a label over 40: its line at once'); assert.equal(l.textContent, P('labelTooLong'));
+  p.btn('Guardar').click(); await settle(5);
+  assert.equal(JSON.stringify(p.src()), before, '🔴 held: nothing written');
+  p.type(ge(p).querySelector('input.mgname-in'), 'P'.repeat(40)); await settle(5);
+  assert.equal(lineAfter(ge(p).querySelector('input.mgname-in')), null, '40 passes (the server\'s limit)');
+});
+test('names before saving — a duplicate (the server\'s fold) shows its line LIVE under the later option; empty names show once «Guardar» holds; each clears as it is fixed', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  pill(rows(p)[0]).click(); await settle(5);
+  const before = JSON.stringify(p.src());
+  p.type(rows(p)[1].querySelector('input.moname'), 'sin proteina'); await settle(5);
+  let l = lineAfter(rows(p)[1]);
+  assert.ok(l, '🔴 live: the twin\'s line'); assert.equal(l.textContent, P('dupName')); assert.equal(l.getAttribute('role'), 'alert');
+  assert.equal(rows(p)[1].querySelector('input.moname').getAttribute('aria-invalid'), 'true');
+  assert.equal(lineAfter(rows(p)[0]), null, 'the first is not the twin');
+  ge(p).querySelector('.mgadd').click(); await settle(5);
+  p.type(rows(p)[3].querySelector('.mopr input'), '300'); await settle(5);   // #201: an unpriced row keeps «Guardar» off — this cell is about NAMES
+  assert.equal(lineAfter(rows(p)[3]), null, 'an empty new row: no line yet');
+  p.type(ge(p).querySelector('input.mgname-in'), ''); await settle(5);
+  assert.equal(lineAfter(ge(p).querySelector('input.mgname-in')), null, 'an emptied name: no line yet');
+  p.btn('Guardar').click(); await settle(5);
+  assert.equal(JSON.stringify(p.src()), before, '🔴 held: nothing written');
+  assert.equal(lineAfter(rows(p)[3]).textContent, P('optNameRequired'));
+  assert.equal(lineAfter(ge(p).querySelector('input.mgname-in')).textContent, P('labelRequired'));
+  p.type(rows(p)[1].querySelector('input.moname'), 'Pollo'); p.type(rows(p)[3].querySelector('input.moname'), 'Tofu');
+  p.type(ge(p).querySelector('input.mgname-in'), 'Proteína'); await settle(5);
+  assert.equal(ge(p).querySelectorAll('.ferr').length, 0, 'every line cleared as it was fixed');
+  p.type(rows(p)[3].querySelector('.mopr input'), '330'); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  assert.ok(!p.drawer().classList.contains('show') || !reqCard(p), 'saved');
+});
+
+test('B6 — the reward refusal: the panel says the owner\'s line; «Corregir» reopens the dish with the line INSIDE the choice card (red border); a choice edit clears it', async () => {
+  const OWNER = 'Este producto se canjea con recompensas. Para mantener el premio, no se le pueden agregar opciones.';
+  const p = await page({ read: ON, on: { editCatalog: () => errJson(409, { error: 'choice_on_reward_dish', key: PAD, field: 'choices' }) } });
+  await editing(p);
+  p.type(ge(p).querySelector('input.mgname-in'), 'Proteína a elegir');
+  pill(rows(p)[0]).click(); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  p.d.getElementById('review').click(); await settle(60);
+  const b = p.d.querySelector('#mbody .conflict');
+  assert.ok(b, 'the refusal panel');
+  assert.equal(b.querySelector('h3').textContent, OWNER, '🔴 the owner\'s line, verbatim');
+  b.querySelector('button').click(); await settle(20);
+  const card = reqCard(p);
+  assert.ok(card.classList.contains('invalid'), 'the invalid border');
+  const line = card.querySelector(':scope > .ferr');
+  assert.ok(line, '🔴 the line inside the card'); assert.equal(line.textContent.trim(), OWNER);
+  assert.equal(p.btn('Guardar').disabled, true, 'held until the choice changes');
+  pencil(p).click(); await settle(5);
+  p.type(ge(p).querySelector('input.mgname-in'), 'Proteína'); await settle(5);
+  assert.equal(reqCard(p).querySelector(':scope > .ferr'), null, 'a choice edit clears it');
+});
+
+test('B6 — choice_index_invalid lands at the drawer\'s FOOTER (no field can fix it)', async () => {
+  const p = await page({ read: ON, on: { editCatalog: () => errJson(409, { error: 'choice_index_invalid', key: PAD, field: 'choices' }) } });
+  await editing(p);
+  p.type(ge(p).querySelector('input.mgname-in'), 'Proteína a elegir');
+  pill(rows(p)[0]).click(); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  p.d.getElementById('review').click(); await settle(60);
+  p.d.querySelector('#mbody .conflict button').click(); await settle(20);
+  const line = p.drawer().querySelector('.dwf .ferr');
+  assert.ok(line, '🔴 the footer line'); assert.equal(line.textContent.trim(), P('indexInvalid'));
+  assert.equal(reqCard(p).querySelector('.ferr'), null, 'not on the card');
+});
+
+test('a STALE press (the draft changed under the open editor): the approved «No pudimos aplicar el cambio. Recargá la página.» inline where it was pressed; nothing recorded', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  const st = p.mods.app.state.draft.state;
+  const l = st.items.find((i) => i.key === PAD);
+  delete st.structure.variant_items[String(l.display.id)];   // the group is gone from the draft under the session
+  const r1 = rows(p)[1];
+  pill(r1).click(); await settle(5);
+  const line = r1.nextElementSibling;
+  assert.ok(line && line.classList.contains('ferr'), '🔴 the line under the pressed row');
+  assert.equal(line.textContent, 'No pudimos aplicar el cambio. Recargá la página.');
+  assert.equal(line.getAttribute('role'), 'alert');
+});
+
+test('copy: panel D\'s approved strings are literal; the addendum\'s proposed lines are ⟦s3.key⟧ placeholders', () => {
+  assert.deepEqual(Object.keys(S3_COPY).sort(), ['b7Line', 'dupName', 'indexInvalid', 'labelRequired', 'labelTooLong', 'nameNeedsNewId', 'optNameRequired', 'pickAria', 'pickTitle', 'priceFromInvalid', 'recMany', 'recRemoved', 'recRequired', 'removePick', 'revLauncher', 'revPlain', 'revRecChanged', 'revRecNew', 'tooFew']);
+});
+
+// THE SHIP GATE: red while ANY S3 string is a placeholder — the branch cannot ride a train before the owner approves the addendum's copy
+test('SHIP GATE: no placeholder ships — every S3 string is owner-approved text', () => {
+  const pending = Object.entries(S3_COPY).filter(([, v]) => typeof v !== 'string').map(([k]) => k);
+  assert.deepEqual(pending, [], `🔴 placeholders still pending owner approval: ${pending.join(', ')}`);
+});

@@ -185,12 +185,14 @@ export const setExtraPrice = (draft, id, raw) => setPrice(draft, 'extra', id, ra
 // A new row: the temporary reference the caller minted, the section it goes in, and nothing the server owns (no
 // key, no id, no identity stamp). Appended at the END of item_order — the server refuses anything else. The price
 // starts empty (the merchant types it) and is held unvalidated like any other price field.
-export function addProduct(draft, { ref, cat, subcat = null } = {}) {
+export function addProduct(draft, { ref, cat, subcat = null } = {}, opts = {}) {
   if (!canEditContent(draft)) return draft;
   if (typeof ref !== 'string' || !ref.startsWith('tmp:') || typeof cat !== 'string' || !cat) return draft;
+  if (Array.isArray(draft.state.items) && draft.state.items.some((r) => r && r.ref === ref)) return draft;
+  // S4-C (sections ON only): a NEW dish in a new (staged) section promotes it, as a moved-in dish does; refused ⇒ nothing added
+  if (!promoteFor(draft, cat, opts)) return draft;
   const st = draft.state;
   if (!Array.isArray(st.items)) st.items = [];
-  if (st.items.some((r) => r && r.ref === ref)) return draft;
   const display = { cat, name: '', price: null };
   if (typeof subcat === 'string' && subcat) display.subcat = subcat;
   st.items.push({ ref, price: null, display });
@@ -204,7 +206,7 @@ export function addProduct(draft, { ref, cat, subcat = null } = {}) {
 // server allocated its key, the name IS the key for some brands, so it is no longer the merchant's to retype here
 // (they can still change its price, or remove it). Price goes through parsePrice like every price.
 // The branches below ARE the field whitelist: any other field (key, id, identity_id…) matches none and writes nothing.
-export function setAddition(draft, ref, field, raw) {
+export function setAddition(draft, ref, field, raw, opts = {}) {
   if (!canEditContent(draft)) return draft;
   const row = rowsOf(draft.state, 'item').find((r) => r && r.ref === ref && isTmp(r));
   if (!row || isOptionRow(row)) return draft;   // an option is edited through the group mutators below
@@ -220,7 +222,15 @@ export function setAddition(draft, ref, field, raw) {
   const v = typeof raw === 'string' ? raw : '';
   if (field === 'name') row.display.name = v;
   else if (field === 'desc') { if (v.trim()) row.display.desc = v; else delete row.display.desc; }
-  else if (field === 'cat') { if (v) { row.display.cat = v; delete row.display.subcat; } }
+  else if (field === 'cat') {
+    if (v) {
+      const from = row.display.cat;
+      if (!promoteFor(draft, v, opts)) return draft;   // S4-C: into a new section promotes it (sections ON)
+      const moved = rowsOf(draft.state, 'item').find((r) => r && r.ref === ref);
+      moved.display.cat = v; delete moved.display.subcat;
+      unpromoteIfEmptied(draft, from, opts);           // out of a section promoted in this draft: back to staged when it empties
+    }
+  }
   else if (field === 'subcat') { if (v) row.display.subcat = v; else delete row.display.subcat; }
   return draft;
 }
@@ -229,7 +239,7 @@ export function setAddition(draft, ref, field, raw) {
 // caller's set of saved additions holds its key). Never an existing published item: removing those is not an add-product capability.
 // 1D add-product B — a product with a required choice goes WITH its options and its variant_items entry (one unit, as the
 // server allocates and compares it); an option on its own is never removed here (removeChoice owns that, on an unsaved group).
-export function removeAddition(draft, id, savedAdditions = new Set()) {
+export function removeAddition(draft, id, savedAdditions = new Set(), opts = {}) {
   if (!canEditContent(draft)) return draft;
   const items = rowsOf(draft.state, 'item');
   const saved = savedAdditions instanceof Set ? savedAdditions : new Set();
@@ -240,6 +250,7 @@ export function removeAddition(draft, id, savedAdditions = new Set()) {
   const row = items[i];
   if (g) dropGroup(draft.state, g);
   dropDishUnit(draft.state, row);
+  unpromoteIfEmptied(draft, row.display && row.display.cat, opts);   // S4-C: the promoting addition gone ⇒ staged again
   return draft;
 }
 // ONE dish unit leaves the source: its row, its item_order entry and its photos entry — shared by removeAddition and removeProduct
@@ -277,6 +288,8 @@ export function canRemoveProduct(draft, key, ctx = {}, liveOrder = ctx && ctx.li
   const sid = row.display && row.display.identity_id;
   if (typeof sid !== 'string' || !sid) return no('unstamped');                                   // the server would refuse a RESET
   if (ctx.baseReadable !== true || !validLiveOrder(liveOrder)) return no('base_unreadable', true);
+  // STRUCTURE S4 3(b) (advisor 11-13; sections ON only): never a round trip to the server's section_emptied for a LIVE section
+  if (ctx.sections === true && lastOfSection(draft, row) === 'live') return no('section_empty', true);
   return { show: true, enabled: true, code: null };
 }
 // §4.2 / P-R9 — the ONE order rebuild: item_order = the live order filtered to what is present, THEN the draft's additions (keys the
@@ -316,7 +329,9 @@ export function removeProduct(draft, key, ctx = {}, liveOrder = ctx && ctx.liveO
   // `after` / `redeem_index` are kept in P-R1's shape but NEVER place anything: §4.2 rebuilds both orders from P-R9
   const snap = clone({ key, identity_id: row.display.identity_id, row, after: j > 0 ? order[j - 1] : null, photo: pm && own(pm, key) ? pm[key] : null,
     refs: { item_override: ov && own(ov, key) ? ov[key] : null, extras_by_item: ebi && own(ebi, key) ? ebi[key] : null, redeem_index: ri === -1 ? null : ri } });
+  const lastDraft = ctx && ctx.sections === true && lastOfSection(draft, row) === 'draft' ? row.display.cat : null;   // STRUCTURE S4 3(a)
   dropDishUnit(st, row);
+  if (lastDraft !== null) unpromote(draft, st, lastDraft);
   if (ov && own(ov, key)) delete ov[key];
   if (ebi && own(ebi, key)) delete ebi[key];
   if (ri !== -1) rei.splice(ri, 1);
@@ -344,7 +359,7 @@ function staleRefs(st, refs) {
   if (Array.isArray(ebi)) for (const v of ebi) if (!groups.has(String(v)) && !keys.has(String(v))) return true;
   return false;
 }
-export function undoRemoveProduct(draft, key, snap, liveOrder) {
+export function undoRemoveProduct(draft, key, snap, liveOrder, opts = {}) {
   if (!draft || !canEditContent(draft)) return { ok: false, code: 'not_editable' };
   if (!validLiveOrder(liveOrder)) return { ok: false, code: 'base_unreadable' };
   if (!snap || !snap.row || snap.row.key !== key) return { ok: false, code: 'unknown_item' };
@@ -352,6 +367,9 @@ export function undoRemoveProduct(draft, key, snap, liveOrder) {
   const st = draft.state;
   if (!Array.isArray(st.items)) st.items = [];
   if (st.items.some((r) => r && r.key === key)) return { ok: false, code: 'present' };
+  // STRUCTURE S4 3(a): the dish's section went back to staged with it — «Deshacer» promotes it again (sections ON only)
+  const backTo = sectionsOn(opts) && snap.row.display ? stagedOf(st).find((c) => c && String(c.id) === String(snap.row.display.cat)) : null;
+  if (backTo && (!sectionWriter() || typeof sectionWriter().promotedOrder !== 'function')) return { ok: false, code: 'writer_unavailable' };
   // the row goes where the live order puts it among the rows (canonical items follow item_order); additions stay after it
   const rank = (k) => { const i = liveOrder.items.indexOf(k); return i === -1 ? Infinity : i; };
   const at = rank(key);
@@ -369,6 +387,7 @@ export function undoRemoveProduct(draft, key, snap, liveOrder) {
   const sid = snap.row.display && snap.row.display.identity_id;
   if (typeof sid === 'string' && sid) mergeDeletionClaim(st, { withdraw: [sid] });
   rebuildOrders(st, liveOrder);
+  if (backTo) promoteStaged(draft, st, backTo);
   return { ok: true };
 }
 // ── the READ side app.js paints from (§3.3 / §9) — pure readers; every row they hand back is a COPY, so nothing the caller keeps
@@ -501,9 +520,34 @@ function foldNewGroups(draft, entries, saved) {
 // MOCKUP-portal-item-edit B («4 cambios sin publicar · 1 producto»).
 // STRUCTURE S1 — and so is a dish's extras checklist or «Sin extras» (Codex S1 plan r1 #1): a SAVED one is pending work after the
 // drawer closed, so the reload / branch-switch / self-update guard (portalReloadFacts) still holds it.
+// S3 (Codex #183-1): a LIVE choice's own facts — its name, its «Recomendada» mark, an option's name — are pending work once the drawer saved
+// them into the draft (a NEW group arrives with its dish, counted there; an added / removed option is an item change, counted there)
+export function pendingChoices(draft) {
+  const out = [];
+  if (!draft) return out;
+  const groups = (src) => (src && src.structure && src.structure.variant_items && typeof src.structure.variant_items === 'object' ? src.structure.variant_items : {});
+  const was = groups(draft.orig), now = groups(draft.state);
+  const rowsWas = rowsOf(draft.orig, 'item'), rowsNow = rowsOf(draft.state, 'item');
+  const idOf = (r) => (r && Object.prototype.hasOwnProperty.call(r, 'ref') ? r.ref : r && r.display ? r.display.id : undefined);
+  const byId = (rows, id) => rows.find((r) => r && r.display && String(idOf(r)) === String(id));
+  const ids = (spec) => (spec && Array.isArray(spec.variantIds) ? spec.variantIds.map(String) : []);
+  const marked = (rows, spec) => ids(spec).find((v) => { const r = byId(rows, v); return !!(r && Array.isArray(r.display.tags) && r.display.tags.includes('recommended')); }) || null;
+  for (const lid of Object.keys(now)) {
+    if (!Object.prototype.hasOwnProperty.call(was, lid)) continue;
+    const a = was[lid], b = now[lid];
+    if (String((b && b.label) || '') !== String((a && a.label) || '')) out.push({ launcher: lid, kind: 'label' });
+    if (marked(rowsNow, b) !== marked(rowsWas, a)) out.push({ launcher: lid, kind: 'recommended' });
+    for (const v of ids(b)) {
+      if (!ids(a).includes(v)) continue;
+      const ra = byId(rowsWas, v), rb = byId(rowsNow, v);
+      if (ra && rb && String(ra.display.choice || '') !== String(rb.display.choice || '')) out.push({ launcher: lid, kind: 'option', option: v });
+    }
+  }
+  return out;
+}
 export const pendingCount = (draft, savedAdditions) => pendingChanges(draft, savedAdditions).length + pendingPhotos(draft).length
   + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingDishExtras(draft).reduce((n, t) => n + t.sentences, 0)
-  + pendingStructure(draft).length;
+  + pendingStructure(draft).length + pendingSections(draft).length + pendingChoices(draft).length;
 
 // ── DISH PHOTOS B (PLAN-dish-photos §2.1 / §2.2) — THE DRAFT PHOTO MAP ────────────────────────────────────────────────
 // `source.photos` = {[itemKey]: {state:'pid', pid} | {state:'removed'}}; an absent key is LEGACY. It is part of the document
@@ -670,7 +714,9 @@ export function optionPricesEqual(draft, id) {
 
 // Ninguna ⇄ a group. ON creates the group with the given option references (2, from the caller), each at the product's
 // current price; OFF ("Ninguna") removes the options, the map entry and "sin extras" — zero residue.
-export function setRequiredChoice(draft, id, on, optionRefs = [], savedAdditions = new Set()) {
+// STRUCTURE S3 (addendum B7): with `opts.choiceEdit` the new group's FIRST option is pre-marked «Recomendada» (a new group is touched and
+// needs exactly one mark); OFF ⇒ today, byte for byte
+export function setRequiredChoice(draft, id, on, optionRefs = [], savedAdditions = new Set(), opts = {}) {
   if (!canEditContent(draft)) return draft;
   const st = draft.state;
   // OFF ("Ninguna") on any NEW product — unsaved, or saved and listed as an unpublished addition (§0b.8): the product stays,
@@ -687,6 +733,7 @@ export function setRequiredChoice(draft, id, on, optionRefs = [], savedAdditions
   if (!variantMap(st)) st.structure.variant_items = {};
   st.structure.variant_items[l.ref] = { label: '', variantIds: [] };
   for (const r of refs) addChoice(draft, id, r);
+  if (opts && opts.choiceEdit === true && refs.length) setChoiceRecommended(draft, refs[0], true);
   return draft;
 }
 export function setGroupLabel(draft, id, raw) {
@@ -717,7 +764,8 @@ export function addChoice(draft, id, ref, raw) {
   return draft;
 }
 // × on an unsaved option.
-export function removeChoice(draft, id, ref) {
+// STRUCTURE S3 (B7, `opts.choiceEdit` only): removing the MARKED option moves the mark to the new first one — never zero
+export function removeChoice(draft, id, ref, opts = {}) {
   if (!canEditContent(draft)) return draft;
   const l = editableLauncher(draft, id);
   const g = l && isTmp(l) ? groupOfRow(draft.state, l) : null;
@@ -727,7 +775,9 @@ export function removeChoice(draft, id, ref) {
   items.splice(items.indexOf(o), 1);
   dropFromOrder(draft.state, ref);
   g.spec.variantIds.splice(g.spec.variantIds.indexOf(ref), 1);
-  recomputeLauncher({ ...g, options: g.options.filter((x) => x !== o) });
+  const rest = g.options.filter((x) => x !== o);
+  recomputeLauncher({ ...g, options: rest });
+  if (opts && opts.choiceEdit === true && Array.isArray(o.display.tags) && o.display.tags.includes('recommended') && rest.length) setChoiceRecommended(draft, rowId(rest[0]), true);
   return draft;
 }
 function editableOption(draft, id, savedAdditions) {
@@ -874,6 +924,7 @@ export function pendingRenames(draft) {
   const out = [];
   for (const cat of catsOf(draft.state)) {
     const was = orig.find((c) => c && cat && String(c.id) === String(cat.id));
+    if (!was) continue;   // STRUCTURE S4: a section the baseline does not have is NEW — naming it is not a rename (5f S4 §1.7)
     const from = catNameOf(was), to = catNameOf(cat);
     if (from !== to) out.push({ id: String(cat.id), from, to });
   }
@@ -945,10 +996,12 @@ export function itemDescProblem(draft, key, raw) {
 }
 // 'unknown' | 'subcat_required' | 'section_empty' | 'subsection_empty' | null — the target must be a section the page shows,
 // one of ITS subsections when it has any (chosen, never preselected), and the move may not leave a section or subsection empty.
-export function itemCategoryProblem(draft, key, { cat, subcat = null } = {}) {
+// STRUCTURE S4 (`opts.sections === true` only): a STAGED section (a new one, still empty) is a valid target, with no subsection.
+export function itemCategoryProblem(draft, key, { cat, subcat = null } = {}, opts = {}) {
   const row = existingRow(draft.state, key);
   if (!row) return 'unknown';
-  const target = catsOf(draft.state).find((c) => c && String(c.id) === String(cat));
+  let target = catsOf(draft.state).find((c) => c && String(c.id) === String(cat));
+  if (!target && sectionsOn(opts)) { const sc = stagedOf(draft.state).find((c) => c && String(c.id) === String(cat)); if (sc) target = { id: sc.id }; }
   if (!target) return 'unknown';
   const subs = Array.isArray(target.subcats) ? target.subcats.map(String) : [];
   if (subs.length && !subs.includes(subcat == null ? '' : String(subcat))) return 'subcat_required';
@@ -960,6 +1013,264 @@ export function itemCategoryProblem(draft, key, { cat, subcat = null } = {}) {
   if (typeof d.subcat === 'string' && (String(d.cat) !== String(cat) || d.subcat !== nextSub)
       && !products.some((r) => String(r.display.cat) === String(d.cat) && r.display.subcat === d.subcat)) return 'subsection_empty';
   return null;
+}
+
+// ── STRUCTURE S4 — the «S4 portal writer» (PLAN-portal-structure-S4-writer-r0, approved 2026-11-13; 5f's PLAN-structure-S4-r4 §R2.9) ───
+// Sections: create (STAGED until a dish is in it), rename, drop a staged one, move a dish (promoting a staged target), subsections
+// (atomic membership), and the three reorders. Every mutator is ALL OR NOTHING on one copy, refused `sections_off` unless the server's
+// switch (getEditableCatalog `sections`) is `=== true`, then `not_editable`. The new id and the promotion position are NOT computed here:
+// they are 5f's categorySlug / promotedOrder (section-transitions.js, synced byte for byte into the portal); without it → writer_unavailable.
+// The server re-judges every resulting draft; the codes below are for the portal's own panels.
+const SUBCAT_MAX = 12, SECTIONS_MAX = 30;
+const sectionsOn = (o) => !!o && o.sections === true;
+const stagedOf = (src) => (src && src.structure && Array.isArray(src.structure.staged_categories) ? src.structure.staged_categories : []);
+const sectionWriter = () => globalThis.SectionTransitions;
+// ONE representation (5f, 11-13): the staged list is PRESENT only while it holds an entry — emptied ⇒ the key is DELETED, never []
+const setStaged = (st, list) => { if (list.length) st.structure.staged_categories = list; else delete st.structure.staged_categories; };
+// the ONE name fold for section / subsection clashes: 5f's nameFold (≡ the server's add-product normalizeName — accents stripped, inner
+// spaces collapsed, lowercase), from the shared module; without the module the name-checking ops refuse writer_unavailable
+const foldable = () => !!sectionWriter() && typeof sectionWriter().nameFold === 'function';
+const sectionFold = (v) => { if (!foldable()) throw sectionRefusal('writer_unavailable'); return sectionWriter().nameFold(cleanCategoryName(v)); };
+const sectionRefusal = (code, extra) => Object.assign(new Error(code), { s4: { code, ...(extra || {}) } });
+function sectionOp(draft, opts, fn) {
+  if (!sectionsOn(opts)) return { ok: false, code: 'sections_off' };
+  if (!canEditContent(draft)) return { ok: false, code: 'not_editable' };
+  const work = clone(draft.state);
+  try { fn(work); } catch (e) { if (e && e.s4) return { ok: false, ...e.s4 }; throw e; }
+  draft.state = work;
+  return { ok: true };
+}
+const isPermutation = (next, was) => Array.isArray(next) && next.length === was.length && new Set(next.map(String)).size === next.length
+  && was.every((x) => next.map(String).includes(String(x)));
+const takenNames = (st, exceptId = null) => [...catsOf(st), ...stagedOf(st)].filter((c) => c && String(c.id) !== String(exceptId)).map((c) => sectionFold(c.name || ''));
+export function addCategory(draft, name, { after } = {}, opts = {}) {
+  return sectionOp(draft, opts, (st) => {
+    const w = sectionWriter();
+    if (!w || typeof w.categorySlug !== 'function') throw sectionRefusal('writer_unavailable');
+    if (categoryNameProblem(name) !== null) throw sectionRefusal('category_name_invalid');
+    if (takenNames(st).includes(sectionFold(name))) throw sectionRefusal('category_name_taken');
+    if (catsOf(st).length + stagedOf(st).length >= SECTIONS_MAX) throw sectionRefusal('structure_caps');
+    const declared = catsOf(st).map((c) => String(c.id));
+    const anchor = after === undefined ? (declared.length ? declared[declared.length - 1] : null) : after;
+    if (anchor !== null && !declared.includes(String(anchor))) throw sectionRefusal('staged_anchor_invalid');
+    const id = w.categorySlug(cleanCategoryName(name), [...declared, ...stagedOf(st).map((c) => String(c.id))]);
+    setStaged(st, [...stagedOf(st), { id, name: cleanCategoryName(name), after: anchor }]);
+  });
+}
+// a DECLARED section: today's T1 rename (setCategoryNames, its rules unchanged); a STAGED one: its name (naming a new section is not a rename)
+export function renameCategory(draft, id, name, opts = {}) {
+  if (!sectionsOn(opts)) return { ok: false, code: 'sections_off' };
+  if (!canEditContent(draft)) return { ok: false, code: 'not_editable' };
+  const st = draft.state;
+  const declared = catsOf(st).find((c) => c && String(c.id) === String(id));
+  const staged = stagedOf(st).find((c) => c && String(c.id) === String(id));
+  if (!declared && !staged) return { ok: false, code: 'category_unknown' };
+  if (categoryNameProblem(name) !== null) return { ok: false, code: 'category_name_invalid' };
+  if (!foldable()) return { ok: false, code: 'writer_unavailable' };
+  if (takenNames(st, id).includes(sectionFold(name))) return { ok: false, code: 'category_name_taken' };
+  if (staged) return sectionOp(draft, opts, (w) => { stagedOf(w).find((c) => String(c.id) === String(id)).name = cleanCategoryName(name); });
+  const before = JSON.stringify(st);
+  setCategoryNames(draft, [[id, name]]);
+  return JSON.stringify(draft.state) === before && catNameOf(declared) !== cleanCategoryName(name) ? { ok: false, code: 'not_renamable' } : { ok: true };
+}
+export function dropStagedCategory(draft, id, opts = {}) {
+  return sectionOp(draft, opts, (st) => {
+    if (catsOf(st).some((c) => c && String(c.id) === String(id))) throw sectionRefusal('category_declared');
+    if (!stagedOf(st).some((c) => c && String(c.id) === String(id))) throw sectionRefusal('category_unknown');
+    setStaged(st, stagedOf(st).filter((c) => String(c.id) !== String(id)));
+  });
+}
+// into a DECLARED section: exactly today's move (editItem); into a STAGED one: the same move, and the section is promoted into
+// `categories` at promotedOrder's position, its staged entry dropped — one op
+export function moveItem(draft, key, { cat, subcat = null } = {}, opts = {}) {
+  if (!sectionsOn(opts)) return { ok: false, code: 'sections_off' };
+  if (!canEditContent(draft)) return { ok: false, code: 'not_editable' };
+  const problem = itemCategoryProblem(draft, key, { cat, subcat }, opts);
+  // 3(a) (advisor 11-13; S4-r4 :138–:140): the LAST dish of a section declared in THIS draft may leave — the section goes back to staged
+  // in the same op (the server never sees an emptied declared section); a live section still refuses
+  const row0 = existingRow(draft.state, key);
+  const fromCat = row0 && row0.display ? row0.display.cat : null;
+  const undoPromotion = problem === 'section_empty' && lastOfSection(draft, row0) === 'draft';
+  if (problem !== null && !undoPromotion) return { ok: false, code: problem };
+  const staged = stagedOf(draft.state).find((c) => c && String(c.id) === String(cat));
+  if (undoPromotion) {
+    return sectionOp(draft, opts, (st) => {
+      if (staged) promoteStaged(draft, st, staged);
+      const row = existingRow(st, key);
+      writeMove([row, ...membersOf(st, row)], staged ? staged.id : cat, staged ? null : subcat);
+      unpromote(draft, st, fromCat);
+    });
+  }
+  if (!staged) return editItem(draft, key, { cat, subcat }) ? { ok: true } : { ok: false, code: 'invalid' };
+  return sectionOp(draft, opts, (st) => {
+    promoteStaged(draft, st, staged);
+    const row = existingRow(st, key);
+    writeMove([row, ...membersOf(st, row)], staged.id, null);
+  });
+}
+// promote one staged section into `st` (a working copy of draft.state) — per SAVE (5f R4.2): every staged section of the STORED draft
+// (draft.orig) promoted since, this one included, is placed together, ranked in the stored staged order, on the candidate's order
+// without them; one created in this draft simply lands after its anchor. Throws writer_unavailable without 5f's module.
+function promoteStaged(draft, st, staged) {
+  const w = sectionWriter();
+  if (!w || typeof w.promotedOrder !== 'function') throw sectionRefusal('writer_unavailable');
+  const now = catsOf(st).map((c) => String(c.id));
+  const origStaged = stagedOf(draft.orig).map((c) => ({ id: String(c.id), after: c.after == null ? null : String(c.after) }));
+  const fromStored = origStaged.some((c) => c.id === String(staged.id));
+  const promoted = fromStored ? origStaged.filter((c) => c.id === String(staged.id) || now.includes(c.id)) : [{ id: String(staged.id), after: staged.after }];
+  const ids = w.promotedOrder(now.filter((i) => !promoted.some((p) => p.id === i)), promoted);
+  const byId = new Map(catsOf(st).map((c) => [String(c.id), c]));
+  st.structure.categories = ids.map((i) => byId.get(String(i)) || { id: staged.id, name: staged.name });
+  setStaged(st, stagedOf(st).filter((c) => String(c.id) !== String(staged.id)));
+}
+// 3(a) (advisor 11-13): a section declared in THIS draft (absent from the stored draft's categories) whose last dish leaves goes back to
+// staged — its stored entry when it had one, else anchored after the nearest section the stored draft declares — in stored order
+const draftOnlySection = (draft, cat) => !catsOf(draft.orig).some((c) => c && String(c.id) === String(cat));
+function unpromote(draft, st, cat) {
+  const cats = catsOf(st);
+  const i = cats.findIndex((c) => String(c.id) === String(cat));
+  if (i === -1) return;
+  const c = cats[i];
+  const stored = stagedOf(draft.orig).find((x) => String(x.id) === String(cat));
+  const declaredBefore = cats.slice(0, i).map((x) => String(x.id)).filter((id) => !draftOnlySection(draft, id));
+  const entry = stored ? { ...clone(stored), name: c.name } : { id: c.id, name: c.name, after: declaredBefore.length ? declaredBefore[declaredBefore.length - 1] : null };
+  st.structure.categories = cats.filter((x) => String(x.id) !== String(cat));
+  const rank = (x) => { const k = stagedOf(draft.orig).findIndex((y) => String(y.id) === String(x.id)); return k === -1 ? Infinity : k; };
+  setStaged(st, [...stagedOf(st), entry].map((x, n) => [x, n]).sort((p, q) => (rank(p[0]) - rank(q[0])) || (p[1] - q[1])).map(([x]) => x));
+}
+// the dish is its section's last: 'draft' (a section declared in this draft → 3(a)) | 'live' (→ 3(b)) | null
+function lastOfSection(draft, row) {
+  const cat = row && row.display ? row.display.cat : undefined;
+  const others = rowsOf(draft.state, 'item').filter((r) => r && r !== row && !isOptionRow(r) && r.display && String(r.display.cat) === String(cat));
+  if (others.length) return null;
+  return draftOnlySection(draft, cat) ? 'draft' : 'live';
+}
+// a STAGED section's name — in the draft, else in the loaded draft (a dropped one): the review names what the server's staged lines
+// name by id. null when neither has it. A pure reader.
+export function stagedName(draft, id) {
+  if (!draft) return null;
+  const c = [...stagedOf(draft.state), ...stagedOf(draft.orig)].find((x) => x && String(x.id) === String(id));
+  return c && typeof c.name === 'string' && c.name ? c.name : null;
+}
+// a section NEW in this draft — staged (no dish yet) or declared since the draft was loaded: the rail's / header's F tag «Nueva». A pure reader.
+export function sectionIsNew(draft, id) {
+  if (!draft || !draft.state) return false;
+  if (stagedOf(draft.state).some((c) => c && String(c.id) === String(id))) return true;
+  return catsOf(draft.state).some((c) => c && String(c.id) === String(id)) && draftOnlySection(draft, id);
+}
+// S4-C (advisor 11-13): an ADDITION is a promoting dish like a moved-in one — sections ON only. promoteFor → false when the switch is on,
+// the target is staged and the promotion is refused (nothing written); unpromoteIfEmptied returns a section declared in THIS draft to
+// staged once its last dish left (3(a)'s rule, as moveItem / removeProduct do)
+function promoteFor(draft, cat, opts) {
+  if (!sectionsOn(opts)) return true;
+  const staged = stagedOf(draft.state).find((c) => c && String(c.id) === String(cat));
+  if (!staged) return true;
+  return sectionOp(draft, opts, (st) => promoteStaged(draft, st, staged)).ok;
+}
+function unpromoteIfEmptied(draft, cat, opts) {
+  if (!sectionsOn(opts) || cat == null) return;
+  const left = rowsOf(draft.state, 'item').some((r) => r && !isOptionRow(r) && r.display && String(r.display.cat) === String(cat));
+  if (!left && draftOnlySection(draft, cat)) unpromote(draft, draft.state, cat);
+}
+// a new subsection takes ≥ 1 member in the same op; the FIRST one of an ungrouped section takes every dish of it (5f R2.5)
+export function addSubcat(draft, cat, name, members, opts = {}) {
+  return sectionOp(draft, opts, (st) => {
+    const c = catsOf(st).find((x) => x && String(x.id) === String(cat));
+    if (!c) throw sectionRefusal('category_unknown');
+    const subs = Array.isArray(c.subcats) ? c.subcats : [];
+    if (categoryNameProblem(name) !== null) throw sectionRefusal('subcat_name_invalid');
+    if (subs.some((x) => sectionFold(x) === sectionFold(name))) throw sectionRefusal('subcat_name_taken');
+    if (subs.length >= SUBCAT_MAX) throw sectionRefusal('structure_caps');
+    const keys = Array.isArray(members) ? members.map(String) : [];
+    if (!keys.length) throw sectionRefusal('subcat_empty');
+    const rows = keys.map((k) => existingRow(st, k));
+    if (new Set(keys).size !== keys.length || rows.some((r) => !r || String(r.display.cat) !== String(cat))) throw sectionRefusal('subcat_member_invalid');
+    const dishes = rowsOf(st, 'item').filter((r) => r && !isOptionRow(r) && r.display && String(r.display.cat) === String(cat));
+    if (!subs.length) { const missing = dishes.map((r) => r.key).filter((k) => !keys.includes(k)); if (missing.length) throw sectionRefusal('subcat_partial', { missing }); }
+    const left = (sub) => dishes.some((r) => r.display.subcat === sub && !keys.includes(r.key));
+    if (subs.some((sub) => rows.some((r) => r.display.subcat === sub) && !left(sub))) throw sectionRefusal('subsection_empty');
+    const nm = cleanCategoryName(name);
+    c.subcats = [...subs, nm];
+    for (const r of rows) for (const m of [r, ...membersOf(st, r)]) m.display.subcat = nm;
+  });
+}
+// the name AND every member's display.subcat (options too), nothing else
+export function renameSubcat(draft, cat, old, name, opts = {}) {
+  return sectionOp(draft, opts, (st) => {
+    const c = catsOf(st).find((x) => x && String(x.id) === String(cat));
+    const subs = c && Array.isArray(c.subcats) ? c.subcats : [];
+    const j = subs.indexOf(old);
+    if (j === -1) throw sectionRefusal('subcat_unknown');
+    if (categoryNameProblem(name) !== null) throw sectionRefusal('subcat_name_invalid');
+    if (subs.some((x, i) => i !== j && sectionFold(x) === sectionFold(name))) throw sectionRefusal('subcat_name_taken');
+    const nm = cleanCategoryName(name);
+    subs[j] = nm;
+    for (const r of rowsOf(st, 'item')) if (r && r.display && String(r.display.cat) === String(cat) && r.display.subcat === old) r.display.subcat = nm;
+  });
+}
+export function reorderSections(draft, ids, opts = {}) {
+  return sectionOp(draft, opts, (st) => {
+    const cats = catsOf(st);
+    if (!isPermutation(ids, cats.map((c) => String(c.id)))) throw sectionRefusal('not_permutation');
+    st.structure.categories = ids.map((i) => cats.find((c) => String(c.id) === String(i)));
+  });
+}
+export function reorderSubcats(draft, cat, names, opts = {}) {
+  return sectionOp(draft, opts, (st) => {
+    const c = catsOf(st).find((x) => x && String(x.id) === String(cat));
+    if (!c || !Array.isArray(c.subcats)) throw sectionRefusal('category_unknown');
+    if (!isPermutation(names, c.subcats)) throw sectionRefusal('not_permutation');
+    c.subcats = names.map(String);
+  });
+}
+export function reorderItems(draft, keys, opts = {}) {
+  return sectionOp(draft, opts, (st) => {
+    const order = st.structure && Array.isArray(st.structure.item_order) ? st.structure.item_order : [];
+    if (!isPermutation(keys, order)) throw sectionRefusal('not_permutation');
+    st.structure.item_order = keys.map((k) => order.find((o) => String(o) === String(k)));
+  });
+}
+
+// STRUCTURE S4 6 (advisor 11-13) — the sections changes the bar counts («· 1 categoría» / «· 1 subcategoría» / «· orden»), draft vs the
+// stored baseline: a section NEW to the declared list (a promotion included), STAGED, its staged NAME, DROPPED; a subsection NEW or
+// RENAMED (in a section both have); the ORDER of sections / subsections / dishes when the same members moved. Names of LIVE sections are
+// T1's (pendingRenames). Today's edits never change any of these, so the count is unchanged with the switch off.
+export function pendingSections(draft) {
+  const out = [];
+  const ids = (cs) => cs.map((c) => String(c.id));
+  const ca = catsOf(draft.orig), cb = catsOf(draft.state), ia = ids(ca), ib = ids(cb);
+  const sa = stagedOf(draft.orig), sb = stagedOf(draft.state);
+  for (const id of ib) if (!ia.includes(id)) out.push({ kind: 'category', id, change: 'new' });
+  for (const c of sb) {
+    const was = sa.find((x) => String(x.id) === String(c.id));
+    if (!was) out.push({ kind: 'category', id: String(c.id), change: 'staged' });
+    else if (was.name !== c.name) out.push({ kind: 'category', id: String(c.id), change: 'name' });
+  }
+  for (const c of sa) if (!sb.some((x) => String(x.id) === String(c.id)) && !ib.includes(String(c.id))) out.push({ kind: 'category', id: String(c.id), change: 'drop' });
+  const subsOf = (c) => (c && Array.isArray(c.subcats) ? c.subcats.map(String) : []);
+  const sameSet = (x, y) => x.length === y.length && x.every((v) => y.includes(v));
+  for (const c of cb) {
+    const was = ca.find((x) => String(x.id) === String(c.id));
+    if (!was) continue;
+    const a = subsOf(was), b = subsOf(c);
+    const added = b.filter((v) => !a.includes(v)).length, gone = a.filter((v) => !b.includes(v)).length;
+    for (let n = 0; n < Math.min(added, gone); n++) out.push({ kind: 'subcat', cat: String(c.id), change: 'rename' });
+    for (let n = Math.min(added, gone); n < added; n++) out.push({ kind: 'subcat', cat: String(c.id), change: 'new' });
+  }
+  const common = ib.filter((id) => ia.includes(id));
+  if (common.join('\u0000') !== ia.filter((id) => ib.includes(id)).join('\u0000')) out.push({ kind: 'order', what: 'sections' });
+  for (const c of cb) {
+    const was = ca.find((x) => String(x.id) === String(c.id));
+    if (!was) continue;
+    // a renamed subsection keeps its place for the order comparison: the k-th name gone maps to the k-th name added
+    const b = subsOf(c), gone = subsOf(was).filter((v) => !b.includes(v)), added = b.filter((v) => !subsOf(was).includes(v));
+    const a = subsOf(was).map((v) => (gone.includes(v) && gone.indexOf(v) < added.length ? added[gone.indexOf(v)] : v));
+    if (a.length && sameSet(a, b) && a.join('\u0000') !== b.join('\u0000')) out.push({ kind: 'order', what: 'subcats', cat: String(c.id) });
+  }
+  const oa = (draft.orig && draft.orig.structure && Array.isArray(draft.orig.structure.item_order)) ? draft.orig.structure.item_order.map(String) : [];
+  const ob = (draft.state && draft.state.structure && Array.isArray(draft.state.structure.item_order)) ? draft.state.structure.item_order.map(String) : [];
+  if (sameSet(oa, ob) && oa.join('\u0000') !== ob.join('\u0000')) out.push({ kind: 'order', what: 'items' });
+  return out;
 }
 
 // The whole drawer, once. `edit`: any of { name, desc, cat, subcat, price, optionPrices: {[optionKey]: raw}, photo,
@@ -993,7 +1304,7 @@ export function editItem(draft, key, edit = {}, { reserved = null, extrasAuthori
   if (price === null || (price !== undefined && opts.length)) return false;   // a group's price lives on its options
   const optPrices = [];
   for (const [k, raw] of Object.entries(e.optionPrices && typeof e.optionPrices === 'object' ? e.optionPrices : {})) {
-    const o = opts.find((x) => x.key === k);
+    const o = opts.find((x) => (x.key || x.ref) === k);   // Codex #201: by row id — an option added in an earlier drawer has a ref
     const p = parsePrice(raw);
     if (!o || p === null) return false;
     optPrices.push([o, p]);
@@ -1149,6 +1460,25 @@ export function applyExposureOps(draft, ops, { extrasCatalog = false } = {}) {
   draft.state = mergeDeletionClaim(cur, results);
   return { ok: true };
 }
+// STRUCTURE S3 (PLAN-portal-structure-S3-ui r0, approved 2026-11-13) — the required choice on an EXISTING dish. The one mutator: an
+// ORDERED op list folded through 5f's choice writer (the portal's byte copy, choice-transitions.js) on ONE copy; any refusal leaves the
+// draft untouched; the removed rows' identity stamps join the deletion claim. Only with the server's switch (choiceEdit). The portal
+// never writes variant_items or a «Recomendada» tag itself while the switch is on: the server re-judges the resulting draft anyway.
+const choiceWriter = () => globalThis.ChoiceTransitions;
+export function applyChoiceOps(draft, ops, { choiceEdit = false } = {}) {
+  if (choiceEdit !== true) return { ok: false, code: 'choice_edit_off' };
+  if (!canEditContent(draft)) return { ok: false, code: 'not_editable' };
+  if (!choiceWriter() || typeof choiceWriter().apply !== 'function') return { ok: false, code: 'writer_unavailable' };
+  if (!Array.isArray(ops) || !ops.length) return { ok: false, code: 'unknown_op' };
+  let cur = draft.state; const results = [];
+  try { for (const op of ops) { const r = choiceWriter().apply(cur, op); results.push(r); cur = r.source; } }
+  catch (err) { return refusedBy(err); }
+  draft.state = mergeDeletionClaim(cur, results);
+  return { ok: true };
+}
+// the S3 refusals' lines: ONLY the owner-approved one (11-12) exists; every other code waits for the Fable addendum's approved copy
+const CHOICE_REWARD_LINE = 'Este producto se canjea con recompensas. Para mantener el premio, no se le pueden agregar opciones.';
+export const choiceRefusalLine = (code) => (code === 'choice_on_reward_dish' ? CHOICE_REWARD_LINE : null);
 // §3.2 — the drawer's ONE composition, for the preview (strict: false — what the copy WOULD save, a move not yet valid included)
 // and the commit (strict: true — every field judged by the editor's rules). Never writes `draft`:
 //   1. «Sin extras» OFF first (an attach needs a dish that offers extras);
@@ -1156,9 +1486,13 @@ export function applyExposureOps(draft, ops, { extrasCatalog = false } = {}) {
 //   3. the copy's attach / detach ops, in order, through the writer, on the moved copy;
 //   4. the rest (text, price, photo, the checklist, «Sin extras» ON) through editItem, the checklist judged against THAT prospect.
 // → { ok: true, source } | { ok: false, code, … }. (attach / detach never remove an extra.)
-export function composeDish(draft, key, edit = {}, ops = [], { reserved = null, extrasAuthoring = false, extrasCatalog = false, strict = true } = {}) {
+// STRUCTURE S3 (UI): with `choiceEdit` the list may also carry the copy's CHOICE ops (choice.* / option.*, 5f's writer) — applied FIRST, in order
+const isChoiceOp = (o) => !!o && typeof o.op === 'string' && /^(choice|option)\./.test(o.op);
+export function composeDish(draft, key, edit = {}, ops = [], { reserved = null, extrasAuthoring = false, extrasCatalog = false, choiceEdit = false, strict = true } = {}) {
   if (strict && !canEditContent(draft)) return { ok: false, code: 'not_editable' };
-  if (!Array.isArray(ops) || ops.some((o) => !o || (o.op !== 'attach.item' && o.op !== 'detach.item'))) return { ok: false, code: 'unknown_op' };
+  if (!Array.isArray(ops) || ops.some((o) => !o || (o.op !== 'attach.item' && o.op !== 'detach.item' && !(choiceEdit === true && isChoiceOp(o))))) return { ok: false, code: 'unknown_op' };
+  const choiceOps = ops.filter(isChoiceOp);
+  ops = ops.filter((o) => !isChoiceOp(o));
   if (ops.length && extrasCatalog !== true) return { ok: false, code: 'extras_catalog_off' };
   if (ops.length && (!writer() || typeof writer().apply !== 'function')) return { ok: false, code: 'writer_unavailable' };
   const row = existingRow(draft.state, key);
@@ -1167,6 +1501,7 @@ export function composeDish(draft, key, edit = {}, ops = [], { reserved = null, 
   // a scratch draft: the commit judges names against what was loaded; the preview has no rename to hold
   const scratch = createDraft(clone(draft.state));
   scratch.orig = clone(strict ? draft.orig : draft.state);
+  if (choiceOps.length) { const c = applyChoiceOps(scratch, choiceOps, { choiceEdit: true }); if (!c.ok) return c; }
   if (own(e, 'extrasPolicy') && e.extrasPolicy === null) {
     if (!editItem(scratch, key, { extrasPolicy: null }, { extrasAuthoring })) return { ok: false, code: 'invalid', field: 'extrasPolicy' };
     delete e.extrasPolicy;
