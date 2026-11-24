@@ -43687,5 +43687,158 @@
   "kills_with": [
    "🔴 PAY-LABELS-rec"
   ]
+ },
+ {
+  "id": "cell7-01",
+  "slice": "cell7",
+  "label": "capp-guards cell 7 (PLAN-capp-guards-cell7 r0): the walk back to the lane line + after-the-pin — a train merge before the lane is never judged",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "const c7Walk = (head) => git('rev-list', '--merges', `${BASE}..${head}`).trim().split('\\n').filter(Boolean);",
+  "to": "const c7Walk = (head) => [...git('rev-list', '--merges', '--first-parent', `${BASE}..${CAPP_TIP}`).trim().split('\\n'), ...git('rev-list', '--merges', '--ancestry-path', `${CAPP_TIP}..${head}`).trim().split('\\n')].filter(Boolean);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-WALK"
+  ]
+ },
+ {
+  "id": "cell7-02",
+  "slice": "cell7",
+  "label": "capp-guards cell 7: the criterion back to «blob differs from every parent» — git's clean merges flagged, a one-side resolution missed",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "const c7HandPaths = (m, scopes) => {",
+  "to": "const c7HandPaths = (m, scopes) => resolutionEdits(m, scopes, ['-1', m]).map(({ f }) => f); const c7HandPathsFull = (m, scopes) => {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-CLEAN"
+  ]
+ },
+ {
+  "id": "cell7-03",
+  "slice": "cell7",
+  "label": "capp-guards cell 7: an octopus merge is silently skipped instead of failing",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "  assert.equal(n, 2, `🔴 octopus merge",
+  "to": "  if (n !== 2) return []; assert.equal(n, 2, `🔴 octopus merge",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-OCTOPUS"
+  ]
+ },
+ {
+  "id": "cell7-04",
+  "slice": "cell7",
+  "label": "capp-guards cell 7 (Codex #288 P1): git's conflict paths dropped — a modify/delete or binary conflict kept as one side is not seen",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "return [...new Set([...diff, ...r.hits.filter(inScope)])].sort();",
+  "to": "return [...new Set([...diff])].sort();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-MODDEL"
+  ]
+ },
+ {
+  "id": "cell7-05",
+  "slice": "cell7",
+  "label": "capp-guards cell 7 (Codex #288 P1): a merge-tree message type the parser does not know is skipped instead of failing",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "    bad(`message type «${type}»`);",
+  "to": "    continue;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-UNMAPPABLE"
+  ]
+ },
+ {
+  "id": "cell7-06",
+  "slice": "cell7",
+  "label": "capp-guards cell 7 (Codex #288 P1): a relocation by directory rename is read as git's own outcome, not a hand decision",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "const C7_INFO = new Set(['Auto-merging', 'Fast forwarding submodule']);",
+  "to": "const C7_INFO = new Set(['Auto-merging', 'Fast forwarding submodule', 'Path updated due to directory rename']);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-DIRMSG"
+  ]
+ },
+ {
+  "id": "cell7-07",
+  "slice": "cell7",
+  "label": "capp-guards cell 7 (Codex #288 P2): a shallow repository is walked",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "  assert.equal(shallow(), 'false', '🔴 C7-SHALLOW",
+  "to": "  assert.equal('false', 'false', '🔴 C7-SHALLOW",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-SHALLOW"
+  ]
+ },
+ {
+  "id": "cell7-08",
+  "slice": "cell7",
+  "label": "capp-guards cell 7 (Codex #288 P2): hits keyed by an 8-char prefix, not the full merge id",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "c7Hits('HEAD').filter(({ f }) => !exempt.has(f)).map(({ m, f }) => `${m} ${f}`);",
+  "to": "c7Hits('HEAD').filter(({ f }) => !exempt.has(f)).map(({ m, f }) => `${m.slice(0, 8)} ${f}`);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "made in a merge resolution"
+  ]
+ },
+ {
+  "id": "cell7-09",
+  "slice": "cell7",
+  "label": "capp-guards cell 7 (Codex #288 P1): the recorded tree is no longer compared with git's re-merge — a line added by hand in a clean merge is not seen",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "  const diff = paths(git('diff-tree', '-r', '--no-renames', '--name-only', '-z', r.tree, m, '--', ...scopes));",
+  "to": "  const diff = [];",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-EVIL"
+  ]
  }
 ]
