@@ -52,6 +52,13 @@ function runMarkerFn(fnSrc, { mapReady }) {
     google: GOOGLE_TRIPWIRE, glide: { update() {}, cancel() {} }, escapeHtml: (s) => String(s),
     hasPushReachability: () => true, getActiveOrders: () => Object.values(allOrders),
     XPD: { isStalePing: () => false, formatStaleness: () => '', formatStatus: () => '' },
+    // updateDriverMarkers reads the marker-color CSS tokens once per render (index.html:5542,
+    // getComputedStyle(document.documentElement).getPropertyValue('--mk-*')). Give the sandbox the two
+    // browser globals it needs, NO laxer than the browser (rule 29): getPropertyValue returns '' for an
+    // unset custom property exactly as the real CSSStyleDeclaration does, so the code takes its own
+    // '#...' fallback and the stripped-guard mutant still reaches google.maps and dies there.
+    document: { documentElement: {} },
+    getComputedStyle: () => ({ getPropertyValue: () => '' }),
   };
   const names = Object.keys(scope);
   const fnName = fnSrc.slice(9, fnSrc.indexOf('('));
