@@ -21,10 +21,11 @@ export function relTime(at, now) {
 }
 
 // names for a list of rids, in the given branch order; an unknown rid falls back to the rid itself (never dropped silently)
-export function brNames(rids, branches) {
+export function brList(rids, branches) {
   const byRid = new Map((branches || []).map((b) => [b.rid, b.name]));
-  return (Array.isArray(rids) ? rids : []).map((r) => byRid.get(r) || r).join(', ');
+  return (Array.isArray(rids) ? rids : []).map((r) => byRid.get(r) || r);
 }
+export const brNames = (rids, branches) => brList(rids, branches).join(', ');
 
 export function editLabel(canEdit, factura) {
   return canEdit ? (factura ? 'Edita · el dueño publica' : 'Edita y publica') : 'Solo agotados';
@@ -47,7 +48,7 @@ export function rowsFrom(list, branches, now) {
   }
   for (const p of Array.isArray(list.pending) ? list.pending : []) {
     rows.push({ key: `p:${p.inviteId}`, kind: 'pending', inviteId: p.inviteId, name: p.name || p.email, email: p.email,
-      sub: `Invitación enviada a ${p.email} · ${relTime(p.created_at, now)} · sin usar`, role: 'Gerente de sucursal',
+      sub: `Invitación enviada a ${p.email} · ${relTime(p.created_at, now)} · sin usar`, ago: relTime(p.created_at, now), role: 'Gerente de sucursal',
       branches: brNames(p.rids, branches), rids: Array.isArray(p.rids) ? p.rids.slice() : [], canEdit: p.can_edit_menu === true,
       editCls: p.can_edit_menu === true ? 'tok' : 'off', editLabel: editLabel(p.can_edit_menu === true, factura), cls: 'twarn', state: 'Invitación pendiente',
       self: false, active: false, pending: true });
@@ -55,7 +56,7 @@ export function rowsFrom(list, branches, now) {
   return rows;
 }
 
-export const teamCount = (rows) => `${rows.length} persona` + '(s)';   // split so no scanner reads «persona(» as a call
+export const teamCount = (rows) => `${rows.length} ${rows.length === 1 ? 'persona' : 'personas'}`;   // a proper plural (slot-1114 D2)
 export const isEmpty = (list) => !!list && !(Array.isArray(list.managers) && list.managers.length) && !(Array.isArray(list.pending) && list.pending.length);
 
 // a fresh invite draft / an edit draft for a manager row
@@ -63,6 +64,10 @@ export const newDraft = () => ({ mode: 'invite', name: '', email: '', rids: [], 
 // held: the assignment as it was when Editar opened — a retired branch in it is shown (removable), never offered as a new grant
 export const editDraft = (row) => ({ mode: 'edit', uid: row.uid, name: row.name, email: row.email, rids: row.rids.slice(), held: row.rids.slice(), canEdit: row.canEdit === true });
 export const RETIRED_SUB = 'Ya no está activa';
+
+export const canEditNote = (factura) => (factura
+  ? 'Edita productos y precios de toda la marca. Como esta marca factura por la plataforma, sus cambios te llegan y los publicás vos con la autorización fiscal.'
+  : 'Edita productos y precios de toda la marca y los publica directo, igual que vos. Apagado: solo marca agotados.');
 
 // the invite / edit modal's copy and gating (prototype mInvite)
 export function inviteView(draft, branches, factura) {
@@ -78,9 +83,7 @@ export function inviteView(draft, branches, factura) {
     emailBad: bad,
     brText: d.rids.length === 1 ? (one ? one.name : d.rids[0]) : `${d.rids.length} sucursales`,
     permText: d.canEdit ? ' y permiso para editar el menú' : '',
-    canEditNote: factura
-      ? 'Edita productos y precios de toda la marca. Como esta marca factura por la plataforma, sus cambios te llegan y los publicás vos con la autorización fiscal.'
-      : 'Edita productos y precios de toda la marca y los publica directo, igual que vos. Apagado: solo marca agotados.',
+    canEditNote: canEditNote(factura),
     disabled: (!edit && (!nameOk(d.name) || !emailOk(email))) || d.rids.length === 0,
     cta: edit ? 'Guardar' : 'Enviar invitación',
     foot: sent ? 'Un solo uso · vence en 7 días' : (d.rids.length ? `${d.rids.length} sucursal` + '(es)' : 'Elegí al menos una sucursal'),
@@ -109,3 +112,27 @@ export const TEAM_QUIET = 'El gerente puede: aceptar pedidos en el handheld, mar
 export const ROLE_SUB = 'Pedidos, agotados, Ocupado/Pausa, equipos y ventas de sus sucursales. Hay un solo dueño por marca: sos vos.';
 export const INVITE_ERROR = ['No pudimos enviar la invitación', 'Quedó pendiente en la lista. Revisá que el correo esté bien escrito y usá «Reenviar»; si sigue igual, escribinos por WhatsApp.'];
 export const EMPTY = ['Solo estás vos', 'Invitá a un gerente por sucursal para que maneje pedidos y pausas sin tu cuenta.'];
+
+// ── D1 · the phone layout (owner-approved 11-14, MOCKUP-portal-equipo-phone): below 920 px one row per person, its facts one tap
+// away on the person sheet. Shipped copy only; the two new strings are QUIET_HEAD (the disclosure) and CLOSE (the sheet's ×).
+export const QUIET_HEAD = 'Qué puede hacer un gerente';
+export const CLOSE = 'Cerrar';
+export const OWNER_NOTE = 'Hay un solo dueño por marca: sos vos.';   // ROLE_SUB's own second sentence, for the owner's read-only sheet
+const initialOf = (name) => (String(name || '').trim()[0] || '·').toUpperCase();
+// a row of rowsFrom → the phone row: the name and ONE line («Activo» is the default state, never printed)
+export function phoneRow(r) {
+  const line = r.self ? `${r.role} · Sos vos` : r.pending ? `${r.state} · ${r.ago}` : r.role;
+  return { initial: initialOf(r.name), name: r.name, line, pending: r.pending === true };
+}
+// a row of rowsFrom → the person sheet: one section per fact the table had as a column
+export function personView(r, branches, factura) {
+  return {
+    initial: initialOf(r.name), name: r.name,
+    sub: r.pending ? r.sub.split(' · ') : [r.sub].filter(Boolean),   // the pending sub wraps between its facts, never mid-phrase
+    status: { text: r.state, tone: r.pending ? 'sand' : 'mint' },
+    role: r.role, roleNote: r.self ? OWNER_NOTE : ROLE_SUB,
+    branches: r.self ? ['Todas'] : brList(r.rids, branches),
+    edit: r.editLabel, editNote: r.self ? '' : canEditNote(factura),
+  };
+}
+

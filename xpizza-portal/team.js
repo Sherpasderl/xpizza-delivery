@@ -17,10 +17,14 @@ import { getMyBranches, memberList, memberInvite, memberReissueInvite, memberCan
 import { sendInviteLink } from './invite-mail.js';
 import { el, svg, icon, button, pill, topBlock, errBox, skeleton, OFFLINE } from './ops-dom.js';
 import * as TL from './team-logic.js';
+import { focusKey, refocus } from './marketing-focus.js';   // the portal's ONE focus helper: a refresh keeps the focused control (Codex #279 / #281)
 
 const ICON_D = 'M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0zM4 21a8 8 0 0 1 16 0';
 const S = {
   gen: 0, uid: null, sel: null, host: null, body: null, layer: null,
+  sheet: null,        // D1: the person sheet's layer (between the body and the modal layer, so a confirmation stacks above it)
+  person: null,       // D1: the open person sheet → { key, from (the row that opened it), pushed (a history entry for the back button) }
+  quietOpen: false,   // D1: the «Qué puede hacer un gerente» disclosure, kept across a list re-render
   status: 'idle', list: null, branches: [], inviteError: false, opError: false,
   modal: null,        // null | { kind: 'invite', draft } | { kind: 'remove', row }
   busy: null,         // the modal object whose write is in flight — the submission lock, held until THAT write settles (closing never frees it)
@@ -57,7 +61,9 @@ function release(mine) { if (S.busy === mine) { S.busy = null; if (S.resync) S.r
 // remove every rendered row / modal / name / email from the DOM now (a generation bump that also ends the session)
 function wipe() {
   S.list = null; S.branches = []; S.modal = null; S.kept = null; S.inviteError = false; S.opError = false; S.status = 'idle';
-  if (S.layer) S.layer.replaceChildren();
+  S.person = null; S.quietOpen = false;
+  layerClear(S.sdlg);
+  layerClear(S.mdlg);
   if (S.body) S.body.replaceChildren();
   clearToast();
 }
@@ -82,7 +88,7 @@ async function load() {
     S.list = list;
     S.branches = (e1 && Array.isArray(e1.branches) ? e1.branches : []).filter((b) => b && b.brand_id === g.brandId && !b.degraded);
     S.status = 'ready';
-    if (S.modal && S.layer && !S.layer.firstChild) paintModal(false);   // a restored draft: painted once its branch list is here
+    if (S.modal && S.mdlg && !S.mdlg.firstChild) paintModal(false);   // a restored draft: painted once its branch list is here
   } catch (err) {
     if (obsolete(g, err)) return;
     if (!S.list) S.status = 'error'; else S.opError = true;
@@ -107,10 +113,14 @@ function render() {
         box.append(button('btn', 'Entendido', () => { S.inviteError = false; render(); }));
         out.push(box);
       }
-      out.push(table(), el('div', 'quiet', TL.TEAM_QUIET));
+      const rows = TL.rowsFrom(S.list, S.branches, Date.now());
+      const desk = el('div', 'tp-desk');   // ≥ 920 px: the shipped table + quiet note, unchanged
+      desk.append(table(rows), el('div', 'quiet', TL.TEAM_QUIET));
+      out.push(phoneList(rows), desk);
     }
   }
   S.body.replaceChildren(...out);
+  paintSheet(false);   // an open person sheet follows the fresh rows (and closes when its person is gone)
 }
 
 function inviteBtn() {   // the prototype's top action: a plus icon + «Invitar gerente» — enabled once the team data is here
@@ -129,8 +139,7 @@ function emptyBlock() {
   return d;
 }
 
-function table() {
-  const rows = TL.rowsFrom(S.list, S.branches, Date.now());
+function table(rows) {
   const wrap = el('div', 'tbl');
   const head = el('div', 'dhead');
   const right = el('div', 'dright');
@@ -171,10 +180,126 @@ function rowEl(r) {
   return tr;
 }
 
+// ── D1 · the phone list and the person sheet (owner-approved 11-14, MOCKUP-portal-equipo-phone; CSS shows it below 920 px) ─────
+const CHEV = 'M9 6l6 6-6 6', DOWN = 'M6 9l6 6 6-6', X = 'M6 6l12 12M18 6L6 18';
+function phoneList(rows) {
+  const ph = el('div', 'tp-phone');
+  const sect = el('div', 'tp-sect');
+  sect.append(el('h2', null, 'Personas'), el('span', 'tp-cnt', TL.teamCount(rows)));
+  const list = el('div', 'tp-list');
+  for (const r of rows) {
+    const v = TL.phoneRow(r);
+    const b = el('button', 'tp-row'); b.type = 'button'; b.dataset.key = r.key;
+    const c = el('span', 'tp-c');
+    const line = el('span', 'tp-r');
+    if (v.pending) line.append(el('i', 'tp-dot'));
+    line.append(document.createTextNode(v.line));
+    c.append(el('span', 'tp-n', v.name), line);
+    const chv = svg(CHEV); chv.setAttribute('class', 'tp-chv');
+    b.append(el('span', 'tp-av', v.initial), c, chv);
+    b.addEventListener('click', () => openPerson(r.key, b));
+    list.append(b);
+  }
+  const q = el('details', 'tp-quiet');
+  q.open = S.quietOpen;
+  const sum = el('summary', null, TL.QUIET_HEAD);
+  sum.append(svg(DOWN));
+  q.append(sum, el('p', null, TL.TEAM_QUIET));
+  q.addEventListener('toggle', () => { S.quietOpen = q.open; });
+  ph.append(sect, list, q);
+  return ph;
+}
+
+function openPerson(key, from) {
+  let pushed = false;
+  try { history.pushState({ sherpaTeamPerson: true }, ''); pushed = true; } catch (_) { /* no history: the × and Escape still close it */ }
+  S.person = { key, from, pushed };
+  paintSheet(true);
+}
+function closePerson({ fromBack = false } = {}) {
+  const p = S.person;
+  if (!p) return;
+  S.person = null; S.sheetFocus = null;
+  layerClear(S.sdlg);
+  if (p.pushed && !fromBack) { try { history.back(); } catch (_) { /* nothing to pop */ } }
+  const back = p.from && p.from.isConnected ? p.from
+    : [...((S.body && S.body.querySelectorAll('button.tp-row')) || [])].find((b) => b.dataset.key === p.key);
+  if (back && back.focus) back.focus();
+}
+window.addEventListener('popstate', () => { if (S.person) closePerson({ fromBack: true }); });
+// OWNER 11-23 (Codex #281, rule 36: the simpler option): the person sheet and the shipped modals stacked on it are NATIVE <dialog>s opened
+// with showModal() — the browser owns the focus trap, the inert background, Escape («cancel») and the top-layer stacking. Each layer is ONE
+// persistent, transparent, full-viewport dialog holding today's scrim + panel markup (the look is unchanged; ::backdrop is transparent),
+// so a repaint swaps its content and never closes / reopens it.
+function dialogLayer(onCancel) {
+  const d = document.createElement('dialog');
+  d.className = 'tp-dlg';
+  d.addEventListener('cancel', (e) => { e.preventDefault(); onCancel(); });   // Escape: OUR close (history, focus), never the bare default
+  return d;
+}
+function layerShow(d, label, ...nodes) {
+  d.replaceChildren(...nodes);
+  if (label) d.setAttribute('aria-labelledby', label); else d.removeAttribute('aria-labelledby');
+  if (!d.open && d.isConnected) d.showModal();
+}
+function layerClear(d) { if (!d) return; d.replaceChildren(); if (d.open) d.close(); }
+
+function paintSheet(focus) {
+  if (!S.sheet) return;
+  // Codex #281 P2-2: the control that had focus before this repaint — captured by busyBtn BEFORE it disabled the button (a disabled
+  // control can lose focus to the page before the refresh repaints); else whatever is focused in the sheet now
+  const kept = focus ? null : (S.sheetFocus || focusKey(S.sdlg)); S.sheetFocus = null;
+  if (!S.person || S.status !== 'ready') { layerClear(S.sdlg); return; }
+  const r = TL.rowsFrom(S.list, S.branches, Date.now()).find((x) => x.key === S.person.key);
+  if (!r) { closePerson(); return; }   // removed / cancelled: the person is gone from the list
+  const v = TL.personView(r, S.branches, factura());
+  const scrim = el('div', 'tp-scrim');
+  scrim.addEventListener('click', () => closePerson());
+  const sh = el('aside', 'tp-sheet');
+  const hd = el('div', 'tp-hd');
+  const who = el('div', 'tp-who');
+  const wt = el('div', 'tp-wt');
+  const h = el('h2', null, v.name); h.id = 'tp-t';
+  const sub = el('div', 'tp-sub');
+  for (const part of v.sub) sub.append(el('span', null, part));
+  const st = el('span', 'tp-st');
+  st.append(el('i', `tp-sdot tp-${v.status.tone}`), document.createTextNode(v.status.text));
+  sub.append(st);
+  wt.append(h, sub);
+  who.append(el('span', 'tp-av', v.initial), wt);
+  const x = button('tp-x', null, () => closePerson(), { aria: TL.CLOSE });
+  x.append(svg(X));
+  hd.append(who, x);
+  const body = el('div', 'tp-body');
+  const sec = (label, ...kids) => { const d = el('div', 'tp-sec'); d.append(el('div', 'tp-dl', label), ...kids); return d; };
+  const brl = el('ul', 'tp-brl');
+  for (const b of v.branches) brl.append(el('li', null, b));
+  const editSec = sec('Menú y precios', el('div', 'tp-dv', v.edit));
+  if (v.editNote) editSec.append(el('div', 'tp-dn', v.editNote));
+  body.append(sec('Rol', el('div', 'tp-dv', v.role), el('div', 'tp-dn', v.roleNote)), sec('Sucursales', brl), editSec);
+  // the same actions the table row has, gated by the same capabilities
+  const acts = el('div', 'tp-acts');
+  if (r.pending) {
+    if (can('team.invite')) acts.append(busyBtn('btn', 'Reenviar', `re:${r.inviteId}`, () => resend(r)));
+    if (can('team.revoke')) acts.append(button('btn danger', 'Cancelar invitación', () => openRemove(r)));
+  }
+  if (r.active) {
+    if (can('team.invite')) acts.append(button('btn', 'Editar', () => openEdit(r)));
+    if (can('team.revoke')) acts.append(button('btn danger', 'Quitar acceso', () => openRemove(r)));
+  }
+  if (r.self) acts.append(el('span', 'tp-dn', 'Sos vos'));
+  if (acts.firstChild) { const d = el('div', 'tp-sec'); d.append(acts); body.append(d); }
+  sh.append(hd, body);
+  layerShow(S.sdlg, 'tp-t', scrim, sh);   // the <dialog> is the modal (its label: the person's name)
+  if (focus && x.focus) x.focus();
+  else if (kept && !refocus(S.sdlg, kept) && x.focus) x.focus();   // the same action again; gone ⇒ ×, never the page
+}
+
 const busy = new Set();
 function busyBtn(cls, label, key, fn) {
   const b = button(cls, label, async () => {
     if (busy.has(key)) return;
+    if (S.sdlg && S.sdlg.contains(b)) S.sheetFocus = focusKey(S.sdlg);   // Codex #281 P2-2: before the disable can drop focus
     busy.add(key); b.disabled = true;
     try { await fn(); } finally { busy.delete(key); b.disabled = false; }
   });
@@ -205,12 +330,11 @@ async function resend(row) {
 function openInvite() { if (can('team.invite')) { S.modal = { kind: 'invite', draft: TL.newDraft() }; paintModal(true); } }
 function openEdit(row) { if (can('team.invite')) { S.modal = { kind: 'invite', draft: TL.editDraft(row) }; paintModal(true); } }
 function openRemove(row) { if (can('team.revoke')) { S.modal = { kind: 'remove', row }; paintModal(true); } }
-function closeModal() { S.modal = null; S.resync = null; if (S.layer) S.layer.replaceChildren(); }
+function closeModal() { S.modal = null; S.resync = null; layerClear(S.mdlg); }
 
 function shell(titleId, small) {
   const scrim = el('div', 'scrim show');
   const m = el('div', small ? 'modal sm' : 'modal');
-  m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-labelledby', titleId);
   scrim.append(m);
   return { scrim, m };
 }
@@ -218,7 +342,7 @@ function shell(titleId, small) {
 function paintModal(focus) {
   if (!S.layer) return;
   S.resync = null;
-  if (!S.modal) { S.layer.replaceChildren(); return; }
+  if (!S.modal) { layerClear(S.mdlg); return; }
   if (S.modal.kind === 'remove') return paintRemove();
   const d = S.modal.draft;
   const v = TL.inviteView(d, S.branches, factura());
@@ -304,7 +428,7 @@ function paintModal(focus) {
     sync();
     S.resync = sync;
     m.append(mh, mb, mf);
-    S.layer.replaceChildren(scrim);
+    layerShow(S.mdlg, 'in-t', scrim);
     if (focus) { const f = refs.iname || (brBtns[0] && brBtns[0].btn); if (f && f.focus) f.focus(); }
     return;
   }
@@ -318,7 +442,7 @@ function paintModal(focus) {
   const done = button('btn accent', 'Listo', closeModal);
   mf.append(foot, done);
   m.append(mh, mb, mf);
-  S.layer.replaceChildren(scrim);
+  layerShow(S.mdlg, 'in-t', scrim);
   if (focus && done.focus) done.focus();
 }
 
@@ -369,6 +493,7 @@ function paintRemove() {
   const row = S.modal.row;
   const v = TL.removeView(row, S.branches);
   const { scrim, m } = shell('rm-t', true);
+  scrim.classList.add('tp-cfscrim'); m.classList.add('tp-cf');   // D1: a bottom sheet below 920 px (CSS); the centred dialog above
   const mh = el('div', 'mh');
   const title = el('div', 'mt', v.title); title.id = 'rm-t';
   mh.append(title, el('div', 'ms', v.email));
@@ -400,7 +525,7 @@ function paintRemove() {
   S.resync = () => { ok.disabled = S.busy !== null; };
   mf.append(cancel, ok);
   m.append(mh, mb, mf);
-  S.layer.replaceChildren(scrim);
+  layerShow(S.mdlg, 'rm-t', scrim);
   if (cancel.focus) cancel.focus();
 }
 
@@ -416,10 +541,13 @@ registerView({
     S.host = host;
     const wrap = el('div', 'teamv');
     S.body = el('div');
+    S.sheet = el('div');   // D1: the person sheet's layer
     S.layer = el('div');   // the modal layer: a sibling of the body, so a list re-render never touches an open form
-    wrap.append(S.body, S.layer);
+    S.sdlg = dialogLayer(() => closePerson()); S.sheet.append(S.sdlg);   // owner 11-23: native modal dialogs (Escape = our close)
+    S.mdlg = dialogLayer(() => closeModal()); S.layer.append(S.mdlg);
+    wrap.append(S.body, S.sheet, S.layer);
     host.replaceChildren(wrap);
-    S.status = 'idle'; S.list = null; S.inviteError = false; S.opError = false; S.modal = null;
+    S.status = 'idle'; S.list = null; S.inviteError = false; S.opError = false; S.modal = null; S.person = null;
     const key = keyOf();
     if (S.kept && S.kept.key === key) { S.modal = S.kept.modal; }
     S.kept = null;
@@ -431,11 +559,11 @@ registerView({
     S.kept = S.modal && S.modal.kind === 'invite' && S.modal.draft.mode !== 'sent' && S.busy !== S.modal ? { key: keyOf(), modal: S.modal } : null;
     bump();
     clearToast();
-    S.modal = null; S.resync = null;
-    if (S.layer) S.layer.replaceChildren();
+    S.modal = null; S.resync = null; S.person = null;
+    layerClear(S.sdlg); layerClear(S.mdlg);
     if (S.body) S.body.replaceChildren();
     S.list = null; S.branches = [];
-    S.host = null; S.body = null; S.layer = null;
+    S.host = null; S.body = null; S.sheet = null; S.layer = null; S.sdlg = null; S.mdlg = null; S.sheetFocus = null;
   },
   canLeave: () => true,
 });

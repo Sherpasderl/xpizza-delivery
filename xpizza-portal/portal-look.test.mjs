@@ -360,6 +360,7 @@ const PINNED_LITERALS = [
   // (the .phov family: a dark veil in both themes)
   ['.mk-cfscrim', 'background', 'rgba(10,10,11,.34)'],
   ['.mk5b-scrim', 'background', 'rgba(8,7,6,.5)'], ['.mk5r-scrim', 'background', 'rgba(8,7,6,.6)'],   // Ofertas O2: the builder + review backdrops, MOCKUP-portal-marketing v5 .scrim.bld / .scrim (owner-approved 11-14)
+  ['.teamv .tp-scrim', 'background', 'rgba(8,7,6,.38)'],   // D1 person sheet backdrop, MOCKUP-portal-equipo-phone .drsc (owner-approved 11-14)
 ];
 const PINNED_ICON_RULES = {
   top: [':root[data-theme="dark"] .tbtn .moon,:root[data-theme="dark"] .miconbtn .moon', ':root[data-theme="dark"] .tbtn .sun,:root[data-theme="dark"] .miconbtn .sun'],
@@ -397,6 +398,8 @@ const PINNED_COMPLEX = {
   '::-webkit-scrollbar-thumb': ['background:var(--line)'],
   '::-webkit-scrollbar-thumb:hover': ['background:var(--mute2)'],
   '::-webkit-scrollbar-track': ['background:transparent'],
+  // owner 11-23 (Codex #281): the team sheet's NATIVE modal <dialog> keeps today's own scrim; its UA backdrop is cleared, nothing more
+  '.teamv .tp-dlg::backdrop': ['background:transparent'],
   '.fld>label': ['color:var(--mute2)'],
   '.fld input[type=text]': ['background:var(--board-2);color:var(--ink)'],
   '.hours input[type=time]': ['background:var(--board-2);color:var(--ink)'],

@@ -93,7 +93,8 @@
   .nav:active{transform:scale(.985)}
   .nav.on{background:var(--tint2);color:var(--accent)}
   .nav svg{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round}
-  .sfoot{margin-top:auto;padding-top:14px;border-top:1px solid var(--line2);display:flex;align-items:center;gap:11px}
+  .sfoot{margin-top:auto;padding-top:14px;border-top:1px solid var(--line2);display:flex;flex-direction:column;align-items:stretch;gap:8px}   /* D3 = A (owner 11-23): two rows */
+  .sfoot .frow{display:flex;align-items:center;gap:11px}
   .av{width:30px;height:30px;border-radius:50%;background:var(--card-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--ink);flex:none}
 
   /* ── main ── */
@@ -992,8 +993,13 @@
    mock carries its own, inverted for the light default.
    ───────────────────────────────────────────────────────────────────────────── */
   .price{font-variant-numeric:tabular-nums;font-weight:650;color:var(--ink);white-space:nowrap}
-  .sfoot .sinfo{min-width:0;flex:1}
-  .sfoot .sinfo b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;letter-spacing:-.01em}   /* the mockups' type (16b, advisor 11-16: 12.5px overflowed «dueno@ejemplo.test» by 4 px) */
+  /* D3 = A (OWNER 11-23, MOCKUP-portal-footer-email-D3, artifact QY4YwiuGUh7qhxoZThoE8W): row 2 is the signed-in email ALONE at the
+     footer's full width, in FULL, in the mockups' type (12px / −.01em, advisor 11-16), 1.5 line height. boot.js writes it as two parts
+     (local part, «@domain») around a <wbr>; each part is an inline-block, so a long email breaks ONLY at the «@» — overflow-wrap:anywhere
+     is left only for a single part wider than the whole footer. The role (row 1) still truncates on one line (the 11-12 rule). */
+  .sfoot .sinfo{display:block;padding:0 1px 2px}
+  .sfoot .sinfo b{display:block;font-size:12px;letter-spacing:-.01em;line-height:1.5;color:var(--ink)}
+  .sfoot .sinfo b .p{display:inline-block;max-width:100%;overflow-wrap:anywhere;vertical-align:top}
   .switch .chev{opacity:0;transition:opacity .15s}
   .empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:6px}
   /* .rowchev ships as a real <button> so the row's opener is keyboard-reachable; the mock uses a
@@ -1066,9 +1072,10 @@
   /* OWNER 11-12 (live: the footer looked crammed — the admin label showed UNDER «Dueño» on every view and wrapped): ONE role line,
      never wrapping — the brand role, or «Admin Sherpa» instead of it on a Sherpa-admin view; each line truncates with the full value
      in its tooltip; room before the logout button (standing rule 16b) */
-  .sfoot .sinfo .cv{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.35;margin-top:2px}
-  .sfoot .sinfo .cv.admonly{display:none}
-  .app.admview .sfoot .sinfo .cv.admonly{display:block}
+  .sfoot .frow .cv{flex:1;min-width:0;display:block;font-size:12px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* row 1's role (D3 = A) */
+  .sfoot .frow .frole{color:var(--mute)}   /* its ink: its OWN class (the colour grammar: no crossing with .switch .cv) */
+  .sfoot .frow .cv.admonly{display:none}
+  .app.admview .sfoot .frow .cv.admonly{display:block}
   .sfoot .tbtn{flex:none}
 
   /* ═══ VENTAS (Stats S2) — the owner-only sales page; built to the approved mockup (APPROVED-S2-mockup-Ventas) ═══ */
@@ -1844,6 +1851,79 @@
     .mk5d-sbtn{flex:1 1 100%;min-height:44px}
   }
   .mk5d-back,.mk5d-btn,.mk5d-more1,.mk5d-sbtn,.mk5d-morebtn,.mk5d-errx,.mk5-lnk{cursor:pointer}   /* O3's clicked controls — single-compound rules */
+  /* ── D1 · «Equipo de trabajo» on the phone (owner-approved 11-14, MOCKUP-portal-equipo-phone): below 920 px one row per person, the
+     person sheet, the «Qué puede hacer un gerente» disclosure, the confirmation as a bottom sheet. ≥ 920 px: the shipped table, unchanged.
+     Classes are tp-* (the mockup's oav / sub / dl / dv / dn / pr / plist already mean something else in this sheet). ── */
+  .teamv .tp-phone{display:none}
+  .tp-row,.tp-scrim{cursor:pointer}   /* the row and the sheet's backdrop are clicked: the pointer guard reads single-compound rules */
+  .teamv .tp-sect{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-top:28px}
+  .teamv .tp-sect h2{font-family:var(--disp);font-size:18px;font-weight:750;letter-spacing:-.025em;line-height:1.3}
+  .teamv .tp-cnt{font-size:13px;color:var(--mute2);white-space:nowrap}
+  .teamv .tp-list{margin-top:6px}
+  .teamv .tp-row{display:grid;grid-template-columns:32px minmax(0,1fr) 16px;gap:12px;align-items:center;width:100%;min-height:66px;padding:13px 0;border:none;border-bottom:1px solid var(--line2);background:none;font:inherit;color:var(--ink);text-align:left;cursor:pointer;border-radius:0}
+  .teamv .tp-row:hover .tp-n{color:var(--accent)}
+  .teamv .tp-row:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--ink);border-radius:6px}
+  .teamv .tp-row .tp-c{min-width:0}
+  .teamv .tp-row .tp-n{display:block;font-weight:600;font-size:14.5px;line-height:1.3;text-wrap:balance;transition:color .15s}
+  .teamv .tp-row .tp-r{display:block;font-size:12.5px;color:var(--mute2);margin-top:2px;line-height:1.4;white-space:nowrap}
+  .teamv .tp-row .tp-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--sand-text);margin:0 7px 0 1px;vertical-align:1px}
+  .teamv .tp-chv{width:16px;height:16px;stroke:var(--mute2);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .teamv .tp-av{width:32px;height:32px;border-radius:50%;background:var(--board-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--ink);flex:none}
+  .teamv .tp-quiet{margin-top:22px;border-top:1px solid var(--line2)}
+  .teamv .tp-quiet summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;font-size:14px;font-weight:600;cursor:pointer;color:var(--ink);min-height:46px}
+  .teamv .tp-quiet summary::-webkit-details-marker{display:none}
+  .teamv .tp-quiet summary svg{width:16px;height:16px;stroke:var(--mute2);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none;transition:transform .18s}
+  .teamv .tp-quiet[open] summary svg{transform:rotate(180deg)}
+  .teamv .tp-quiet p{font-size:13px;color:var(--mute);line-height:1.55;padding:0 0 14px;text-wrap:pretty}
+  /* owner 11-23 (Codex #281): the sheet and its stacked modals are native <dialog>s (showModal: the browser's trap, inert background, Escape,
+     top layer). Each is a transparent full-viewport box around today's scrim + panel, so the look is unchanged; the native backdrop is clear */
+  .teamv .tp-dlg{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;background:transparent;color:var(--ink);overflow:visible}   /* the page's ink, as body (the UA default would be CanvasText) */
+  .teamv .tp-dlg:not([open]){display:none}
+  .teamv .tp-dlg::backdrop{background:transparent}
+  .teamv .tp-scrim{position:fixed;inset:0;background:rgba(8,7,6,.38);backdrop-filter:blur(2px);z-index:18;cursor:pointer}
+  .teamv .tp-sheet{position:fixed;top:0;right:0;bottom:0;width:min(460px,100%);background:var(--card);border-left:1px solid var(--line);box-shadow:var(--shadow-lg);display:flex;flex-direction:column;z-index:19;animation:tp-in .26s cubic-bezier(.2,.75,.3,1)}
+  @keyframes tp-in{from{transform:translateX(102%)}to{transform:none}}
+  .teamv .tp-hd{padding:22px 24px 16px;border-bottom:1px solid var(--line2);display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex:none}
+  .teamv .tp-who{display:flex;gap:14px;align-items:flex-start;min-width:0;flex:1}
+  .teamv .tp-hd .tp-av{width:40px;height:40px;font-size:14px;margin-top:2px}
+  .teamv .tp-wt{min-width:0;flex:1}
+  .teamv .tp-hd h2{font-family:var(--disp);font-size:20px;font-weight:750;letter-spacing:-.03em;line-height:1.2;text-wrap:balance}
+  .teamv .tp-sub{font-size:13px;color:var(--mute);margin-top:6px;line-height:1.45;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+  .teamv .tp-st{display:inline-flex;align-items:center;font-size:13px;font-weight:500;color:var(--ink);white-space:nowrap;line-height:1.35}
+  .teamv .tp-sdot{width:8px;height:8px;border-radius:50%;background:var(--mute2);margin-right:8px;flex:none}   /* a real element: the colour grammar pins no pseudo-element */
+  .teamv .tp-sdot.tp-mint{background:var(--mint-text)}
+  .teamv .tp-sdot.tp-sand{background:var(--sand-text)}
+  .teamv .tp-x{width:38px;height:38px;border-radius:50%;border:none;background:var(--board-2);color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none;padding:0;margin:-4px -6px 0 0}
+  .teamv .tp-x:hover{background:var(--line2)}
+  .teamv .tp-x svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+  .teamv .tp-body{padding:4px 24px 20px;overflow:auto;flex:1 1 auto;min-height:0}
+  .teamv .tp-sec{padding:16px 0;border-bottom:1px solid var(--line2)}
+  .teamv .tp-sec:last-child{border-bottom:0}
+  .teamv .tp-dl{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute2);font-weight:750;margin-bottom:8px}
+  .teamv .tp-dv{font-size:14.5px;font-weight:600;line-height:1.35}
+  .teamv .tp-dn{font-size:13px;color:var(--mute);line-height:1.55;margin-top:5px;text-wrap:pretty}
+  .teamv .tp-acts .tp-dn{margin-top:0}
+  .teamv .tp-brl{list-style:none;padding:0;margin:0}
+  .teamv .tp-brl li{font-size:14.5px;font-weight:500;padding:8px 0;border-bottom:1px solid var(--line2);line-height:1.35}
+  .teamv .tp-brl li:last-child{border-bottom:0}
+  .teamv .tp-acts{display:flex;gap:10px;padding-top:18px}
+  .teamv .tp-acts .btn{flex:1;justify-content:center;min-height:46px}
+  @media(max-width:920px){
+    .teamv .tp-phone{display:block}.teamv .tp-desk{display:none}
+    .teamv .topact{width:100%}
+    .teamv .topact .btn{flex:1;justify-content:center;min-height:46px}
+    .teamv .tp-sheet{width:100%;border-left:none}
+    .teamv .tp-hd{padding:18px 16px 14px}
+    .teamv .tp-body{padding:4px 16px 20px}
+    .teamv .scrim.tp-cfscrim{align-items:flex-end;padding:0}
+    .teamv .modal.tp-cf{max-width:none;width:100%;max-height:92vh;border-radius:18px 18px 0 0;border-bottom:none}
+    .teamv .modal.tp-cf .mh{padding:20px 16px 12px}
+    .teamv .modal.tp-cf .mt{font-size:21px;line-height:1.2;text-wrap:balance}
+    .teamv .modal.tp-cf .mb{padding:14px 16px 4px}
+    .teamv .modal.tp-cf .rmbody{font-size:14px;line-height:1.55;text-wrap:pretty}
+    .teamv .modal.tp-cf .mf{border-top:none;padding:16px 16px 22px}
+    .teamv .modal.tp-cf .mf .btn{flex:1;justify-content:center;min-height:46px}
+  }
   /* ── PLAN-portal-team-invites T-d · the owner's publish-request banner (pubreq.js), mockup v8 D1 ── */
   #pubreq{margin-top:22px}
   .pbanner{display:flex;align-items:center;gap:14px;padding:13px 16px 13px 14px;border:1px solid var(--line);background:var(--card);border-radius:14px;flex-wrap:wrap;box-shadow:var(--shadow)}
@@ -2592,3 +2672,5 @@
   .vd-lnk svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
   .vd-lnk:disabled{opacity:.45;cursor:default}
   .vd-csvnote{font-size:13px;color:var(--mute);line-height:1.5;margin-top:8px;text-wrap:pretty}
+  /* slot-1114 D5 (rule 16b): no single word alone on a body-copy paragraph's last line — one rule on the shared classes */
+  .lede,.secnote,.vfoot,.envio .efnote,.envio .ecallout{text-wrap:pretty}

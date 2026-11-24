@@ -77,6 +77,25 @@ function assertFormCard(d) {
   assert.ok(!shown(d, 'gatewait') && !shown(d, 'gatefail') && !shown(d, 'app'));
 }
 
+// D3 = A (OWNER 11-14 «Final»; advisor 11-23): the footer shows the signed-in email in FULL and a long one breaks at the «@», never mid-word —
+// boot.js writes it as two TEXT nodes around a <wbr> (the address is the user's own, but it is never parsed as markup)
+test('D3 — the footer email: the exact address, a <wbr> right before the «@», text nodes only; no email ⇒ the uid, no <wbr>', async () => {
+  const { d } = await bootPage();
+  const who = () => d.getElementById('whoami');
+  const LONG = 'administracion.general@restaurante-ejemplo.test';
+  globalThis.__authCb({ uid: 'u1', email: LONG });
+  assert.equal(who().textContent, LONG, '🔴 the exact address, in full');
+  assert.equal(who().title, LONG, 'the full address in the tooltip too');
+  // D3 = A (owner 11-23): each part an inline-block span (class p) around the <wbr> — the email breaks only at the «@»
+  assert.deepEqual([...who().childNodes].map((n) => n.nodeName + (n.className ? `.${n.className}` : '')), ['SPAN.p', 'WBR', 'SPAN.p'], '🔴 local part, <wbr>, «@domain» — each part its own block');
+  assert.deepEqual([who().childNodes[0].textContent, who().childNodes[2].textContent], ['administracion.general', '@restaurante-ejemplo.test'], '🔴 the break opportunity sits right before the «@»');
+  globalThis.__authCb({ uid: 'u2', email: '<img src=x onerror=alert(1)>@x.test' });
+  assert.equal(who().querySelectorAll('*:not(wbr):not(span.p)').length + who().querySelectorAll('span.p *').length, 0, '🔴 the address is text, never markup');
+  assert.equal(who().textContent, '<img src=x onerror=alert(1)>@x.test', 'the next sign-in replaces the last one');
+  globalThis.__authCb({ uid: 'u3', email: '' });
+  assert.deepEqual([who().textContent, who().querySelectorAll('wbr').length], ['u3', 0], 'no email ⇒ the uid, as before');
+});
+
 test('A — signed in, discovery pending: the card holds with «Abriendo tu portal…» (role=status, form hidden); the portal is not shown', async () => {
   const { d, signIn } = await bootPage();
   assertFormCard(d);   // a first visit: today's card

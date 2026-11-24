@@ -79,12 +79,15 @@
     <button class="nav hidden" id="navventas" type="button"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15l4-5 3 3 5-6"/></svg>Ventas</button>
     <!-- ENVÍO: the Sherpa-admin area (shell.js 'Sherpa' group) — shown only for platform_admin, a display hint -->
     <div class="nlabel hidden" id="navadmlabel">Sherpa <span class="adm-tag">Admin</span></div>
-    <div class="sfoot">
-      <div class="av" id="avatar">·</div>
-      <div class="sinfo"><b id="whoami">—</b><span class="cv admhide" id="whorole">Dueño</span><span class="cv admonly">Admin Sherpa</span></div>
-      <button class="btn ghost tbtn" id="logout" type="button" title="Cerrar sesión">
-        <svg viewBox="0 0 24 24"><path d="M16 17l5-5-5-5M21 12H9M12 3H5v18h7"/></svg>
-      </button>
+    <div class="sfoot">   <!-- D3 = A (owner 11-23, MOCKUP-portal-footer-email-D3): row 1 avatar · role · logout; row 2 the email, full width -->
+      <div class="frow">
+        <div class="av" id="avatar">·</div>
+        <span class="cv frole admhide" id="whorole">Dueño</span><span class="cv frole admonly">Admin Sherpa</span>
+        <button class="btn ghost tbtn" id="logout" type="button" title="Cerrar sesión">
+          <svg viewBox="0 0 24 24"><path d="M16 17l5-5-5-5M21 12H9M12 3H5v18h7"/></svg>
+        </button>
+      </div>
+      <div class="sinfo"><b id="whoami">—</b></div>
     </div>
   </aside>
 
