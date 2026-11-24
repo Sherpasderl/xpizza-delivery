@@ -1,0 +1,11 @@
+{
+ "_doc": "Cloud Functions that are in code but deliberately NOT deployed. split-batches.py refuses any batch that names one of these, the way it refuses an exported helper. A closure name on this list is expected to be in no batch. To lift a hold: an advisor ruling, then remove the entry (dated) here. Never deploy one by putting it in a batch.",
+ "held": [
+  {
+   "name": "verifyIdentityIntegrity",
+   "reason": "An onSchedule monitor that has never been deployed: deploying it would CREATE a new scheduled job in prod (alert-only, every 15 min, writes catalog_integrity/{rid}). Held by advisor ruling 11-09 (asm4); kept out at asm7, asm8 and asm9; reaffirmed by the advisor for asm13.",
+   "since": "asm4, advisor ruling 2026-11-09 (RUNBOOK-train-asm4.md:32 and :89; later RUNBOOK-asm7-release.md:35, RUNBOOK-asm8-release.md:25)",
+   "confirmed": "2026-11-21: names-only `gcloud functions list --project xpizza-delivery` diffed against index.js loaded at b4f7ff063 (198 in code, 197 live); this is the only name in code and not live"
+  }
+ ]
+}

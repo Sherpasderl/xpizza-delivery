@@ -1,0 +1,1568 @@
+{
+ "base": "31f05c8a40c35fe0c442be8839593954c3afc8b1",
+ "head": "b4f7ff0632d689a992ac47fe77b3e14089afabc5",
+ "changedModules": [
+  "address-book.js",
+  "catalog/_probe-hoist-delta.js",
+  "catalog/bound-reuse.js",
+  "catalog/catalog-publish.js",
+  "catalog/choice-compare.js",
+  "catalog/platform-removal.js",
+  "catalog/portal-reads.js",
+  "catalog/rollback-refs.js",
+  "contract/census-map.json",
+  "contract/census.json",
+  "contract/matrix.json",
+  "contract/outputs/registry.json",
+  "contract/p1-branch-coverage.json",
+  "contract/p1-hits.json",
+  "contract/p1a-expect.json",
+  "contract/region-applicability.json",
+  "contract/regions.json",
+  "contract/third-brand.js",
+  "index.js",
+  "ledger/alloc-snapshot.js",
+  "my-address.js",
+  "order-owner.js",
+  "package.json",
+  "payments/sdk/cards.js",
+  "payments/sdk/coordinator.js",
+  "payments/sdk/deps.js",
+  "payments/sdk/fake-adapter.js",
+  "payments/sdk/finish.js",
+  "payments/sdk/pixelpay-adapter.js",
+  "payments/sdk/psp-adapter.js",
+  "payments/sdk/record-token.js",
+  "payments/sdk/rules-clauses.js",
+  "payments/sdk/sweeper.js",
+  "payments/sdk/token-queue.js",
+  "pixelpay-hosted-charge.js",
+  "signup-endpoints.js",
+  "signup-platform.js",
+  "stats/stats-identity.js",
+  "tools/fence-deleted-cards.js",
+  "tools/form-source-inventory.json",
+  "tools/ledgers1-module-inverse.js",
+  "tools/log-stmt.js",
+  "tools/memberreads-module-inverse.js",
+  "tools/post-asm11-layers.js",
+  "tools/privacy-module-inverse.js",
+  "tools/provenance-pins.json",
+  "tools/rbrefs-module-inverse.js",
+  "tools/rewardgroups-module-inverse.js",
+  "whatsapp.js"
+ ],
+ "unownedIndexHunks": [],
+ "removed": [],
+ "unresolved": [],
+ "computedExports": [
+  {
+   "rev": "31f05c8a40c35fe0c442be8839593954c3afc8b1",
+   "line": 2998,
+   "via": "SDK_PAY_FUNCTIONS.ENDPOINT_EXPORTS",
+   "module": "./payments/sdk/functions",
+   "names": [
+    "placeSdkStatus",
+    "cancelSdkPending",
+    "listCards",
+    "removeCard",
+    "sdkPayStatus",
+    "recoverOrderAccess",
+    "processSdkRecovery",
+    "sweepSdkRecovery"
+   ]
+  },
+  {
+   "rev": "b4f7ff0632d689a992ac47fe77b3e14089afabc5",
+   "line": 3008,
+   "via": "SDK_PAY_FUNCTIONS.ENDPOINT_EXPORTS",
+   "module": "./payments/sdk/functions",
+   "names": [
+    "placeSdkStatus",
+    "cancelSdkPending",
+    "listCards",
+    "removeCard",
+    "sdkPayStatus",
+    "recoverOrderAccess",
+    "processSdkRecovery",
+    "sweepSdkRecovery"
+   ]
+  }
+ ],
+ "unresolvedExports": [],
+ "deployedFunctionCount": 198,
+ "nonFunctionExports": [
+  {
+   "name": "checkRateLimit",
+   "changed": false,
+   "callers": [
+    "chargeOnlineOrder",
+    "claimOrder",
+    "claimPrefill",
+    "completeProfile",
+    "createOrder",
+    "createSupportTicket",
+    "getCustomerPushPrefs",
+    "getMerchantRatingComments",
+    "getMerchantReviews",
+    "getMyFavorites",
+    "getMyLastTip",
+    "getMyOrders",
+    "getMyProfile",
+    "getMyRating",
+    "getSignupConfig",
+    "googleSignIn",
+    "googleStart",
+    "placeSdkOrder",
+    "quoteOrder",
+    "redeemSignupGrant",
+    "registerCustomerPushToken",
+    "requestOtp",
+    "setCustomerPushPrefs",
+    "setFavorite",
+    "setMyName",
+    "setPromos",
+    "unregisterCustomerPushToken",
+    "useMyAddress",
+    "verifyOtp"
+   ]
+  },
+  {
+   "name": "RATE_LIMIT_BUCKETS",
+   "changed": false,
+   "callers": [
+    "chargeOnlineOrder",
+    "claimOrder",
+    "claimPrefill",
+    "createOrder",
+    "placeSdkOrder",
+    "quoteOrder"
+   ]
+  },
+  {
+   "name": "sendPaidAfterCloseRefund",
+   "changed": true,
+   "callers": [
+    "materializeOnConfirm",
+    "pixelPayWebhook",
+    "refundReconciler",
+    "sweepStalePending"
+   ]
+  }
+ ],
+ "functions": [
+  {
+   "name": "createOrder",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "order-owner.js → order-owner.js | payments/sdk/replaces.js → ledger/alloc-snapshot.js, order-owner.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js, pixelpay-hosted-charge.js | catalog/catalog-publish.js → catalog/catalog-publish.js, catalog/platform-removal.js, catalog/rollback-refs.js | ledger/alloc-snapshot.js → ledger/alloc-snapshot.js | index.js L899-899 in createOrderApp (handler registered at L751) | index.js L931-931 in createOrderApp (handler registered at L751) | index.js L1446-1446 in createOrderApp (handler registered at L1444)"
+  },
+  {
+   "name": "chargeOnlineOrder",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "payments/sdk/intake.js → ledger/alloc-snapshot.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js | payments/sdk/deps.js → ledger/alloc-snapshot.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js | order-owner.js → order-owner.js | pixelpay-hosted-charge.js → ledger/alloc-snapshot.js, order-owner.js, pixelpay-hosted-charge.js | catalog/bound-reuse.js → catalog/bound-reuse.js, ledger/alloc-snapshot.js, order-owner.js, pixelpay-hosted-charge.js | payments/sdk/finish.js → ledger/alloc-snapshot.js, order-owner.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/finish.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/sweeper.js, payments/sdk/token-queue.js, pixelpay-hosted-charge.js | catalog/catalog-publish.js → catalog/catalog-publish.js, catalog/platform-removal.js, catalog/rollback-refs.js | ledger/alloc-snapshot.js → ledger/alloc-snapshot.js | index.js L1673-1697 in chargeOnlineApp (handler registered at L1500) | index.js L1699-1699 in chargeOnlineApp (handler registered at L1500) | index.js L2081-2081 in chargeOnlineApp (handler registered at L1500) | index.js L2443-2443 in chargeOnlineApp (handler registered at L2441)"
+  },
+  {
+   "name": "placeSdkOrder",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "payments/sdk/intake.js → ledger/alloc-snapshot.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js | payments/sdk/deps.js → ledger/alloc-snapshot.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js | order-owner.js → order-owner.js | pixelpay-hosted-charge.js → ledger/alloc-snapshot.js, order-owner.js, pixelpay-hosted-charge.js | catalog/bound-reuse.js → catalog/bound-reuse.js, ledger/alloc-snapshot.js, order-owner.js, pixelpay-hosted-charge.js | payments/sdk/finish.js → ledger/alloc-snapshot.js, order-owner.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/finish.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/sweeper.js, payments/sdk/token-queue.js, pixelpay-hosted-charge.js | catalog/catalog-publish.js → catalog/catalog-publish.js, catalog/platform-removal.js, catalog/rollback-refs.js | ledger/alloc-snapshot.js → ledger/alloc-snapshot.js | index.js L1673-1697 in chargeOnlineApp (handler registered at L1500) | index.js L1699-1699 in chargeOnlineApp (handler registered at L1500) | index.js L2081-2081 in chargeOnlineApp (handler registered at L1500) | index.js L2443-2443 in chargeOnlineApp (handler registered at L2441)"
+  },
+  {
+   "name": "pixelPayWebhook",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "index.js L2556-2556 in sendPaidAfterCloseRefund | index.js L2570-2570 in sendScheduledSlotClosed"
+  },
+  {
+   "name": "paymentStatus",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "catalog/catalog-publish.js → catalog/catalog-publish.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "claimPrefill",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "claimOrder",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "verifyIdentityIntegrity",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "sweepIdentityRegistry",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "writeCatalogContextOnMirror",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "reconcileCatalogContexts",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "writeIdentityRecordOnMirror",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "reconcileIdentityRecords",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "verifyIdentityRecords",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "sweepStalePending",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "cancel-order-core.js → ledger/alloc-snapshot.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js | index.js L2556-2556 in sendPaidAfterCloseRefund | index.js L2570-2570 in sendScheduledSlotClosed"
+  },
+  {
+   "name": "sweepSdkPayments",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "payments/sdk/functions.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/sweeper.js, payments/sdk/token-queue.js"
+  },
+  {
+   "name": "settleSdkOnStatus",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "payments/sdk/functions.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/sweeper.js, payments/sdk/token-queue.js"
+  },
+  {
+   "name": "resetItemAvailability",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "driverFreshnessMonitor",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "reconcilePayments",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "cancel-order-core.js → ledger/alloc-snapshot.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js"
+  },
+  {
+   "name": "detectSupersededCaptures",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "resolveManualReconciliation",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "materializeOnConfirm",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "index.js L2556-2556 in sendPaidAfterCloseRefund | index.js L2570-2570 in sendScheduledSlotClosed"
+  },
+  {
+   "name": "allocateFacturaOnSale",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "allocateDisplayNumberOnSale",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "mirrorStatusToHistory",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "earnRewardsOnCompletion",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "voidFacturaOnCancel",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "unassignOrder",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "cancelPaidOrder",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "cancel-order-core.js → ledger/alloc-snapshot.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js"
+  },
+  {
+   "name": "refundReconciler",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "cancel-order-core.js → ledger/alloc-snapshot.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js | index.js L2556-2556 in sendPaidAfterCloseRefund | index.js L2570-2570 in sendScheduledSlotClosed"
+  },
+  {
+   "name": "blockPublicSignup",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "index.js L3747-3748 in exports.blockPublicSignup | index.js L3751-3751 in exports.blockPublicSignup"
+  },
+  {
+   "name": "healthz",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "sendTestStaffPush",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "notifyStaffOnNewOrder",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "flushStaffPushQueue",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "sweepStuckOrders",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "notifyDriverOnAssignment",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "onOrderCancelled",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "cancel-order-core.js → ledger/alloc-snapshot.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js"
+  },
+  {
+   "name": "notifyDriverOnCancellation",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "registerDriverPushToken",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "unregisterDriverPushToken",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "onDriverSubscriptionChange",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "startDriverShift",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "endDriverShift",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "inviteDriver",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "submitDriverProfile",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "approveDriver",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "setDriverSuspended",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "setDriverDeactivated",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "reactivate",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "syncDriverAuthSweep",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "ingestDriverLocation",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "driverDiagIngest",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "closeDriverPayWeeks",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "getDriverPayWeek",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "markDriverWeekPaid",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "rebuildLedgerNightly",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "clearTrackerMirrorOnDone",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "trackerOnOrderStatus",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "trackerOnTaskOwner",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "detectOutOfSequence",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "trackerOnTaskStatus",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "trackerOnDriverPointer",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "trackerOnDriverActive",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "trackerOnDriverShiftId",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "deleteTasksOnOrderTerminal",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "retentionSweepTasks",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "syncDriverHub",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "sendOrderStatusNotifications",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "index.js L5227-5227 in exports.sendOrderStatusNotifications"
+  },
+  {
+   "name": "logOrderLifecycle",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "notifyPickupReady",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "index.js L5414-5414 in exports.notifyPickupReady"
+  },
+  {
+   "name": "notifyPreparing",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "index.js L5547-5547 in exports.notifyPreparing"
+  },
+  {
+   "name": "predictReadyTimeOnNew",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "logReadyTimeActual",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "readyTimeGraduationMonitor",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "onIncomingWhatsApp",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "index.js L5801-5801 in exports.onIncomingWhatsApp | index.js L5848-5848 in exports.onIncomingWhatsApp | index.js L5873-5873 in exports.onIncomingWhatsApp | index.js L5944-5944 in exports.onIncomingWhatsApp"
+  },
+  {
+   "name": "autoAssignOnOrderCreate",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "index.js L6484-6484 in exports.autoAssignOnOrderCreate | index.js L6508-6508 in exports.autoAssignOnOrderCreate"
+  },
+  {
+   "name": "monitorAssignmentTimeout",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "index.js L6718-6718 in exports.monitorAssignmentTimeout"
+  },
+  {
+   "name": "sweepPendingOrders",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "index.js L6982-6982 in exports.sweepPendingOrders"
+  },
+  {
+   "name": "sweepScheduledReleases",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "releaseScheduledOrder",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "getRestaurantDirectory",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "getPublicMenu",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "googleStart",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "signup-endpoints.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js, signup-endpoints.js"
+  },
+  {
+   "name": "googleSignIn",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "signup-endpoints.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js, signup-endpoints.js"
+  },
+  {
+   "name": "completeProfile",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "signup-endpoints.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js, signup-endpoints.js"
+  },
+  {
+   "name": "setPromos",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "signup-endpoints.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js, signup-endpoints.js"
+  },
+  {
+   "name": "getSignupConfig",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "signup-endpoints.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js, signup-endpoints.js"
+  },
+  {
+   "name": "requestOtp",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "signup-endpoints.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js, signup-endpoints.js | signup-platform.js → address-book.js, ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js, signup-endpoints.js, signup-platform.js"
+  },
+  {
+   "name": "verifyOtp",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "signup-endpoints.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js, signup-endpoints.js | signup-platform.js → address-book.js, ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js, signup-endpoints.js, signup-platform.js"
+  },
+  {
+   "name": "quoteOrder",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "catalog/catalog-publish.js → catalog/catalog-publish.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "quoteRedemption",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "catalog/catalog-publish.js → catalog/catalog-publish.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "deleteAccount",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "signup-endpoints.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js, signup-endpoints.js"
+  },
+  {
+   "name": "pruneInactiveAccounts",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "signup-endpoints.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js, signup-endpoints.js"
+  },
+  {
+   "name": "rateOrder",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "memberInvite",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "access/team-http.js → catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "memberAcceptInvite",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "access/team-http.js → catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "memberCancelInvite",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "access/team-http.js → catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "memberReissueInvite",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "access/team-http.js → catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "memberRevoke",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "access/team-http.js → catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "memberSetMenuPermission",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "access/team-http.js → catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "memberList",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "access/team-http.js → catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "memberUpdate",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "access/team-http.js → catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "catalogRequestPublish",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "access/team-http.js → catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "memberPasswordSet",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "access/team-http.js → catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "memberInvitePreview",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "access/team-http.js → catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "editCatalog",
+   "entry": "portal/functions.js",
+   "isNew": false,
+   "changed": true,
+   "why": "isolated entry portal/functions.js closure: catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/portal-reads.js, catalog/rollback-refs.js, stats/stats-identity.js",
+   "header": []
+  },
+  {
+   "name": "publishEdited",
+   "entry": "portal/functions.js",
+   "isNew": false,
+   "changed": true,
+   "why": "isolated entry portal/functions.js closure: catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/portal-reads.js, catalog/rollback-refs.js, stats/stats-identity.js",
+   "header": []
+  },
+  {
+   "name": "resetDraftToLive",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "portal/reset-draft.js → catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "getMyBranches",
+   "entry": "portal/ops-functions.js",
+   "isNew": false,
+   "changed": false,
+   "why": "",
+   "header": []
+  },
+  {
+   "name": "updateBranch",
+   "entry": "portal/ops-functions.js",
+   "isNew": false,
+   "changed": false,
+   "why": "",
+   "header": []
+  },
+  {
+   "name": "setBranchPause",
+   "entry": "portal/ops-functions.js",
+   "isNew": false,
+   "changed": false,
+   "why": "",
+   "header": []
+  },
+  {
+   "name": "getBranchAvailability",
+   "entry": "portal/ops-functions.js",
+   "isNew": false,
+   "changed": false,
+   "why": "",
+   "header": []
+  },
+  {
+   "name": "setBranchAvailability",
+   "entry": "portal/ops-functions.js",
+   "isNew": false,
+   "changed": false,
+   "why": "",
+   "header": []
+  },
+  {
+   "name": "getBranchDevices",
+   "entry": "portal/ops-functions.js",
+   "isNew": false,
+   "changed": false,
+   "why": "",
+   "header": []
+  },
+  {
+   "name": "revokeBranchDevice",
+   "entry": "portal/ops-functions.js",
+   "isNew": false,
+   "changed": false,
+   "why": "",
+   "header": []
+  },
+  {
+   "name": "createBranchDraft",
+   "entry": "portal/ops-functions.js",
+   "isNew": false,
+   "changed": false,
+   "why": "",
+   "header": []
+  },
+  {
+   "name": "updateBranchProfile",
+   "entry": "portal/ops-functions.js",
+   "isNew": false,
+   "changed": false,
+   "why": "",
+   "header": []
+  },
+  {
+   "name": "setBranchActive",
+   "entry": "portal/ops-functions.js",
+   "isNew": false,
+   "changed": false,
+   "why": "",
+   "header": []
+  },
+  {
+   "name": "deleteBranchDraft",
+   "entry": "portal/ops-functions.js",
+   "isNew": false,
+   "changed": false,
+   "why": "",
+   "header": []
+  },
+  {
+   "name": "photoUploadStart",
+   "entry": "photos/functions.js",
+   "isNew": false,
+   "changed": false,
+   "why": "",
+   "header": []
+  },
+  {
+   "name": "photoProcess",
+   "entry": "photos/functions.js",
+   "isNew": false,
+   "changed": false,
+   "why": "",
+   "header": []
+  },
+  {
+   "name": "photoSweep",
+   "entry": "photos/functions.js",
+   "isNew": false,
+   "changed": false,
+   "why": "",
+   "header": []
+  },
+  {
+   "name": "getDeliveryPricing",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "setDeliveryPricing",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "getMyRestaurants",
+   "entry": "portal/functions.js",
+   "isNew": false,
+   "changed": true,
+   "why": "isolated entry portal/functions.js closure: catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/portal-reads.js, catalog/rollback-refs.js, stats/stats-identity.js",
+   "header": []
+  },
+  {
+   "name": "getEditableCatalog",
+   "entry": "portal/functions.js",
+   "isNew": false,
+   "changed": true,
+   "why": "isolated entry portal/functions.js closure: catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/portal-reads.js, catalog/rollback-refs.js, stats/stats-identity.js",
+   "header": []
+  },
+  {
+   "name": "reportClientVersion",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "sweepClientVersions",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "rollupDailyStats",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "stats/keyer.js → stats/stats-identity.js"
+  },
+  {
+   "name": "getSalesStats",
+   "entry": "portal/functions.js",
+   "isNew": false,
+   "changed": true,
+   "why": "isolated entry portal/functions.js closure: catalog/catalog-publish.js, catalog/choice-compare.js, catalog/platform-removal.js, catalog/portal-reads.js, catalog/rollback-refs.js, stats/stats-identity.js",
+   "header": []
+  },
+  {
+   "name": "prepStatsDaily",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantAccept",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantMoreTime",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantReady",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantHanded",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantReject",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantOrderState",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantSetBusy",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantSetPause",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantSetAvailability",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantPairDevice",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantRevokeDevice",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantHeartbeat",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantMyLocations",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantRegisterPush",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantUnregisterPush",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantPendingOrders",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantPushOnStatus",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "merchantPushOnAnswered",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "alertOnDriverProblem",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "notifyArrivedOnTap",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "whatsappInstanceHealth",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "formSignal",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "sweepFormSignals",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "rebakeFormOnMirror",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "reconcileFormBundles",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "requestCheckoutCode",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "verifyCheckoutCode",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "pruneCheckoutState",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "redeemSignupGrant",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "signup-platform.js → address-book.js, ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js, signup-endpoints.js, signup-platform.js"
+  },
+  {
+   "name": "getMyProfile",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "signup-platform.js → address-book.js, ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js, signup-endpoints.js, signup-platform.js"
+  },
+  {
+   "name": "getMyOrders",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "catalog/catalog-publish.js → catalog/catalog-publish.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "stampRatingFulfilment",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "markAudienceOnStatus",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "sweepAudienceMarkers",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "sweepAudienceIds",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "drainRatingRedactions",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "signup-endpoints.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js, signup-endpoints.js"
+  },
+  {
+   "name": "getMerchantRatingComments",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "getMerchantReviews",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "catalog/catalog-publish.js → catalog/catalog-publish.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "setMyName",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "signup-endpoints.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/token-queue.js, signup-endpoints.js"
+  },
+  {
+   "name": "getMyRating",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "getMyFavorites",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "setFavorite",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "getMyLastTip",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "useMyAddress",
+   "entry": "index.js",
+   "isNew": true,
+   "changed": true,
+   "why": "my-address.js → address-book.js, my-address.js | index.js L7911-7916 in exports.useMyAddress"
+  },
+  {
+   "name": "publishRatingAggregates",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "catalog/catalog-publish.js → catalog/catalog-publish.js, catalog/platform-removal.js, catalog/rollback-refs.js"
+  },
+  {
+   "name": "createSupportTicket",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "getMarketing",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "marketingOfferSave",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "marketingOfferSetState",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "marketingOfferRepeat",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "getAnuncioWeeks",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "anuncioBook",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "anuncioCancel",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "registerCustomerPushToken",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "unregisterCustomerPushToken",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "setCustomerPushPrefs",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "getCustomerPushPrefs",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": false,
+   "why": ""
+  },
+  {
+   "name": "placeSdkStatus",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "payments/sdk/functions.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/sweeper.js, payments/sdk/token-queue.js",
+   "via": "SDK_PAY_FUNCTIONS.ENDPOINT_EXPORTS"
+  },
+  {
+   "name": "cancelSdkPending",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "payments/sdk/functions.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/sweeper.js, payments/sdk/token-queue.js",
+   "via": "SDK_PAY_FUNCTIONS.ENDPOINT_EXPORTS"
+  },
+  {
+   "name": "listCards",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "payments/sdk/functions.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/sweeper.js, payments/sdk/token-queue.js",
+   "via": "SDK_PAY_FUNCTIONS.ENDPOINT_EXPORTS"
+  },
+  {
+   "name": "removeCard",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "payments/sdk/functions.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/sweeper.js, payments/sdk/token-queue.js",
+   "via": "SDK_PAY_FUNCTIONS.ENDPOINT_EXPORTS"
+  },
+  {
+   "name": "sdkPayStatus",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "payments/sdk/functions.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/sweeper.js, payments/sdk/token-queue.js",
+   "via": "SDK_PAY_FUNCTIONS.ENDPOINT_EXPORTS"
+  },
+  {
+   "name": "recoverOrderAccess",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "payments/sdk/functions.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/sweeper.js, payments/sdk/token-queue.js",
+   "via": "SDK_PAY_FUNCTIONS.ENDPOINT_EXPORTS"
+  },
+  {
+   "name": "processSdkRecovery",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "payments/sdk/functions.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/sweeper.js, payments/sdk/token-queue.js",
+   "via": "SDK_PAY_FUNCTIONS.ENDPOINT_EXPORTS"
+  },
+  {
+   "name": "sweepSdkRecovery",
+   "entry": "index.js",
+   "isNew": false,
+   "changed": true,
+   "why": "payments/sdk/functions.js → ledger/alloc-snapshot.js, payments/sdk/cards.js, payments/sdk/coordinator.js, payments/sdk/deps.js, payments/sdk/pixelpay-adapter.js, payments/sdk/psp-adapter.js, payments/sdk/record-token.js, payments/sdk/sweeper.js, payments/sdk/token-queue.js",
+   "via": "SDK_PAY_FUNCTIONS.ENDPOINT_EXPORTS"
+  }
+ ]
+}
