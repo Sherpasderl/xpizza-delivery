@@ -1037,6 +1037,46 @@ test('JWT-ONE-SINK: tokenUid has exactly ONE caller — memberToken, on the toke
   })(fn.body);
   assert.ok(binds.length === 1 && binds[0].init && binds[0].init.type === 'CallExpression' && binds[0].init.callee.type === 'Identifier' && binds[0].init.callee.name === 'tokenUsable' && writes.length === 0,
     '🔴 JWT-ONE-SINK: the token tokenUid reads is not memberToken\'s one tokenUsable result');
+  // Codex #321 P3: the callee resolves to the module's OWN tokenUsable by lexical scope, not by spelling — a local `tokenUsable` (a param,
+  // a const, a hoisted var / function, a catch or loop binding) between the call and the module would shadow the validator. The binding
+  // the call resolves to must be the ONE function declaration the module exports, and nothing may re-assign it.
+  const isFn = (n) => /^(FunctionDeclaration|FunctionExpression|ArrowFunctionExpression)$/.test(n.type);
+  const patNames = (p, out = []) => { if (!p) return out;
+    if (p.type === 'Identifier') out.push(p);
+    else if (p.type === 'ObjectPattern') p.properties.forEach((q) => patNames(q.type === 'RestElement' ? q.argument : q.value, out));
+    else if (p.type === 'ArrayPattern') p.elements.forEach((q) => patNames(q, out));
+    else if (p.type === 'AssignmentPattern') patNames(p.left, out);
+    else if (p.type === 'RestElement') patNames(p.argument, out);
+    return out; };
+  const kids = (n) => Object.entries(n).filter(([k]) => k !== 'loc').flatMap(([, v]) => (Array.isArray(v) ? v : [v])).filter((c) => c && typeof c.type === 'string');
+  const lexical = (body) => body.flatMap((s) => (s.type === 'VariableDeclaration' && s.kind !== 'var' ? s.declarations.flatMap((d) => patNames(d.id))
+    : (s.type === 'ClassDeclaration' || s.type === 'FunctionDeclaration') && s.id ? [s.id] : []));
+  const hoisted = (n, out = []) => { for (const c of kids(n)) {   // var + (Annex B) block function declarations, up to the next function
+    if (c.type === 'VariableDeclaration' && c.kind === 'var') c.declarations.forEach((d) => patNames(d.id, out));
+    if (c.type === 'FunctionDeclaration' && c.id) out.push(c.id);
+    if (!isFn(c)) hoisted(c, out);
+  } return out; };
+  const declaredIn = (s) => {   // the identifiers scope node s binds itself
+    if (isFn(s)) return [...(s.type === 'FunctionExpression' && s.id ? [s.id] : []), ...s.params.flatMap((p) => patNames(p)), ...(s.body.type === 'BlockStatement' ? hoisted(s.body) : [])];
+    if (s.type === 'Program') return [...lexical(s.body), ...hoisted(s)];
+    if (s.type === 'BlockStatement' || s.type === 'StaticBlock') return lexical(s.body);
+    if (s.type === 'SwitchStatement') return lexical(s.cases.flatMap((c) => c.consequent));
+    if (s.type === 'CatchClause') return patNames(s.param);
+    if (/^For(In|Of)?Statement$/.test(s.type)) { const h = s.init || s.left; return h && h.type === 'VariableDeclaration' && h.kind !== 'var' ? h.declarations.flatMap((d) => patNames(d.id)) : []; }
+    return [];
+  };
+  const resolve = (id, chainTo) => { for (let i = chainTo.length - 1; i >= 0; i--) { const ds = declaredIn(chainTo[i]).filter((d) => d.name === id.name); if (ds.length) return ds; } return []; };
+  const pathTo = (target) => { let found = null; (function walk(n, chainTo) { if (found) return; if (n === target) { found = chainTo; return; } for (const c of kids(n)) walk(c, [...chainTo, n]); })(ast, []); return found; };
+  const callee = binds[0].init.callee, viaCall = resolve(callee, pathTo(callee));
+  const expId = (() => { let e = null; (function walk(n) { if (n.type === 'Property' && n.shorthand && n.value.type === 'Identifier' && n.value.name === 'tokenUsable') e = n.value; for (const c of kids(n)) walk(c); })(ast); return e; })();
+  const viaExport = expId ? resolve(expId, pathTo(expId)) : [];
+  const owners = [];
+  (function walk(n, chainTo) { if (n.type === 'FunctionDeclaration' && n.id && n.id.name === 'tokenUsable') owners.push({ decl: n, parent: chainTo[chainTo.length - 1] }); for (const c of kids(n)) walk(c, [...chainTo, n]); })(ast, []);
+  const writesTU = [];
+  (function walk(n) { if (n.type === 'AssignmentExpression' && patNames(n.left).some((x) => x.name === 'tokenUsable')) writesTU.push(n);
+    if (n.type === 'UpdateExpression' && n.argument.type === 'Identifier' && n.argument.name === 'tokenUsable') writesTU.push(n); for (const c of kids(n)) walk(c); })(ast);
+  assert.ok(viaCall.length === 1 && viaExport.length === 1 && viaCall[0] === viaExport[0] && owners.length === 1 && owners[0].decl.id === viaCall[0] && writesTU.length === 0,
+    '🔴 JWT-ONE-SINK: memberToken\'s tokenUsable is not the module\'s own validator (shadowed or re-bound)');
 });
 
 // the behaviour half: memberToken's outputs (the header it sends, the moved refusal, onMoved's argument) are IDENTICAL before and after

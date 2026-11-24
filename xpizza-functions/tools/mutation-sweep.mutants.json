@@ -44078,5 +44078,39 @@
   "kills_with": [
    "SHEET-ROW: the spinner is not after the address"
   ]
+ },
+ {
+  "id": "jwt3-01",
+  "slice": "jwt3",
+  "label": "a local tokenUsable shadows the validator and returns the cached token unchecked (Codex #321)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      const t = tokenUsable(m, now());   // never an expired token",
+  "to": "      const tokenUsable = (mm) => (mm && mm.idToken) || null;\n      const t = tokenUsable(m, now());   // never an expired token",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE-SINK: memberToken's tokenUsable is not the module's own validator (shadowed or re-bound)"
+  ]
+ },
+ {
+  "id": "jwt3-02",
+  "slice": "jwt3",
+  "label": "a hoisted local function tokenUsable, declared AFTER the call, shadows the validator (Codex #321)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (t && tu !== m.uid) {",
+  "to": "      function tokenUsable(mm) { return (mm && mm.idToken) || null; }\n      if (t && tu !== m.uid) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE-SINK: memberToken's tokenUsable is not the module's own validator (shadowed or re-bound)"
+  ]
  }
 ]
