@@ -3020,6 +3020,10 @@
    "status": "pending",
    "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
   },
+  "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#<top>>anon~2": {
+   "status": "pending",
+   "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"
+  },
   "xpizza-driver/index.html<script@0>#render@xpizza-driver/index.html<script@0>#companionPracticeStart": {
    "status": "pending",
    "reason": "2f driver NOTE (A2 G2 — client render orchestration (32).: The top-level `render` and the section renderers (`renderActiveAndQueue`, `renderDisponible`, `renderIdleState`, `renderSoloCancel`, the `renderGanancias>anon` row callback) that PAINT the current client view into the DOM from in-memory state. The consumers ar)"

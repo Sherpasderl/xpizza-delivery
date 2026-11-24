@@ -43,8 +43,8 @@ const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 // `process.exit(0)` appended to it cannot short-circuit this guard (Codex r2 P1). A tampered contract (widened/
 // dropped restore, added/removed/shrunk region, changed kind) is caught even though the file is editable.
 const SLICE3_PINS = {
-  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'RENDER-BOARD-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER', 'PRESENTATION-INICIO', 'INICIO-LOGIN', 'INICIO-ESPERANDO', 'INICIO-CHECKLIST-FLAG', 'INICIO-POSTACT-ROUTE', 'INICIO-PERFIL', 'INICIO-CHECKLIST', 'INICIO-PRACTICA', 'INICIO-DEMO', 'INICIO-DEMO-TEARDOWN', 'TABBAR-SHOW', 'TABBAR-BOARD', 'DISP-HEADER', 'RETURN-TARGET-CAPTURE', 'SOLO-CANCEL', 'ARRIVAL-ACTION', 'PAUSE-BOARD', 'PRESENTATION-REVERIFY', 'CUENTA-CARD', 'INICIO-DESACTIVADA', 'MONEY-VUELTO', 'MONEY-TERMINAR', 'MONEY-CERRADO', 'MONEY-FINALIZE-RET', 'MONEY-RATE', 'MONEY-RATE-SUB', 'PAYRATE-SCRIPT', 'GANANCIAS-CSS', 'GANANCIAS-DOM', 'GANANCIAS-SHOW', 'GANANCIAS-REFRESH', 'GANANCIAS-STAY'],
-  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace', 'insert', 'replace', 'replace', 'replace', 'replace', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'insert', 'replace', 'insert', 'replace', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert'],
+  names: ['PRESENTATION-3', 'IMPORT-3', 'LOGIC-3', 'IDLE-3', 'OFFLINE-INIT-3', 'OFFLINE-TEARDOWN-3', 'GPSOFF-RESUME-3', 'GPSOFF-DENIED-3', 'OFFLINE-START-GEN-3', 'RENDER-OFFLINE-3', 'RENDER-BOARD-3', 'HELP-HANDLER', 'CUADRE-CSS', 'CUADRE-DOM', 'CUADRE-RENDER', 'CUADRE-SUBMIT', 'CHIME-FRESH', 'OFFER-TAKEOVER', 'PRESENTATION-INICIO', 'INICIO-LOGIN', 'INICIO-ESPERANDO', 'INICIO-CHECKLIST-FLAG', 'INICIO-POSTACT-ROUTE', 'INICIO-PERFIL', 'INICIO-CHECKLIST', 'INICIO-PRACTICA', 'INICIO-DEMO', 'INICIO-DEMO-TEARDOWN', 'TABBAR-SHOW', 'TABBAR-BOARD', 'DISP-HEADER', 'RETURN-TARGET-CAPTURE', 'SOLO-CANCEL', 'ARRIVAL-ACTION', 'PAUSE-BOARD', 'PRESENTATION-REVERIFY', 'CUENTA-CARD', 'INICIO-DESACTIVADA', 'MONEY-VUELTO', 'MONEY-TERMINAR', 'MONEY-CERRADO', 'MONEY-FINALIZE-RET', 'MONEY-RATE', 'MONEY-RATE-SUB', 'PAYRATE-SCRIPT', 'GANANCIAS-CSS', 'GANANCIAS-DOM', 'GANANCIAS-SHOW', 'GANANCIAS-REFRESH', 'GANANCIAS-STAY', 'ENDSHIFT-REENTRY-GUARD', 'ACCEPT-INC-LABEL', 'SLIDE-COMMIT-CALL', 'TAP-NUDGE', 'SLIDE-A11Y', 'NUDGE-BANNER-CSS', 'NOTIF-TITLE', 'NOTIF-BTN'],
+  kinds: ['insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace', 'insert', 'replace', 'replace', 'replace', 'replace', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'insert', 'replace', 'insert', 'replace', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'replace', 'replace', 'replace', 'replace', 'replace', 'insert', 'replace', 'replace'],
   restoreSha: {
     'MONEY-RATE-SUB': 'bfcbeacaa4e570679a4e0adfb7657042c6eeb08cb514359942411c9ab00a17b7',
     'MONEY-FINALIZE-RET': '33ab550ff1959a13738616ffca3ba50824b94b949a1179b1978e8e89124ed333',
@@ -64,8 +64,15 @@ const SLICE3_PINS = {
     'INICIO-PERFIL': 'e3cc6d98b928d95cb49c8b9016ca142730759778e6d6862eb75d68665ff8ca80',
     'INICIO-CHECKLIST': 'f270a45d4f0bc010c18de365e97fd1427138962b2b8d2abbdc07270db8cc4d74',
     'INICIO-PRACTICA': 'dc6e3b5213046e049f1ba47cd428392caca2cfcb84c7ffea4744c83f312e1e13',
+    'ENDSHIFT-REENTRY-GUARD': '3190cd7069f375499b541a08144266b4aa4f2a02eca1fde85dfd66d92043f0bf',
+    'ACCEPT-INC-LABEL': 'acb7b52cc61296c0ffb107274a8ad67dbf443cce058fabffbf1a37516b756e36',
+    'TAP-NUDGE': 'fe667aeedb0196d1e6a289c66a42861f163c1f4d478a02a6eb28469e2f7d690e',
+    'SLIDE-COMMIT-CALL': '100672ea2e119f6217a6137028c3fc64563f80e9b8a7c4fe1ee206604ccb2f62',
+    'SLIDE-A11Y': '10c8cc65d399c5f104303393ea4c3d7718146dc2bf2ccf97cae88bceb144dc76',
+    'NOTIF-TITLE': 'd97bc59d42d169fcbead3466f4da568a8cf3ef715230ceb11702065b3d60b9f7',
+    'NOTIF-BTN': 'b073b6f9efa43c3f78955eacb9abe50d662c8c1034f14a27e4246265b21a7983',
   },
-  fileSha: 'ba1639e0476715a8563664f85989960cad4e1fc35a3d715dd81d7e2524e9e32d',
+  fileSha: 'ee9570f84e294b44f2dfc5a0917fa2e2541d2435dba54fb02e46e6e488bc8b37',
 };
 // SLICE3DEPS carve-outs (advisor 2026-10-26): a REGISTERED exception to the non-nesting rule — a tiny span that MAY
 // live inside its declared SLICE2 parent, so slice 3 can edit slice-2-added host code (the fresh-offer deps object)
@@ -74,9 +81,9 @@ const SLICE3_PINS = {
 // carve (still inside the parent) still goes RED. An UNREGISTERED carve, or one in the wrong parent / partially
 // overlapping / double-nested, FAILS (negative self-tests below).
 const SLICE3_DEPS_PINS = {
-  names: ['OFFER-RENDER', 'LLEGUE-MAP', 'LLEGUE-HEADER', 'LLEGUE-CARD', 'SOLO-PICKUP-HEADER', 'STACKED-DELIV-HEADER', 'COMBINED-PICKUP-HEADER', 'STACKED-DELIV-CARD', 'INTERLUDE-EARN', 'RESUMEN-EARN'],
-  kinds: ['slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps'],
-  parents: ['SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'STACKED-BRANCH', 'STACKED-BRANCH', 'STACKED-BRANCH', 'IMPORT', 'IMPORT'],
+  names: ['OFFER-RENDER', 'LLEGUE-MAP', 'LLEGUE-HEADER', 'LLEGUE-CARD', 'SOLO-PICKUP-HEADER', 'STACKED-DELIV-HEADER', 'COMBINED-PICKUP-HEADER', 'STACKED-DELIV-CARD', 'INTERLUDE-EARN', 'RESUMEN-EARN', 'ARRIVAL-PROBLEM-FLAGS', 'PICKUP-HINT'],
+  kinds: ['slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps', 'slice3deps'],
+  parents: ['SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'SINGLE-ORDER-MOUNT', 'STACKED-BRANCH', 'STACKED-BRANCH', 'STACKED-BRANCH', 'IMPORT', 'IMPORT', 'IMPORT', 'STACKED-BRANCH'],
   restoreSha: {
     'OFFER-RENDER': 'f7bd685aa3efa75a6bd3df1757c120d16538876645961bfe5f68cf63170a9c3e',
     'LLEGUE-MAP': '4ce5b4226d369d69d82193fc06d09ab840cce26605c33cc2594c67693654c94f',
@@ -88,6 +95,8 @@ const SLICE3_DEPS_PINS = {
     'STACKED-DELIV-CARD': '3acff4eaa89e08e803c1623e9860a774ed2adf8e1c735b9c8118d65446863071',
     'INTERLUDE-EARN': 'e1e878a774a2e6704b5d79cbeceadeef34c9f422cc9eb041f58996e554cbd7fa',
     'RESUMEN-EARN': '90063cec79d75c03c96c8af28ab6f5fc19be406ee4e0ca0d90450d7f6f91c130',
+    'ARRIVAL-PROBLEM-FLAGS': 'bf37e46c9dbc6e9b37a4aae788c276574c6e12a534e07f46353882e1357e2041',
+    'PICKUP-HINT': '28e11bdea91649cd0a42ac534e29d7553eae918c1e18039cc06f58a1d39c4037',
   },
 };
 function loadContract() {   // bytes → sha pin FIRST → JSON.parse; no import/require of editable code (Codex r2 P1)
@@ -104,7 +113,7 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = '4cdffb7d3660af68c576d658c85593c1d47aea71a22354862638d9134c1eddc7';
+const SLICE2_GUARD_SHA = 'b211f3e0677aa58d7eb3d904907bf0dba4700203f899bffb2a7f79c115891345';
 const SLICE2_GUARD_CHECKS = 18;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 16). Re-pinned 16→18: the #962+stacked-seq re-gate ADDED 2 exact-pin sensitivity cells, never removed one.
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
@@ -458,7 +467,7 @@ t('restore spans are present in the 07e5ab38 baseline (pin integrity)', () => {
 // (there 2.5.2→2.5.4 off e2266b24; here 2.5.3→2.5.4 off 07e5ab38). Any OTHER out-of-region drift still fails
 // recovery (the NEG cell below applies the same allow, so the probe line is the ONLY difference it can trip on).
 const OUT_OF_REGION_ALLOW = [
-  { from: "const SYSTEM_VERSION = '2.5.3';", to: "const SYSTEM_VERSION = '2.6.0';" },
+  { from: "const SYSTEM_VERSION = '2.5.3';", to: "const SYSTEM_VERSION = '2.6.1';" },
 ];
 const applyAllow = (html) => {
   for (const { from, to } of OUT_OF_REGION_ALLOW) {

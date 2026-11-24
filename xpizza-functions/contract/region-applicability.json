@@ -4347,7 +4347,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -4644,7 +4644,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -4941,7 +4941,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -5399,7 +5399,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -5665,7 +5665,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -5931,7 +5931,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -6197,7 +6197,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -6440,7 +6440,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -6683,7 +6683,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -7165,7 +7165,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -7391,7 +7391,7 @@
     "site": "${scheduledBadge(order)}",
     "siteSha": "7af405919535866e072b12a5ba044e0784e06462de324f2e022f9d7c706ac584",
     "scope": "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon",
-    "scopeSha": "2774d3061e3dc4251b11d72a30bff579429e1b3bfaf55d17f61d263d4a068d87"
+    "scopeSha": "bce8d9de47f317465f8dd6e82f1d0f1c951703036ceb5939d88085f4273dbe01"
    },
    "guards": [
     {
@@ -7416,7 +7416,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -7667,7 +7667,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -7918,7 +7918,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -8169,7 +8169,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -8380,7 +8380,7 @@
     "site": "<div class=\"ib-title\">🔔 Nuevo pedido ${escapeHtml(displayOrderLabel(order))} ${restaurantChip(order, 'sm')}</div>",
     "siteSha": "bbdf91d360515ab6bbf47f1b59186b31fe98c1f067c615bb359af5b24f204302",
     "scope": "xpizza-driver/index.html<script@0>#renderIncomingBanners>anon",
-    "scopeSha": "2774d3061e3dc4251b11d72a30bff579429e1b3bfaf55d17f61d263d4a068d87"
+    "scopeSha": "bce8d9de47f317465f8dd6e82f1d0f1c951703036ceb5939d88085f4273dbe01"
    },
    "guards": [
     {
@@ -8405,7 +8405,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -8641,7 +8641,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -8877,7 +8877,7 @@
      "kind": "S",
      "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
      "text": "const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);",
-     "scopeSha": "a1d2610309e0090b2bc2c93746ce5ed9a8aa6c33e73af1715a78889538541011"
+     "scopeSha": "85a544745bb4c6ccc19842b1aa93a195ac810fc5b8e2aefbf4119ca6bfb17641"
     },
     {
      "kind": "C",
@@ -9238,7 +9238,7 @@
     "site": "await XPD.arriveAtRestaurant(currentUser.uid);",
     "siteSha": "0f8cf0137e7d9e23868daa9b056e8ebffe93e608e96f0c33e7a483bde9735f2a",
     "scope": "xpizza-driver/index.html<script@0>#<top>>anon",
-    "scopeSha": "c21f7a9c592df8e4d64d3d5ad0895d44aaa2bd39321c74e7d03e675132e3957d"
+    "scopeSha": "ce3466e83202d5e1a9b67bf3f70e2c123f74f36c9b9cfa070c1abc0ee38fd42c"
    },
    "guards": [
     {
