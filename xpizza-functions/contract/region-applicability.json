@@ -411,14 +411,14 @@
     "site": "if (ds.drvfocus){ showTab('mapa'); window.__focusDriverOnMap?.(ds.drvfocus); return; }",
     "siteSha": "deb368c93927903c91e1fd367f3d1f71393515740bfe1cd564fd2666a573fd37",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+    "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -456,14 +456,14 @@
     "site": "if (ds.map){ closeSheet(); showTab('mapa'); window.__focusOrderOnMap?.(ds.map); return; }",
     "siteSha": "575ce555a92ed3dbdf778f78f4b7493fa185c4883d5a2104cab06c522ec37d1d",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+    "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -508,7 +508,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -577,7 +577,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -646,7 +646,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -691,7 +691,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -736,7 +736,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -798,14 +798,14 @@
     "site": "if (oid) { sheetDir = 'push'; openConfirm(oid, ds.choose); }",
     "siteSha": "40f2a5db66dbdcd1f9742f459d4d41493ab90987dbee4228e68dc69ab0805d3a",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+    "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -843,14 +843,14 @@
     "site": "if (ds.detail){ sheetDir = ds.back ? 'pop' : 'push'; openDetail(ds.detail); return; }",
     "siteSha": "64b313060d187928487b1eec1898c5494f904aa8e13126b09961a9a20336c4e0",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
-    "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+    "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     }
    ],
    "cases": {
@@ -875,14 +875,14 @@
     "site": "openDriverInfo(uid);",
     "siteSha": "f1cd9b3a88409e6adef7440398364279f7aedd85b05d584fb2792e92467cd6c6",
     "scope": "xpizza-dispatch-mobile/index.html<script@0>#__focusDriverOnMap",
-    "scopeSha": "c414992ef87804b3564dee8b742b230f28b22aedbf8a5849b80614859cd37f86"
+    "scopeSha": "a8451a029215e903fa567a539e9d8a69f2ffa50c52418cfd9fbb4c0c5e3b62e7"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -927,7 +927,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -996,7 +996,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -1137,7 +1137,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -1182,7 +1182,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -1323,7 +1323,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -1456,7 +1456,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -1589,7 +1589,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -1722,7 +1722,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -1855,7 +1855,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -1988,7 +1988,7 @@
      "kind": "S",
      "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
      "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],",
-     "scopeSha": "4192070b25a278058bbfa55c4da90ba381ba956651d3948c4222588a0efaf31a"
+     "scopeSha": "c30e26b4ca41fae0c82aa7c5a45089241f75e3c7b30533dd614722d670a14806"
     },
     {
      "kind": "K",
@@ -2223,10 +2223,10 @@
    "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through confirmCancelOrder, so a trace that probed confirmCancelOrder and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
    "whyFalseExcludes": "confirmCancelOrder was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
-    "site": "if (!confirm(`¿Cancelar el pedido ${displayOrderLabel(orderId)}?\\n\\nEsto lo marcará como cancelado, reembolsará el cargo si hubo pago, y liberará al driver si está asignado.`)) return;",
-    "siteSha": "e2b8f79a234460a2c3cdd7ede4db88145a1ed5ee4b401e080cccce61c01d3841",
+    "site": "sub: `${displayOrderLabel(orderId)} · ${o.customer_name || '—'}${o.total != null ? ` · ${fmtL(o.total)}` : ''}`,",
+    "siteSha": "0700f6eaccd25ce512a85fa162fc5b57a6dec29c6b704a5c5806936b8b625ce5",
     "scope": "xpizza-dispatch/index.html<script@0>#confirmCancelOrder",
-    "scopeSha": "242a72e46960b037256eb354c8f10b2f9b56819dfb4f6c56228cc954c67e816a"
+    "scopeSha": "fc6c08348d467b23da4dd4431b06d82524f014b341dc992583f83288d212c33a"
    },
    "guards": [
     {
@@ -2239,7 +2239,7 @@
      "kind": "C",
      "output": "xpizza-dispatch/xpizza-delivery.js#cancelOrderRemote",
      "callers": [
-      "xpizza-dispatch/index.html<script@0>#confirmCancelOrder"
+      "xpizza-dispatch/index.html<script@0>#onConfirm"
      ]
     },
     {
@@ -2254,7 +2254,7 @@
      "name": "cancelOrderRemote",
      "counts": {
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
      }
     }
@@ -2278,10 +2278,10 @@
    "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through confirmCancelOrder, so a trace that probed confirmCancelOrder and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
    "whyFalseExcludes": "confirmCancelOrder was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
-    "site": "toast(`Pedido ${displayOrderLabel(orderId)} cancelado${suffix}`, 'success');",
-    "siteSha": "e3807cec4b3669dab5ca499a5fd5b4541cde6110e9f5f733e041ad8849702994",
+    "site": "body: `Vas a cancelar el pedido ${displayOrderLabel(orderId)} de ${o.customer_name || '—'}. Se marca como cancelado, se reembolsa el cargo si hubo pago y el repartidor queda libre si estaba asignado.`,",
+    "siteSha": "35e48d6e47d3686067d52e57bd9ce1b956cb9d41a4cb6d4b6c2bc23b9a729f09",
     "scope": "xpizza-dispatch/index.html<script@0>#confirmCancelOrder",
-    "scopeSha": "242a72e46960b037256eb354c8f10b2f9b56819dfb4f6c56228cc954c67e816a"
+    "scopeSha": "fc6c08348d467b23da4dd4431b06d82524f014b341dc992583f83288d212c33a"
    },
    "guards": [
     {
@@ -2294,7 +2294,7 @@
      "kind": "C",
      "output": "xpizza-dispatch/xpizza-delivery.js#cancelOrderRemote",
      "callers": [
-      "xpizza-dispatch/index.html<script@0>#confirmCancelOrder"
+      "xpizza-dispatch/index.html<script@0>#onConfirm"
      ]
     },
     {
@@ -2309,62 +2309,7 @@
      "name": "cancelOrderRemote",
      "counts": {
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 1,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
-     }
-    }
-   ],
-   "cases": {
-    "required": [],
-    "excluded": [
-     "S1|x_pizza|new",
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned"
-    ],
-    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-cancel-order): excluded only when the context is established; required otherwise"
-   }
-  },
-  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#confirmCancelOrder~3": {
-   "group": "dispatch-ui",
-   "appliesWhenAny": [],
-   "context": [
-    "no-exec:xpizza-dispatch/index.html<script@0>#confirmCancelOrder"
-   ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through confirmCancelOrder, so a trace that probed confirmCancelOrder and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
-   "whyFalseExcludes": "confirmCancelOrder was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
-   "bind": {
-    "site": "if (e && e.outcome) toast(`Pedido ${displayOrderLabel(orderId)}: ${e.outcome} — revisar`, 'error');",
-    "siteSha": "e45b6037bc06268680abfec499c4571acd4f9826a5893928b7c193a1bccbf779",
-    "scope": "xpizza-dispatch/index.html<script@0>#confirmCancelOrder",
-    "scopeSha": "242a72e46960b037256eb354c8f10b2f9b56819dfb4f6c56228cc954c67e816a"
-   },
-   "guards": [
-    {
-     "kind": "K",
-     "file": "xpizza-dispatch/index.html",
-     "text": "confirmCancelOrder(",
-     "count": 4
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-dispatch/xpizza-delivery.js#cancelOrderRemote",
-     "callers": [
-      "xpizza-dispatch/index.html<script@0>#confirmCancelOrder"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "confirmCancelOrder",
-     "counts": {
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 4
-     }
-    },
-    {
-     "kind": "R",
-     "name": "cancelOrderRemote",
-     "counts": {
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 2,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
      }
     }
@@ -2391,7 +2336,7 @@
     "site": "$('picker-title').textContent = isReassign ? `Reasignar ${displayOrderLabel(orderId)}` : `Asignar ${displayOrderLabel(orderId)}`;",
     "siteSha": "7e94fc97ed4c1c7b15c26081c72c68e7fea1759391ef31d1a1d98cfaccf50a82",
     "scope": "xpizza-dispatch/index.html<script@0>#openPicker",
-    "scopeSha": "bda753d40ad3a94e7322c3fcc3542bcb1ffbf07b214e893729528e609e62d5ca"
+    "scopeSha": "def2d08b25559a6b4dfb153169eae7f39357337e98ca0f9ac949ec398ade51ed"
    },
    "guards": [
     {
@@ -2445,7 +2390,7 @@
     "site": "$('picker-title').textContent = isReassign ? `Reasignar ${displayOrderLabel(orderId)}` : `Asignar ${displayOrderLabel(orderId)}`;",
     "siteSha": "7e94fc97ed4c1c7b15c26081c72c68e7fea1759391ef31d1a1d98cfaccf50a82",
     "scope": "xpizza-dispatch/index.html<script@0>#openPicker",
-    "scopeSha": "bda753d40ad3a94e7322c3fcc3542bcb1ffbf07b214e893729528e609e62d5ca"
+    "scopeSha": "def2d08b25559a6b4dfb153169eae7f39357337e98ca0f9ac949ec398ade51ed"
    },
    "guards": [
     {
@@ -2828,7 +2773,7 @@
     "site": "<span class=\"status-dot ${getDotClass(driver)}\"></span>",
     "siteSha": "5851274d23204dba9aac8ff9505daa0284424e99c0a4f6068ffbb65165cb4c30",
     "scope": "xpizza-dispatch/index.html<script@0>#openPicker>anon",
-    "scopeSha": "86c172b9d19768942e49d3bb485e725d46f4b3374fdb6ef3e11ddece32c4731b"
+    "scopeSha": "e60b48f50fd7488eb11257b8061a2324ad30491ed7b1b8e41b9385155c800819"
    },
    "guards": [
     {
@@ -2882,7 +2827,7 @@
     "site": "([uid, d]) => {",
     "siteSha": "7d4d62a78a65131448eb29b3717839d563bd4e92a487b5130941cd62caa93622",
     "scope": "xpizza-dispatch/index.html<script@0>#openPicker>anon",
-    "scopeSha": "86c172b9d19768942e49d3bb485e725d46f4b3374fdb6ef3e11ddece32c4731b"
+    "scopeSha": "e60b48f50fd7488eb11257b8061a2324ad30491ed7b1b8e41b9385155c800819"
    },
    "guards": [
     {
@@ -3054,7 +2999,7 @@
     "site": "openPicker(btn.dataset.reassignOrder, true);",
     "siteSha": "33be600626dddb4d1588eaa625b46336b8e90c39b748b6999c3def94de09ea7d",
     "scope": "xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon",
-    "scopeSha": "bf9a5eda361ff83e7d063df541c9812f680d81acdc31868f78a4e4eac2b9a9d9"
+    "scopeSha": "0209cb9ac98f9ed3757eed4857a69d564637d0d9e27d4363fdded56b5f6d6b56"
    },
    "guards": [
     {
@@ -3116,7 +3061,7 @@
     "site": "btn.addEventListener('click', (e) => { e.stopPropagation(); openPicker(btn.dataset.assignOrder); });",
     "siteSha": "4147e9465663ea99a536683ac815429f207fd951e82e5b402d6195333ee5f4c8",
     "scope": "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon",
-    "scopeSha": "04cdad5a4b132068148bd019439b720abf67b162983fffc4529281a77e9e2e84"
+    "scopeSha": "0849159916fd9900aeb9ea2f18c414ea6277e5df9aafc350858920d8fb32abcd"
    },
    "guards": [
     {
@@ -3147,7 +3092,7 @@
     "site": "btn.addEventListener('click', (e) => { e.stopPropagation(); openPicker(btn.dataset.reassignOrder, true); });",
     "siteSha": "e81d2f535a265618de363603a27279d1a693d37d2f751c0810bfb79ab11d8b85",
     "scope": "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon",
-    "scopeSha": "04cdad5a4b132068148bd019439b720abf67b162983fffc4529281a77e9e2e84"
+    "scopeSha": "0849159916fd9900aeb9ea2f18c414ea6277e5df9aafc350858920d8fb32abcd"
    },
    "guards": [
     {
@@ -3676,7 +3621,7 @@
     "site": "const res = await XPD.assignOrderToDriver(oid, currentUser.uid);",
     "siteSha": "9906a4a5fae7de352b3befea45b825fc739229413311e6f28dcb92cea19ae722",
     "scope": "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon",
-    "scopeSha": "04cdad5a4b132068148bd019439b720abf67b162983fffc4529281a77e9e2e84"
+    "scopeSha": "0849159916fd9900aeb9ea2f18c414ea6277e5df9aafc350858920d8fb32abcd"
    },
    "guards": [
     {
@@ -3693,61 +3638,6 @@
      "S1t-a|x_pizza|assigned"
     ],
     "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-assign-self): excluded only when the context is established; required otherwise"
-   }
-  },
-  "xpizza-dispatch/xpizza-delivery.js#cancelOrderRemote@xpizza-dispatch/index.html<script@0>#confirmCancelOrder": {
-   "group": "dispatch-ui",
-   "appliesWhenAny": [],
-   "context": [
-    "no-exec:xpizza-dispatch/index.html<script@0>#confirmCancelOrder"
-   ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through confirmCancelOrder, so a trace that probed confirmCancelOrder and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
-   "whyFalseExcludes": "confirmCancelOrder was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
-   "bind": {
-    "site": "const r = await XPD.cancelOrderRemote(orderId, 'Cancelado por dispatcher');",
-    "siteSha": "6191ee8b81e45046c7d86c9c669f9f753c530701bd9cea62507a167c4fc2213f",
-    "scope": "xpizza-dispatch/index.html<script@0>#confirmCancelOrder",
-    "scopeSha": "242a72e46960b037256eb354c8f10b2f9b56819dfb4f6c56228cc954c67e816a"
-   },
-   "guards": [
-    {
-     "kind": "K",
-     "file": "xpizza-dispatch/index.html",
-     "text": "confirmCancelOrder(",
-     "count": 4
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-dispatch/xpizza-delivery.js#cancelOrderRemote",
-     "callers": [
-      "xpizza-dispatch/index.html<script@0>#confirmCancelOrder"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "confirmCancelOrder",
-     "counts": {
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 4
-     }
-    },
-    {
-     "kind": "R",
-     "name": "cancelOrderRemote",
-     "counts": {
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 1,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
-     }
-    }
-   ],
-   "cases": {
-    "required": [],
-    "excluded": [
-     "S1|x_pizza|new",
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned"
-    ],
-    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-cancel-order): excluded only when the context is established; required otherwise"
    }
   },
   "xpizza-dispatch/xpizza-delivery.js#coordsMatch@xpizza-dispatch/xpizza-delivery.js#resolvePickupHub": {
@@ -8340,7 +8230,7 @@
      "kind": "R",
      "name": "displayOrderLabel",
      "counts": {
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 25,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 26,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 2,
       "xpizza-driver/single-order-view.js#xpizza-driver": 2,
@@ -8576,7 +8466,7 @@
      "kind": "R",
      "name": "displayOrderLabel",
      "counts": {
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 25,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 26,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 2,
       "xpizza-driver/single-order-view.js#xpizza-driver": 2,
@@ -8812,7 +8702,7 @@
      "kind": "R",
      "name": "displayOrderLabel",
      "counts": {
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 25,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 26,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 2,
       "xpizza-driver/single-order-view.js#xpizza-driver": 2,
@@ -9048,7 +8938,7 @@
      "kind": "R",
      "name": "displayOrderLabel",
      "counts": {
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 25,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 26,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/order-helpers.js#xpizza-driver": 2,
       "xpizza-driver/single-order-view.js#xpizza-driver": 2,
@@ -14195,6 +14085,116 @@
      "S1t-a|x_pizza|assigned"
     ],
     "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-action-idx): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#onConfirm~2": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-exec:xpizza-dispatch/index.html<script@0>#confirmCancelOrder"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through confirmCancelOrder, so a trace that probed confirmCancelOrder and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "confirmCancelOrder was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
+   "bind": {
+    "site": "if (e && e.outcome) toast(`Pedido ${displayOrderLabel(orderId)}: ${e.outcome} — revisar`, 'error');",
+    "siteSha": "e45b6037bc06268680abfec499c4571acd4f9826a5893928b7c193a1bccbf779",
+    "scope": "xpizza-dispatch/index.html<script@0>#onConfirm",
+    "scopeSha": "49abb0ee5e02ccb7d6a3fcc104706a8985ab01cdc9d93f71b46665408849d17d"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "confirmCancelOrder(",
+     "count": 4
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#cancelOrderRemote",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#onConfirm"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "confirmCancelOrder",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 4
+     }
+    },
+    {
+     "kind": "R",
+     "name": "cancelOrderRemote",
+     "counts": {
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 2,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-cancel-order): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/xpizza-delivery.js#cancelOrderRemote@xpizza-dispatch/index.html<script@0>#onConfirm": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-exec:xpizza-dispatch/index.html<script@0>#confirmCancelOrder"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through confirmCancelOrder, so a trace that probed confirmCancelOrder and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "confirmCancelOrder was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
+   "bind": {
+    "site": "const r = await XPD.cancelOrderRemote(orderId, 'Cancelado por dispatcher');",
+    "siteSha": "6191ee8b81e45046c7d86c9c669f9f753c530701bd9cea62507a167c4fc2213f",
+    "scope": "xpizza-dispatch/index.html<script@0>#onConfirm",
+    "scopeSha": "49abb0ee5e02ccb7d6a3fcc104706a8985ab01cdc9d93f71b46665408849d17d"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "confirmCancelOrder(",
+     "count": 4
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#cancelOrderRemote",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#onConfirm"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "confirmCancelOrder",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 4
+     }
+    },
+    {
+     "kind": "R",
+     "name": "cancelOrderRemote",
+     "counts": {
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 2,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-cancel-order): excluded only when the context is established; required otherwise"
    }
   }
  }

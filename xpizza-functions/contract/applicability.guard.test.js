@@ -305,7 +305,7 @@ window.__timer = () => setTimeout(() => openOrderDetailModal('o9'), 0);`;
   assert.ok(!sink.events.some((e) => e.path.some((n) => n.attrs.includes('data-recon-action'))), FAIL('probe premise: the rewired recon button carried no data-recon-action'));
   const cell = { S: 'S1', brand: 'x_pizza', lp: 'new' }; const ev = { persisted: { restaurant_id: 'x_pizza', status: 'new' }, lpAction: { action: 'create', ack: true } };
   const probed = FNS.map((f) => `${D}#${f}`);
-  const regs = [`${X}#cancelOrderRemote@${D}#confirmCancelOrder`, `${X}#resolveReconciliation@${D}#resolveReconciliationAction`, `${D}#renderOrderDetailModal@${D}#openOrderDetailModal`];
+  const regs = [`${X}#cancelOrderRemote@${D}#onConfirm`, `${X}#resolveReconciliation@${D}#resolveReconciliationAction`, `${D}#renderOrderDetailModal@${D}#openOrderDetailModal`];
   for (const r of regs) {
     assert.strictEqual(RA.runDecision(doc, r, cell, { ...ev, exec: { probed, entered: [...entered] } }, paths).outcome, 'required', FAIL(`${r}: an executed handler (detached click / rewired value / timer) did not keep it required`));
     assert.strictEqual(RA.runDecision(doc, r, cell, { ...ev, exec: { probed, entered: [] } }, paths).outcome, 'excluded', FAIL(`${r}: a probed, never-entered handler did not exclude`));
