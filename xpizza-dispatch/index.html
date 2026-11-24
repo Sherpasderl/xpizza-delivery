@@ -3388,14 +3388,6 @@ function getActiveOrders() {
   }).sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
 }
 
-function getDeliveredTodayCount() {
-  const dayStart = new Date();
-  dayStart.setHours(0, 0, 0, 0);
-  return Object.values(allOrders).filter(o =>
-    (o.status === 'delivered' || o.status === 'completed') && o.created_at >= dayStart.getTime()
-  ).length;
-}
-
 function getActiveDrivers() {
   return Object.entries(allDrivers).filter(([_, d]) => d.active);
 }
