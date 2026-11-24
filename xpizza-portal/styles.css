@@ -470,7 +470,7 @@
   /* ═══ ELEVATION: browser surfaces the design system should own ═══ */
   :focus-visible{outline:none;box-shadow:var(--focus)}
   .tab:focus-visible,.railitem:focus-visible,.nav:focus-visible,.ochip:focus-visible,.daychip:focus-visible,.fchip:focus-visible{box-shadow:var(--focus);border-radius:9px}
-  h1[tabindex="-1"]:focus,.errbox[tabindex="-1"]:focus,#gatewait[tabindex="-1"]:focus{outline:none;box-shadow:none}   /* the reveal's focus TARGETS (boot.js focusPortal / focusGate): not controls, so no keyboard ring — the focus move stays for screen readers */
+  h1[tabindex="-1"]:focus,.errbox[tabindex="-1"]:focus,.eerr[tabindex="-1"]:focus,#gatewait[tabindex="-1"]:focus{outline:none;box-shadow:none}   /* the reveal's focus TARGETS (boot.js focusPortal / focusGate): not controls, so no keyboard ring — the focus move stays for screen readers */
   a{color:var(--accent)}
   ::selection{background:var(--tint2);color:var(--ink)}
   input,textarea{caret-color:var(--accent)}
@@ -2054,6 +2054,44 @@
   .envio .esec h3 .ehint svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2}
   .envio .esec p.ehelp{color:var(--mute);font-size:12.5px;line-height:1.5}
   .envio .efnote{font-size:12px;color:var(--mute);line-height:1.45}
+  /* ENVÍO step 2, Z1 — «Zonas sin entrega» (the approved v2 card, portal tokens only); the lock's sand callout (addendum B) */
+  .envio .zlist{display:flex;flex-direction:column;gap:8px}
+  .envio .zrow{display:flex;align-items:center;gap:11px;padding:10px 12px;border:1px solid var(--line2);border-radius:11px;background:var(--board-2);font-size:13px}
+  /* the hatched swatch (v2: red diagonals on a soft red ground) as an inline SVG in currentColor — the colour grammar models no gradient */
+  .envio .zrow .zsw{width:22px;height:22px;border-radius:6px;border:1px solid var(--red-line);background:var(--red-soft);color:var(--red-text);flex:none;overflow:hidden;display:flex}
+  .envio .zrow .zsw svg{width:22px;height:22px;stroke:currentColor;stroke-width:1.5;fill:none}
+  .envio .zrow .k{flex:1;min-width:0;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .envio .zrow .s{display:block;font-size:12px;color:var(--mute);font-weight:400}
+  .envio .zrow .ib{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:center;color:var(--mute);cursor:pointer;flex:none;padding:0}
+  .envio .zrow .ib:disabled{opacity:.45;cursor:default}
+  .envio .zrow .ib svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  /* the naming / rename row in place (the approved v2 page .zrow.editing: frame 1b, note 13) */
+  .envio .zrow.editing{background:var(--card);border-color:var(--ink)}
+  .envio .zrow.editing input{flex:1;min-width:0;border:none;background:transparent;font-size:13px;font-weight:650;color:var(--ink);outline:none;font-family:inherit;border-bottom:1.5px solid var(--accent);padding:2px 0}
+  .envio .zrow.editing .btn{padding:6px 11px}
+  .envio .ecallout.sand{border-color:var(--sand-line);background:var(--sand-soft);color:var(--sand-text)}
+  .envio .envzones .railadd:disabled{opacity:.5;cursor:default}
+  /* ENVÍO zones Z2 — drawing mode (the approved v2 page, frame 1b + note 12): the map's ink border and tint ring, the accent hint, the
+     tool line under the map, the dimmed picker (.5) and left cards (.55) */
+  .envio .emap.drawing{border-color:var(--ink);box-shadow:0 0 0 3px var(--tint2)}
+  .envio .esec h3 .ehint.drawhint{color:var(--accent)}
+  .envio .mtool{display:flex;align-items:center;gap:9px}
+  .envio .mtool .efnote{flex:1;min-width:0}
+  .envio .pickfld.dim{opacity:.5}
+  .envio .esec.dim,.envio .ecallout.dim{opacity:.55}
+  /* ENVÍO step 2, Z1b — the zones save outcomes (addendum D–F: the blocking-branch list, dot + word) and the «Quitar zona» confirm */
+  .envio .envzfail .ebtns{display:flex;gap:9px;flex-wrap:wrap;justify-content:flex-end;flex:0 0 auto;align-self:center}
+  .envio .envzfail>div{flex:1;min-width:0}   /* the text column takes the room; .ebtns (above, more specific) keeps its natural width */
+  .envio .blist{display:flex;flex-direction:column;gap:6px;margin-top:11px}
+  .envio .zbrow{display:flex;align-items:center;gap:10px;padding:8px 11px;border:1px solid var(--red-line);border-radius:10px;background:var(--card);font-size:13px}
+  .envio .zbrow .k{flex:1;min-width:0;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .envio .zbrow .st{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--mute);white-space:nowrap;flex:none}
+  .envio .zbrow .st i{width:8px;height:8px;border-radius:50%;flex:none;background:var(--sand-text)}
+  .envio .zbrow .st.open i{background:var(--green)}
+  .zblink{cursor:pointer}   /* the pointer guard counts a single compound only */
+  .envio .zbrow .st .zblink{color:var(--ink);font-weight:650;text-decoration:underline;text-underline-offset:2px}   /* addendum frame D `.st a` */
+  .envio .blist .bmore{font-size:12px;color:var(--mute);padding:2px 2px 0}
+  .envio .envzrm .mfoot{display:flex;gap:9px;justify-content:flex-end}
   .envio .elab{font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:var(--mute)}
   .envio .ecallout{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border-radius:12px;border:1px solid var(--line);background:var(--board-2);font-size:13px;line-height:1.5;color:var(--ink);margin-top:0}
   .envio .ecallout svg{width:17px;height:17px;stroke:var(--mute);fill:none;stroke-width:2;flex:none;margin-top:2px}
@@ -2195,6 +2233,14 @@
     .envio .modal{border-radius:18px 18px 0 0;max-width:none}
     .envio .mfoot{flex-direction:column-reverse}
     .envio .mfoot .btn{justify-content:center;min-height:46px}
+    /* the zones addendum's final cascade (visual check r5–r8): the save bar wraps its actions onto their own row; the 409 box stacks them */
+    .envio .rbar{row-gap:10px}
+    .envio .rb-t{flex:1 1 auto}
+    .envio .rb-sp{flex:0 0 100%;display:flex;gap:8px}
+    .envio .rb-sp .btn{flex:1;justify-content:center;min-height:44px}
+    .envio .envzfail{flex-wrap:wrap;padding:16px}
+    .envio .envzfail .ebtns{flex:0 0 100%;width:100%;justify-content:stretch;flex-direction:column}
+    .envio .envzfail .ebtns .btn{justify-content:center;min-height:44px;margin-left:0}
   }
 
   /* ═══ INICIO (PLAN-portal-inicio-r0): EXACT to MOCKUP-portal-map.html v3 s-inicio / s-inicio-ok — the frame's .top / .filt / .vpre /

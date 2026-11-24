@@ -28,23 +28,41 @@ const LIGHT = [
 ];
 // ENVÍO v3 A2 (map-look delta r1): «Simple» = today's LIGHT styles on roadmap; «Mapa» = Google's roadmap; «Satélite» = hybrid. A v1
 // render (an older portal) is drawn «Simple», as step 1 drew it.
-const typeOf = (m) => (m && m.v === 2 ? m.mapType : 'simple');
+const typeOf = (m) => (m && m.v >= 2 ? m.mapType : 'simple');   // v3 (Z2) is v2 + zones + drawing
 const styleFor = (t) => (t === 'hybrid' ? { styles: null, mapTypeId: 'hybrid' } : { styles: t === 'simple' ? LIGHT : null, mapTypeId: 'roadmap' });
 const NS = 'http://www.w3.org/2000/svg';
 const PIN_D = (x, y, u) => `M${x} ${y - 24 * u}c${-7 * u} 0 ${-12 * u} ${5 * u} ${-12 * u} ${12 * u} 0 ${9 * u} ${12 * u} ${24 * u} ${12 * u} ${24 * u}s${12 * u} ${-15 * u} ${12 * u} ${-24 * u}c0 ${-7 * u} ${-5 * u} ${-12 * u} ${-12 * u} ${-12 * u}z`;
 
 // ── the overlay, as data (pure: tested with a fake projection) ────────────────────────────────────────────────────────────
 // msg: a validated render; project({lat,lng}) → {x,y} in the overlay's own pixels; u: px per mockup unit (W / 640).
-// → { rings: [{ d, cls }], outside: d | null, labels: [{ x, y, w, text, cls }], pins: [{ x, y, cls }], name: { x, y, text } | null }
-export function overlayModel(msg, project, u) {
+// → { rings: [{ d, cls }], outside: d | null, labels: [{ x, y, w, text, cls }], pins: [{ x, y, cls }], name: { x, y, text } | null,
+//     zones: [{ d, label: { x, y, text } }], draw: null | { d, closing: d | null, vtx: [{ x, y, n, first }] } }
+// live (Z2): the drawing session as the child holds it (drawController.view()) — drawn over the zones, the edited zone in its place
+export function overlayModel(msg, project, u, live = null) {
   const out = { rings: [], outside: null, labels: [], pins: [], name: null };
   if (!msg || !msg.hub) return out;
+  if (msg.v === 3 || live) { out.zones = []; out.draw = null; }   // Z2 only: a v1 / v2 model is step 1's, unchanged
+  const poly = (ps, close) => `M${ps.map(project).map((p) => `${r2(p.x)} ${r2(p.y)}`).join('L')}${close ? 'Z' : ''}`;
+  if (msg.v === 3) {
+    for (const z of msg.zones) {
+      if (live && live.zone === z.id) continue;
+      const c0 = project({ lat: z.points.reduce((a, q) => a + q.lat, 0) / z.points.length, lng: z.points.reduce((a, q) => a + q.lng, 0) / z.points.length });
+      out.zones.push({ d: poly(z.points, true), label: { x: c0.x, y: c0.y, w: Math.max(60, z.name.length * 7 + 18) * u, text: z.name } });
+    }
+  }
+  if (live && live.points.length) {
+    const closed = live.closed || live.zone !== null;
+    // Codex #204 P3-1: handles and the close preview only while the session takes edits (never UNCONFIRMED, closed or waiting on a finish)
+    const handles = live.editable === true;
+    out.draw = { d: poly(live.points, closed), closing: handles && !closed && live.points.length >= 2 ? poly([live.points[live.points.length - 1], live.points[0]], false) : null,
+      vtx: handles ? live.points.map((q, i) => { const p = project(q); return { x: p.x, y: p.y, n: i + 1, first: i === 0 }; }) : [] };
+  }
   const hub = msg.hub, c = project(hub);
   const pathOf = (km) => { const pts = G.ringPath(hub, km).map(project); return `M${pts.map((p) => `${r2(p.x)} ${r2(p.y)}`).join('L')}Z`; };
   const valid = msg.bands.filter((b) => b.ok), bad = msg.bands.filter((b) => !b.ok);
   // ENVÍO v3 A2 / A4 (protocol v2): the restaurant's own limit — the SOLID ink ring at limit.km, the shade starting there; the fee
   // rings stay dashed and a band beyond it (the portal's `out`) is greyed. No limit (v1, or none sent): step 1's drawing, unchanged.
-  const lim = msg.v === 2 && msg.limit ? msg.limit : null;
+  const lim = msg.v >= 2 && msg.limit ? msg.limit : null;
   const beyondOf = (b) => !!(lim && b.out === true);
   if (valid.length) {
     const last = valid.length - 1;
@@ -88,7 +106,84 @@ function paint(svg, model, u) {
     kids.push(mk('path', { class: 'pin', d: PIN_D(x, y, u) }), mk('circle', { class: 'pindot', cx: r2(x), cy: r2(y - 12 * u), r: r2(4 * u) }));
   }
   if (model.name) kids.push(mk('text', { class: 'pl', x: r2(model.name.x), y: r2(model.name.y) }, model.name.text));
+  // Z2 — the no-delivery zones (hatched, outlined, labelled) and the drawing session (dashed ink edges, the dotted close preview, the
+  // numbered handles, vertex 1 in green) — the approved v2 page's .zone / .zl / .draw-edge / .draw-close / .vtx
+  for (const z of model.zones || []) {
+    kids.push(mk('path', { class: 'zone', d: z.d }));
+    const g = mk('g', { class: 'zl' });
+    g.append(mk('rect', { x: r2(z.label.x - z.label.w / 2), y: r2(z.label.y - 10 * u), width: r2(z.label.w), height: r2(20 * u), rx: r2(6 * u) }), mk('text', { x: r2(z.label.x), y: r2(z.label.y + 4 * u) }, z.label.text));
+    kids.push(g);
+  }
+  if (model.draw) {
+    kids.push(mk('path', { class: 'draw-edge', d: model.draw.d }));
+    if (model.draw.closing) kids.push(mk('path', { class: 'draw-close', d: model.draw.closing }));
+    for (const v of model.draw.vtx) kids.push(mk('circle', { class: `vtx${v.first ? ' first' : ''}`, cx: r2(v.x), cy: r2(v.y), r: r2(6 * u) }), mk('text', { class: 'vtx-n', x: r2(v.x), y: r2(v.y - 9 * u) }, String(v.n)));
+  }
   svg.replaceChildren(...kids);
+}
+
+// ── Z2 — drawing (PLAN-portal-zones-protocol-v3 r1 §2, r2 P2-3 / P2-6, r3 #181-6, r4 #185) ─────────────────────────────────────────────
+// The child only PROPOSES: whole point lists with a per-session seq (draft_points), a finish, an edit_request. The PARENT mints sessions,
+// judges every shape and is authoritative; this state machine follows its renders. A finish retries with the SAME (session, seq) every
+// RETRY_MS until a render's ack names it (accepted ⇒ inert; rejected ⇒ editable again; ended / no session ⇒ dropped). After TRIES with no
+// ack the session is UNCONFIRMED: inert, never a new seq, never a new finish of its own; each later render either settles it (its ack, a
+// null drawing, another session) or — the same session still open with no ack — gets that finish ONCE more (same seq).
+export const DRAW_LIMITS = Object.freeze({ points: 24, RETRY_MS: 500, TRIES: 10 });
+const samePt = (a, b) => !!a && !!b && a.lat === b.lat && a.lng === b.lng;
+const copyPts = (ps) => ps.map((q) => ({ lat: q.lat, lng: q.lng }));
+export function drawController({ send, schedule = setTimeout, cancel = clearTimeout, onChange = () => {} }) {
+  let s = null;   // { session, zone, points, seq, closed, finish: null | { seq, points, tries, timer }, unconfirmed }
+  const editable = () => !!s && !s.closed && !s.finish && !s.unconfirmed;
+  const post = (kind) => send(kind, { session: s.session, seq: s.seq, points: copyPts(s.points) });
+  const postFinish = () => send('finish', { session: s.session, seq: s.finish.seq, points: copyPts(s.finish.points) });
+  function stop() { if (s && s.finish && s.finish.timer) { cancel(s.finish.timer); s.finish.timer = null; } }
+  function retry() {
+    if (!s || !s.finish) return;
+    s.finish.timer = null;
+    if (s.finish.tries >= DRAW_LIMITS.TRIES) { s.unconfirmed = true; onChange(); return; }   // Codex #204 P3-1: inert now — repaint (no handles)
+    s.finish.tries += 1; postFinish();
+    s.finish.timer = schedule(retry, DRAW_LIMITS.RETRY_MS);
+  }
+  function finish() {
+    if (!editable()) return;
+    s.seq += 1;
+    s.finish = { seq: s.seq, points: copyPts(s.points), tries: 1, timer: null };
+    postFinish();
+    s.finish.timer = schedule(retry, DRAW_LIMITS.RETRY_MS);
+  }
+  function settle(outcome) {
+    stop(); s.finish = null; s.unconfirmed = false;
+    if (outcome === 'accepted') s.closed = true;
+    else if (outcome === 'ended') s = null;
+  }
+  return {
+    view: () => (s ? { session: s.session, zone: s.zone, points: copyPts(s.points), closed: s.closed, unconfirmed: s.unconfirmed, editable: editable() } : null),
+    onRender(d) {
+      if (!d || (s && d.session !== s.session)) { stop(); s = null; }   // no session, or another one: the old one is over (ended)
+      if (!d) return;
+      if (!s) s = { session: d.session, zone: d.zone, points: copyPts(d.points), seq: d.seq, closed: false, finish: null, unconfirmed: false };
+      else if (d.seq > s.seq) { s.points = copyPts(d.points); s.seq = d.seq; }   // an older echo never replaces newer local points
+      const a = d.ack;
+      if (s.finish && a && a.session === s.session && a.seq === s.finish.seq) settle(a.outcome);
+      else if (s.unconfirmed) postFinish();   // r4: the same session, still no ack for it ⇒ ONCE more per render, the same seq
+      if (d.request === 'finish' && editable()) finish();
+    },
+    // a tap on the map (DRAWING only): a new vertex — never a repeat of the last one, never a 25th
+    tap(pt) {
+      if (!editable() || s.zone !== null || s.points.length >= DRAW_LIMITS.points || samePt(s.points[s.points.length - 1], pt)) return;
+      s.points.push({ lat: pt.lat, lng: pt.lng }); s.seq += 1; post('draft_points');
+    },
+    // a tap on vertex 1 closes (DRAWING); a tap on any other vertex is ignored (owner 11-19: no removal by tapping)
+    tapVertex(i) { if (editable() && s.zone === null && i === 0 && s.points.length) finish(); },
+    // a handle's drag END (never each move): DRAWING proposes the list; EDITING's drag end IS its finish (the parent commits on it)
+    dragEnd(i, pt) {
+      if (!editable() || !s.points[i]) return;
+      s.points[i] = { lat: pt.lat, lng: pt.lng };
+      if (s.zone === null) { s.seq += 1; post('draft_points'); } else finish();
+    },
+    // a tap inside a drawn zone with no session open: ASK the parent to edit it (it decides)
+    tapZone(id) { if (!s) send('edit_request', { zone: id }); },
+  };
 }
 
 // ── Maps JS: Google's bootstrap loader, as dispatch loads it (same key) ────────────────────────────────────────────────────
@@ -106,17 +201,25 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
   const parent = win.parent;
   const box = doc.getElementById('map');
   const send = (kind, cause) => { try { parent.postMessage(MP.childMessage(kind, mount, cause), MP.PORTAL_ORIGIN); } catch (_) { /* the portal is gone */ } };
-  const st = { latest: null, maps: null, map: null, layer: null, failed: false, ready: false, userMoved: false, programmatic: false, width: 0, type: null };
+  const st = { latest: null, maps: null, map: null, layer: null, failed: false, ready: false, userMoved: false, programmatic: false, width: 0, type: null,
+    cursor: null, press: null, drag: null };   // Z2: the drawing cursor, a handle pressed / being dragged
   const fail = (cause) => { if (st.failed || st.ready) return; st.failed = true; send('failed', cause); };
+  // Z2: the map's v2 messages (hello, draft_points, finish, edit_request) — the exact portal origin, never '*'
+  const sendMap = (kind, body) => { try { parent.postMessage(MP.mapMessage(kind, mount, body), MP.PORTAL_ORIGIN); } catch (_) { /* the portal is gone */ } };
+  const ctl = drawController({ send: sendMap, onChange: () => { if (st.layer) st.layer.draw(); cursor(); } });
+  st.ctl = ctl;
 
   win.addEventListener('message', (ev) => {
     const m = MP.acceptFromParent(ev, { parentWindow: parent, mount });
     if (!m) return;
     st.latest = m;
+    ctl.onRender(m.v === 3 ? m.drawing : null);   // a v1 / v2 render: no session (the parent never sent v3 to this document)
+    { const v = ctl.view(); if (!v || !v.editable) endPress(false); }   // the session ended / went inert mid-press: nothing committed
     apply();
   });
   win.gm_authFailure = () => fail('auth_failure');
   send('listening');   // after the listener exists (C2)
+  sendMap('hello');    // Z2: protocol v3 offered; an older portal drops it (its exact v1 key sets)
 
   Promise.resolve().then(() => loadMaps(win, doc)).then((maps) => { st.maps = maps; apply(); },
     (e) => fail(e && /could not load/.test(String(e.message)) ? 'load_error' : 'import_rejected'));
@@ -142,6 +245,65 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
     }
     if (st.latest.view === 'reset') resetView();
     st.layer.setModel(st.latest);
+    cursor();
+  }
+  // Z2: the crosshair while a new zone takes taps (frame 1b); only on a change (setOptions is not free)
+  function cursor() {
+    const v = ctl.view(), want = v && v.editable && v.zone === null ? 'crosshair' : null;
+    if (st.map && want !== st.cursor) { st.cursor = want; st.map.setOptions({ draggableCursor: want }); }
+  }
+  const r6 = (x) => Math.round(x * 1e6) / 1e6;
+  const ptOf = (ll) => ({ lat: r6(ll.lat()), lng: r6(ll.lng()) });
+  // the drawn zone under a tap (ray casting on lat / lng)
+  function zoneAt(pt) {
+    const zs = st.latest && st.latest.v === 3 ? st.latest.zones : [];
+    const inside = (ps) => { let k = false; for (let i = 0, j = ps.length - 1; i < ps.length; j = i++) { const a = ps[i], b = ps[j]; if ((a.lat > pt.lat) !== (b.lat > pt.lat) && pt.lng < ((b.lng - a.lng) * (pt.lat - a.lat)) / (b.lat - a.lat) + a.lng) k = !k; } return k; };
+    const z = zs.find((x) => inside(x.points));
+    return z ? z.id : null;
+  }
+  function wireDrawing() {
+    // taps on the map itself (DRAWING: a new vertex; no session: a tap inside a zone asks to edit it). A press on a handle never gets here:
+    // the handles are hidden from Maps (RingLayer.onAdd), so vertex taps and drags arrive only through the handle listeners below.
+    st.map.addListener('click', (e) => {
+      if (!e || !e.latLng) return;
+      if (ctl.view()) ctl.tap(ptOf(e.latLng));
+      else { const z = zoneAt(ptOf(e.latLng)); if (z) ctl.tapZone(z); }
+      st.layer.draw(); cursor();
+    });
+  }
+  // PLAN-portal-zones-z2-route3-r1: the corner handles are OUR OWN buttons in Maps' overlayMouseTarget pane (hidden from Maps by
+  // preventMapHitsAndGesturesFrom), driven by pointer events with capture — mouse, pen and finger alike. The session hears only the END
+  // (r1 §5: never on every move). Codex #204 P2-1: a press becomes a DRAG only past DRAG_PX (mockup px); an unmoved press is the vertex TAP.
+  // A press ends ONLY through the handle's own pointerup / pointercancel / lostpointercapture or the session ending — never a window blur
+  // (slot §0: an element's blur reached route 1's window capture listener at every press and undid it).
+  const DRAG_PX = 4;
+  function wireHandles(hbox) {
+    hbox.addEventListener('pointerdown', (e) => {
+      const h = e.target.closest && e.target.closest('.vh'), v = ctl.view();
+      // the primary press only: a mouse's other buttons and a pen's barrel / eraser (Pointer Events button 2 / 5, Codex #262) are not a drag
+      if (!h || st.press || !v || !v.editable || ((e.pointerType === 'mouse' || e.pointerType === 'pen') && e.button !== 0)) return;
+      e.preventDefault();
+      h.setPointerCapture(e.pointerId);
+      st.press = { i: Number(h.dataset.i), id: e.pointerId, x: e.clientX, y: e.clientY };
+    });
+    hbox.addEventListener('pointermove', (e) => {
+      if (!st.press || e.pointerId !== st.press.id) return;
+      if (!st.drag && Math.hypot(e.clientX - st.press.x, e.clientY - st.press.y) <= DRAG_PX * (W() / G.MOCK.w)) return;
+      const r = box.getBoundingClientRect();   // the map's own div: container pixels
+      st.drag = { i: st.press.i, pt: ptOf(st.layer.getProjection().fromContainerPixelToLatLng(new st.maps.Point(e.clientX - r.left, e.clientY - r.top))) };
+      st.layer.draw();
+    });
+    hbox.addEventListener('pointerup', (e) => { if (st.press && e.pointerId === st.press.id) endPress(true); });
+    for (const t of ['pointercancel', 'lostpointercapture']) hbox.addEventListener(t, (e) => { if (st.press && e.pointerId === st.press.id) endPress(false); });
+  }
+  // ONE end for a press (idempotent: the first end wins — lostpointercapture follows every up): a moved press commits its drag, an unmoved
+  // one is the vertex tap; `commit` false (cancel, capture lost, the session ending) commits nothing
+  function endPress(commit) {
+    const p = st.press, d = st.drag;
+    st.press = null; st.drag = null;
+    if (!p || !commit) { if (d) st.layer.draw(); return; }
+    if (d) ctl.dragEnd(d.i, d.pt); else ctl.tapVertex(p.i);
+    st.layer.draw(); cursor();
   }
   function build() {
     const maps = st.maps, hub = st.latest.hub;
@@ -158,24 +320,49 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
     st.map.addListener('zoom_changed', () => { if (!st.programmatic) st.userMoved = true; });
     const once = st.map.addListener('tilesloaded', () => { if (once && once.remove) once.remove(); if (st.failed || st.ready) return; st.ready = true; send('ready'); });
     class RingLayer extends maps.OverlayView {
-      constructor() { super(); this.model = null; this.svg = doc.createElementNS(NS, 'svg'); this.svg.setAttribute('class', 'rings'); }
+      constructor() { super(); this.model = null; this.svg = doc.createElementNS(NS, 'svg'); this.svg.setAttribute('class', 'rings'); this.hbox = null; }
       setModel(m) { this.model = m; this.draw(); }
-      onAdd() { this.getPanes().overlayLayer.append(this.svg); }
-      onRemove() { this.svg.remove(); }
+      onAdd() {
+        this.getPanes().overlayLayer.append(this.svg);
+        // route 3: the handles' ONE container, in the pane that takes input, hidden from Maps' own clicks and gestures
+        this.hbox = doc.createElement('div'); this.hbox.className = 'vhandles';
+        maps.OverlayView.preventMapHitsAndGesturesFrom(this.hbox);
+        wireHandles(this.hbox);
+        this.getPanes().overlayMouseTarget.append(this.hbox);
+      }
+      onRemove() { this.svg.remove(); if (this.hbox) this.hbox.remove(); }
+      // one transparent button per vertex of an EDITABLE session (the rule that paints .vtx), laid out in place (a captured handle is never
+      // replaced mid-drag); the SVG still paints the approved look. Vertex 1 on top, so a close tap always finds it.
+      handles(proj, live) {
+        if (!this.hbox) return;
+        const pts = live && live.editable ? live.points : [], u = W() / G.MOCK.w, size = Math.max(24 * u, 44);
+        while (this.hbox.children.length > pts.length) this.hbox.lastChild.remove();
+        pts.forEach((q, i) => {
+          let b = this.hbox.children[i];
+          if (!b) { b = doc.createElement('button'); b.type = 'button'; b.className = 'vh'; b.setAttribute('tabindex', '-1'); b.setAttribute('aria-hidden', 'true'); b.dataset.i = String(i); this.hbox.append(b); }
+          const p = proj.fromLatLngToDivPixel(new maps.LatLng(q.lat, q.lng));
+          Object.assign(b.style, { left: `${p.x - size / 2}px`, top: `${p.y - size / 2}px`, width: `${size}px`, height: `${size}px`, zIndex: i === 0 ? '2' : '1' });
+          b.classList.toggle('dragging', !!st.drag && st.drag.i === i);
+        });
+      }
       draw() {
         const proj = this.getProjection && this.getProjection();
-        if (!proj || !this.model || !this.model.hub) { this.svg.replaceChildren(); return; }
+        if (!proj || !this.model || !this.model.hub) { this.svg.replaceChildren(); if (this.hbox) this.hbox.replaceChildren(); return; }
         const h = proj.fromLatLngToDivPixel(new maps.LatLng(this.model.hub.lat, this.model.hub.lng));
         const left = h.x - SPAN, top = h.y - SPAN;
         Object.assign(this.svg.style, { position: 'absolute', left: `${left}px`, top: `${top}px`, width: `${2 * SPAN}px`, height: `${2 * SPAN}px`, overflow: 'visible' });
         const project = (p) => { const q = proj.fromLatLngToDivPixel(new maps.LatLng(p.lat, p.lng)); return { x: q.x - left, y: q.y - top }; };
         const u = W() / G.MOCK.w;
-        paint(this.svg, overlayModel(this.model, project, u), u);
+        let live = ctl.view();
+        if (live && st.drag) live = { ...live, points: live.points.map((q, i) => (i === st.drag.i ? st.drag.pt : q)) };   // the handle follows the pointer
+        paint(this.svg, overlayModel(this.model, project, u, live), u);
+        this.handles(proj, live);
       }
     }
     st.layer = new RingLayer();
     st.layer.setMap(st.map);
     st.layer.setModel(st.latest);
+    wireDrawing(); cursor();
     if (typeof win.ResizeObserver === 'function') {
       new win.ResizeObserver(() => { if (!st.map || W() === st.width) return; if (!st.userMoved) resetView(); else st.width = W(); st.layer.draw(); }).observe(box);
     }

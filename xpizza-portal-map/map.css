@@ -16,6 +16,19 @@ html,body{margin:0;padding:0;height:100%;background:#F1F2EC;overflow:hidden}
 .rings .rl.bad rect{stroke:#EFC9C2}
 .rings .opin{fill:#FFFFFF;stroke:#9A9A9E;stroke-width:calc(1.6px * var(--u))}
 .rings .pin{fill:#0A0A0B}
+/* Z2 — no-delivery zones and the drawing session (the approved v2 page: .zone / .zl / .draw-edge / .draw-close / .vtx / .vtx-n) */
+.rings .zone{fill:rgba(210,52,37,.10);stroke:#C73123;stroke-width:calc(1.4px * var(--u));stroke-linejoin:round}
+.rings .zl rect{fill:#FFFFFF;stroke:#EFC9C2;stroke-width:1}
+.rings .zl text{font-family:var(--body);font-size:calc(10.5px * var(--u));font-weight:700;fill:#C73123;text-anchor:middle}
+.rings .draw-edge{fill:rgba(10,10,11,.06);stroke:#0A0A0B;stroke-width:calc(1.6px * var(--u));stroke-dasharray:calc(5px * var(--u)) calc(4px * var(--u));stroke-linejoin:round}
+.rings .draw-close{fill:none;stroke:#9A9A9E;stroke-width:calc(1.2px * var(--u));stroke-dasharray:calc(2px * var(--u)) calc(4px * var(--u))}
+.rings .vtx{fill:#FFFFFF;stroke:#0A0A0B;stroke-width:calc(2px * var(--u))}
+.rings .vtx.first{stroke:#0A6E3E;stroke-width:calc(2.5px * var(--u))}
+.rings .vtx-n{font-family:var(--body);font-size:calc(9px * var(--u));font-weight:700;fill:#6C6C70;text-anchor:middle}
+/* route 3: the handles' input targets — transparent (the SVG above paints the approved look), no page scroll or zoom under a finger */
+.vhandles{position:absolute;left:0;top:0}
+.vhandles .vh{position:absolute;margin:0;padding:0;border:0;background:none;outline:none;touch-action:none;cursor:grab;-webkit-tap-highlight-color:transparent}
+.vhandles .vh.dragging{cursor:grabbing}
 .rings .pindot{fill:#FFFFFF}
 .rings .pl{font-family:var(--disp);font-size:calc(11.5px * var(--u));font-weight:800;fill:#0A0A0B;letter-spacing:-.02em}
 /* ENVÍO v3 A2 / A4 (MOCKUP-portal-envio-v3-limit .map .ring.rlim / .beyond / .rl.lim / .rl.beyond; PLAN-portal-envio-v3-ui r5 §2): the

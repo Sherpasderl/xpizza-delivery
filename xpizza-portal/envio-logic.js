@@ -130,11 +130,13 @@ export function acceptsBands(bands) {
 }
 
 // ENVÍO v3: `limits` ([{ rid, km }], limitsFor) rides ONLY when one is pending — no limit touched ⇒ today's bands-only body, byte for byte
-export function toBody(rows, expectedVersion, limits = []) {
+// ENVÍO step 2: `zones` (the portal list { id, name, points: [{lat,lng}] }) rides ONLY when passed — undefined ⇒ the body above, byte for byte
+export function toBody(rows, expectedVersion, limits = [], zones = undefined) {
   if (!okVersion(expectedVersion)) throw new Error('envio: bad version');
   const v = validate(rows);
   if (!v.valid) throw new Error('envio: invalid table');
-  return { expected_policy_version: expectedVersion, bands: v.bands, ...(Array.isArray(limits) && limits.length ? { limits: limits.map((e) => ({ rid: e.rid, km: e.km })) } : {}) };
+  return { expected_policy_version: expectedVersion, bands: v.bands, ...(Array.isArray(limits) && limits.length ? { limits: limits.map((e) => ({ rid: e.rid, km: e.km })) } : {}),
+    ...(zones === undefined ? {} : { no_delivery_zones: copyZones(zones) }) };
 }
 
 // what the map draws: every valid band, plus a km over the cap as a refused ring (≤ 100 km, the protocol's bound)
@@ -231,11 +233,11 @@ export function loadedState(body) {
 
 const deepFreeze = (o) => { Object.values(o).forEach((v) => { if (v && typeof v === 'object') deepFreeze(v); }); return Object.freeze(o); };
 // the immutable save attempt: what was sent, under which version, by whom, in which session
-export function startAttempt({ uid, sessionGen, expectedVersion, bands, limits = [] }) {
+export function startAttempt({ uid, sessionGen, expectedVersion, bands, limits = [], zones = undefined }) {
   if (!okVersion(expectedVersion)) throw new Error('envio: bad version');
-  // ENVÍO v3 (§1b): the FULL reviewed request is frozen — the bands AND the requested limits
+  // ENVÍO v3 (§1b): the FULL reviewed request is frozen — the bands AND the requested limits (step 2: AND the sent zones, when sent)
   return deepFreeze({ uid, sessionGen, expectedVersion, sentBands: bands.map((b) => ({ max_km: b.max_km, cents: b.cents })),
-    sentLimits: (Array.isArray(limits) ? limits : []).map((e) => ({ rid: e.rid, km: e.km })) });
+    sentLimits: (Array.isArray(limits) ? limits : []).map((e) => ({ rid: e.rid, km: e.km })), ...(zones === undefined ? {} : { sentZones: copyZones(zones) }) });
 }
 
 // a POST's response → saved | unknown. Codex r1 F2 (the locked ruling): ONLY the clean success contract is final; every other
@@ -252,6 +254,10 @@ export function postClaim(res) {
   if (res.status === 409 && plain(b) && (b.error === 'superseded' || b.error === 'current_malformed')) return b.error;
   // ENVÍO v3 §1e (5f r4): a requested rid no longer registered / identity-less — the directory moved, not a client bug
   if (res.status === 400 && plain(b) && b.field === 'limits' && b.reason === 'directory_changed') return 'directory_changed';
+  // ENVÍO step 2 (5f zones-lock / zones.js): the closed-only lock, a refused zone list, and the two 503s
+  if (res.status === 409 && plain(b) && b.error === 'zones_locked_while_open') return 'zones_locked';
+  if (res.status === 400 && plain(b) && b.error === 'bad_request' && (b.field === 'zones' || b.field === 'zone_caps' || b.field === 'zone_out_of_range')) return 'zones_refused';   // #181 P2-7: out of range is a zones refusal (frame F)
+  if (res.status === 503 && plain(b) && (b.error === 'hours_unavailable' || b.error === 'unavailable')) return b.error;
   return { 400: 'refused', 401: 'unauthenticated', 403: 'forbidden' }[res.status] || null;
 }
 
@@ -264,8 +270,9 @@ export function classifyRecovery(attempt, res, claim = null) {
   const b = res.body;
   if (b.current_malformed === true) return 'conflict';
   if (!okVersion(b.policy_version) || !Array.isArray(b.bands)) return 'unknown';
-  if (b.policy_version === attempt.expectedVersion + 1) return sameBands(b.bands, attempt.sentBands) && limitsLanded(attempt.sentLimits, b.branches) ? 'saved' : 'conflict';
-  if (b.policy_version === attempt.expectedVersion) return claim === 'refused' ? 'refused' : claim === 'directory_changed' ? 'conflict' : 'not_landed';
+  if (b.policy_version === attempt.expectedVersion + 1) return sameBands(b.bands, attempt.sentBands) && limitsLanded(attempt.sentLimits, b.branches)
+    && (attempt.sentZones === undefined || sameZones(b.no_delivery_zones, attempt.sentZones)) ? 'saved' : 'conflict';
+  if (b.policy_version === attempt.expectedVersion) return claim === 'refused' || claim === 'zones_refused' ? 'refused' : claim === 'directory_changed' ? 'conflict' : claim === 'zones_locked' ? 'zones_locked' : 'not_landed';
   return 'conflict';
 }
 
@@ -355,4 +362,111 @@ export function limitChanges(restaurants, pending, loadedTop) {
       : `${r.label}: distancia máxima ${r.was} km → ${r.now} km. Las direcciones entre ${r.was} y ${r.now} km ya se pueden pedir desde que guardés.`);
   }
   return { rows, callouts };
+}
+
+// ── ENVÍO step 2 — the NO-DELIVERY ZONES, non-drawing half (advisor 11-13; 5f PLAN-envio-zones-step2-r2 + zones_lock) ───────────────────
+// The copy is NOT here yet: every refusal maps to a PLACEHOLDER key; the owner approves the strings with the zones addendum.
+export const ZONES_COPY_KEYS = Object.freeze({ not_authorized: 'zones.not_authorized', zones: 'zones.invalid', zone_out_of_range: 'zones.invalid', zone_caps: 'zones.caps',
+  superseded: 'zones.superseded', current_malformed: 'zones.current_malformed', zones_locked_while_open: 'zones.locked',
+  hours_unavailable: 'zones.hours_unavailable', unavailable: 'zones.unavailable' });
+const ZONE_CAPS = ['zones_max', 'points_max', 'points_min', 'name_max', 'bbox_max_km'];
+const zonePoint = (p) => plain(p) && Number.isFinite(p.lat) && Number.isFinite(p.lng);
+const zoneOk = (z) => plain(z) && typeof z.id === 'string' && typeof z.name === 'string' && Array.isArray(z.points) && z.points.every(zonePoint);
+const copyZones = (zs) => (Array.isArray(zs) ? zs : []).map((z) => ({ id: z.id, name: z.name, points: (z.points || []).map((p) => ({ lat: p.lat, lng: p.lng })) }));
+const LOCK_REASONS = ['open', 'hours_unknown', 'unavailable'];
+const lockOk = (l) => plain(l) && LOCK_REASONS.includes(l.reason) && Array.isArray(l.branches) && l.branches.every((b) => plain(b) && typeof b.rid === 'string');
+const UNKNOWN_LOCK = Object.freeze({ reason: 'unavailable', branches: Object.freeze([]) });
+// the read → { zones (the stored list, or null when unreadable), editable, lock, caps }. Editable ONLY when the server says zones_editable
+// === true AND names no lock (zones_lock === null); any other shape fails CLOSED (not editable, an unavailable lock). Admin-only read.
+export function zonesFromBody(body) {
+  const caps = plain(body) && plain(body.caps) && ZONE_CAPS.every((k) => Number.isFinite(body.caps[k])) ? Object.fromEntries(ZONE_CAPS.map((k) => [k, body.caps[k]])) : null;
+  const zones = plain(body) && body.current_malformed !== true && Array.isArray(body.no_delivery_zones) && body.no_delivery_zones.every(zoneOk) ? copyZones(body.no_delivery_zones) : null;
+  const editable = zones !== null && body.zones_editable === true && body.zones_lock === null;
+  const lock = editable ? null : plain(body) && lockOk(body.zones_lock)
+    ? { reason: body.zones_lock.reason, branches: body.zones_lock.branches.map((b) => ({ rid: b.rid, name: typeof b.name === 'string' ? b.name : null, state: b.state })) }
+    : { reason: UNKNOWN_LOCK.reason, branches: [] };
+  return { zones, editable, lock, caps };
+}
+// the dirty check, the server's logical equality (zones.js sameLogical over normalizeInput): names trimmed, points at 6 decimals, ORDER kept
+const r6 = (x) => Math.round(x * 1e6) / 1e6;
+const zonesKey = (zs) => JSON.stringify((Array.isArray(zs) ? zs : []).map((z) => ({ id: z.id, name: String(z.name).trim(), points: (z.points || []).map((p) => [r6(p.lat), r6(p.lng)]) })));
+export const sameZones = (a, b) => zonesKey(a) === zonesKey(b);
+// a refusal → its placeholder copy key | null (a success, or an answer that is not a zones refusal)
+export function zonesRefusalKey(res) {
+  if (!res || res.transport || !plain(res.body)) return null;
+  const b = res.body;
+  if (res.status === 403) return ZONES_COPY_KEYS.not_authorized;
+  if (res.status === 400 && b.error === 'bad_request' && (b.field === 'zones' || b.field === 'zone_caps' || b.field === 'zone_out_of_range')) return ZONES_COPY_KEYS[b.field];
+  if ((res.status === 409 || res.status === 503) && Object.prototype.hasOwnProperty.call(ZONES_COPY_KEYS, b.error)) return ZONES_COPY_KEYS[b.error];
+  return null;
+}
+// the client keeps the drawn zones draft on EVERY outcome but a clean save (a 409 / a lock / an unknown never throws the drawing away)
+export const keepsZonesDraft = (outcome) => outcome !== 'saved';
+// the fees-only resend: the attempt's bands (and limits) WITHOUT no_delivery_zones — the server keeps the stored zones (5f F6) and never
+// reads hours for a bands-only save, so it can land while a branch is open
+export function feesOnlyBody(attempt) {
+  return { expected_policy_version: attempt.expectedVersion, bands: attempt.sentBands.map((b) => ({ max_km: b.max_km, cents: b.cents })),
+    ...(attempt.sentLimits.length ? { limits: attempt.sentLimits.map((e) => ({ rid: e.rid, km: e.km })) } : {}) };
+}
+
+// ── ENVÍO step 2, Z1 — the card's COPY: the approved v2 card's strings live in envio.js COPY; the zones addendum's strings are here,
+// VERBATIM from MOCKUP-portal-envio-zones-addendum (owner-approved 2026-11-14, rule 14: its four «Copy reference» tables + the drawn
+// frames; removeTitle/removeBody from the approved v2 page's × modal). `…Ph` = the phone frame H's own wording (≤ 560 px, envio.js
+// phText). `{n}` / `{nombre}` are filled by zonesCopy(k, vars); `unreadable` is the owner's own string (11-19). A key left null would show
+// «⟦zones.key⟧» and turn envio-zones-view's SHIP GATE red.
+export const ZONES_COPY = Object.freeze({
+  editableNote: 'Se editan solo con todos los restaurantes cerrados. Ahora podés editarlas.',
+  lockedTitle: 'Las zonas se editan con todos los restaurantes cerrados', lockedTitlePh: 'Se editan con todos los restaurantes cerrados',
+  lockedBody: 'Ahora hay restaurantes abiertos. Podés editarlas después de que cierre el último. Las tarifas por distancia sí se pueden guardar ahora.',
+  lockedBodyPh: 'Ahora hay restaurantes abiertos. Podés editarlas después de que cierre el último.',
+  hoursTitle: 'No pudimos comprobar los horarios',
+  hoursBody: 'Las zonas se editan solo cuando confirmamos que todos los restaurantes están cerrados. Probá de nuevo en un momento.',
+  recheck: 'Volver a comprobar', unreadable: 'No pudimos leer las zonas guardadas. Escribinos.',   // owner 11-19, verbatim
+  nameEmpty: 'Falta el nombre.', nameLong: 'Hasta 30 caracteres.', nameTaken: 'Ya hay una zona con ese nombre.',
+  removeTitle: '¿Quitar «{nombre}»?', removeBody: 'Las direcciones de esa área vuelven a recibir pedidos.',
+  barNew1: '1 zona nueva', barNewN: '{n} zonas nuevas', barNew1Ph: '1 zona', barNewNPh: '{n} zonas', barOther: 'zonas',
+  savedBoth: 'Tarifas y zonas guardadas',
+  lockedSaveTitle: 'No se guardaron las zonas: hay restaurantes abiertos',
+  lockedSaveBody: 'Las zonas se editan solo con todos los restaurantes cerrados. Tus cambios siguen acá; guardalos cuando cierre el último.',
+  lockedSaveBodyPh: 'Se editan solo con todos cerrados. Tus cambios siguen acá; guardalos cuando cierre el último.',
+  branchOpen: 'Abierto', branchHours: 'Sin horario válido', branchHoursLink: 'Revisar en Sucursales', branchHoursLinkPh: 'Revisar',
+  branchesMore: 'y {n} más', understood: 'Entendido', feesOnly: 'Guardar solo las tarifas',
+  hoursSaveTitle: 'No pudimos comprobar los horarios',
+  hoursSaveBody: 'Las zonas se guardan solo cuando confirmamos que todos los restaurantes están cerrados, y ahora no pudimos leer los horarios. Tus cambios siguen acá; volvé a intentar en un momento.',
+  refusedTitle: 'No se pudo guardar la zona «{nombre}»', refusedTitleBare: 'No se pudieron guardar las zonas',   // a 400 naming no zone: the title's plural (advisor 11-19)
+  refusedBody: 'El servidor no aceptó su forma. Revisá que no se cruce y que tenga entre 3 y 24 puntos, y volvé a guardar.',
+  capsTitle: 'Hay más zonas de las permitidas', capsBody: 'Máximo 8 zonas y 24 puntos por zona. Quitá lo que sobre y volvé a guardar.',
+  reviewZone: 'Revisar zona', capCount: '8 de 8', capDraw: 'Máximo 8 zonas. Para dibujar otra, quitá una.',
+  pointsCap: '24 de 24 puntos', pointsCapTool: 'Máximo 24 puntos por zona. Cerrá la zona o quitá un punto.',   // addendum G: the 24th point while drawing
+  // Z2 — a drawn shape refused before any draft change (the approved v2 page note 12 + addendum G), and the naming row (note 13)
+  drawMin: 'Marcá al menos 3 puntos.', drawCross: 'La zona se cruza a sí misma. Mové un punto.', drawBig: 'La zona es demasiado grande: hasta 20 km de lado.',
+  // EDITING a drawn zone (Codex #204 P3-2; no drawn frame) — the owner's own strings, approved verbatim 11-19
+  editHint: 'Editando «{nombre}»', editTool: 'Arrastrá un punto para cambiar la forma de la zona.',
+  namePh: 'Nombre de la zona', nameNote: 'Nombrá la zona para ubicarla después. Hasta 30 caracteres.', nameCancel: 'Cancelar', nameDone: 'Listo',
+});
+export const zonesCopy = (k, vars = null) => {
+  if (typeof ZONES_COPY[k] !== 'string') return `⟦zones.${k}⟧`;
+  return vars ? ZONES_COPY[k].replace(/\{(n|nombre)\}/g, (m, v) => (Object.prototype.hasOwnProperty.call(vars, v) ? String(vars[v]) : m)) : ZONES_COPY[k];
+};
+// the save bar's zones share (addendum frame F «1 zona nueva», phone H «1 zona»; advisor 11-19: plural agreement for ADDITIONS, «zonas» for
+// any other zones change). Additions = draft zones whose id the stored list does not hold. → { dk, ph }
+export function zonesBarSuffix(draft, stored) {
+  const have = new Set((stored || []).map((z) => z && z.id));
+  const n = (draft || []).filter((z) => z && !have.has(z.id)).length;
+  if (n === 0) return { dk: zonesCopy('barOther'), ph: zonesCopy('barOther') };
+  return n === 1 ? { dk: zonesCopy('barNew1'), ph: zonesCopy('barNew1Ph') } : { dk: zonesCopy('barNewN', { n }), ph: zonesCopy('barNewNPh', { n }) };
+}
+// a zone's row line «N puntos · dentro de X km» (approved v2; advisor 11-13 ruling c): X = the farthest vertex from the PICKED restaurant's
+// pin, rounded UP to a km. Zones are PLATFORM-WIDE: this is context relative to the pin on screen, never a claim about one restaurant.
+// No pin ⇒ null (the line says only the points)
+const EARTH_KM = 6371;
+const toRad = (x) => (x * Math.PI) / 180;
+const kmBetween = (a, b) => {
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_KM * Math.asin(Math.sqrt(h));
+};
+export function zoneReachKm(zone, hub) {
+  if (!zone || !Array.isArray(zone.points) || !zone.points.length || !hub || !Number.isFinite(hub.lat) || !Number.isFinite(hub.lng)) return null;
+  return Math.ceil(Math.max(...zone.points.map((p) => kmBetween(hub, p))));
 }
