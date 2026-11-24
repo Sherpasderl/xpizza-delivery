@@ -41,19 +41,26 @@
   "calificaciones2-view.test.mjs",
   "calificaciones2.test.mjs",
   "category-name.browser.test.mjs",
+  "choice-transitions.js",
   "control-state.js",
+  "drawer-harness.mjs",
   "editor.js",
   "editor.test.mjs",
   "envio-field-focus.test.mjs",
   "envio-geometry.test.mjs",
+  "envio-harness.mjs",
   "envio-limit.test.mjs",
   "envio-logic.js",
   "envio-logic.test.mjs",
+  "envio-map-deadline.test.mjs",
   "envio-map-protocol.js",
   "envio-map-protocol.test.mjs",
   "envio-map-site.test.mjs",
   "envio-server-parity.test.mjs",
   "envio-view.test.mjs",
+  "envio-zones-draw.test.mjs",
+  "envio-zones-view.test.mjs",
+  "envio-zones.test.mjs",
   "envio.js",
   "equipos.js",
   "exposure-transitions.js",
@@ -107,6 +114,7 @@
   "portal-no-amber.test.mjs",
   "portal-request-ids.test.mjs",
   "portal-site-freeze.golden.json",
+  "portal-text-fit.test.mjs",
   "portal-time.js",
   "portal-wiring.test.mjs",
   "portalui-guards.t1-hunks.json",
@@ -114,6 +122,7 @@
   "pp-fold.mjs",
   "pubreq.js",
   "pubreq.test.mjs",
+  "real-backend.mjs",
   "ref-tree.mjs",
   "remove-product.test.mjs",
   "rend-data.js",
@@ -133,6 +142,8 @@
   "s1-fold.mjs",
   "s2-fold.mjs",
   "s4-fold.mjs",
+  "section-transitions.js",
+  "sheets.js",
   "shell-dom.test.mjs",
   "shell-wait-writes.test.mjs",
   "shell-wait.test.mjs",
@@ -140,8 +151,15 @@
   "shell.test.mjs",
   "sherpa-client.js",
   "stats-harness.mjs",
+  "str34-fold.mjs",
   "structure-s1.test.mjs",
   "structure-s2.test.mjs",
+  "structure-s3-drawer.test.mjs",
+  "structure-s3-ui.test.mjs",
+  "structure-s3.test.mjs",
+  "structure-s4-review.test.mjs",
+  "structure-s4-ui.test.mjs",
+  "structure-s4.test.mjs",
   "styles.css",
   "sucursales-limit.test.mjs",
   "support-contact.js",
@@ -157,7 +175,8 @@
   "ventas.js",
   "ventas.test.mjs",
   "whoami-fit.test.mjs",
-  "wiring-ast.mjs"
+  "wiring-ast.mjs",
+  "zone-shape.js"
  ],
  "bytes": {
   "DESIGN.md": {
@@ -189,8 +208,8 @@
    "bytes": 20184
   },
   "index.html": {
-   "sha256": "8a7b5933c45699a10845ad8b234954c89d932ece9c665788947916efc052d838",
-   "bytes": 14972
+   "sha256": "addfebd699792ce92d7bc7924efb087f4de51275ea93e1147385443a562f2c4c",
+   "bytes": 15975
   },
   "netlify.toml": {
    "sha256": "19d652c8a70380312a0de8a1bc681a5b3cf6401c4b1d7141e8ab57d2be4eb9da",
@@ -221,8 +240,8 @@
    "bytes": 841
   },
   "styles.css": {
-   "sha256": "ca0f31c91c9d9855a231d1e830d1026261419fcef3edf3906055941862d971ff",
-   "bytes": 229646
+   "sha256": "874933dec97862ddeeea6c00443374ca71f146f12d0ef91bc1e81ad7f6186e38",
+   "bytes": 250234
   }
  },
  "diff_aid": {
@@ -1772,6 +1791,12 @@
    ],
    [
     "",
+    ".envio .blist .bmore",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".envio .capnote.sand",
     "background",
     "var(--sand-soft)"
@@ -1823,6 +1848,24 @@
     ".envio .ecallout",
     "color",
     "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .ecallout.sand",
+    "background",
+    "var(--sand-soft)"
+   ],
+   [
+    "",
+    ".envio .ecallout.sand",
+    "border-color",
+    "var(--sand-line)"
+   ],
+   [
+    "",
+    ".envio .ecallout.sand",
+    "color",
+    "var(--sand-text)"
    ],
    [
     "",
@@ -1982,6 +2025,12 @@
    ],
    [
     "",
+    ".envio .emap.drawing",
+    "border-color",
+    "var(--ink)"
+   ],
+   [
+    "",
     ".envio .epill",
     "background",
     "var(--mint-soft)"
@@ -2003,6 +2052,12 @@
     ".envio .esec h3 .ehint",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .esec h3 .ehint.drawhint",
+    "color",
+    "var(--accent)"
    ],
    [
     "",
@@ -2273,6 +2328,96 @@
     ".envio .stepcap",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .zbrow .st .zblink",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .zbrow .st i",
+    "background",
+    "var(--sand-text)"
+   ],
+   [
+    "",
+    ".envio .zbrow .st",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .zbrow .st.open i",
+    "background",
+    "var(--green)"
+   ],
+   [
+    "",
+    ".envio .zbrow",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .zrow .ib",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .zrow .ib",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .zrow .s",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .zrow .zsw",
+    "background",
+    "var(--red-soft)"
+   ],
+   [
+    "",
+    ".envio .zrow .zsw",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".envio .zrow",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".envio .zrow.editing input",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".envio .zrow.editing input",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .zrow.editing",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .zrow.editing",
+    "border-color",
+    "var(--ink)"
    ],
    [
     "",
@@ -2732,9 +2877,21 @@
    ],
    [
     "",
+    ".irow .mk-rgrip",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".irow.mk-added",
     "background",
     "var(--green-soft)"
+   ],
+   [
+    "",
+    ".irow.mk-drag,.grow.mk-drag,.mk-subh.mk-drag",
+    "background",
+    "var(--card)"
    ],
    [
     "",
@@ -2942,6 +3099,24 @@
    ],
    [
     "",
+    ".mk-adds .mk-railq",
+    "border-color",
+    "transparent"
+   ],
+   [
+    "",
+    ".mk-adds .mk-railq",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk-adds .mk-railq:hover",
+    "background",
+    "var(--tint)"
+   ],
+   [
+    "",
     ".mk-apdot",
     "background",
     "var(--mute2)"
@@ -2963,6 +3138,12 @@
     ".mk-cdot",
     "background",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-cf .mk-rp",
+    "color",
+    "var(--ink)"
    ],
    [
     "",
@@ -3044,9 +3225,27 @@
    ],
    [
     "",
+    ".mk-gf",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
     ".mk-gh",
     "background",
     "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk-grip",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-grip,.irow .mk-rgrip",
+    "background",
+    "none"
    ],
    [
     "",
@@ -3182,9 +3381,51 @@
    ],
    [
     "",
+    ".mk-more",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk-more",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-more:hover,.mk-more.mk-moreopen",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk-more:hover,.mk-more.mk-moreopen",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
     ".mk-mp",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".mk-newcat .mk-lrow label",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-newcat",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk-newcat.mk-inv",
+    "border-color",
+    "var(--red)"
    ],
    [
     "",
@@ -3236,6 +3477,12 @@
    ],
    [
     "",
+    ".mk-pfrow",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
     ".mk-pick .mk-why",
     "color",
     "var(--mute2)"
@@ -3251,6 +3498,72 @@
     ".mk-pick",
     "background",
     "var(--card)"
+   ],
+   [
+    "",
+    ".mk-pick.mk-inv",
+    "border-color",
+    "var(--red)"
+   ],
+   [
+    "",
+    ".mk-pop .mk-pl",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-pop",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk-popi .mk-sub2",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-popi",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk-popi",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk-popi.danger",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".mk-popi.mk-cur",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-popi:hover",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk-popnote",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-popsep",
+    "background",
+    "var(--line2)"
    ],
    [
     "",
@@ -3275,6 +3588,18 @@
     ".mk-rec",
     "color",
     "var(--lav-text)"
+   ],
+   [
+    "",
+    ".mk-recline",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk-recline.ferr",
+    "color",
+    "var(--red-text)"
    ],
    [
     "",
@@ -3309,6 +3634,18 @@
    [
     "",
     ".mk-subh",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-subpen",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk-subpen",
     "color",
     "var(--mute2)"
    ],
@@ -4778,6 +5115,18 @@
    ],
    [
     "",
+    ".mopr input.mk-chgpr",
+    "background",
+    "var(--tint2)"
+   ],
+   [
+    "",
+    ".mopr input.mk-chgpr",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
     ".mopr input:focus",
     "border-color",
     "var(--accent)"
@@ -4793,6 +5142,18 @@
     ".mopt .moname",
     "color",
     "var(--ink)"
+   ],
+   [
+    "",
+    ".mopt .moname.mk-chgname",
+    "background",
+    "var(--tint2)"
+   ],
+   [
+    "",
+    ".mopt .moname.mk-chgname",
+    "border-color",
+    "var(--accent)"
    ],
    [
     "",
@@ -6644,6 +7005,18 @@
    ],
    [
     "",
+    ".sfoot .frow .frole",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".sfoot .sinfo b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
     ".shop",
     "background",
     "var(--board-2)"
@@ -6887,6 +7260,156 @@
     ".teamv .togrow .bt span",
     "color",
     "var(--tmute)"
+   ],
+   [
+    "",
+    ".teamv .tp-av",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".teamv .tp-av",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".teamv .tp-cnt",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".teamv .tp-dl",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".teamv .tp-dlg",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".teamv .tp-dlg",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".teamv .tp-dlg::backdrop",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".teamv .tp-dn",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".teamv .tp-quiet p",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".teamv .tp-quiet summary",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".teamv .tp-row .tp-dot",
+    "background",
+    "var(--sand-text)"
+   ],
+   [
+    "",
+    ".teamv .tp-row .tp-r",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".teamv .tp-row",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".teamv .tp-row",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".teamv .tp-row:hover .tp-n",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".teamv .tp-scrim",
+    "background",
+    "rgba(8,7,6,.38)"
+   ],
+   [
+    "",
+    ".teamv .tp-sdot",
+    "background",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".teamv .tp-sdot.tp-mint",
+    "background",
+    "var(--mint-text)"
+   ],
+   [
+    "",
+    ".teamv .tp-sdot.tp-sand",
+    "background",
+    "var(--sand-text)"
+   ],
+   [
+    "",
+    ".teamv .tp-sheet",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".teamv .tp-st",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".teamv .tp-sub",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".teamv .tp-x",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".teamv .tp-x",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".teamv .tp-x:hover",
+    "background",
+    "var(--line2)"
    ],
    [
     "",

@@ -66,6 +66,7 @@
     "s2b-forms-retired.test.mjs",
     "s3-rewards.test.mjs",
     "s3-served.test.mjs",
+    "s4-forms.test.mjs",
     "s5-baseline.golden.test.mjs",
     "s5-confirmation.test.mjs",
     "s5-live-status.test.mjs",
@@ -208,6 +209,17 @@
     "xpizza-functions/catalog/s2core-three-path.test.js",
     "xpizza-functions/catalog/s3-choice-editable.test.js",
     "xpizza-functions/catalog/s3-flow.test.js",
+    "xpizza-functions/catalog/s4-budget.test.js",
+    "xpizza-functions/catalog/s4-off-deletion.test.js",
+    "xpizza-functions/catalog/s4-off-staged.test.js",
+    "xpizza-functions/catalog/s4-preflight.test.js",
+    "xpizza-functions/catalog/s4-real-writer.test.js",
+    "xpizza-functions/catalog/s4-renderer.test.js",
+    "xpizza-functions/catalog/s4-review-diff.test.js",
+    "xpizza-functions/catalog/s4-sections-editable.test.js",
+    "xpizza-functions/catalog/s4-staging.test.js",
+    "xpizza-functions/catalog/s4-three-path.test.js",
+    "xpizza-functions/catalog/section-compare.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
@@ -383,6 +395,7 @@
     "xpizza-functions/test/c2b-integrity.emulator.test.js",
     "xpizza-functions/test/c2b-ops.emulator.test.js",
     "xpizza-functions/test/cancel-number.emulator.test.js",
+    "xpizza-functions/test/cancel-park.emulator.test.js",
     "xpizza-functions/test/capp-a1-equivalence.emulator.test.js",
     "xpizza-functions/test/capp-domain-transition.emulator.test.js",
     "xpizza-functions/test/capp-guest.emulator.test.js",
@@ -471,6 +484,7 @@
     "xpizza-functions/test/reserved-keys-flip.emulator.test.js",
     "xpizza-functions/test/reserved-keys-rename-flip.emulator.test.js",
     "xpizza-functions/test/resolve-lines.emulator.test.js",
+    "xpizza-functions/test/review-attest.emulator.test.js",
     "xpizza-functions/test/s2-portal-claim.emulator.test.js",
     "xpizza-functions/test/s2b-intake.emulator.test.js",
     "xpizza-functions/test/s2core.emulator.test.js",
@@ -479,6 +493,7 @@
     "xpizza-functions/test/s3a-envio.emulator.test.js",
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
+    "xpizza-functions/test/s4-sections.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/sdk-envlim.emulator.test.js",
     "xpizza-functions/test/sdk-fence.emulator.test.js",
@@ -541,6 +556,8 @@
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
     "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/structure-s3.test.mjs",
+    "xpizza-portal/structure-s4-review.test.mjs",
     "xpizza-portal/ventas-tab.test.mjs",
     "xpizza-track/status-view-forms.test.js"
    ],
@@ -671,6 +688,17 @@
     "xpizza-functions/catalog/s2core-three-path.test.js",
     "xpizza-functions/catalog/s3-choice-editable.test.js",
     "xpizza-functions/catalog/s3-flow.test.js",
+    "xpizza-functions/catalog/s4-budget.test.js",
+    "xpizza-functions/catalog/s4-off-deletion.test.js",
+    "xpizza-functions/catalog/s4-off-staged.test.js",
+    "xpizza-functions/catalog/s4-preflight.test.js",
+    "xpizza-functions/catalog/s4-real-writer.test.js",
+    "xpizza-functions/catalog/s4-renderer.test.js",
+    "xpizza-functions/catalog/s4-review-diff.test.js",
+    "xpizza-functions/catalog/s4-sections-editable.test.js",
+    "xpizza-functions/catalog/s4-staging.test.js",
+    "xpizza-functions/catalog/s4-three-path.test.js",
+    "xpizza-functions/catalog/section-compare.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
@@ -815,6 +843,7 @@
     "xpizza-functions/test/c2b-integrity.emulator.test.js",
     "xpizza-functions/test/c2b-ops.emulator.test.js",
     "xpizza-functions/test/cancel-number.emulator.test.js",
+    "xpizza-functions/test/cancel-park.emulator.test.js",
     "xpizza-functions/test/capp-a1-equivalence.emulator.test.js",
     "xpizza-functions/test/capp-domain-transition.emulator.test.js",
     "xpizza-functions/test/capp-guest.emulator.test.js",
@@ -898,12 +927,14 @@
     "xpizza-functions/test/reserved-keys-flip.emulator.test.js",
     "xpizza-functions/test/reserved-keys-rename-flip.emulator.test.js",
     "xpizza-functions/test/resolve-lines.emulator.test.js",
+    "xpizza-functions/test/review-attest.emulator.test.js",
     "xpizza-functions/test/s2-portal-claim.emulator.test.js",
     "xpizza-functions/test/s2b-intake.emulator.test.js",
     "xpizza-functions/test/s2tip.emulator.test.js",
     "xpizza-functions/test/s3a-envio.emulator.test.js",
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
+    "xpizza-functions/test/s4-sections.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/sdk-envlim.emulator.test.js",
     "xpizza-functions/test/sdk-fence.emulator.test.js",
@@ -951,6 +982,8 @@
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
     "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/structure-s3.test.mjs",
+    "xpizza-portal/structure-s4-review.test.mjs",
     "xpizza-portal/ventas-tab.test.mjs"
    ]
   },
@@ -1016,6 +1049,7 @@
     "s2b-forms-retired.test.mjs",
     "s3-rewards.test.mjs",
     "s3-served.test.mjs",
+    "s4-forms.test.mjs",
     "s5-baseline.golden.test.mjs",
     "s5-confirmation.test.mjs",
     "s5-live-status.test.mjs",
@@ -1157,6 +1191,17 @@
     "xpizza-functions/catalog/s2core-three-path.test.js",
     "xpizza-functions/catalog/s3-choice-editable.test.js",
     "xpizza-functions/catalog/s3-flow.test.js",
+    "xpizza-functions/catalog/s4-budget.test.js",
+    "xpizza-functions/catalog/s4-off-deletion.test.js",
+    "xpizza-functions/catalog/s4-off-staged.test.js",
+    "xpizza-functions/catalog/s4-preflight.test.js",
+    "xpizza-functions/catalog/s4-real-writer.test.js",
+    "xpizza-functions/catalog/s4-renderer.test.js",
+    "xpizza-functions/catalog/s4-review-diff.test.js",
+    "xpizza-functions/catalog/s4-sections-editable.test.js",
+    "xpizza-functions/catalog/s4-staging.test.js",
+    "xpizza-functions/catalog/s4-three-path.test.js",
+    "xpizza-functions/catalog/section-compare.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
@@ -1330,6 +1375,7 @@
     "xpizza-functions/test/c2b-integrity.emulator.test.js",
     "xpizza-functions/test/c2b-ops.emulator.test.js",
     "xpizza-functions/test/cancel-number.emulator.test.js",
+    "xpizza-functions/test/cancel-park.emulator.test.js",
     "xpizza-functions/test/capp-a1-equivalence.emulator.test.js",
     "xpizza-functions/test/capp-domain-transition.emulator.test.js",
     "xpizza-functions/test/capp-guest.emulator.test.js",
@@ -1417,6 +1463,7 @@
     "xpizza-functions/test/reserved-keys-flip.emulator.test.js",
     "xpizza-functions/test/reserved-keys-rename-flip.emulator.test.js",
     "xpizza-functions/test/resolve-lines.emulator.test.js",
+    "xpizza-functions/test/review-attest.emulator.test.js",
     "xpizza-functions/test/s2-portal-claim.emulator.test.js",
     "xpizza-functions/test/s2b-intake.emulator.test.js",
     "xpizza-functions/test/s2core.emulator.test.js",
@@ -1425,6 +1472,7 @@
     "xpizza-functions/test/s3a-envio.emulator.test.js",
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
+    "xpizza-functions/test/s4-sections.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/sdk-envlim.emulator.test.js",
     "xpizza-functions/test/sdk-fence.emulator.test.js",
@@ -1480,6 +1528,8 @@
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
     "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/structure-s3.test.mjs",
+    "xpizza-portal/structure-s4-review.test.mjs",
     "xpizza-portal/ventas-tab.test.mjs",
     "xpizza-track/status-view-forms.test.js"
    ],
@@ -1614,6 +1664,17 @@
     "xpizza-functions/catalog/s2core-three-path.test.js",
     "xpizza-functions/catalog/s3-choice-editable.test.js",
     "xpizza-functions/catalog/s3-flow.test.js",
+    "xpizza-functions/catalog/s4-budget.test.js",
+    "xpizza-functions/catalog/s4-off-deletion.test.js",
+    "xpizza-functions/catalog/s4-off-staged.test.js",
+    "xpizza-functions/catalog/s4-preflight.test.js",
+    "xpizza-functions/catalog/s4-real-writer.test.js",
+    "xpizza-functions/catalog/s4-renderer.test.js",
+    "xpizza-functions/catalog/s4-review-diff.test.js",
+    "xpizza-functions/catalog/s4-sections-editable.test.js",
+    "xpizza-functions/catalog/s4-staging.test.js",
+    "xpizza-functions/catalog/s4-three-path.test.js",
+    "xpizza-functions/catalog/section-compare.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
@@ -1762,6 +1823,7 @@
     "xpizza-functions/test/c2b-integrity.emulator.test.js",
     "xpizza-functions/test/c2b-ops.emulator.test.js",
     "xpizza-functions/test/cancel-number.emulator.test.js",
+    "xpizza-functions/test/cancel-park.emulator.test.js",
     "xpizza-functions/test/capp-a1-equivalence.emulator.test.js",
     "xpizza-functions/test/capp-domain-transition.emulator.test.js",
     "xpizza-functions/test/capp-guest.emulator.test.js",
@@ -1845,6 +1907,7 @@
     "xpizza-functions/test/reserved-keys-flip.emulator.test.js",
     "xpizza-functions/test/reserved-keys-rename-flip.emulator.test.js",
     "xpizza-functions/test/resolve-lines.emulator.test.js",
+    "xpizza-functions/test/review-attest.emulator.test.js",
     "xpizza-functions/test/s2-portal-claim.emulator.test.js",
     "xpizza-functions/test/s2b-intake.emulator.test.js",
     "xpizza-functions/test/s2core.emulator.test.js",
@@ -1852,6 +1915,7 @@
     "xpizza-functions/test/s3a-envio.emulator.test.js",
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
+    "xpizza-functions/test/s4-sections.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/sdk-envlim.emulator.test.js",
     "xpizza-functions/test/sdk-fence.emulator.test.js",
@@ -1899,6 +1963,8 @@
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
     "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/structure-s3.test.mjs",
+    "xpizza-portal/structure-s4-review.test.mjs",
     "xpizza-portal/ventas-tab.test.mjs"
    ]
   },
@@ -1977,10 +2043,13 @@
     "xpizza-dispatch-mobile/reassign-guard.test.mjs",
     "xpizza-dispatch/dispatch-alert-nav.test.js",
     "xpizza-dispatch/dispatch-alerts.test.js",
+    "xpizza-dispatch/dispatch-auto-assign-lock.test.js",
     "xpizza-dispatch/dispatch-boot-maps.test.mjs",
     "xpizza-dispatch/dispatch-cash-recon.test.js",
     "xpizza-dispatch/dispatch-cashbar-layout.test.js",
     "xpizza-dispatch/dispatch-cola.test.js",
+    "xpizza-dispatch/dispatch-comms-consolidation.test.js",
+    "xpizza-dispatch/dispatch-config-screen-removed.test.js",
     "xpizza-dispatch/dispatch-drawer.test.js",
     "xpizza-dispatch/dispatch-driver-admin-panel.test.js",
     "xpizza-dispatch/dispatch-driver-admin.test.js",
@@ -1988,18 +2057,26 @@
     "xpizza-dispatch/dispatch-driver-problem.test.mjs",
     "xpizza-dispatch/dispatch-h0-alerts.test.mjs",
     "xpizza-dispatch/dispatch-heartbeat-alerts.test.js",
+    "xpizza-dispatch/dispatch-idle-overlay-coverage.test.js",
     "xpizza-dispatch/dispatch-intl-parity.test.mjs",
     "xpizza-dispatch/dispatch-maps-barrier.test.mjs",
     "xpizza-dispatch/dispatch-maps-perf-gate.test.mjs",
+    "xpizza-dispatch/dispatch-money-format.test.js",
     "xpizza-dispatch/dispatch-nav-rail.test.js",
+    "xpizza-dispatch/dispatch-no-amber.test.js",
     "xpizza-dispatch/dispatch-order-control.test.mjs",
     "xpizza-dispatch/dispatch-paid-after-close.test.js",
     "xpizza-dispatch/dispatch-pausa-guard.test.mjs",
     "xpizza-dispatch/dispatch-pausa.test.mjs",
     "xpizza-dispatch/dispatch-picker-a11y.test.js",
+    "xpizza-dispatch/dispatch-polish-deadends.test.js",
+    "xpizza-dispatch/dispatch-polish-signout.test.js",
+    "xpizza-dispatch/dispatch-polish-styledconfirm-adoption.test.js",
     "xpizza-dispatch/dispatch-recon-close-fulfilled.test.js",
     "xpizza-dispatch/dispatch-recon-note.test.js",
     "xpizza-dispatch/dispatch-scheduled-aging-tick.test.mjs",
+    "xpizza-dispatch/dispatch-self-assign-gate.test.js",
+    "xpizza-dispatch/dispatch-styled-confirm.test.js",
     "xpizza-dispatch/dispatch-theme.test.js",
     "xpizza-dispatch/dispatch-unassign-confirm.test.js",
     "xpizza-functions/branches-rules.guard.test.js",
@@ -2062,8 +2139,12 @@
     "xpizza-dispatch-mobile/board-model.test.mjs",
     "xpizza-dispatch-mobile/boot.test.mjs",
     "xpizza-dispatch-mobile/dispatch-alerts-mobile.test.mjs",
+    "xpizza-dispatch-mobile/dispatch-driver-nogps-feedback.test.mjs",
+    "xpizza-dispatch-mobile/dispatch-focus-scheduled.test.mjs",
     "xpizza-dispatch-mobile/dispatch-lite-push-refresh.test.mjs",
     "xpizza-dispatch-mobile/dispatch-lite-testpush-ui.test.mjs",
+    "xpizza-dispatch-mobile/dispatch-mobile-infowindow.test.mjs",
+    "xpizza-dispatch-mobile/dispatch-mobile-signout-confirm.test.mjs",
     "xpizza-dispatch-mobile/dispatch-pausa.test.mjs",
     "xpizza-dispatch-mobile/mobile-reload.test.mjs",
     "xpizza-dispatch-mobile/parity.test.mjs",
@@ -2075,6 +2156,7 @@
     "xpizza-dispatch-mobile/sw-precache.test.mjs",
     "xpizza-dispatch-mobile/unassign.test.mjs",
     "xpizza-dispatch/dispatch-driver-admin-panel.test.js",
+    "xpizza-dispatch/dispatch-no-amber.test.js",
     "xpizza-dispatch/dispatch-pausa-guard.test.mjs",
     "xpizza-functions/branches-rules.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
@@ -2372,6 +2454,7 @@
   "xpizza-functions/catalog/display-safety.js",
   "xpizza-functions/catalog/draft-assess.js",
   "xpizza-functions/catalog/edit-catalog-handler.js",
+  "xpizza-functions/catalog/edit-preflight.js",
   "xpizza-functions/catalog/extra-identity.js",
   "xpizza-functions/catalog/extras-allocate.js",
   "xpizza-functions/catalog/form-menu-source.js",
@@ -2393,6 +2476,7 @@
   "xpizza-functions/catalog/reserved-keys-audit.js",
   "xpizza-functions/catalog/reset-draft.js",
   "xpizza-functions/catalog/review-diff.js",
+  "xpizza-functions/catalog/source-accounting.js",
   "xpizza-functions/catalog/source-store.js",
   "xpizza-functions/catalog/structure-budget.js",
   "xpizza-functions/catalog/structure-gate.js",
@@ -2443,6 +2527,7 @@
   "xpizza-functions/tools/envlim-module-inverse.js",
   "xpizza-functions/tools/extras-baseline-audit.js",
   "xpizza-functions/tools/form-bundle-live-check.js",
+  "xpizza-functions/tools/generate-renderer-contract.js",
   "xpizza-functions/tools/identity-usable-check.js",
   "xpizza-functions/tools/keymode-module-inverse.js",
   "xpizza-functions/tools/menus-divergence-report.js",
@@ -2461,6 +2546,7 @@
   "xpizza-portal/calificaciones2-harness.mjs",
   "xpizza-portal/envio-harness.mjs",
   "xpizza-portal/marketing-harness.mjs",
+  "xpizza-portal/real-backend.mjs",
   "xpizza-portal/ref-tree.mjs",
   "xpizza-portal/stats-harness.mjs"
  ],
@@ -2882,6 +2968,7 @@
   "brands/brand-store.js",
   "brands/brands-admin-core.js",
   "cancel-order-core.js",
+  "cancel-order.js",
   "cart-sig.js",
   "catalog/_hosted-claim-delta.js",
   "catalog/_probe-hoist-delta.js",
@@ -2955,6 +3042,7 @@
   "catalog/public-photos.js",
   "catalog/publish-edited-handler.js",
   "catalog/publish-request.js",
+  "catalog/renderer-contract.generated.js",
   "catalog/reserved-keys-audit.js",
   "catalog/reserved-keys.js",
   "catalog/reset-draft.js",
@@ -2964,10 +3052,13 @@
   "catalog/reward-icons.js",
   "catalog/reward-removed.js",
   "catalog/rollback-refs.js",
+  "catalog/section-compare.js",
+  "catalog/section-transitions.js",
   "catalog/serve-memo.js",
   "catalog/snapshot-fallback.js",
   "catalog/source-accounting.js",
   "catalog/source-store.js",
+  "catalog/staged-categories.js",
   "catalog/structure-budget.js",
   "catalog/structure-gate.js",
   "catalog/text-version.js",
@@ -3070,6 +3161,7 @@
   "otp-lib.js",
   "pay-rate.js",
   "payer-email.js",
+  "payments/review-attest.js",
   "payments/sdk/cards.js",
   "payments/sdk/coordinator.js",
   "payments/sdk/decline-buckets.js",
@@ -3307,7 +3399,9 @@
   },
   "alert-prune.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/payments/review-attest-wiring.guard.test.js"
+   ]
   },
   "arrived-notify.js": {
    "pins": [],
@@ -3376,9 +3470,18 @@
   "cancel-order-core.js": {
    "pins": [
     {
+     "file": "xpizza-functions/cpark-wiring.guard.test.js",
+     "inverses": [
+      "tools/cpark-module-inverse.js",
+      "tools/mrr-module-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/h0-wiring.guard.test.js",
      "inverses": [
+      "tools/cpark-module-inverse.js",
       "tools/h0-inverse.js",
+      "tools/mrr-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-module-inverse.js"
@@ -3387,6 +3490,8 @@
     {
      "file": "xpizza-functions/stackseq-wiring.guard.test.js",
      "inverses": [
+      "tools/cpark-module-inverse.js",
+      "tools/mrr-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-module-inverse.js"
@@ -3409,8 +3514,20 @@
    ],
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js",
+    "xpizza-functions/mrr-wiring.guard.test.js",
     "xpizza-functions/rewards-reversal-placement.test.js"
    ]
+  },
+  "cancel-order.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/cpark-wiring.guard.test.js",
+     "inverses": [
+      "tools/cpark-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
   },
   "cart-sig.js": {
    "pins": [],
@@ -3607,7 +3724,8 @@
     {
      "file": "xpizza-functions/rewardgroups-wiring.guard.test.js",
      "inverses": [
-      "tools/rewardgroups-module-inverse.js"
+      "tools/rewardgroups-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     }
    ],
@@ -3619,7 +3737,9 @@
   },
   "catalog/choice-transitions.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-portal/structure-s3.test.mjs"
+   ]
   },
   "catalog/client-retired.js": {
    "pins": [],
@@ -3640,6 +3760,12 @@
   "catalog/edit-catalog-handler.js": {
    "pins": [
     {
+     "file": "s3-served.test.mjs",
+     "inverses": [
+      "tools/s4sect-module-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
      "inverses": [
       "tools/grpid-module-inverse.js",
@@ -3648,12 +3774,12 @@
       "tools/s2-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js",
-      "tools/s3choice-module-inverse.js"
+      "tools/s3choice-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     }
    ],
    "lifts": [
-    "s3-served.test.mjs",
     "xpizza-functions/rdr-wiring.guard.test.js",
     "xpizza-functions/s2-wiring.guard.test.js"
    ]
@@ -3934,7 +4060,8 @@
       "tools/s2-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js",
-      "tools/s3choice-module-inverse.js"
+      "tools/s3choice-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     },
     {
@@ -3943,7 +4070,8 @@
       "tools/grpid-module-inverse.js",
       "tools/rdr-module-inverse.js",
       "tools/s2bext-module-inverse.js",
-      "tools/s3choice-module-inverse.js"
+      "tools/s3choice-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     },
     {
@@ -3953,7 +4081,8 @@
       "tools/rdr-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js",
-      "tools/s3choice-module-inverse.js"
+      "tools/s3choice-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     }
    ],
@@ -3961,7 +4090,8 @@
     "xpizza-functions/catalog/publish-paths.test.js",
     "xpizza-functions/rdr-wiring.guard.test.js",
     "xpizza-functions/s2-wiring.guard.test.js",
-    "xpizza-functions/s3choice-wiring.guard.test.js"
+    "xpizza-functions/s3choice-wiring.guard.test.js",
+    "xpizza-functions/s4sect-wiring.guard.test.js"
    ]
   },
   "catalog/publish-request.js": {
@@ -3970,13 +4100,19 @@
      "file": "xpizza-functions/grpid-wiring.guard.test.js",
      "inverses": [
       "tools/grpid-module-inverse.js",
-      "tools/rdr-module-inverse.js"
+      "tools/rdr-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     }
    ],
    "lifts": [
-    "xpizza-functions/rdr-wiring.guard.test.js"
+    "xpizza-functions/rdr-wiring.guard.test.js",
+    "xpizza-functions/s4sect-wiring.guard.test.js"
    ]
+  },
+  "catalog/renderer-contract.generated.js": {
+   "pins": [],
+   "lifts": []
   },
   "catalog/reserved-keys-audit.js": {
    "pins": [],
@@ -4024,6 +4160,16 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/section-compare.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/section-transitions.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-portal/structure-s4.test.mjs"
+   ]
+  },
   "catalog/serve-memo.js": {
    "pins": [],
    "lifts": []
@@ -4062,7 +4208,8 @@
       "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js",
       "tools/s2bext-module-inverse.js",
-      "tools/s2core-module-inverse.js"
+      "tools/s2core-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     },
     {
@@ -4074,7 +4221,8 @@
       "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js",
       "tools/s2bext-module-inverse.js",
-      "tools/s2core-module-inverse.js"
+      "tools/s2core-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     },
     {
@@ -4084,7 +4232,8 @@
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/s2bext-module-inverse.js",
-      "tools/s2core-module-inverse.js"
+      "tools/s2core-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     },
     {
@@ -4095,20 +4244,27 @@
       "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js",
       "tools/s2bext-module-inverse.js",
-      "tools/s2core-module-inverse.js"
+      "tools/s2core-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s2core-wiring.guard.test.js",
      "inverses": [
       "tools/s2bext-module-inverse.js",
-      "tools/s2core-module-inverse.js"
+      "tools/s2core-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     }
    ],
    "lifts": [
-    "xpizza-functions/frozenkeys-wiring.guard.test.js"
+    "xpizza-functions/frozenkeys-wiring.guard.test.js",
+    "xpizza-functions/s4sect-wiring.guard.test.js"
    ]
+  },
+  "catalog/staged-categories.js": {
+   "pins": [],
+   "lifts": []
   },
   "catalog/structure-budget.js": {
    "pins": [],
@@ -4292,6 +4448,13 @@
      ]
     },
     {
+     "file": "xpizza-functions/envlim-wiring.guard.test.js",
+     "inverses": [
+      "tools/envlim-module-inverse.js",
+      "tools/mktprice-module-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/zones-wiring.guard.test.js",
      "inverses": [
       "tools/envlim-module-inverse.js",
@@ -4441,6 +4604,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -4469,6 +4633,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1b-inverse.js",
@@ -4505,6 +4670,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
@@ -4537,6 +4703,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -4577,6 +4744,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
@@ -4609,6 +4777,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -4648,6 +4817,7 @@
       "tools/checkout-charge-inputs-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -4669,6 +4839,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -4693,6 +4864,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -4719,6 +4891,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -4750,6 +4923,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
@@ -4784,6 +4958,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -4822,6 +4997,7 @@
       "tools/checkout-inverse.js",
       "tools/checkout-pixelpay-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -4833,6 +5009,7 @@
       "tools/mktprice-module-inverse.js",
       "tools/photos-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -4850,6 +5027,7 @@
      "inverses": [
       "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/envlim-module-inverse.js",
@@ -4857,9 +5035,20 @@
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/cpark-wiring.guard.test.js",
+     "inverses": [
+      "tools/cpark-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/memberreads-module-inverse.js",
+      "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js"
      ]
     },
     {
@@ -4871,6 +5060,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
@@ -4902,6 +5092,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -4936,6 +5127,7 @@
      "file": "xpizza-functions/d4-wiring.guard.test.js",
      "inverses": [
       "tools/audience-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -4943,6 +5135,7 @@
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js"
      ]
@@ -4951,11 +5144,13 @@
      "file": "xpizza-functions/dirwire-wiring.guard.test.js",
      "inverses": [
       "tools/audience-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
-      "tools/privacy-module-inverse.js"
+      "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js"
      ]
     },
     {
@@ -4965,6 +5160,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -4991,6 +5187,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5017,6 +5214,7 @@
      "inverses": [
       "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -5025,6 +5223,7 @@
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
@@ -5037,6 +5236,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -5060,6 +5260,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5088,6 +5289,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -5108,6 +5310,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5135,6 +5338,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -5156,6 +5360,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5181,6 +5386,7 @@
      "inverses": [
       "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/envlim-module-inverse.js",
@@ -5188,6 +5394,7 @@
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js"
      ]
@@ -5201,6 +5408,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -5231,6 +5439,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -5267,6 +5476,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -5289,6 +5499,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5317,6 +5528,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -5336,6 +5548,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5364,6 +5577,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -5393,6 +5607,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -5429,6 +5644,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -5457,6 +5673,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5490,6 +5707,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -5517,6 +5735,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5547,6 +5766,7 @@
      "inverses": [
       "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -5558,6 +5778,7 @@
       "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5576,6 +5797,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -5588,6 +5810,7 @@
       "tools/mktprice-module-inverse.js",
       "tools/photos-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5602,6 +5825,7 @@
      "inverses": [
       "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -5611,6 +5835,7 @@
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5633,11 +5858,13 @@
      "file": "xpizza-functions/memberreads-wiring.guard.test.js",
      "inverses": [
       "tools/audience-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
-      "tools/privacy-module-inverse.js"
+      "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js"
      ]
     },
     {
@@ -5647,6 +5874,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -5672,6 +5900,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5700,6 +5929,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -5723,6 +5953,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5751,6 +5982,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -5773,6 +6005,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5804,6 +6037,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
@@ -5837,6 +6071,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -5872,6 +6107,7 @@
      "inverses": [
       "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -5882,6 +6118,7 @@
       "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5901,6 +6138,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -5924,6 +6162,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5951,6 +6190,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -5960,6 +6200,7 @@
       "tools/mktprice-module-inverse.js",
       "tools/photos-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5979,6 +6220,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
@@ -6013,6 +6255,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -6050,6 +6293,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -6075,6 +6319,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6099,8 +6344,19 @@
     {
      "file": "xpizza-functions/privacy-wiring.guard.test.js",
      "inverses": [
+      "tools/cpark-module-inverse.js",
       "tools/memberreads-module-inverse.js",
-      "tools/privacy-module-inverse.js"
+      "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/ratt-wiring.guard.test.js",
+     "inverses": [
+      "tools/d4-intake-inverse.js",
+      "tools/memberreads-module-inverse.js",
+      "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js"
      ]
     },
     {
@@ -6111,6 +6367,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -6137,6 +6394,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -6168,6 +6426,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -6196,6 +6455,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -6233,6 +6493,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -6261,6 +6522,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -6294,6 +6556,7 @@
      "inverses": [
       "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -6302,6 +6565,7 @@
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
@@ -6315,6 +6579,7 @@
      "inverses": [
       "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -6323,6 +6588,7 @@
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
@@ -6333,6 +6599,7 @@
      "inverses": [
       "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -6341,6 +6608,7 @@
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2bext-module-inverse.js",
@@ -6355,6 +6623,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -6377,6 +6646,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6403,6 +6673,7 @@
       "tools/checkout-inverse.js",
       "tools/checkout-pixelpay-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -6425,6 +6696,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6450,6 +6722,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -6472,6 +6745,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6500,6 +6774,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -6522,6 +6797,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6549,6 +6825,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -6571,6 +6848,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6597,6 +6875,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -6613,6 +6892,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6640,6 +6920,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -6668,6 +6949,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -6701,6 +6983,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -6723,6 +7006,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6747,6 +7031,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -6755,6 +7040,7 @@
       "tools/ledgers1-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6773,6 +7059,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -6781,6 +7068,7 @@
       "tools/ledgers1-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6798,6 +7086,7 @@
      "inverses": [
       "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -6807,6 +7096,7 @@
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6826,6 +7116,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -6855,6 +7146,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -6892,6 +7184,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -6918,6 +7211,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -6952,6 +7246,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
@@ -6984,6 +7279,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -7021,6 +7317,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -7042,6 +7339,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -7074,6 +7372,7 @@
      "inverses": [
       "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -7083,6 +7382,7 @@
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -7132,6 +7432,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -7145,6 +7446,7 @@
       "tools/mktprice-module-inverse.js",
       "tools/photos-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -7195,6 +7497,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -7221,6 +7524,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -7252,6 +7556,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -7278,6 +7583,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -7311,6 +7617,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -7341,6 +7648,7 @@
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -7378,6 +7686,7 @@
       "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -7397,6 +7706,7 @@
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -7422,6 +7732,7 @@
      "inverses": [
       "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
+      "tools/cpark-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/envlim-module-inverse.js",
@@ -7429,6 +7740,7 @@
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/privacy-module-inverse.js",
+      "tools/ratt-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
@@ -7476,6 +7788,8 @@
     "xpizza-functions/order-creators.guard.test.js",
     "xpizza-functions/order-exists-census.guard.test.js",
     "xpizza-functions/order-owner.test.js",
+    "xpizza-functions/payments/cancel-park-wiring.guard.test.js",
+    "xpizza-functions/payments/review-attest-wiring.guard.test.js",
     "xpizza-functions/pixelpay-hosted-extra-payment.test.js",
     "xpizza-functions/platform-sync.guard.test.js",
     "xpizza-functions/portal/ops-helpers.guard.test.js",
@@ -7803,7 +8117,13 @@
    "lifts": []
   },
   "my-address.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "customer-app/fixtures/addr/gen-addr.mjs",
+     "inverses": [],
+     "provenance": true
+    }
+   ],
    "lifts": []
   },
   "my-favorites.js": {
@@ -7853,6 +8173,10 @@
    ]
   },
   "payer-email.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/review-attest.js": {
    "pins": [],
    "lifts": []
   },
@@ -8243,6 +8567,7 @@
       "tools/h0-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/ledgers1-module-inverse.js",
+      "tools/mrr-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -8250,6 +8575,7 @@
    ],
    "lifts": [
     "xpizza-functions/ledger-writes.guard.test.js",
+    "xpizza-functions/mrr-wiring.guard.test.js",
     "xpizza-functions/pixelpay-hosted-extra-payment.test.js"
    ]
   },
@@ -8489,6 +8815,7 @@
      "file": "xpizza-functions/brand-server-wiring.guard.test.js",
      "inverses": [
       "tools/brand-server-inverse.js",
+      "tools/mrr-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -8499,6 +8826,7 @@
       "tools/brand-server-inverse.js",
       "tools/d12-inverse.js",
       "tools/h0-inverse.js",
+      "tools/mrr-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -8508,6 +8836,7 @@
      "inverses": [
       "tools/brand-server-inverse.js",
       "tools/h0-inverse.js",
+      "tools/mrr-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -8516,6 +8845,7 @@
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js",
     "xpizza-functions/materialize-hub.test.js",
+    "xpizza-functions/mrr-wiring.guard.test.js",
     "xpizza-functions/recon-close-fulfilled.test.js",
     "xpizza-functions/rewards-reversal-placement.test.js"
    ]
@@ -8757,7 +9087,13 @@
    ]
   },
   "signup-platform.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "customer-app/fixtures/addr/gen-addr.mjs",
+     "inverses": [],
+     "provenance": true
+    }
+   ],
    "lifts": []
   },
   "staff-push.js": {
@@ -9097,6 +9433,24 @@
    "blob": "534c0b1b5785a9179605ba6ff07e2692a1d26aa5",
    "consumer": "customer-app/capp-s7a2.test.mjs",
    "live_differs": true
+  },
+  {
+   "site": "customer-app/fixtures/addr/gen-addr.mjs",
+   "module": "signup-platform.js",
+   "status": "ok",
+   "sha": "805a5015411a63ecac62d1f54bac653b9ea1ddc0",
+   "blob": "6a4912f9823ffabac5a12b3f8c85595178cc5c06",
+   "consumer": "customer-app/capp-s7a2.test.mjs",
+   "live_differs": false
+  },
+  {
+   "site": "customer-app/fixtures/addr/gen-addr.mjs",
+   "module": "my-address.js",
+   "status": "ok",
+   "sha": "805a5015411a63ecac62d1f54bac653b9ea1ddc0",
+   "blob": "52c53aeaa3327048198606b2833980a74ade516e",
+   "consumer": "customer-app/capp-s7a2.test.mjs",
+   "live_differs": false
   },
   {
    "site": "customer-app/fixtures/dish-stats/gen-dish-stats.mjs",
