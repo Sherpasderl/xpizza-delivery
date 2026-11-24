@@ -24,7 +24,9 @@ assert.ok(HTML.includes(LINK), 'premise: the page links the stylesheet');
 
 // OWNER 11-23 picked D3 = A (MOCKUP-portal-footer-email-D3, artifact QY4YwiuGUh7qhxoZThoE8W): ROW 1 = avatar · ONE role line · logout;
 // ROW 2 = the email at the footer's full width, in FULL, its two parts (local part, «@domain») each an inline-block around boot.js's <wbr>,
-// so a long email breaks ONLY at the «@» (overflow-wrap:anywhere stays only for a part wider than the whole footer). The role still
+// so a long email breaks ONLY at the «@» (overflow-wrap:anywhere stays only for a part wider than the whole footer — the APPROVED fallback:
+// the mockup's annotation 4 «Fallback, not drawn»: one part alone wider than 206 px, a ~35-character local part, breaks inside itself
+// rather than overflow the sidebar; Codex #290 P2-1 ruled no change, advisor 11-23). The role still
 // truncates on one line (the 11-12 rule stands for the role). No reserved empty line: the email is written before the portal shows.
 function page(admin) {
   // the page's markup as shipped, scripts left out (only the cascade is under test)

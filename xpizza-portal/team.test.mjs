@@ -61,20 +61,38 @@ async function page({ e1 = E1(), list = LIST(), on = {} } = {}) {
   const w = dom.window;
   // the browser's MODAL <dialog> (jsdom has no showModal): the spec's own rules the view relies on, no laxer — showModal refuses a
   // detached dialog or one already open non-modally (InvalidStateError), is a no-op on an open modal one, opens it and puts it in the
-  // TOP LAYER; show() opens it non-modally (never the top layer); close() leaves the top layer and fires `close`; escape() is the
+  // TOP LAYER and runs the dialog focusing steps; show() opens it non-modally (never the top layer); close() leaves the top layer,
+  // restores focus as real Chrome does (Codex #290: probed, see close below) and fires `close`; escape() is the
   // browser's Escape: the TOPMOST modal gets a cancelable `cancel` and is closed unless the page prevented it
   const top = [];
+  const opened = new Map(), closed = new Map();   // per dialog: how many times it was really opened / closed (a repaint must do neither)
+  const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+  const prevFocus = new Map();
+  const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
   const DP = w.HTMLDialogElement.prototype;
   DP.showModal = function () {
     if (!this.isConnected) throw new w.DOMException('not connected', 'InvalidStateError');
     if (this.open) { if (top.includes(this)) return; throw new w.DOMException('open, not modal', 'InvalidStateError'); }
-    this.setAttribute('open', ''); top.push(this);
+    prevFocus.set(this, w.document.activeElement);   // the spec's «previously focused element»
+    this.setAttribute('open', ''); top.push(this); bump(opened, this);
+    // the dialog focusing steps: the autofocus delegate, else the first focusable descendant (Chrome probe: showModal focuses the 1st button)
+    const f = this.querySelector('[autofocus]') || this.querySelector(FOCUSABLE);
+    if (f) f.focus();
   };
-  DP.show = function () { if (!this.open) this.setAttribute('open', ''); };
-  DP.close = function () { if (!this.open) return; this.removeAttribute('open'); const i = top.indexOf(this); if (i >= 0) top.splice(i, 1); this.dispatchEvent(new w.Event('close')); };
+  DP.show = function () { if (!this.open) { this.setAttribute('open', ''); bump(opened, this); } };
+  DP.close = function () {
+    if (!this.open) return;
+    this.removeAttribute('open'); const i = top.indexOf(this); if (i >= 0) top.splice(i, 1); bump(closed, this);
+    // native focus restoration, as REAL Chrome does it (review-portal/slot-1114/dialog-focus-probe.mjs, 11-23): back to the element focused at
+    // showModal when that is still connected and focus is inside the dialog or nowhere (its focused child already removed); never otherwise
+    const prev = prevFocus.get(this); prevFocus.delete(this);
+    const a = w.document.activeElement;
+    if (prev && prev !== w.document.body && prev.isConnected && (!a || a === w.document.body || this.contains(a))) prev.focus();
+    this.dispatchEvent(new w.Event('close'));
+  };
   const escape = () => { const t = top[top.length - 1]; if (!t) return; if (t.dispatchEvent(new w.Event('cancel', { cancelable: true }))) t.close(); };
   w.scrollTo = () => {};
-  for (const k of ['window', 'document', 'CustomEvent', 'Event', 'HTMLElement', 'Node', 'MutationObserver', 'sessionStorage', 'localStorage']) {
+  for (const k of ['window', 'document', 'CustomEvent', 'Event', 'HTMLElement', 'Node', 'MutationObserver', 'sessionStorage', 'localStorage', 'history']) {   // history: the app's pushState / back reach the window's own (Codex #290)
     Object.defineProperty(globalThis, k, { value: k === 'window' ? w : w[k], configurable: true, writable: true });
   }
   globalThis.__branchesDirect = true;
@@ -104,7 +122,8 @@ async function page({ e1 = E1(), list = LIST(), on = {} } = {}) {
   };
   const open = async () => { reg().nav.click(); await settle(); };
   const type = (id, v) => { const i = d.getElementById(id); i.value = v; i.dispatchEvent(new w.Event('input')); };
-  return { dom, w, d, mods, st, calls, reg, host, text, btn, modal, n, signIn, open, type, topLayer: () => [...top], escape };
+  return { dom, w, d, mods, st, calls, reg, host, text, btn, modal, n, signIn, open, type, topLayer: () => [...top], escape,
+    toggles: (dl) => [opened.get(dl) || 0, closed.get(dl) || 0] };
 }
 
 // ── pure logic ───────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -579,16 +598,22 @@ test('#281 native dialogs: the sheet opens with showModal (top layer); a stacked
   const S1 = sheet(p).closest('dialog');
   assert.deepEqual(p.topLayer(), [S1], '🔴 the sheet is a modal dialog (showModal, never show)');
   assert.equal(p.d.activeElement, sheet(p).querySelector('.tp-x'), 'focus on × at open');
-  p.btn('Editar', sheet(p)).click(); await settle();
+  assert.deepEqual(p.w.history.state, { sherpaTeamPerson: true }, '🔴 opening the sheet pushed its history entry (the phone back closes it)');
+  const ed = p.btn('Editar', sheet(p));
+  ed.focus(); ed.click(); await settle();   // a keyboard user: Editar has focus when it opens the modal
   const M1 = dlg(p).closest('dialog');
   assert.deepEqual(p.topLayer(), [S1, M1], '🔴 the edit modal is its own modal dialog, stacked above the sheet');
-  p.escape(); await settle();
+  p.escape();
+  assert.equal(p.d.activeElement, ed, '🔴 right after the FIRST Escape, focus is back on «Editar» in the sheet (never the page)');
   assert.equal(dlg(p), null, 'Escape closed the modal…');
   assert.ok(sheet(p) && S1.open && p.topLayer().length === 1, '…and only the modal: the sheet stays');
+  assert.deepEqual(p.w.history.state, { sherpaTeamPerson: true }, 'closing the modal leaves the sheet\'s history entry');
+  await settle();
   p.escape(); await settle();
   assert.equal(sheet(p), null, 'a second Escape closes the sheet');
   assert.deepEqual(p.topLayer(), [], '🔴 nothing left in the top layer');
   assert.equal(p.d.activeElement, prow(p, 'Jorge Ayala'), 'focus back on the row that opened it');
+  assert.equal(p.w.history.state, null, '🔴 closing the sheet rolled its history entry back');
 });
 test('#281 P2-2: «Reenviar» — the focus identity is taken BEFORE the button is disabled; after the refresh focus is on «Reenviar», never the page', async () => {
   const p = await page({ on: { memberReissueInvite: () => okJson({ ok: true, inviteId: INV(9), email: 'ana@m.hn', name: 'Ana Reyes' }) } });
@@ -601,8 +626,13 @@ test('#281 P2-2: «Reenviar» — the focus identity is taken BEFORE the button 
   const own = Object.getOwnPropertyDescriptor(p.w.HTMLButtonElement.prototype, 'disabled');
   Object.defineProperty(re, 'disabled', { configurable: true, get() { return own.get.call(this); },
     set(v) { if (v && p.d.activeElement === this) this.blur(); own.set.call(this, v); } });   // (jsdom's blur() is a no-op once disabled)
+  const S1 = sheet(p).closest('dialog');
+  assert.deepEqual(p.toggles(S1), [1, 0], 'premise: the sheet\'s dialog opened once');
+  const lists = p.n('memberList').length;
   re.click(); await settle(60);
   assert.ok(sheet(p), 'premise: the sheet is still open after the refresh');
+  assert.ok(p.n('memberList').length > lists, 'premise: the team list reloaded under the sheet (paintSheet repainted it)');
+  assert.deepEqual(p.toggles(S1), [1, 0], '🔴 the repaint swapped the content: zero close / reopen of the dialog (no flash, no focus reset)');
   assert.notEqual(p.d.activeElement, p.d.body, '🔴 focus is not dropped to the body');
   assert.ok(sheet(p).contains(p.d.activeElement) && p.d.activeElement.textContent === 'Reenviar', '🔴 the focused action keeps focus across the repaint');
 });
