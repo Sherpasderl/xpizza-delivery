@@ -1508,6 +1508,18 @@
   "xpizza-functions/factura/factura-helpers.js#isCancelled@xpizza-functions/factura/factura-helpers.js#allocateFacturaNumber": {
    "status": "pending"
   },
+  "xpizza-functions/factura/build-record.js#buildFacturaRecord@xpizza-functions/factura/manual-core.js#buildManualRecord": {
+   "status": "pending"
+  },
+  "xpizza-functions/factura/manual-core.js#buildManualRecord@xpizza-functions/factura/manual-core.js#issueManual>anon": {
+   "status": "pending"
+  },
+  "xpizza-functions/factura/manual-core.js#normalizePayload@xpizza-functions/factura/manual-core.js#issueManual": {
+   "status": "pending"
+  },
+  "xpizza-functions/factura/manual-core.js#statusManual@self": {
+   "status": "pending"
+  },
   "xpizza-functions/index.js#allocateFacturaOnSale@self": {
    "status": "pending"
   },
