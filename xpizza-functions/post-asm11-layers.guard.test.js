@@ -21,7 +21,7 @@ const rawOf = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 // asm12 step 07 (advisor H3 = A, 11-19): the train's PER-SITE layers on the hook's files are peeled first — fix/privacy-gaps-5f (innermost
 // on the raw read) and addr-rev's memberreads insertion (unapplyAfter 099c280e4) — so the hook's pins (=== BASE, = the current diff) see a
 // raw read minus only the post-asm11 hunks. The hook stays order-owner-only; a file those layers do not own passes through unchanged.
-const perSite = (f, src) => require('./tools/memberreads-module-inverse').unapplyAfter(f, require('./tools/privacy-module-inverse').unapplyPrivacyModule(f, src), '099c280e4');
+const perSite = (f, src) => require('./tools/memberreads-module-inverse').unapplyAfter(f, require('./tools/mrr-module-inverse').unapplyMrrModule(f, require('./tools/cpark-module-inverse').unapplyCparkModule(f, require('./tools/ratt-module-inverse').unapplyRattModule(f, require('./tools/privacy-module-inverse').unapplyPrivacyModule(f, src)))), '099c280e4');   // asm13 (advisor A′): + 5f review's mrr / cpark / ratt (disjoint on index.js), inside the member-reads peel as in ledgers1-wiring
 const diskOf = (f) => perSite(f, rawOf(f));
 assert.ok(L.HUNKS.length >= 1 && L.FILES.length >= 1, 'POST-ASM11: non-vacuity — the hook owns hunks');
 assert.deepStrictEqual([...L.FILES].sort(), ['delivery/pricing-admin-core.js', 'index.js', 'pixelpay-hosted-charge.js'], '🔴 POST-ASM11: the owned files (a new one is added here deliberately)');   // uid-path (Codex C 11-23): + pricing-admin-core.js

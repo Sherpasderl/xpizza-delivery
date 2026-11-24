@@ -61,12 +61,16 @@ const isAncestor = (a, b) => { try { git('merge-base', '--is-ancestor', a, b); r
 // the files tools/sync-client.js copies INTO customer-app/ — read from sync-client itself (run against a recording fs; nothing written)
 const syncedIntoApp = () => {
   const tool = join(ROOT, 'xpizza-functions', 'tools', 'sync-client.js'), real = createRequire(tool), copies = [];
-  const fsRec = { copyFileSync: (src, dst) => copies.push([String(src), String(dst)]) };
+  // asm13 merge (cross-lane, test-only): Ayuda db1ad78b1 made sync-client also GENERATE xpizza-portal/support-contact.js (writeFileSync);
+  // the recording fs records that write too (nothing is written) and a generated write into customer-app/ is refused below
+  const writes = [];
+  const fsRec = { copyFileSync: (src, dst) => copies.push([String(src), String(dst)]), writeFileSync: (dst) => writes.push(String(dst)) };
   vm.runInNewContext(readFileSync(tool, 'utf8'), { require: (id) => (id === 'fs' || id === 'node:fs' ? fsRec : id === 'path' || id === 'node:path' ? nodePath : real(id)),
     __dirname: dirname(tool), __filename: tool, module: { exports: {} }, exports: {}, console: { log() {} } }, { filename: tool });
   const rel = (p) => relative(ROOT, p).split(sep).join('/');
   assert.ok(copies.length > 0, 'premise: sync-client was read (it copies files)');
   const into = copies.map(([s, d]) => ({ src: rel(s), dst: rel(d) })).filter(({ dst }) => dst.startsWith('customer-app/'));
+  assert.deepEqual(writes.map(rel).filter((d) => d.startsWith('customer-app/')), [], '🔴 sync-client GENERATES a file into customer-app/ (not a byte copy): name it here before it ships');
   assert.ok(into.some(({ dst }) => dst === 'customer-app/sherpa-client.js'), 'non-vacuity: sync-client writes customer-app/sherpa-client.js');
   return into;
 };
