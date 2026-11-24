@@ -34882,8 +34882,8 @@
   "slice": "promo",
   "label": "PLAN-capp-store-promo-feeinfo: Codex promo r4 #4 reverted: the JWT structure check is skipped (malformed tokens pass)",
   "file": "../customer-app/capp-api.js",
-  "from": "  function tokenExpMs(t) {\n    if (typeof t !== 'string' || !t) return null;\n    const parts = t.split('.'); if (parts.length !== 3 || !parts.every((p) => p && B64URL.test(p))) return null;",
-  "to": "  function tokenExpMs(t) {\n    if (typeof t !== 'string' || !t) return null;\n    const parts = t.split('.'); if (parts.length < 2) return null;",
+  "from": "  function jwtPayload(t) {\n    if (typeof t !== 'string' || !t) return null;\n    const parts = t.split('.'); if (parts.length !== 3 || !parts.every((p) => p && B64URL.test(p))) return null;",
+  "to": "  function jwtPayload(t) {\n    if (typeof t !== 'string' || !t) return null;\n    const parts = t.split('.'); if (parts.length < 2) return null;",
   "command": [
    "node",
    "--test",
@@ -43839,6 +43839,210 @@
   ],
   "kills_with": [
    "C7-EVIL"
+  ]
+ },
+ {
+  "id": "jwt1-01",
+  "slice": "jwt1",
+  "label": "jwtPayload: the header is no longer checked (a token whose header is not a JSON object is read)",
+  "file": "../customer-app/capp-api.js",
+  "from": "    try { return segJson(parts[0]) ? segJson(parts[1]) : null; } catch (_) { return null; }",
+  "to": "    try { return segJson(parts[1]); } catch (_) { return null; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE «header not JSON»: jwtPayload"
+  ]
+ },
+ {
+  "id": "jwt1-02",
+  "slice": "jwt1",
+  "label": "jwtPayload: more than three segments accepted",
+  "file": "../customer-app/capp-api.js",
+  "from": "if (parts.length !== 3 ||",
+  "to": "if (parts.length < 3 ||",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE «extra segment»: jwtPayload"
+  ]
+ },
+ {
+  "id": "jwt1-03",
+  "slice": "jwt1",
+  "label": "jwtPayload: a segment outside base64url accepted",
+  "file": "../customer-app/capp-api.js",
+  "from": "!parts.every((p) => p && B64URL.test(p))",
+  "to": "!parts.every((p) => p)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE «non-base64url segment»: jwtPayload"
+  ]
+ },
+ {
+  "id": "jwt1-04",
+  "slice": "jwt1",
+  "label": "tokenUid: a user_id that disagrees with sub is accepted (Codex #193)",
+  "file": "../customer-app/capp-api.js",
+  "from": "(pl.user_id === undefined || pl.user_id === s)",
+  "to": "true",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE «user_id disagrees»: tokenUid"
+  ]
+ },
+ {
+  "id": "jwt1-05",
+  "slice": "jwt1",
+  "label": "tokenExpMs: a fractional exp accepted",
+  "file": "../customer-app/capp-api.js",
+  "from": "Number.isInteger(exp) && ",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE «exp fractional»: tokenExpMs"
+  ]
+ },
+ {
+  "id": "jwt1-06",
+  "slice": "jwt1",
+  "label": "tokenUid re-inlines its own structure check (the pre-dedupe shape: no header check)",
+  "file": "../customer-app/capp-api.js",
+  "from": "    const pl = jwtPayload(t), s = pl && pl.sub;",
+  "to": "    if (typeof t !== 'string' || !t) return null; const parts = t.split('.'); if (parts.length !== 3 || !parts.every((p) => p && B64URL.test(p))) return null; const pl = segJson(parts[1]), s = pl && pl.sub;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE «header not JSON»: tokenUid"
+  ]
+ },
+ {
+  "id": "jwt2-01",
+  "slice": "jwt2",
+  "label": "a second caller of tokenUid (lastTip reads the uid too)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      const tok = await memberToken(m);\n      if (!tok || memberOf() !== m) return { uid: m.uid, cents: null };",
+  "to": "      const tok = await memberToken(m); void tokenUid(tok);\n      if (!tok || memberOf() !== m) return { uid: m.uid, cents: null };",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE-SINK: tokenUid's call sites are not exactly [memberToken]"
+  ]
+ },
+ {
+  "id": "jwt2-02",
+  "slice": "jwt2",
+  "label": "an alias of tokenUid (a value read, not a call)",
+  "file": "../customer-app/capp-api.js",
+  "from": "  function tokenUsable(m, now) {",
+  "to": "  const uidOf = tokenUid; void uidOf;\n  function tokenUsable(m, now) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE-SINK: tokenUid's call sites are not exactly [memberToken]"
+  ]
+ },
+ {
+  "id": "jwt2-03",
+  "slice": "jwt2",
+  "label": "the sink reads the cached field, not the tokenUsable result",
+  "file": "../customer-app/capp-api.js",
+  "from": "      const tu = t ? tokenUid(t) : null;",
+  "to": "      const tu = t ? tokenUid(m.idToken) : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE-SINK: tokenUid is not called on a bare token binding"
+  ]
+ },
+ {
+  "id": "jwt2-04",
+  "slice": "jwt2",
+  "label": "the sink reads the uid unguarded (not only when a usable token exists)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      const tu = t ? tokenUid(t) : null;",
+  "to": "      const tu = tokenUid(t);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE-SINK: tokenUid is not reached only when the usable token is present"
+  ]
+ },
+ {
+  "id": "jwt2-05",
+  "slice": "jwt2",
+  "label": "the token binding is not the tokenUsable result",
+  "file": "../customer-app/capp-api.js",
+  "from": "      const t = tokenUsable(m, now());   // never an expired token",
+  "to": "      const t = m.idToken;   // never an expired token",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE-SINK: the token tokenUid reads is not memberToken's one tokenUsable result"
+  ]
+ },
+ {
+  "id": "jwt2-06",
+  "slice": "jwt2",
+  "label": "memberToken lets a token naming no user through (behaviour changed)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (t && tu !== m.uid) {",
+  "to": "      if (t && tu && tu !== m.uid) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE-EQ «missing sub»: memberToken answers differently after the dedupe"
   ]
  }
 ]
