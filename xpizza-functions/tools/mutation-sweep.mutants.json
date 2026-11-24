@@ -33362,8 +33362,8 @@
   "slice": "sb",
   "label": "S-B: non-fulfilled orders counted",
   "file": "ratings/aggregate.js",
-  "from": "if (!isObj(o) || o.restaurant_id !== rid || !FULFILLED.has(o.status)) continue;",
-  "to": "if (!isObj(o) || o.restaurant_id !== rid) continue;",
+  "from": "const counted = (rid, o) => isObj(o) && o.restaurant_id === rid && FULFILLED.has(o.status);",
+  "to": "const counted = (rid, o) => isObj(o) && o.restaurant_id === rid;",
   "command": [
    "node",
    "ratings/aggregate.test.js"
