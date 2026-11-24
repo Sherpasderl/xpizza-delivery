@@ -44044,5 +44044,39 @@
   "kills_with": [
    "JWT-ONE-EQ «missing sub»: memberToken answers differently after the dedupe"
   ]
+ },
+ {
+  "id": "rows1-01",
+  "slice": "rows1",
+  "label": "the tapped sheet row's spinner takes its address's place (the pre-fix shape)",
+  "file": "../customer-app/capp-home.js",
+  "from": "${esc(a.label)}<span>${esc(a.detected)}</span>${dir.pend === a.id ? SPIN : ''}</button>",
+  "to": "${esc(a.label)}<span>${dir.pend === a.id ? SPIN : esc(a.detected)}</span></button>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SHEET-ROW",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "SHEET-ROW: the tapped row drops its address while it spins"
+  ]
+ },
+ {
+  "id": "rows1-02",
+  "slice": "rows1",
+  "label": "the spinner drawn INSIDE the address slot, not after it",
+  "file": "../customer-app/capp-home.js",
+  "from": "${esc(a.label)}<span>${esc(a.detected)}</span>${dir.pend === a.id ? SPIN : ''}</button>",
+  "to": "${esc(a.label)}<span>${esc(a.detected)}${dir.pend === a.id ? SPIN : ''}</span></button>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SHEET-ROW",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "SHEET-ROW: the spinner is not after the address"
+  ]
  }
 ]

@@ -215,7 +215,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .addrspin{width:18px;height:18px;flex:none;border-radius:50%;border:2px solid var(--line2);border-top-color:var(--acc);animation:spin .9s linear infinite}
 @media (prefers-reduced-motion:reduce){.addrspin{animation:none;border-top-color:var(--mute)}}
 .rowbtn .addrspin{margin-left:auto}
-.navrow .addrspin{display:inline-block;vertical-align:middle}
+.navrow .addrspin{display:inline-block;vertical-align:middle;margin-left:10px}
 :is(.rowbtn,.navrow,.addr-btn,.dn-addr,.urow .act)[aria-disabled="true"]{opacity:.45;cursor:default}
 .navrow[aria-disabled="true"][aria-busy="true"],.rowbtn[aria-disabled="true"][aria-busy="true"]{opacity:1}   /* r3 confirm-first prototype: the row whose pick is in flight keeps full strength (Codex #258: the dim above weighs 0,3,0 — this matches it and comes later) */
 .sandline{margin:10px 16px 2px;padding:10px 14px;border-radius:12px;background:var(--sand-bg);color:var(--sand);box-shadow:inset 0 0 0 1px var(--sand-line);font-size:13.5px;font-weight:500;line-height:1.4;text-wrap:pretty}
@@ -508,6 +508,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .navrow{height:52px;width:100%;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border:0;border-top:1px solid var(--line);background:transparent;color:var(--ink);font-size:16px;font-weight:500}
 .navrow.on{color:var(--acc);font-weight:600}
 .navrow span{font-weight:400;font-size:14px;color:var(--mute)}
+.navrow>span{margin-left:auto;white-space:nowrap}   /* the confirm-first prototype's own rule (cosheet SBS 11-23, D1): the right slot takes the free space, so an icon row's label stays beside its icon */
 .search{position:absolute;inset:0;z-index:50;background:var(--bg);display:flex;flex-direction:column}
 .cline{display:flex;align-items:center;gap:12px;padding:14px 20px;border-top:1px solid var(--line)}
 .cnotes{display:flex;align-items:center;gap:12px;padding:14px 20px;width:100%;border:0;border-top:1px solid var(--line);background:transparent;text-align:left;color:var(--ink);font:inherit;cursor:pointer}.cnotes .cl-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.cnotes .ln-n{font-weight:500}.cnotes:disabled{opacity:.45;cursor:default}   /* G-B: frame 2a's notes row (the .cline layout; not a cart line) */
