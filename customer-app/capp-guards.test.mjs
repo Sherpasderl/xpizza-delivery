@@ -40,8 +40,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // BASE → fd205309a (asm14, advisor ruling (A) 11-24): feat/capp-asm14 is cut from the asm13 tip fd205309a (train 18efaf24a + the asm13
 // re-pin), so it pins its OWN range from that cut point — a pin on the train line would pull the asm12/asm13 trains into the lane range.
 // Both are FULL commit ids, never a prefix (Codex #288: an 8-char prefix can name two commits or be shadowed by a ref).
-const BASE = 'fd205309aea6909363f6fda48e775228f5d5b912';
-const CAPP_TIP = '732d786955925338786657b05c20eb498a648455';
+// BASE → eb177fe58 (asm14 rebase, advisor 11-24): asm13 FINAL (ALL GREEN) is eb177fe58 (fd205309a + the cell-23 peel 26bc641f3 + its
+// inventory regen); the lane is rebased onto it (no file overlap) and pins its range from that new cut point, same shape.
+const BASE = 'eb177fe58002bde86dfa29247229284ecf449eca';
+const CAPP_TIP = '13885b24b1d64480b3a57be346cb695f4f7b02bc';
 // ASSEMBLY STEPS (asm11 step 4, advisor 11-17): a capp commit made ON THE TRAIN line, before the lane's merge — it can't be the pin (a pin on
 // the train line pulls the train into the lane range). Each is listed by full sha with its EXACT file set: excused from the «after the pin» walk
 // only while that set is unchanged, and only while it is in HEAD's history (a step that left the tree is a stale entry). None touches a live
@@ -273,8 +275,8 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // reviewed, and an entry that no longer hits is stale and fails. The guard file's own pin conflicts are listed too, never exempt
 // (advisor 11-23 Q1: a hand-resolved guard is the weakest point). Git's CLEAN merges never hit, so they need no entry.
 const MERGE_ALLOW = {
-  // none above BASE fd205309a (asm14 re-pin, advisor ruling (A) 11-24, the asm11 «pruned to above BASE» precedent): the 17 entries re-derived
-  // in f995943d2 (rider 6fe745ff ×2, dish-stats 0895a17c ×6, asm12 aa5cde11 / 45f1aebb / 520614c6 ×2 / 6dccdf27, asm13 5a9d5538 ×3, r3
+  // none above BASE eb177fe58 (asm14 rebase re-pin; was fd205309a, and fd205309a..eb177fe58 holds no merge; advisor ruling (A) 11-24, the asm11 «pruned to above BASE» precedent): the 17 entries re-derived
+  // in f995943d2, rebased as 44b3f867d (rider 6fe745ff ×2, dish-stats 0895a17c ×6, asm12 aa5cde11 / 45f1aebb / 520614c6 ×2 / 6dccdf27, asm13 5a9d5538 ×3, r3
   // d13a0bb7) all sit below the lane's cut point now; their proofs stay in that commit's message
 };
 // The walk + the criterion (PLAN-capp-guards-cell7 r0, advisor 11-23; Codex #288). The walk is EVERY merge reachable from the head and

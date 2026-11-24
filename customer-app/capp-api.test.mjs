@@ -1081,7 +1081,7 @@ test('JWT-ONE-SINK: tokenUid has exactly ONE caller — memberToken, on the toke
 
 // the behaviour half: memberToken's outputs (the header it sends, the moved refusal, onMoved's argument) are IDENTICAL before and after
 // the dedupe across every JWT-ONE row — the pre-refactor module is the REAL writer at JWT_PRE (the dedupe's parent; re-pinned at a rebase)
-const JWT_PRE = 'f995943d29eae68913c09a25de171d0c3c5f9ada';
+const JWT_PRE = '44b3f867d1980bda2ee7e9ad814237a6fd0833b2';
 test('JWT-ONE-EQ: memberToken answers every token row exactly as before the dedupe; a token tokenUsable refuses never reaches the uid check', async () => {
   execFileSync('git', ['merge-base', '--is-ancestor', JWT_PRE, 'HEAD'], { cwd: ROOT });
   const preSrc = execFileSync('git', ['show', `${JWT_PRE}:customer-app/capp-api.js`], { cwd: ROOT, encoding: 'utf8' });
