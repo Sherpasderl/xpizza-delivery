@@ -3500,7 +3500,9 @@
     {
      "file": "xpizza-functions/test/superseded-capture.emulator.test.js",
      "inverses": [
+      "tools/cpark-module-inverse.js",
       "tools/h0-inverse.js",
+      "tools/mrr-module-inverse.js",
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-module-inverse.js"
      ]
