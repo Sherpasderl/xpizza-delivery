@@ -11,7 +11,7 @@ const vm = require('vm');
 const ROOT = path.join(__dirname, '..', '..');
 const SRC = path.join(ROOT, 'xpizza-portal', 'review-lines.js');
 const COPY = path.join(__dirname, 'review-lines.js');
-const API = ['reviewModel', 'reviewCount', 'reviewCtxFromSource', 'ackSetFrom', 'movedGroups', 'isPhotoLine', 'S3_COPY', 's3Copy', 'S4_COPY', 's4Copy', 'nProd'];
+const API = ['reviewModel', 'reviewCount', 'hasPending', 'reviewCtxFromSource', 'ackSetFrom', 'movedGroups', 'isPhotoLine', 'S3_COPY', 's3Copy', 'S4_COPY', 's4Copy', 'nProd'];
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const same = (a, b) => Buffer.compare(a, b) === 0;
 
@@ -29,5 +29,6 @@ assert.deepStrictEqual(Object.keys(cjs).sort(), [...API].sort(), '🔴 RL-CJS th
 const g = {}; vm.runInNewContext(fs.readFileSync(SRC, 'utf8'), { globalThis: g });
 assert.deepStrictEqual(Object.keys(g.ReviewLines || {}).sort(), [...API].sort(), '🔴 RL-CLASSIC the portal source defines ReviewLines as a classic script');
 assert.strictEqual(cjs.reviewCount({ added: [{ surface: 'item', key: 'k1' }] }, {}), 1, 'premise: the count runs on the server copy');
+assert.strictEqual(cjs.hasPending({ added: [{ surface: 'item', key: 'k1' }] }, {}), true, 'premise: has_pending runs on the server copy');
 ok('the server requires it (CommonJS) and the portal runs it (the ReviewLines global), with the same API');
 console.log(`\nreview-lines-sync.guard: OK (${n})`);

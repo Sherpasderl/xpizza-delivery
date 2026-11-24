@@ -556,6 +556,7 @@
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
     "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/review-lines.test.mjs",
     "xpizza-portal/structure-s3.test.mjs",
     "xpizza-portal/structure-s4-review.test.mjs",
     "xpizza-portal/ventas-tab.test.mjs",
@@ -982,6 +983,7 @@
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
     "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/review-lines.test.mjs",
     "xpizza-portal/structure-s3.test.mjs",
     "xpizza-portal/structure-s4-review.test.mjs",
     "xpizza-portal/ventas-tab.test.mjs"
@@ -1528,6 +1530,7 @@
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
     "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/review-lines.test.mjs",
     "xpizza-portal/structure-s3.test.mjs",
     "xpizza-portal/structure-s4-review.test.mjs",
     "xpizza-portal/ventas-tab.test.mjs",
@@ -1963,6 +1966,7 @@
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
     "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/review-lines.test.mjs",
     "xpizza-portal/structure-s3.test.mjs",
     "xpizza-portal/structure-s4-review.test.mjs",
     "xpizza-portal/ventas-tab.test.mjs"
@@ -3049,6 +3053,7 @@
   "catalog/resolve-lines.js",
   "catalog/restaurant-registry.js",
   "catalog/review-diff.js",
+  "catalog/review-lines.js",
   "catalog/reward-icons.js",
   "catalog/reward-removed.js",
   "catalog/rollback-refs.js",
@@ -4147,6 +4152,10 @@
    "lifts": []
   },
   "catalog/review-diff.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/review-lines.js": {
    "pins": [],
    "lifts": []
   },

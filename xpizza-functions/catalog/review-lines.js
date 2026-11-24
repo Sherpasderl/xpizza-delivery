@@ -479,10 +479,14 @@ function reviewCtxFromSource(source, opts = {}) {
     extraGroup: (k) => extraGroups.get(k) || null, structure, productRemoval: opts.productRemoval === true };   // «Quitar del menú» (R4): the served switch
 }
 
-// THE count: the model's own total — the number of sentences the review draws (S3 stores exactly this; there is no second formula)
+// INTERNAL, NEVER SHOWN (OWNER 11-23, Codex #296): the model's total — the sum of the review groups' own numbers (one per price / structure
+// fact / changed product FIELD / added / removed / renamed line / photo; never a move's consequence sentences). No screen shows a total.
 const reviewCount = (diff, ctx) => reviewModel(diff, ctx).total;
+// WHAT S3 STORES (OWNER 11-23: Inicio shows no number — «Tenés cambios sin publicar» / «Todo en orden»): has_pending is true exactly when
+// «Revisar y publicar» does NOT draw its empty state (renderReview: total === 0 ⇒ «No hay cambios sin publicar.»)
+const hasPending = (diff, ctx) => reviewModel(diff, ctx).total > 0;
 
-const api = { reviewModel, reviewCount, reviewCtxFromSource, ackSetFrom, movedGroups, isPhotoLine, S3_COPY, s3Copy, S4_COPY, s4Copy, nProd };
+const api = { reviewModel, reviewCount, hasPending, reviewCtxFromSource, ackSetFrom, movedGroups, isPhotoLine, S3_COPY, s3Copy, S4_COPY, s4Copy, nProd };
 if (typeof module !== 'undefined' && module.exports) module.exports = api;
 else root.ReviewLines = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

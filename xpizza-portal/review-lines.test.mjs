@@ -1,10 +1,10 @@
-// THE REVIEW LINE MODEL's contract (PLAN-portal-review-lines-r0, advisor 11-23): 5f's S3 `pending_count` («Tenés N cambios sin publicar»
-// / «Todo en orden») stores reviewCount(diff, reviewCtxFromSource(source, …)) — so it MUST equal the sentences «Revisar y publicar» draws.
-// Every diff here is the REAL one: the portal's own editor ops, saved through 5f's save core at the pinned S4_REF (real-backend.mjs, the
-// structure-s4-review approach), with EXTRAS_CATALOG / CHOICE_EDIT / sections set through the server's own capability switch. The drawn
-// count is read from the DOM renderReview builds (jsdom), never from the model: each group's head number, one row per counted line in
-// every group but «Productos» (whose rows are the products, their head the sum of their sentences). The server's byte copy
-// (xpizza-functions/catalog/review-lines.js) is asked the same question and must answer the same number.
+// THE REVIEW LINE MODEL's contract (PLAN-portal-review-lines-r0; OWNER 11-23 after Codex #296: Inicio shows NO number — «Tenés cambios
+// sin publicar» + «Revisar y publicar», else «Todo en orden»). 5f's S3 stores has_pending = hasPending(diff, reviewCtxFromSource(source, …)),
+// so it MUST be true exactly when «Revisar y publicar» does NOT draw its empty state («No hay cambios sin publicar.»). The oracle is the
+// RENDERED screen (jsdom over the real renderReview), never the model's own numbers. Every diff here is the REAL one: the portal's own
+// editor ops, saved through 5f's save core at the pinned S4_REF (real-backend.mjs, the structure-s4-review approach), with EXTRAS_CATALOG /
+// CHOICE_EDIT / sections set through the server's own capability switch — plus an untouched draft and an edit undone before the save.
+// The server's byte copy (xpizza-functions/catalog/review-lines.js) is asked the same question and must give the same answer.
 // Run: node --test review-lines.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -39,32 +39,35 @@ async function saved(d, B) {
   globalThis.fetch = B.fetch;
   return editCatalog({ rid: 'la_musa', source: E.draftSource(d), baseSourceUpdateTime: B.read.sourceUpdateTime, token: async () => 't', loadedBase: B.read.deletionBase });
 }
-// what the screen DRAWS: each group's head, the rows under it
+// what the screen DRAWS: the empty state's sentence, else the groups (each with at least one line under it)
+const EMPTY = 'No hay cambios sin publicar.';
 function drawn(m) {
   const w = new JSDOM('<!doctype html><div id="r"></div>').window;
   const prev = globalThis.document; globalThis.document = w.document;
   try {
-    renderReview(w.document.getElementById('r'), m);
-    return [...w.document.querySelectorAll('.mgroup')].map((g) => ({ label: g.querySelector('.mglabel span:not(.mgn)').textContent, head: Number(g.querySelector('.mgn').textContent), rows: g.querySelectorAll(':scope > .prow').length }));
+    const r = w.document.getElementById('r');
+    renderReview(r, m);
+    const empty = r.querySelector('.empty');
+    return { empty: !!(empty && empty.textContent === EMPTY), text: r.textContent,
+      groups: [...r.querySelectorAll('.mgroup')].map((g) => ({ label: g.querySelector('.mglabel span:not(.mgn)').textContent, lines: g.querySelectorAll('.prow, .brow').length })) };
   } finally { globalThis.document = prev; }
 }
-// THE contract: the count S3 stores === the sentences the review draws — and the server's copy says the same number
-function assertContract(diff, res, B, what) {
+// THE contract: has_pending (client AND the server's copy) === the screen does NOT draw its empty state; never a pending flag over the
+// empty sentence, never «Todo en orden» over drawn lines
+function assertContract(diff, res, B, what, want) {
   const opts = ctxOpts(res.source, B.read.source);
   const m = reviewModel(diff, reviewCtxFromSource(res.source, opts));
-  const gs = drawn(m);
-  const sum = gs.reduce((n, g) => n + g.head, 0);
-  assert.ok(gs.length > 0 && gs.every((g) => g.rows > 0), `🔴 ${what}: the review draws the diff's lines — never the empty state over a diff that has them (${JSON.stringify(gs)})`);
-  assert.equal(m.total, sum, `🔴 ${what}: reviewCount (${m.total}) === the group heads the review draws (${JSON.stringify(gs)})`);
-  for (const g of gs) {
-    if (g.label === 'Productos') assert.equal(g.rows, m.products.length, `${what}: «Productos» draws one row per product`);
-    else assert.equal(g.rows, g.head, `🔴 ${what}: «${g.label}» draws exactly one row per counted line`);
-  }
-  assert.equal(SERVER.reviewCount(diff, SERVER.reviewCtxFromSource(res.source, opts)), sum, `🔴 ${what}: the server's copy counts the same sentences`);
-  return { m, gs };
+  const d = drawn(m);
+  assert.equal(d.empty, !want, `premise (${what}): the screen ${want ? 'draws lines' : 'draws its empty state'} (${JSON.stringify(d.groups)})`);
+  if (want) assert.ok(d.groups.length > 0 && d.groups.every((g) => g.lines > 0) && !d.text.includes(EMPTY), `${what}: every drawn group has its lines, never beside the empty sentence`);
+  else assert.deepEqual(d.groups, [], `${what}: the empty state alone`);
+  const RL = globalThis.ReviewLines;
+  assert.equal(RL.hasPending(diff, reviewCtxFromSource(res.source, opts)), !d.empty, `🔴 ${what}: has_pending === the review does NOT draw «${EMPTY}»`);
+  assert.equal(SERVER.hasPending(diff, SERVER.reviewCtxFromSource(res.source, opts)), !d.empty, `🔴 ${what}: the server's copy answers the same`);
+  return { m, d };
 }
 
-test('EXTRAS_CATALOG on — an extra added, one removed and one repriced on the Extras page: ONE «Estructura» row each, never also «Se agregan» / «Se eliminan» / «Precios»; the count is the drawn rows', async () => {
+test('EXTRAS_CATALOG on — an extra added, one removed and one repriced on the Extras page: ONE «Estructura» row each, never also «Se agregan» / «Se eliminan» / «Precios»; pending === lines drawn', async () => {
   SW.extrasCatalog = true;
   try {
     const B = await makeBackend(freq, 'la_musa');
@@ -85,13 +88,11 @@ test('EXTRAS_CATALOG on — an extra added, one removed and one repriced on the 
     assert.equal(m.added.filter((r) => r.surface === 'extra').length + m.removed.filter((r) => r.surface === 'extra').length, 0, '🔴 an Extras-page add / remove is not also «Se agregan» / «Se eliminan»');
     assert.equal(m.rows.filter((r) => r.surface === 'extra' && r.isPrice).length, 0, '🔴 a repriced extra is not also a «Precios» row');
     assert.equal(m.structure.filter((r) => r.src && x.includes(r.src)).length, 3, 'one «Estructura» row per extras line');
-    const raw = ['changed', 'added', 'removed'].reduce((n, k) => n + res.diff[k].length, 0) + x.length;
-    assert.ok(raw > m.total, `a raw sum (${raw}) over-counts the review (${m.total})`);
-    assertContract(res.diff, res, B, 'extras on');
+    assertContract(res.diff, res, B, 'extras on', true);
   } finally { SW.extrasCatalog = false; }
 });
 
-test('CHOICE_EDIT off — the choice ops are refused and the diff has no choices; an option price + its dish\'s name: the count is the drawn rows', async () => {
+test('CHOICE_EDIT off — the choice ops are refused and the diff has no choices; an option price: pending === lines drawn', async () => {
   const B = await makeBackend(freq, 'la_musa');
   const d = E.createDraft(clone(B.read.source));
   assert.equal(E.applyChoiceOps(d, [{ op: 'choice.label', launcher: 'noodle_01', label: 'Elegí la proteína' }], { choiceEdit: false }).code, 'choice_edit_off');
@@ -100,10 +101,10 @@ test('CHOICE_EDIT off — the choice ops are refused and the diff has no choices
   E.setItemPrice(d, opt.key, String(opt.price + 10));
   const res = await saved(d, B);
   assert.ok(!res.diff.choices || res.diff.choices.length === 0, 'premise: no choice rows with the switch off');
-  assertContract(res.diff, res, B, 'choice edit off');
+  assertContract(res.diff, res, B, 'choice edit off', true);
 });
 
-test('CHOICE_EDIT on — a choice\'s label and its «Recomendada» change: the server\'s choice rows are «Estructura» rows; the count is the drawn rows', async () => {
+test('CHOICE_EDIT on — a choice\'s label and its «Recomendada» change: the server\'s choice rows are «Estructura» rows; pending === lines drawn', async () => {
   SW.choiceEdit = true;
   try {
     const B = await makeBackend(freq, 'la_musa');
@@ -114,12 +115,12 @@ test('CHOICE_EDIT on — a choice\'s label and its «Recomendada» change: the s
     assert.equal(E.applyChoiceOps(d, [{ op: 'choice.label', launcher: 'noodle_01', label: 'Elegí la proteína' }, { op: 'choice.recommended', launcher: 'noodle_01', option: opts[1] }], { choiceEdit: true }).ok, true);
     const res = await saved(d, B);
     assert.ok(Array.isArray(res.diff.choices) && res.diff.choices.length > 0, 'premise: the server sent its choice rows');
-    const { m } = assertContract(res.diff, res, B, 'choice edit on');
+    const { m } = assertContract(res.diff, res, B, 'choice edit on', true);
     assert.ok(m.structure.length >= 1, 'the choice rows are «Estructura» rows');
   } finally { SW.choiceEdit = false; }
 });
 
-test('S4 sections — a new section with its dish, a subsection added and one renamed, the order: ONE row each; the count is the drawn rows', async () => {
+test('S4 sections — a new section with its dish, a subsection added and one renamed, the order: ONE row each; pending === lines drawn', async () => {
   const B = await makeBackend(freq, 'la_musa');
   const d = E.createDraft(clone(B.read.source));
   assert.equal(E.addCategory(d, 'Postres', {}, SECTIONS).ok, true);
@@ -132,6 +133,22 @@ test('S4 sections — a new section with its dish, a subsection added and one re
   assert.equal(E.reorderSections(d, ids, SECTIONS).ok, true);
   const res = await saved(d, B);
   assert.ok(res.diff.sections, 'premise: the server sent its S4 lines');
-  const { m } = assertContract(res.diff, res, B, 'S4 sections');
+  const { m } = assertContract(res.diff, res, B, 'S4 sections', true);
   assert.ok(m.structure.length >= 4, 'the section rows are «Estructura» rows');
+});
+
+test('nothing to publish — an untouched draft and an edit undone before the save: has_pending is false, exactly where the screen says «No hay cambios sin publicar.»', async () => {
+  for (const undo of [false, true]) {
+    const B = await makeBackend(freq, 'la_musa');
+    const d = E.createDraft(clone(B.read.source));
+    if (undo) {
+      const it = E.draftSource(d).items.find((i) => Number.isInteger(i.price) && i.price > 0);
+      const { key, price } = it;   // the values, not the live draft row
+      E.setItemPrice(d, key, String(price + 15));
+      assert.equal(E.draftSource(d).items.find((i) => i.key === key).price, price + 15, 'premise: the edit took');
+      E.setItemPrice(d, key, String(price));
+    }
+    const res = await saved(d, B);
+    assertContract(res.diff, res, B, undo ? 'an edit undone' : 'untouched', false);
+  }
 });

@@ -3,7 +3,7 @@
 // photo-logic.js's isPhotoLine delegated, app.js productReviewCtx through reviewCtxFromSource. Folded out FIRST by portalui-guards
 // (the newest layer of all, below every read), so RGUI, RGB, REND and every older pin judge exactly what they judged before.
 // Regenerated only from the change's diff (D4c-grill/review-portal/review-lines/gen_rl_fold.py); an edit outside these hunks, or inside one, fails.
-export const RL_BASE = 'e4fe30067';
+export const RL_BASE = 'eb177fe58';   // re-pinned onto asm13 (rl296b, advisor 11-24): the fold proven byte-for-byte to eb177fe58
 export const RL_FOLD = {
  "app.js": [
   [
