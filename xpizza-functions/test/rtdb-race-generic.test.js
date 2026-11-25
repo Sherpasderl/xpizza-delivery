@@ -72,6 +72,18 @@ const txn = Object.defineProperty((db) => db.ref('orders/o1').transaction((cur) 
       await c.close();
     }
   });
+  await cell('RG-ON: get pending + a persistent on(\'value\') later removed by off() (casCursor\'s shape) ⇒ clean after off, both orders', async (L) => {
+    for (const order of ['get-first', 'on-first']) {
+      const c = H.client('rgon'); const ref = c.db.ref('orders/o1'); const cb = () => {};
+      let g; if (order === 'get-first') { g = ref.get(); await H.flush(); ref.on('value', cb); } else { ref.on('value', cb); await H.flush(); g = ref.get(); }
+      await H.flush(); await c.serve(at); await g;
+      assert.deepStrictEqual(c.listens(), [['/orders/o1', 'default']], `${L}: ${order}: the on's own listen while it is on`);
+      ref.off('value', cb); await H.flush(); await c.serve(at);
+      const r = await interleave(c, onceAt('orders/o2'), onceAt('orders/o1'), [onceAt('orders/o1')]);
+      assert.deepStrictEqual(r, { residual: [], asserts: [] }, `${L}: ${order}: nothing left after off`);
+      await c.close();
+    }
+  });
   await cell('RG-ONCE: the once-only counterparts (same path, parent + child, filtered) leave EMPTY bookkeeping, 20/20', async (L) => {
     for (let i = 0; i < 20; i++) {
       for (const [x, y] of [[onceAt('orders/o1'), onceAt('orders/o1')], [onceAt('orders'), onceAt('orders/o1')], [onceAt('orders'), filt]]) {

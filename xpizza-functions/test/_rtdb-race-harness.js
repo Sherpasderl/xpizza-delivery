@@ -62,13 +62,14 @@ function client(label = 'c') {
     // the server answers in REQUEST order, ONE frame per event turn — the production frame order. (Delivering every reply in one
     // synchronous burst HIDES the race: the listen's data lands before get()'s promise continuation runs.) A get is answered with
     // `at(path)`; a listen first with a data push of `at(path)`, then its ok; anything else with ok. `only` limits the actions served.
-    serve: async (at, { only = ['g', 'q', 'n', 'p', 'm'], max = 64 } = {}) => {
+    serve: async (atOrStore, { only = ['g', 'q', 'n', 'p', 'm'], max = 64 } = {}) => {
+      const at = typeof atOrStore === 'function' ? atOrStore : atOrStore.at; const apply = typeof atOrStore === 'function' ? null : atOrStore.apply;
       for (let i = 0; i < max; i++) {
         const m = sent().find((x) => only.includes(x.a) && conn().requestCBHash_[x.r] && !x.__done);
         if (!m) return i;
         if (m.a === 'g') { m.__done = true; conn().onDataMessage_({ r: m.r, b: { s: 'ok', d: at(m.b.p) } }); }
         else if (m.a === 'q' && !m.__data) { m.__data = true; conn().onDataMessage_({ a: 'd', b: { p: m.b.p, d: at(m.b.p) } }); }
-        else { m.__done = true; conn().onDataMessage_({ r: m.r, b: { s: 'ok', d: {} } }); }
+        else { m.__done = true; if (apply && (m.a === 'p' || m.a === 'm')) apply(m); conn().onDataMessage_({ r: m.r, b: { s: 'ok', d: {} } }); }
         await flush();
       }
       throw new Error('rtdb-race-harness: serve() did not drain');
@@ -78,4 +79,16 @@ function client(label = 'c') {
   };
 }
 
-module.exports = { FILE, SHA256, INTERNALS, client, flush };
+// a stateful server tree for serve(): reads at a path; 'p' (set / a transaction's conditional put — the hash is not modelled: every put
+// lands, as the first attempt of an uncontended transaction does) and 'm' (merge) update it. store.at is serve()'s reader.
+function store(tree = {}) {
+  const root = { v: JSON.parse(JSON.stringify(tree)) };
+  const parts = (p) => String(p).split('/').filter(Boolean);
+  const at = (p) => { let o = root.v; for (const k of parts(p)) { if (o == null || typeof o !== 'object') return null; o = o[k]; } return o === undefined ? null : JSON.parse(JSON.stringify(o)); };
+  const put = (p, d) => { const ks = parts(p); if (!ks.length) { root.v = d; return; } let o = root.v && typeof root.v === 'object' ? root.v : (root.v = {}); for (const k of ks.slice(0, -1)) { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; } if (d == null) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = JSON.parse(JSON.stringify(d)); };
+  const writes = [];
+  const apply = (m) => { if (m.a === 'p') { put(m.b.p, m.b.d); writes.push({ a: 'p', p: m.b.p }); } else if (m.a === 'm') { for (const [k, v] of Object.entries(m.b.d || {})) put(`${m.b.p}/${k}`, v); writes.push({ a: 'm', p: m.b.p }); } };
+  return { at, put, apply, writes, tree: () => root.v };
+}
+
+module.exports = { FILE, SHA256, INTERNALS, client, flush, store };
