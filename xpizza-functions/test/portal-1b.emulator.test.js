@@ -22,7 +22,7 @@ const crypto = require('crypto');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
-require('./_emulator-required')('database', 'auth');   // BEFORE any Admin import — refuses a production target
+require('./_emulator-required')('firestore', 'database', 'auth');   // BEFORE any Admin import — refuses a production target
 if (!process.env.FIREBASE_AUTH_EMULATOR_HOST) { console.error('🔴 REFUSED — FIREBASE_AUTH_EMULATOR_HOST not set'); process.exit(2); }
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 const ORIGIN = 'https://sherpa-portal.netlify.app';
