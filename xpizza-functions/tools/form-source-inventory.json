@@ -485,6 +485,10 @@
     "xpizza-functions/test/reserved-keys-rename-flip.emulator.test.js",
     "xpizza-functions/test/resolve-lines.emulator.test.js",
     "xpizza-functions/test/review-attest.emulator.test.js",
+    "xpizza-functions/test/rtdb-double-tap.emulator.test.js",
+    "xpizza-functions/test/rtdb-gate.test.js",
+    "xpizza-functions/test/rtdb-race-generic.test.js",
+    "xpizza-functions/test/rtdb-race-sites.test.js",
     "xpizza-functions/test/s2-portal-claim.emulator.test.js",
     "xpizza-functions/test/s2b-intake.emulator.test.js",
     "xpizza-functions/test/s2core.emulator.test.js",
@@ -928,6 +932,10 @@
     "xpizza-functions/test/reserved-keys-rename-flip.emulator.test.js",
     "xpizza-functions/test/resolve-lines.emulator.test.js",
     "xpizza-functions/test/review-attest.emulator.test.js",
+    "xpizza-functions/test/rtdb-double-tap.emulator.test.js",
+    "xpizza-functions/test/rtdb-gate.test.js",
+    "xpizza-functions/test/rtdb-race-generic.test.js",
+    "xpizza-functions/test/rtdb-race-sites.test.js",
     "xpizza-functions/test/s2-portal-claim.emulator.test.js",
     "xpizza-functions/test/s2b-intake.emulator.test.js",
     "xpizza-functions/test/s2tip.emulator.test.js",
@@ -1464,6 +1472,10 @@
     "xpizza-functions/test/reserved-keys-rename-flip.emulator.test.js",
     "xpizza-functions/test/resolve-lines.emulator.test.js",
     "xpizza-functions/test/review-attest.emulator.test.js",
+    "xpizza-functions/test/rtdb-double-tap.emulator.test.js",
+    "xpizza-functions/test/rtdb-gate.test.js",
+    "xpizza-functions/test/rtdb-race-generic.test.js",
+    "xpizza-functions/test/rtdb-race-sites.test.js",
     "xpizza-functions/test/s2-portal-claim.emulator.test.js",
     "xpizza-functions/test/s2b-intake.emulator.test.js",
     "xpizza-functions/test/s2core.emulator.test.js",
@@ -1908,6 +1920,10 @@
     "xpizza-functions/test/reserved-keys-rename-flip.emulator.test.js",
     "xpizza-functions/test/resolve-lines.emulator.test.js",
     "xpizza-functions/test/review-attest.emulator.test.js",
+    "xpizza-functions/test/rtdb-double-tap.emulator.test.js",
+    "xpizza-functions/test/rtdb-gate.test.js",
+    "xpizza-functions/test/rtdb-race-generic.test.js",
+    "xpizza-functions/test/rtdb-race-sites.test.js",
     "xpizza-functions/test/s2-portal-claim.emulator.test.js",
     "xpizza-functions/test/s2b-intake.emulator.test.js",
     "xpizza-functions/test/s2core.emulator.test.js",
@@ -2515,6 +2531,7 @@
   "xpizza-functions/test/_c2b-fixture.js",
   "xpizza-functions/test/_kds-sdk-loader.mjs",
   "xpizza-functions/test/_marketing-price-seed.js",
+  "xpizza-functions/test/_rtdb-race-harness.js",
   "xpizza-functions/test/_s2core-harness.js",
   "xpizza-functions/test/_s2core-scale.js",
   "xpizza-functions/test/d4b-legacy-capture.js",
@@ -3111,6 +3128,7 @@
   "lib/driver-callable-guard.js",
   "lib/emulator-endpoint.js",
   "lib/hn-date.js",
+  "lib/rtdb-gate.js",
   "manual-resolve.js",
   "marketing/anuncio-core.js",
   "marketing/anuncio-model.js",
@@ -3131,6 +3149,7 @@
   "marketing/push-policy.js",
   "marketing/sponsored-serve.js",
   "marketing/switch-memo.js",
+  "materialize-guard.js",
   "materialize.js",
   "member-auth.js",
   "menu-pricing.js",
@@ -3277,6 +3296,7 @@
   "reorder-normalize.js",
   "resolve-manual.js",
   "retention-sweep.js",
+  "rewards-earn.js",
   "rewards-redeem-intake.js",
   "rewards-redeem-pricing.js",
   "rewards-reserve.js",
@@ -3306,6 +3326,7 @@
   "stats/stats-api.js",
   "stats/stats-build.js",
   "stats/stats-identity.js",
+  "superseded-capture.js",
   "support/support-tickets.js",
   "test-push-core.js",
   "tip-pref.js",
@@ -7873,6 +7894,10 @@
     "xpizza-functions/portal/ops-helpers.guard.test.js"
    ]
   },
+  "lib/rtdb-gate.js": {
+   "pins": [],
+   "lifts": []
+  },
   "manual-resolve.js": {
    "pins": [],
    "lifts": []
@@ -7968,6 +7993,19 @@
   "marketing/switch-memo.js": {
    "pins": [],
    "lifts": []
+  },
+  "materialize-guard.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/serial3-wiring.guard.test.js",
+     "inverses": [
+      "tools/serial3-inverse.js"
+     ]
+    }
+   ],
+   "lifts": [
+    "xpizza-functions/serial3-differential.test.js"
+   ]
   },
   "materialize.js": {
    "pins": [
@@ -8196,7 +8234,8 @@
   "payments/sdk/coordinator.js": {
    "pins": [],
    "lifts": [
-    "xpizza-functions/ledger-writes.guard.test.js"
+    "xpizza-functions/ledger-writes.guard.test.js",
+    "xpizza-functions/test/rtdb-race-sites.test.js"
    ]
   },
   "payments/sdk/decline-buckets.js": {
@@ -8878,6 +8917,10 @@
     "xpizza-functions/tasks-retention.test.js"
    ]
   },
+  "rewards-earn.js": {
+   "pins": [],
+   "lifts": []
+  },
   "rewards-redeem-intake.js": {
    "pins": [
     {
@@ -9115,6 +9158,12 @@
   "stats/stats-identity.js": {
    "pins": [],
    "lifts": []
+  },
+  "superseded-capture.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-dispatch/dispatch-h0-alerts.test.mjs"
+   ]
   },
   "support/support-tickets.js": {
    "pins": [],
@@ -9407,7 +9456,7 @@
    "sha": "f992c28a7c611272ca571f2bbc3af304c5a0a5a3",
    "blob": "272d3f65fcd3d2039d9233e6bb4962baa7fa4d1f",
    "consumer": "customer-app/capp-checkout.test.mjs",
-   "live_differs": false
+   "live_differs": true
   },
   {
    "site": "customer-app/fixtures/offer-quote/gen-offer-quote.mjs",
