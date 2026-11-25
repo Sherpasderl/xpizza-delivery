@@ -45,12 +45,16 @@ const INTERNALS = install();
 const flush = () => new Promise((res) => setTimeout(() => setImmediate(res), 0));
 let seq = 0;
 // one independent Admin app = its own Repo + PersistentConnection + cache (§3.2: baseline / candidate never share a connection)
+const PROJECT = 'demo-rtdb-race';
+const OPTIONS = { projectId: PROJECT, databaseURL: `https://${PROJECT}.firebaseio.com` };
 function client(label = 'c') {
   process.env.FIREBASE_DATABASE_EMULATOR_HOST = process.env.FIREBASE_DATABASE_EMULATOR_HOST || '127.0.0.1:9';   // owner auth, no credential fetch; never dialled
   const { initializeApp } = require('firebase-admin/app');
   const { getDatabase } = require('firebase-admin/database');
-  const app = initializeApp({ projectId: 'demo-rtdb-race', databaseURL: 'https://demo-rtdb-race.firebaseio.com' }, `rtdb-race-${label}-${++seq}`);
-  const db = getDatabase(app);
+  const app = initializeApp(OPTIONS, `rtdb-race-${label}-${++seq}`);
+  return wrap(app, getDatabase(app));
+}
+function wrap(app, db) {
   const conn = () => { const r = db._delegate && db._delegate._repo; const c = r && r.persistentConnection_; if (!c) throw new Error('rtdb-race-harness: no PersistentConnection yet (issue a read first)'); return c; };
   const sent = () => (conn().__wire ? conn().__wire.sent : []);
   return {
@@ -101,4 +105,48 @@ function store(tree = {}) {
   return { at, put, apply, writes, tree: () => root.v };
 }
 
-module.exports = { FILE, SHA256, INTERNALS, client, flush, store };
+// index.js on the harness: the DEFAULT app is this harness's (lib/admin.js — index.js's only initializeApp — is pre-cached as a no-op),
+// so every inline getDatabase() read in a REAL exported handler runs on the controlled wire. Auth runs in the Admin SDK's emulator mode
+// (unsigned test ID tokens, idToken(); verifyIdToken decodes them on this app only); nothing is ever dialled. Loaded once per process: cells use distinct keys.
+let INDEX = null;
+function indexApp() {
+  if (INDEX) return INDEX;
+  process.env.FIREBASE_DATABASE_EMULATOR_HOST = process.env.FIREBASE_DATABASE_EMULATOR_HOST || '127.0.0.1:9';
+  process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || PROJECT;
+  const { initializeApp } = require('firebase-admin/app');
+  const { getDatabase } = require('firebase-admin/database');
+  const app = initializeApp(OPTIONS);
+  const adminFile = require.resolve('../lib/admin.js');
+  if (require.cache[adminFile]) throw new Error('rtdb-race-harness: lib/admin.js already loaded (require the harness first)');
+  const m = new Module(adminFile, module); m.filename = adminFile; m.loaded = true; m.exports = {}; require.cache[adminFile] = m;
+  // identity: getAuth() is one Auth instance per app, so its verifyIdToken is replaced ON THIS APP ONLY by a decode of the test token
+  // (idToken() below). Only the transport to Google is skipped: the handlers' own claim checks (customer === true, uid) run unchanged,
+  // and an expired or foreign-audience token is refused exactly as the SDK refuses it.
+  const auth = require('firebase-admin/auth').getAuth(app);
+  auth.verifyIdToken = async (t) => {
+    const p = JSON.parse(Buffer.from(String(t).split('.')[1] || '', 'base64url').toString('utf8') || 'null');
+    if (!p || p.aud !== PROJECT || p.iss !== `https://securetoken.google.com/${PROJECT}` || !(p.exp > Date.now() / 1000) || !p.sub) throw Object.assign(new Error('invalid'), { code: 'auth/argument-error' });
+    return { ...p, uid: p.sub };
+  };
+  const idx = require('../index.js');
+  INDEX = { ...wrap(app, getDatabase(app)), idx };
+  return INDEX;
+}
+const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+function idToken(uid, claims = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  return `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ iss: `https://securetoken.google.com/${PROJECT}`, aud: PROJECT, sub: uid, user_id: uid, iat: now, auth_time: now, exp: now + 3600, ...claims })}.`;
+}
+// a REAL exported onRequest handler, called with a minimal req / res → { status, body }
+function call(handler, { method = 'POST', headers = {}, body = {} } = {}) {
+  const h = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
+  return new Promise((resolve, reject) => {
+    const res = { statusCode: 200, headers: {}, status(c) { this.statusCode = c; return this; }, set(k, v) { this.headers[k] = v; return this; }, setHeader(k, v) { this.headers[k] = v; },
+      getHeader(k) { return this.headers[k]; }, json(b) { resolve({ status: this.statusCode, body: b }); return this; }, send(b) { resolve({ status: this.statusCode, body: b }); return this; },
+      end(b) { resolve({ status: this.statusCode, body: b }); return this; }, on() { return this; } };
+    const req = { method, headers: h, body, get: (k) => h[String(k).toLowerCase()], header: (k) => h[String(k).toLowerCase()], ip: '10.0.0.1', url: '/', path: '/', query: {}, rawBody: Buffer.from(JSON.stringify(body)) };
+    Promise.resolve().then(() => handler(req, res)).catch(reject);
+  });
+}
+
+module.exports = { FILE, SHA256, INTERNALS, client, flush, store, indexApp, idToken, call };
