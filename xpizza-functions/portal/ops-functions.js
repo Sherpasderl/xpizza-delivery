@@ -33,7 +33,7 @@ const READ_OPTS = { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds:
 const WRITE_OPTS = { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 30, memory: '256MiB', maxInstances: 10 };
 
 exports.getMyBranches = onRequest(READ_OPTS, handler('getMyBranches', C.getMyBranchesCore,
-  () => ({ db: getDatabase(), verifyIdToken })));
+  () => ({ db: getDatabase(), verifyIdToken, fs: getFirestore() })));
 
 exports.updateBranch = onRequest(WRITE_OPTS, handler('updateBranch', C.updateBranchCore,
   () => ({ db: getDatabase(), verifyIdToken })));

@@ -199,6 +199,22 @@ function makeDb() {
   }
   return {
     collection: (c) => colRef(c),
+    /* Firestore.getAll(...refs, readOptions?) — the snapshots in argument order. readOptions.fieldMask (top-level field paths) is
+       a PROJECTION, as the server does it: exists / id / updateTime are the document's, data() holds only the masked fields
+       (fieldMask [] ⇒ {} for an existing document) — so a reader can learn a heavy document's updateTime without its body
+       (S3 has_pending freshness). A dotted (nested) path is not modelled and is refused rather than misread. */
+    getAll: async (...args) => {
+      const last = args[args.length - 1];
+      const opts = last && !last.path && typeof last === 'object' ? args.pop() : null;
+      const mask = opts && Array.isArray(opts.fieldMask) ? opts.fieldMask : null;
+      if (mask && mask.some((f) => typeof f !== 'string' || f.includes('.'))) throw new Error('firestore-fake: getAll fieldMask models top-level field paths only');
+      return args.map((ref) => {
+        const sn = snapOf(ref.path);
+        if (!mask || !sn.exists) return sn;
+        const d = sn.data(); const pick = {}; for (const f of mask) if (Object.prototype.hasOwnProperty.call(d, f)) pick[f] = d[f];
+        return { ...sn, data: () => pick, get: (f) => pick[f] };
+      });
+    },
     /* 🔴 A WriteBatch IS ATOMIC IN FIRESTORE, so it is atomic here (advisor 11-13; editCatalogCore commits the draft and the
        high-water mark in ONE batch, edit-catalog-handler.js:405). commit() applies every write SYNCHRONOUSLY — no await between
        them, so nothing else interleaves — and on the first refusal restores the documents exactly as they were before the
