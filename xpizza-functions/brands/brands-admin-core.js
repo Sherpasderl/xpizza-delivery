@@ -31,7 +31,10 @@ async function runBrandsAdmin({ rtdb, op, id, apply, nowMs, log }) {
     const { brands, findings } = await readBrandsRoot(rtdb);
     const { resolution, findings: unresolved } = checkResolution(brands, await S.readIdentities(rtdb));
     findings.push(...unresolved);
-    log(JSON.stringify({ resolution, legacy_self: Object.keys(resolution).filter((r) => resolution[r] === r), findings }, null, 2));
+    // legacy_self = resolves to ITSELF and that brand record is LEGACY (Codex #383 P2: a non-legacy brand named after its rid also
+    // resolves to itself through an explicit brand_id, and it is not a founder)
+    const isLegacy = (r) => { const b = brands[r]; return !!(b && b.activation && b.activation.state === 'legacy'); };
+    log(JSON.stringify({ resolution, legacy_self: Object.keys(resolution).filter((r) => resolution[r] === r && isLegacy(r)), findings }, null, 2));
     return findings.length ? 1 : 0;
   }
   if (op === 'seed-legacy' && id) {
