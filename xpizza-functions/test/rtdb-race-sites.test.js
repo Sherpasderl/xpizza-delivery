@@ -19,14 +19,15 @@ const quiet = async (fn) => { const l = console.log, w = console.warn, e = conso
 // `at`: the SITE's path — the competitor subscribes while the site's get on it is IN FLIGHT (the hazard order, RG-1-ORDER), however
 // many reads the helper makes before it
 // `on`: the shared index.js app (H.indexApp(): one default app per process — cells there use distinct keys and are not closed)
-async function race(tree, read, compete, at = null, on = null) {
+// nth: trigger on the helper's nth read of `at` (0-based) — rateOrderCore reads deleted_uids/{uid} first in its member check, then at :66
+async function race(tree, read, compete, at = null, on = null, { nth = 0 } = {}) {
   const S = tree && typeof tree.at === 'function' ? tree : H.store(tree); const c = on || H.client('site');   // a STORE carries a cell's earlier real writes
   const swallow = (p) => Promise.resolve(p).catch(() => {});
   const from = c.sent().length;
   const r = read(c.db); swallow(r); await H.flush();
   // the site's read in flight: a get ('g', the base) or a listen ('q', once / onceWithin) on its path — only the site has issued it yet
-  const inFlight = (m) => (m.a === 'g' || m.a === 'q') && m.b && m.b.p === at && c.conn().requestCBHash_[m.r];
-  if (at) { await c.serve(S, { until: (sent) => sent.slice(from).some(inFlight) }); assert.ok(c.sent().slice(from).some((m) => (m.a === 'g' || m.a === 'q') && m.b && m.b.p === at), `premise: the helper issued its read on ${at}`); }
+  const reads = (sent) => sent.slice(from).filter((m) => (m.a === 'g' || m.a === 'q') && m.b && m.b.p === at);
+  if (at) { await c.serve(S, { until: (sent) => { const r = reads(sent)[nth]; return !!(r && c.conn().requestCBHash_[r.r]); } }); assert.ok(c.sent().slice(from).some((m) => (m.a === 'g' || m.a === 'q') && m.b && m.b.p === at), `premise: the helper issued its read on ${at}`); }
   swallow(compete(c.db)); await H.flush();
   await c.serve(S);
   const value = await r;
@@ -229,7 +230,7 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
     const tree = { orders: { o11: { customer_uid: 'u11', status: 'delivered', restaurant_id: 'x_pizza', delivered_at: 1 } } };
     const verify = async () => ({ uid: 'u11', customer: true });
     const r = await race(tree, (db) => require('../ratings/rate-order').rateOrderCore(db, { body: { order_id: 'o11', thumb: 'up' }, idToken: 't', now: 2, verifyIdToken: verify }),
-      (db) => require('../member-auth').memberUidOf(db, 't', verify), '/deleted_uids/u11');
+      (db) => require('../member-auth').memberUidOf(db, 't', verify), '/deleted_uids/u11', null, { nth: 1 });
     assert.ok(r.value && r.value.httpStatus === 200, `${L}: the rating was recorded (${JSON.stringify(r.value)})`);
     clean(L, r, '/deleted_uids/u11');
   });
