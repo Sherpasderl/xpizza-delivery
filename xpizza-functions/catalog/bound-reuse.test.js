@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('../test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // 1D add-product B (codex PB-1 r1 P1-3) — the BOUND-REUSE probe, over the REAL classifier (pixelpay-hosted-charge
 // classifyHostedAttempt) and a fake RTDB that TRAPS every write. Run: node catalog/bound-reuse.test.js
 //   every condition holds → the reuse acq (same shape acquireHostedAttempt returns); breaking ANY single condition → null
@@ -14,7 +15,7 @@ function fakeDb(data, { failPath = null, second = {} } = {}) {
   const trap = (op, path) => () => { writes.push(`${op} ${path}`); throw new Error(`write trapped: ${op} ${path}`); };
   return {
     writes,
-    ref: (path) => ({
+    ref: (path) => (withPath({
       once: async () => {
         if (failPath && path === failPath) throw new Error('UNAVAILABLE');
         seen[path] = (seen[path] || 0) + 1;
@@ -22,7 +23,7 @@ function fakeDb(data, { failPath = null, second = {} } = {}) {
         return { val: () => (Object.prototype.hasOwnProperty.call(src, path) && src[path] != null ? JSON.parse(JSON.stringify(src[path])) : null) };
       },
       set: trap('set', path), update: trap('update', path), transaction: trap('transaction', path), remove: trap('remove', path), push: trap('push', path),
-    }),
+    }, path)),
   };
 }
 const NOW = 1_800_000_000_000;

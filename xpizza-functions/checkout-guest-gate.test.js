@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // PLAN-guest-checkout-server r4 §1.4 + §2 — S2: the capp-guest gate, the one-source cart signature, and the manifest premise.
 // Pure + an in-memory RTDB (the S1 test's transaction-faithful fake + once()); the TICKET comes from the REAL writer (S1's
 // verifyCheckoutCode), the cart signature from the capp's REAL capp-checkout.js (pinned fixture), and the manifest premise from
@@ -29,12 +30,12 @@ function fakeDb() {
   const get = (p) => p.split('/').filter(Boolean).reduce((o, k) => (o == null ? undefined : o[k]), tree);
   const set = (p, v) => { const ks = p.split('/').filter(Boolean); let o = tree; for (const k of ks.slice(0, -1)) { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; } if (v === null || v === undefined) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = clone(v); };
   const snap = (v) => ({ exists: () => v != null, val: () => (v == null ? null : clone(v)) });
-  return { tree, calls, get, set, ref: (p) => { calls.push(p); return {
+  return { tree, calls, get, set, ref: (p) => { calls.push(p); return withPath({
     get: async () => snap(get(p)), once: async () => snap(get(p)),
     set: async (v) => set(p, v),
     update: async (m) => { for (const [k, v] of Object.entries(m)) set(`${p}/${k}`, v); },
     transaction: async (fn) => { const next = fn(clone(get(p)) ?? null); if (next === undefined) return { committed: false, snapshot: snap(get(p)) }; set(p, next); return { committed: true, snapshot: snap(get(p)) }; },
-  }; } };
+  }, p); } };
 }
 // a db that FAILS on any access — proves "zero reads, zero writes" for the non-guest path
 const noTouchDb = { ref: (p) => { throw new Error(`🔴 the gate touched the database (${p}) for a non-guest`); } };
@@ -315,7 +316,7 @@ const wire = (b) => JSON.parse(JSON.stringify(b));   // as the wire delivers it
   {
     const { attributionUid } = require('./create-order-build');
     const tomb = new Set(['u_gone']);
-    const mk = (verify) => ({ getAuth: () => ({ verifyIdToken: verify }), getDatabase: () => ({ ref: (p) => ({ get: async () => ({ exists: () => tomb.has(p.split('/')[1]) }) }) }), attributionUid });
+    const mk = (verify) => ({ getAuth: () => ({ verifyIdToken: verify }), getDatabase: () => ({ ref: (p) => (withPath({ get: async () => ({ exists: () => tomb.has(p.split('/')[1]) }) }, p)) }), attributionUid });
     const req = (tok) => ({ get: (h) => (h === 'x-firebase-id-token' ? tok : undefined) });
     assert.strictEqual(await GATE.chargeUidOf(req(undefined), mk(async () => { throw new Error('never'); })), null, 'no token ⇒ guest');
     assert.strictEqual(await GATE.chargeUidOf(req('t'), mk(async () => ({ uid: 'u_a', customer: true }))), attributionUid({ uid: 'u_a', customer: true }, false), 'a verified customer ⇒ the handler\'s attribution');

@@ -5,6 +5,7 @@
 //   • ref(path).update(patch) is a multi-path update relative to path; orderByChild(c).equalTo(x).once() filters children.
 // Seams: hooks[path] = async fn run before a transaction on that path (one-shot, interleavings); failAfter[path] = true | k
 // throws AFTER the next / k-th successful write on that path (crashes). `writes` logs every committed write as [kind, path, value].
+const { withPath } = require('./_ref-path');
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
 
 function fakeRtdb(init = {}, { strict = false } = {}) {
@@ -31,7 +32,7 @@ function fakeRtdb(init = {}, { strict = false } = {}) {
     if (v === undefined) throw new Error(`transaction failed: Data returned contains undefined in property '${where.replace(/\//g, '.')}'`);
     if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) noUndefined(x, `${where}/${k}`);
   };
-  const ref = (p = '') => ({
+  const ref = (p = '') => withPath({   // + the SDK's path API (toString / root / key), test/_ref-path.js
     async once() { return snap(get(p)); },
     async set(v) { noUndefined(v, p); set(p, v); writes.push(['set', p, clone(v)]); if (crash(p)) throw new Error(`crash after ${p}`); },
     async remove() { set(p, null); writes.push(['set', p, null]); },
@@ -54,7 +55,7 @@ function fakeRtdb(init = {}, { strict = false } = {}) {
       if (crash(p)) throw new Error(`crash after ${p}`);
       return { committed: true, snapshot: snap(get(p)) };
     },
-  });
+  }, p);
   return { ref, root, get, hooks, failAfter, writes };
 }
 

@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./test/_ref-path');
 // TEST-ONLY in-memory RTDB model that is NEVER LAXER than production (rule 29; codex extra-pay r2):
 //   · keys are validated RECURSIVELY on every write (no empty key, no . # $ [ ] /), and an undefined value anywhere is
 //     refused, as RTDB rejects both;
@@ -197,7 +198,7 @@ function makeHonestDb(initial = {}, hooks = {}) {
         return { ...lim(undefined), endAt(e) { return lim(e); } };
       },
     };
-    return r;
+    return withPath(r, p);   // + the SDK's path API (toString / root / key), test/_ref-path.js
   };
   Object.assign(api, { ref, getAt, setAt, queries });
   // a LIVE getter: Object.assign would copy a getter's value once, at creation, and every later db.root would be stale

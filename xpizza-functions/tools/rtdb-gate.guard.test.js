@@ -5,10 +5,13 @@
 //   GATED-GET / GATED-LISTEN  — must go through lib/rtdb-gate (gatedGet / afterGets)
 //   SAFE / RETAIN-GET / ANCESTOR — reviewed: no gated get on its path or an ancestor in any deployed function that reaches it, or an
 //                                ancestor listener / a get no listener overlaps (r9/listener-classification.md, the r3 audit)
-// plus, per ruled function, its CALLER FINGERPRINT: the sorted direct callers (file | function) resolved through same-file calls and
-// require / destructured / inline-require imports. RED when: a scanned op is not in the manifest (new / moved / renamed), a row is
-// stale, a GATED row is not gated, an op is UNRESOLVED, counts differ, or any ruled function's callers changed (a new caller of
-// liveCheckoutProbe, an import-renamed caller, a caller in another module ⇒ re-review). `--write` regenerates after a REVIEW.
+// plus, per ruled function, its CALLER FINGERPRINT (r9 §3, Codex #404 P2): every call PATH from a deployed entry (a function nothing
+// calls: an export / a route / a trigger) down to it, «entry > … > fn», through same-file calls and require / destructured /
+// inline-require imports (and M.fn.call / .apply). RED when: a scanned op is not in the manifest (new / moved / renamed), a row is
+// stale, a GATED row is not gated, an op is UNRESOLVED, counts differ, any ruled function's call paths changed (a new caller of
+// liveCheckoutProbe, an import-renamed caller, a caller in another module, a TRANSITIVE caller such as memberUidOf() added to
+// verifyOtp ⇒ re-review), or a call edge on such a path cannot be resolved (M[k](), require(expr)) without a hand ruling in
+// UNRESOLVED_EDGE_RULINGS. `--write` regenerates after a REVIEW.
 //   node tools/rtdb-gate.guard.test.js [--write]
 const assert = require('assert');
 const fs = require('fs');
@@ -26,9 +29,10 @@ const under = (q, p) => { const Q = seg(q), P = seg(p); if (Q.length < P.length)
 const inScope = (p) => p != null && FAMILIES.some((f) => under(p, f) || under(f, p));
 const keyOf = (r) => `${r.file}|${r.fn}|${r.op}|${r.path}`;
 
-// ── the caller fingerprint (direct callers, conservative) ────────────────────────────────────────────────────────────────────
+// ── the caller graph (direct edges; fingerprints walk it to the entries) ────────────────────────────────────────────────────────────────────
 function callGraph(files) {
   const callers = new Map();   // 'file|fn' → Set('file|caller')
+  const unresolved = new Map();   // 'file|caller' → Set('<what> @file:line') — a call edge that cannot be resolved statically
   const resolveMod = (from, spec) => { if (!/^\.\.?\//.test(spec)) return null; let f = path.relative(ROOT, path.resolve(path.dirname(path.join(ROOT, from)), spec)); if (!f.endsWith('.js')) f += '.js'; return f; };
   const fnName = (ps) => { for (let i = ps.length - 1; i >= 0; i--) { const p = ps[i]; if (p.type === 'FunctionDeclaration' && p.id) return p.id.name;
     if (['FunctionExpression', 'ArrowFunctionExpression'].includes(p.type)) { const up = ps[i - 1]; if (up && up.type === 'VariableDeclarator' && up.id.type === 'Identifier') return up.id.name; if (up && up.type === 'Property' && up.key) return up.key.name || up.key.value;
@@ -43,26 +47,54 @@ function callGraph(files) {
     (function walk(n) { if (!n || typeof n.type !== 'string') return;
       if (n.type === 'VariableDeclarator' && n.init) { const m = reqOf(n.init); if (m) { if (n.id.type === 'Identifier') mods.set(n.id.name, m); else if (n.id.type === 'ObjectPattern') for (const pr of n.id.properties) if (pr.type === 'Property' && pr.value.type === 'Identifier') named.set(pr.value.name, [m, pr.key.name || pr.key.value]); } }
       for (const k of Object.keys(n)) { if (k === 'loc') continue; const v = n[k]; if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v.type === 'string') walk(v); } })(ast);
+    const odd = (caller, what, n) => { if (!unresolved.has(caller)) unresolved.set(caller, new Set()); unresolved.get(caller).add(`${what} @${file}:${n.loc.start.line}`); };
     const add = (target, caller) => { if (!callers.has(target)) callers.set(target, new Set()); callers.get(target).add(caller); };
     (function walk(n, ps) { if (!n || typeof n.type !== 'string') return;
       if (n.type === 'CallExpression') {
         const c = n.callee; const me = `${file}|${fnName(ps)}`;
         if (c.type === 'Identifier') { if (named.has(c.name)) { const [m, e] = named.get(c.name); add(`${m}|${e}`, me); } else add(`${file}|${c.name}`, me); }
-        else if (c.type === 'MemberExpression' && !c.computed) { const o = c.object; const m = o.type === 'Identifier' ? mods.get(o.name) : reqOf(o); if (m) add(`${m}|${c.property.name}`, me); }
+        else if (c.type === 'MemberExpression' && !c.computed) { const o = c.object; const m = o.type === 'Identifier' ? mods.get(o.name) : reqOf(o); if (m) add(`${m}|${c.property.name}`, me);
+          // M.fn.call(…) / M.fn.apply(…) / M.fn.bind(…)(…) is a call of M.fn
+          else if (['call', 'apply', 'bind'].includes(c.property.name) && o.type === 'MemberExpression' && !o.computed && o.object.type === 'Identifier' && mods.has(o.object.name)) add(`${mods.get(o.object.name)}|${o.property.name}`, me);
+          else if (o.type === 'MemberExpression' && o.computed && o.object.type === 'Identifier' && mods.has(o.object.name)) odd(me, `${o.object.name}[…].${c.property.name}()`, n); }
+        else if (c.type === 'MemberExpression' && c.computed && !(c.property.type === 'Literal')) { const o = c.object; odd(me, `${o.type === 'Identifier' ? o.name : o.type === 'MemberExpression' && !o.computed ? `…${o.property.name}` : reqOf(o) ? 'require(…)' : '(expr)'}[…]()`, n); }
+        if (c.type === 'Identifier' && c.name === 'require' && n.arguments[0] && !(n.arguments[0].type === 'Literal' && typeof n.arguments[0].value === 'string')) odd(me, 'require(<computed>)', n);
       }
       for (const k of Object.keys(n)) { if (k === 'loc') continue; const v = n[k]; if (Array.isArray(v)) v.forEach((x) => walk(x, ps.concat(n))); else if (v && typeof v.type === 'string') walk(v, ps.concat(n)); } })(ast, []);
   }
-  return callers;
+  return { callers, unresolved };
 }
+
+// every call path from an entry (a node with no callers) down to f, as «entry > … > f» (cycle-safe: a node never repeats on a path)
+function callPaths(callers, f) {
+  const out = new Set();
+  (function up(node, chain) {
+    const cs = [...(callers.get(node) || [])].filter((c) => !chain.includes(c));
+    if (!cs.length) { out.add([...chain].reverse().join(' > ')); return; }
+    for (const c of cs) up(c, chain.concat(c));
+  })(f, [f]);
+  return [...out].sort();
+}
+// the hand-ruled unresolved edges ('file|caller' → the reviewed set of '<what> @file:line') (Codex #404 P2). Each is a REVIEW: a new
+// or moved computed call on a fingerprint path is red until it is ruled here.
+const UNRESOLVED_EDGE_RULINGS = {
+  // handlerOf(name) = makeHandlers(deps)[name](…): the deployed SDK exports (placeSdkStatus, listCards, …) each pass their OWN
+  // literal name into the ONE handler table, whose handlers are attributed to the node endpoints.js|makeHandlers (handlerOf → makeHandlers
+  // is a resolved edge); a new table entry that calls a ruled function adds a makeHandlers edge ⇒ RG-FINGERPRINT red
+  'payments/sdk/functions.js|handlerOf': ['(expr)[…]() @payments/sdk/functions.js:32'],
+};
 
 function current() {
   const files = S.productionFiles(ROOT);
   const rows = S.scan(files, ROOT).filter((r) => ['get', 'once', 'on'].includes(r.op) && (inScope(r.path) || /UNRESOLVED/.test(r.how)));
   const ops = {}; for (const r of rows) { const k = keyOf(r); ops[k] = ops[k] || { count: 0, gated: 0, unresolved: /UNRESOLVED/.test(r.how) }; ops[k].count += 1; if (r.gated) ops[k].gated += 1; }
-  const graph = callGraph(files);
+  const { callers, unresolved } = callGraph(files);
   const fns = [...new Set(rows.map((r) => `${r.file}|${r.fn}`))].sort();
-  const fingerprints = Object.fromEntries(fns.map((f) => [f, [...(graph.get(f) || [])].sort()]));
-  return { ops, fingerprints };
+  const fingerprints = Object.fromEntries(fns.map((f) => [f, callPaths(callers, f)]));
+  // an unresolvable edge in any function ON a fingerprint path (or in a ruled function itself) is red unless hand-ruled
+  const onPath = new Set(); for (const ps of Object.values(fingerprints)) for (const p of ps) for (const x of p.split(' > ')) onPath.add(x);
+  const odd = {}; for (const x of [...onPath].sort()) if (unresolved.has(x)) { const ruled = new Set(UNRESOLVED_EDGE_RULINGS[x] || []); const left = [...unresolved.get(x)].filter((w) => !ruled.has(w)).sort(); if (left.length) odd[x] = left; }
+  return { ops, fingerprints, odd };
 }
 
 function disposition(k, o, prev) {
@@ -76,6 +108,7 @@ function disposition(k, o, prev) {
 if (process.argv.includes('--write')) {
   const prev = fs.existsSync(MANIFEST) ? JSON.parse(fs.readFileSync(MANIFEST, 'utf8')) : null;
   const cur = current(); const ops = {};
+  if (Object.keys(cur.odd).length) throw new Error(`UNRESOLVED call edges on fingerprint paths: ${JSON.stringify(cur.odd)} — hand-rule them in UNRESOLVED_EDGE_RULINGS first`);
   for (const [k, o] of Object.entries(cur.ops)) { if (o.unresolved) throw new Error(`UNRESOLVED op ${k}: add a hand ruling in rtdb-ref-scan.js first`); ops[k] = { count: o.count, disposition: disposition(k, o, prev) }; }
   fs.writeFileSync(MANIFEST, `${JSON.stringify({ _doc: 'GENERATED by tools/rtdb-gate.guard.test.js --write after a REVIEW (PLAN-rtdb-get-once-race r9). Dispositions are reviewed; a new / moved op or a changed fingerprint is red until re-reviewed.', ops, fingerprints: cur.fingerprints }, null, 1)}\n`);
   console.log(`wrote ${path.relative(ROOT, MANIFEST)}: ${Object.keys(ops).length} ops, ${Object.keys(cur.fingerprints).length} fingerprints`);
@@ -99,7 +132,10 @@ cell('RG-GATED-SITES: every GATED row goes through the gate (gatedGet / afterGet
   const bad = Object.entries(M.ops).filter(([k, m]) => /^GATED/.test(m.disposition) && cur.ops[k] && cur.ops[k].gated !== cur.ops[k].count).map(([k]) => k);
   assert.deepStrictEqual(bad, [], `🔴 ${L}`);
 });
-cell('RG-FINGERPRINT: every ruled function\'s direct callers are the reviewed ones (a new / renamed / moved caller re-opens the review)', (L) => {
+cell('RG-FINGERPRINT-RESOLVED: every call edge on a fingerprint path resolves (M[k](), require(expr) need a hand ruling)', (L) => {
+  assert.deepStrictEqual(cur.odd, {}, `🔴 ${L}: ${JSON.stringify(cur.odd)}`);
+});
+cell('RG-FINGERPRINT: every ruled function\'s deployed-entry call paths are the reviewed ones (a new / renamed / moved / transitive caller re-opens the review)', (L) => {
   const bad = [];
   for (const [f, callers] of Object.entries(M.fingerprints)) { const now = cur.fingerprints[f] || []; if (JSON.stringify(now) !== JSON.stringify(callers)) bad.push(`${f}: +[${now.filter((c) => !callers.includes(c)).join(', ')}] -[${callers.filter((c) => !now.includes(c)).join(', ')}]`); }
   for (const f of Object.keys(cur.fingerprints)) if (!(f in M.fingerprints)) bad.push(`${f}: not fingerprinted`);

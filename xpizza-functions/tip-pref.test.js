@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // PLAN-capp-tip-step r6 §1 — the member's last tip (a UX hint, not money): the pure decision + the newer-only updater +
 // the best-effort recorder over a strict RTDB double (read-back of the resolved created_at; a transaction that keeps the
 // newer `at`). The endpoint wiring is proven in the emulator (test/s2tip.emulator.test.js §8).
@@ -48,12 +49,12 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
       const data = JSON.parse(JSON.stringify(init)); const log = [];
       const get = (p) => p.split('/').reduce((o, k) => (o == null ? undefined : o[k]), data);
       const set = (p, v) => { const ks = p.split('/'); let o = data; for (const k of ks.slice(0, -1)) o = o[k] = o[k] || {}; o[ks[ks.length - 1]] = v; };
-      return { data, log, ref: (p) => ({
+      return { data, log, ref: (p) => (withPath({
         once: async (ev) => { assert.strictEqual(ev, 'value'); log.push(['read', p]); if (failRead) throw new Error('read failed'); const v = get(p); return { val: () => (v === undefined ? null : v) }; },
         transaction: async (fn) => { log.push(['tx', p]); if (failTx) throw new Error('tx failed'); const cur = get(p); const out = fn(cur === undefined ? null : cur); if (out === undefined) return { committed: false }; set(p, out); return { committed: true }; },
         set: async () => { throw new Error('recordLastTip must not use set (a transaction keeps the newer value)'); },
         update: async () => { throw new Error('recordLastTip must not use update'); },
-      }) };
+      }, p)) };
     }
     const req = { uid: 'u_ana', body: { tip_choice: true, tip_cents: 4000 }, orderType: 'delivery', orderId: 'XP-1' };
 
@@ -97,7 +98,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
       const set = (p, v) => { const ks = parts(p); let o = tree; for (const k of ks.slice(0, -1)) { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; } if (v == null) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = JSON.parse(JSON.stringify(v)); };
       const snap = (v) => ({ exists: () => v != null, val: () => (v == null ? null : JSON.parse(JSON.stringify(v))), forEach: () => false });
       const q = { equalTo: () => q, limitToFirst: () => q, limitToLast: () => q, startAt: () => q, endAt: () => q, once: async () => snap(null) };
-      const ref = (p = '') => ({
+      const ref = (p = '') => (withPath({
         once: async () => snap(get(p)), get: async () => snap(get(p)), set: async (v) => set(p, v), remove: async () => set(p, null),
         update: async (m) => { for (const [k, v] of Object.entries(m)) set(p ? `${p}/${k}` : k, v); }, orderByChild: () => q,
         transaction: async (fn) => {
@@ -112,7 +113,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
           }
           throw new Error('too many retries');
         },
-      });
+      }, p));
       return { tree, get, ref, T };
     }
     const req = { uid: 'u_ana', body: { tip_choice: true, tip_cents: 4000 }, orderType: 'delivery', orderId: 'XP-1' };

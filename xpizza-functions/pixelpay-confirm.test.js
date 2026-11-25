@@ -1,3 +1,4 @@
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 /**
  * Unit tests for the online-payment CONFIRM state machine (Stage 4, sub-stage 2).
  *
@@ -39,7 +40,7 @@ function makeDb(initial = {}) {
     if (val === null) delete node[last]; else node[last] = val;
   };
   let _pk = 0;
-  const ref = (path = '') => ({
+  const ref = (path = '') => (withPath({
     async once() { const v = getAt(path); return { val: () => clone(v) }; },
     async transaction(fn) {
       // Model the Admin SDK: first call gets `null` (uncached); returning undefined there
@@ -62,7 +63,7 @@ function makeDb(initial = {}) {
     async set(val) { setAt(path, clone(val)); },
     async push(val) { const k = `k${++_pk}`; setAt(path ? `${path}/${k}` : k, clone(val)); return { key: k }; },
     async remove() { setAt(path, null); }
-  });
+  }, path));
   return { root, ref, getAt };
 }
 
