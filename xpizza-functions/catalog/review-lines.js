@@ -1,10 +1,10 @@
 'use strict';
-// THE REVIEW LINE MODEL — ONE source for «Revisar y publicar» and the server's «cambios sin publicar» count (PLAN-portal-review-lines-r0,
+// THE REVIEW LINE MODEL — ONE source for «Revisar y publicar» and the server's «cambios sin publicar» answer (PLAN-portal-review-lines-r0,
 // advisor 11-23: cut on the S3S4 tip, so the choice (S3) and section (S4) rows are in it). The portal's review screen (review.js renders
-// it) and 5f's S3 `pending_count` read the SAME model, so the number the home shows is exactly the number of sentences the review draws:
-// every server line once — an extra added / removed / repriced on the Extras page is its «Estructura» row only, an option's line
-// identical to its product's is absorbed, a checklist cleanup folds into its structural row, a removed dish is its «Productos» row, a
-// choice / section change is its own «Estructura» row. A raw sum of the diff's arrays over-counts.
+// it) and 5f's S3 `has_pending` (hasPending below; owner 11-23: Inicio shows NO number) read the SAME model: the home says «Tenés cambios
+// sin publicar» exactly when the review draws a sentence. The total counts every server line once — an Extras-page add / remove / reprice
+// is its «Estructura» row only, an option's line identical to its product's is absorbed, a checklist cleanup folds into its structural row,
+// a removed dish is its «Productos» row, a choice / section change is its own «Estructura» row. A raw sum of the diff's arrays over-counts.
 // The code below was MOVED byte-verbatim from review.js, app.js productReviewCtx, item-edit-logic.js (S3_COPY) and render.js (S4_COPY,
 // nProd); read their history there. UMD-lite: CommonJS where `module` exists (xpizza-functions/catalog/review-lines.js, the byte copy
 // tools/sync-client.js writes), else the global ReviewLines (the portal imports it for that side effect). No DOM, no I/O, no imports.
