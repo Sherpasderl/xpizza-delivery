@@ -27,7 +27,7 @@ export function dateLine(nowMs) {
   const t = local(nowMs);
   return `Resumen de hoy · ${WEEKDAYS[t.getUTCDay()]} ${t.getUTCDate()} de ${MONTHS[t.getUTCMonth()]}`;
 }
-export const when = (ms) => (Number.isFinite(ms) ? `desde las ${clock12(ms)}` : '');
+export const when = (ms) => (Number.isFinite(ms) ? `desde\u00a0las\u00a0${clock12(ms)}` : '');   // one phrase: it drops whole, never «desde» / «las …» (16b)
 export const pendLabel = (n) => `${n} ${n === 1 ? 'pendiente' : 'pendientes'}`;
 
 // the ONE read: today against the same weekday last week (stats-api compare 'previous_week' = a 7-day shift)

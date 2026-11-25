@@ -44,6 +44,7 @@ const dnum = (d) => +d.slice(8, 10);
 const mix = (d) => +d.slice(5, 7) - 1;
 const yr = (d) => +d.slice(0, 4);
 const dm = (d) => `${dnum(d)} ${MON[mix(d)]}`;
+const dmStamp = (d) => `${dnum(d)}\u00a0${MON[mix(d)]}`;   // a stamp's «4 sep», one non-breaking unit (16b, advisor 11-25)
 const dowSun = (d) => new Date(Date.UTC(yr(d), mix(d), dnum(d))).getUTCDay();   // 0 = domingo
 const monFirst = (d) => (dowSun(d) + 6) % 7;                                     // the server's heatmap rows: Lun … Dom
 const pedidos = (n) => `${count(n)} ${n === 1 ? 'pedido' : 'pedidos'}`;
@@ -121,7 +122,7 @@ export function freshWords(body, { fetchedAt, nowMs }) {
   const stamps = days.map((d) => d && Date.parse(d.computed_at)).filter(Number.isFinite);
   if (!stamps.length) return null;
   const t = Math.max(...stamps), day = todayHN(t), today = todayHN(nowMs);
-  const when = day === today ? 'hoy' : day === addDays(today, -1) ? 'ayer' : `el ${dm(day)}`;
+  const when = day === today ? 'hoy' : day === addDays(today, -1) ? 'ayer' : `el ${dmStamp(day)}`;
   return `Calculado ${when}, ${clock12(t)}`;
 }
 // the range in words: «jueves 12 de noviembre» · «6 – 12 nov 2026» · «30 oct – 12 nov 2026» · «24 dic 2025 – 3 ene 2026»
@@ -186,7 +187,7 @@ export function updatedWords(body, nowMs) {
   const stamps = days.map((x) => x && Date.parse(x.computed_at)).filter(Number.isFinite);
   if (!stamps.length) return null;
   const t = Math.max(...stamps), day = todayHN(t), today = todayHN(nowMs);
-  return `${day === today ? 'hoy' : day === addDays(today, -1) ? 'ayer' : dm(day)}, ${clock12(t)}`;
+  return `${day === today ? 'hoy' : day === addDays(today, -1) ? 'ayer' : dmStamp(day)}, ${clock12(t)}`;
 }
 const FOOT = 'Una venta se cuenta cuando el pedido se registra \u0028efectivo o tarjeta al entregar) o cuando el pago en línea se confirma, en el día en que se sirve. Los últimos 7 días se recalculan cada noche.';   // the shipped footnote
 // ONE group's shares of the server's total, in whole percent, that add up EXACTLY (advisor 11-15): largest remainder — floor every
@@ -243,5 +244,5 @@ export function detailModel(body, nowMs) {
   const miss = missingNote(b.missing_days);
   return { type, pay, hours, heat, peak: peak ? `pico: ${DAYS_L_MON[peak.w]} ${peak.h}:00 · ${pedidos(pk)}` : '', heatCaption: 'Pedidos por día y hora · hora de Honduras · el período sumado.',   // Q-V3b
     customers, cancellations, times: { rows: [trow('Preparación', tm.prep), trow('Entrega', tm.delivery)], coverage: covs.length ? `Pedidos a domicilio con tiempos completos: ${covs.join(' · ')}` : '' },
-    foot: `${FOOT}${stamp ? ` Actualizado: ${stamp}.` : ''}${miss ? ` ${miss}` : ''}` };
+    foot: `${FOOT}${stamp ? ` Actualizado: ${stamp}${stamp.endsWith('.') ? '' : '.'}` : ''}${miss ? ` ${miss}` : ''}` };
 }
