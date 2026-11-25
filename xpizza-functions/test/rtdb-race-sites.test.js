@@ -248,6 +248,18 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
     const r = await race(tree, () => H.call(X.idx.createOrder, { headers: { authorization: 'Bearer rtdb-race-make-secret', 'x-firebase-id-token': tok('u28'), origin: 'https://sherpa.hn' }, body }), reserve, '/deleted_uids/u28', X);
     clean(L, r, '/deleted_uids/u28');
   });
+  const orderBody = (oid, method) => ({ restaurant_id: 'x_pizza', order_id: oid, payment_method: method, items: [{ name: CARNIVORA.display.name, qty: 1, price: CARNIVORA.price, extras: [] }], items_text: `1x ${CARNIVORA.display.name}`, customer_name: 'Ana', customer_phone: '99551234', customer_email: 'a@example.com', order_type: 'pickup' });
+  const bearer = (uid) => ({ authorization: 'Bearer rtdb-race-make-secret', 'x-firebase-id-token': tok(uid), origin: 'https://sherpa.hn' });
+  await cell('RG-SITE-8 index.js:1624 chargeOnlineOrder\'s attribution tombstone read vs the saved-card tombstone once (cards.js:153)', async (L) => {
+    const tree = { deleted_uids: {}, restaurants: { x_pizza: { identity: IDENTITY } } };
+    const r = await race(tree, () => H.call(X.idx.chargeOnlineOrder, { headers: bearer('u8'), body: orderBody('o8', 'online') }), (db) => require('../payments/sdk/cards').isDeletedUid(db, 'u8'), '/deleted_uids/u8', X);
+    clean(L, r, '/deleted_uids/u8');
+  });
+  await cell('RG-SITE-7 index.js:1511 placeSdkOrder\'s intake tombstone read (isTombstoned) vs the saved-card tombstone once (cards.js:153)', async (L) => {
+    const tree = { deleted_uids: {}, restaurants: { x_pizza: { identity: IDENTITY } } };
+    const r = await race(tree, () => H.call(X.idx.placeSdkOrder, { headers: { authorization: `Bearer ${tok('u7')}`, origin: 'https://sherpa.hn' }, body: { ...orderBody('o7', 'online'), entry_mode: 'app' } }), (db) => require('../payments/sdk/cards').isDeletedUid(db, 'u7'), '/deleted_uids/u7', X);
+    clean(L, r, '/deleted_uids/u7');
+  });
   // ── class P (preventive): no reachable assertion with the real competitor (§4.3) — the op guard + the §3.2 matrix carry them ──────
   await cell('RG-OP-4 delivery/delivery-wire.js:61 chargeContext reads the active attempt with once, never get', async (L) => {
     const tree = { orders: { o1: { order_type: 'pickup', payment_status: 'pending', active_attempt_id: 'a1' } }, payment_attempts: { a1: { hosted_state: 'created', hosted_expires_at: 9e12, hosted_checkout_url: 'u' } } };
