@@ -75,7 +75,8 @@ const git = (...a) => gitRun(a);
 const paths = (out) => out.split('\0').filter(Boolean);
 // byte identity, null-safe: a missing copy is a named failure, not an ENOENT before the named assertion (Codex r1 P3)
 const sameBytes = (a, b) => existsSync(join(ROOT, a)) && existsSync(join(ROOT, b)) && readFileSync(join(ROOT, a)).equals(readFileSync(join(ROOT, b)));
-const isAncestor = (a, b) => { try { git('merge-base', '--is-ancestor', a, b); return true; } catch (_) { return false; } };
+// only git's own «no» (exit 1) is false or absent; a C7-TIMEOUT or any other failure propagates, never read as a negative (Codex #384 P1-5)
+const isAncestor = (a, b) => { try { git('merge-base', '--is-ancestor', a, b); return true; } catch (e) { if (e && e.status === 1) return false; throw e; } };
 // the files tools/sync-client.js copies INTO customer-app/ — read from sync-client itself (run against a recording fs; nothing written)
 const syncedIntoApp = () => {
   const tool = join(ROOT, 'xpizza-functions', 'tools', 'sync-client.js'), real = createRequire(tool), copies = [];
@@ -118,14 +119,14 @@ const capRange = (head = 'HEAD') => {
 // every NON-merge commit on the first-parent chain BASE..upTo, plus every path a first-parent MERGE's resolution wrote itself (its blob
 // differs from EVERY parent's: equal to parent 2 = the merged-in line's own change, equal to parent 1 = untouched). ONE helper, shared
 // with the evil-merge cell below. A plain BASE..CAPP_TIP diff would count all of main's merged-in work as this lane's.
-const blobAt = (rev, f) => { try { return git('rev-parse', '-q', '--verify', `${rev}:${f}`).trim(); } catch (_) { return null; } };
-const resolutionEdits = (upTo, scopes, range = ['--first-parent', `${BASE}..${upTo}`]) => {
+const blobAt = (rev, f, g = git) => { try { return g('rev-parse', '-q', '--verify', `${rev}:${f}`).trim(); } catch (e) { if (e && e.status === 1) return null; throw e; } };
+const resolutionEdits = (upTo, scopes, range = ['--first-parent', `${BASE}..${upTo}`], g = git) => {
   const out = [];
   for (const m of git('rev-list', '--merges', ...range).trim().split('\n').filter(Boolean)) {
     const parents = git('log', '-1', '--format=%P', m).trim().split(' ').filter(Boolean);
     for (const f of paths(git('diff', '--no-renames', '--name-only', '-z', `${m}^1`, m, '--', ...scopes))) {
-      const b = blobAt(m, f);
-      if (parents.every((p) => blobAt(p, f) !== b)) out.push({ m, f });
+      const b = blobAt(m, f, g);
+      if (parents.every((p) => blobAt(p, f, g) !== b)) out.push({ m, f });
     }
   }
   return out;
@@ -562,3 +563,15 @@ test('C7-TIMEOUT: a git child that never finishes fails the cell within its boun
   try { const t0 = Date.now();
     assert.throws(() => gitRun(['hash-object', '--no-filters', '--', fifo], { timeout: 1500 }), /C7-TIMEOUT: git hash-object/, '🔴 C7-TIMEOUT: a hung git child is not reported as one');
     assert.ok(Date.now() - t0 < 10_000, `🔴 C7-TIMEOUT: the bound took ${Date.now() - t0} ms`); } finally { rmSync(fifo, { force: true }); } });
+// Codex #384 P1-5: a merge resolution that ADDS a path its parents lack. If the merged-blob lookup times out and is read as «absent», it
+// equals the parents' genuine absence and the edit vanishes. The timeout is a real gitRun bound on the FIFO, injected only at that lookup.
+test('C7-TIMEOUT-ABSENT: a timed-out blob lookup fails resolutionEdits, never reads as an absent file', () => {
+  const P = c7Plant(), NEW = 'customer-app/c7-plant-new.txt';
+  const m = plantCommit([P.base, P.s1], P.s1, { [NEW]: 'added in the resolution\n' }, 'train merge: a path added by hand');
+  const range = ['--first-parent', `${P.base}..${m}`];
+  assert.deepEqual(resolutionEdits(m, [NEW], range).map(c7Key), [`${m} ${NEW}`], 'premise: unbounded, the added path is a resolution edit');
+  const fifo = join(tmpdir(), `capp-fifo-${process.pid}-${Date.now()}`); execFileSync('mkfifo', [fifo]);
+  const g = (...a) => (a[0] === 'rev-parse' && a.at(-1) === `${m}:${NEW}` ? gitRun(['hash-object', '--no-filters', '--', fifo], { timeout: 1500 }) : git(...a));
+  try { assert.throws(() => resolutionEdits(m, [NEW], range, g), /C7-TIMEOUT/, '🔴 C7-TIMEOUT-ABSENT: a timed-out blob lookup was read as an absent file'); }
+  finally { rmSync(fifo, { force: true }); }
+});

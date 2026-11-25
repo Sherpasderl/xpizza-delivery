@@ -43859,6 +43859,23 @@
   ]
  },
  {
+  "id": "gitbound-02",
+  "slice": "gitbound",
+  "label": "capp-guards (Codex #384 P1-5): blobAt reads a timed-out lookup as an absent file, so a merge resolution that adds a path silently drops out of resolutionEdits",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "catch (e) { if (e && e.status === 1) return null; throw e; } };",
+  "to": "catch (e) { return null; } };",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C7-TIMEOUT-ABSENT",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-TIMEOUT-ABSENT: a timed-out blob lookup was read as an absent file"
+  ]
+ },
+ {
   "id": "jwt1-01",
   "slice": "jwt1",
   "label": "jwtPayload: the header is no longer checked (a token whose header is not a JSON object is read)",
