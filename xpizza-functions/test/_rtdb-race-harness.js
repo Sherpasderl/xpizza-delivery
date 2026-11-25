@@ -67,7 +67,7 @@ function client(label = 'c') {
       for (let i = 0; i < max; i++) {
         if (until && until(sent())) return i;
         const m = sent().find((x) => only.includes(x.a) && conn().requestCBHash_[x.r] && !x.__done);
-        if (!m) return i;
+        if (!m) { if (until) { await flush(); continue; } return i; }   // with until: the helper may not have issued its read yet — wait a turn
         if (m.a === 'g') { m.__done = true; conn().onDataMessage_({ r: m.r, b: { s: 'ok', d: at(m.b.p) } }); }
         else if (m.a === 'q' && !m.__data) { m.__data = true; conn().onDataMessage_({ a: 'd', b: { p: m.b.p, d: at(m.b.p) } }); }
         else { m.__done = true; const st = apply && (m.a === 'p' || m.a === 'm') ? apply(m) : 'ok'; conn().onDataMessage_({ r: m.r, b: { s: st, d: st === 'ok' ? {} : 'stale' } }); }
