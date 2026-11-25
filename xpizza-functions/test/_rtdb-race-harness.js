@@ -16,7 +16,7 @@ const ADMIN_DB = require.resolve('firebase-admin/database');
 const FILE = Module.createRequire(ADMIN_DB).resolve('@firebase/database-compat/standalone');
 const SOURCE = fs.readFileSync(FILE, 'utf8');
 const SHA256 = crypto.createHash('sha256').update(SOURCE).digest('hex');
-const EXPOSE = '\n;exports.__rtdbRaceHarness = { PersistentConnection: PersistentConnection };\n';
+const EXPOSE = '\n;exports.__rtdbRaceHarness = { PersistentConnection: PersistentConnection, nodeFromJSON: nodeFromJSON };\n';
 
 function install() {
   const cached = require.cache[FILE];
@@ -62,14 +62,15 @@ function client(label = 'c') {
     // the server answers in REQUEST order, ONE frame per event turn — the production frame order. (Delivering every reply in one
     // synchronous burst HIDES the race: the listen's data lands before get()'s promise continuation runs.) A get is answered with
     // `at(path)`; a listen first with a data push of `at(path)`, then its ok; anything else with ok. `only` limits the actions served.
-    serve: async (atOrStore, { only = ['g', 'q', 'n', 'p', 'm'], max = 64 } = {}) => {
+    serve: async (atOrStore, { only = ['g', 'q', 'n', 'p', 'm'], max = 64, until = null } = {}) => {   // until(sent) → true stops early (a cell issues its competitor there)
       const at = typeof atOrStore === 'function' ? atOrStore : atOrStore.at; const apply = typeof atOrStore === 'function' ? null : atOrStore.apply;
       for (let i = 0; i < max; i++) {
+        if (until && until(sent())) return i;
         const m = sent().find((x) => only.includes(x.a) && conn().requestCBHash_[x.r] && !x.__done);
         if (!m) return i;
         if (m.a === 'g') { m.__done = true; conn().onDataMessage_({ r: m.r, b: { s: 'ok', d: at(m.b.p) } }); }
         else if (m.a === 'q' && !m.__data) { m.__data = true; conn().onDataMessage_({ a: 'd', b: { p: m.b.p, d: at(m.b.p) } }); }
-        else { m.__done = true; if (apply && (m.a === 'p' || m.a === 'm')) apply(m); conn().onDataMessage_({ r: m.r, b: { s: 'ok', d: {} } }); }
+        else { m.__done = true; const st = apply && (m.a === 'p' || m.a === 'm') ? apply(m) : 'ok'; conn().onDataMessage_({ r: m.r, b: { s: st, d: st === 'ok' ? {} : 'stale' } }); }
         await flush();
       }
       throw new Error('rtdb-race-harness: serve() did not drain');
@@ -87,7 +88,16 @@ function store(tree = {}) {
   const at = (p) => { let o = root.v; for (const k of parts(p)) { if (o == null || typeof o !== 'object') return null; o = o[k]; } return o === undefined ? null : JSON.parse(JSON.stringify(o)); };
   const put = (p, d) => { const ks = parts(p); if (!ks.length) { root.v = d; return; } let o = root.v && typeof root.v === 'object' ? root.v : (root.v = {}); for (const k of ks.slice(0, -1)) { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; } if (d == null) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = JSON.parse(JSON.stringify(d)); };
   const writes = [];
-  const apply = (m) => { if (m.a === 'p') { put(m.b.p, m.b.d); writes.push({ a: 'p', p: m.b.p }); } else if (m.a === 'm') { for (const [k, v] of Object.entries(m.b.d || {})) put(`${m.b.p}/${k}`, v); writes.push({ a: 'm', p: m.b.p }); } };
+  // a conditional put (a transaction's, carrying h = the hash of the value its callback saw) lands only when h matches the server's
+  // current value — the server's own compare-and-set; otherwise 'datastale' and the SDK retries on the server value (as in production)
+  const apply = (m) => {
+    if (m.a === 'p') {
+      if (m.b.h != null && INTERNALS.nodeFromJSON(at(m.b.p)).hash() !== m.b.h) { writes.push({ a: 'p', p: m.b.p, stale: true }); return 'datastale'; }
+      put(m.b.p, m.b.d); writes.push({ a: 'p', p: m.b.p }); return 'ok';
+    }
+    if (m.a === 'm') { for (const [k, v] of Object.entries(m.b.d || {})) put(`${m.b.p}/${k}`, v); writes.push({ a: 'm', p: m.b.p }); }
+    return 'ok';
+  };
   return { at, put, apply, writes, tree: () => root.v };
 }
 
