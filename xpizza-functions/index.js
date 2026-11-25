@@ -1679,7 +1679,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // bookkeeping write (content stamp / prune, rate limits, the audience stamp); acquireHostedAttempt re-applies it to the records it observes
   let probeOrder;
   try {
-    probeOrder = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();
+    probeOrder = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();
   } catch (e) {
     console.error(`chargeOnlineOrder: order probe failed for ${orderId}`, e.message);
     return res.status(500).json({ error: 'Database error', detail: e.message });

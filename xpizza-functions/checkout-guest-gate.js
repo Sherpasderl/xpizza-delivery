@@ -41,7 +41,7 @@ async function chargeGate({ clientHdr, uid, body: raw, rid, orderId, db, now, OT
   if (!G.ticketValid(rec, { now, rid, orderId, cartFp, phoneHash })) return bad;   // read-only: a refusal consumes nothing
   // §2.5 phone binding, BEFORE anything can answer with this order: an order that already exists under this id must carry
   // THIS ticket's verified phone (another guest's order, or a form's, is never reused, rotated or echoed)
-  const existing = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), () => db.ref('orders/' + orderId).once('value'))).val();
+  const existing = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), (r) => r.once('value'))).val();
   if (existing !== null && !(existing && existing.guest_verified && existing.guest_verified.phone_hash === rec.phone_hash)) return bad;
   return { guest: { phone: rec.phone, phone_hash: rec.phone_hash } };
 }
@@ -50,7 +50,7 @@ async function chargeGate({ clientHdr, uid, body: raw, rid, orderId, db, now, OT
 // request's verified phone (a concurrent loser that reached another guest's order is refused with no order data). No order
 // (the CAS wrote nothing: unavailable item, …) ⇒ nothing to leak ⇒ the outcome answers as today.
 async function boundToGuest({ db, orderId, guest }) {
-  const o = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), () => db.ref('orders/' + orderId).once('value'))).val();
+  const o = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), (r) => r.once('value'))).val();
   return o === null || !!(o && o.guest_verified && o.guest_verified.phone_hash === guest.phone_hash);
 }
 
@@ -59,7 +59,7 @@ async function boundToGuest({ db, orderId, guest }) {
 // replay / reuse / concurrent success returns the SAME bytes. No secret, no created_at, or an expired grant ⇒ grant null (the
 // app falls back to normal signup) — never a failed charge.
 async function grantFor({ db, orderId, guest, secret, now }) {
-  const o = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), () => db.ref('orders/' + orderId).once('value'))).val();
+  const o = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), (r) => r.once('value'))).val();
   const gv = o && o.guest_verified;
   if (!gv || gv.phone_hash !== guest.phone_hash) return { refuse: 'guest_ticket_invalid' };
   if (!Number.isFinite(o.created_at)) return { grant: null };

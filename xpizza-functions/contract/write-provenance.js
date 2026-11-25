@@ -350,6 +350,8 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
     if (!o || depth > 4) return null;   // EMPTY-OK: not a snapshot read → the caller falls through to UNRESOLVED
     if (o.type === 'Identifier') { const b = resolve(o.name, o); return b && b.kind === 'var' && b.inits.length === 1 ? snapshotRef(b.inits[0], depth + 1) : null; }
     if (o.type === 'CallExpression' && o.callee.type === 'MemberExpression' && !o.callee.computed && (o.callee.property.name === 'once' || o.callee.property.name === 'get')) return o.callee.object;
+    // the RTDB in-flight-get gate (lib/rtdb-gate, PLAN-rtdb-get-once-race r9): gatedGet(R) is R.get(); afterGets(R, (r) => r.once('value')) is R.once('value')
+    if (o.type === 'CallExpression' && o.callee.type === 'MemberExpression' && !o.callee.computed && (o.callee.property.name === 'gatedGet' || o.callee.property.name === 'afterGets') && o.arguments[0]) return o.arguments[0];
     // a transaction RESULT's snapshot (`(await ref.transaction(fn)).snapshot`) is the committed value at that ref
     if (o.type === 'MemberExpression' && !o.computed && o.property.name === 'snapshot') {
       let t = o.object; while (t && (t.type === 'AwaitExpression' || t.type === 'ParenthesizedExpression')) t = t.argument || t.expression;

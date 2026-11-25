@@ -101,7 +101,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
   const orderRef = db.ref(`orders/${orderId}`);
 
   for (let i = 0; i < 6; i++) {
-    const order = (await require('./lib/rtdb-gate').afterGets(orderRef, () => orderRef.once('value'))).val();
+    const order = (await require('./lib/rtdb-gate').afterGets(orderRef, (r) => r.once('value'))).val();
 
     // Order-level terminal reads.
     if (order && memberForeign(order, pendingOrderRecord)) return { outcome: 'conflict', reason: OWN.NON_OWNER_REASON };   // r1: before ANY answer about it
@@ -123,7 +123,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
     } else if (!order.active_attempt_id) {
       decided = { kind: 'install', newAaid: candidate };               // order exists, no lock (recovery)
     } else {
-      const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();
+      const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), (r) => r.once('value'))).val();
       if (!att) {
         decided = { kind: 'recover', reuseAaid: order.active_attempt_id }; // pointer set, record missing
       } else {
@@ -249,7 +249,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
 // Returns { willIssueFreshUrl: boolean, outcome? }. Read errors propagate to the caller, which fails
 // OPEN (treats as "do not gate") — a DB hiccup must never block a sale.
 async function classifyHostedAttempt(db, orderId, fingerprint, now, canonicalFp = null, a8Fp = null, incomingTip = 0) {
-  const order = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();
+  const order = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();
   const r = await classifyFromOrder(db, order, fingerprint, now, canonicalFp, a8Fp, incomingTip);
   /* 1D D4-b §A.6: the order binding FORMAT this request is bound to, from the SAME snapshot. Reported ONLY when the
      record is tagged canonical, so every untagged result object is byte-identical to today's. */
@@ -282,7 +282,7 @@ async function classifyFromOrder(db, order, fingerprint, now, canonicalFp, a8Fp 
   if (!order) return { willIssueFreshUrl: true };                    // create
   if (!order.active_attempt_id) return { willIssueFreshUrl: true };  // install (recovery, fresh URL)
 
-  const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();
+  const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), (r) => r.once('value'))).val();
   if (!att) return { willIssueFreshUrl: true };                      // recover (pointer set, record gone → fresh URL)
 
   const st = att.hosted_state;

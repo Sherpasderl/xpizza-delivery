@@ -4,7 +4,7 @@
 // of P orphans the listener's connection listen; the next subscription asserts «listen() called twice». No read changes here:
 //   gatedGet(ref)               — ref.get() called NOW, exactly as today (same promise, value, error, timing); its PATH is marked
 //                                 «in flight» until that promise settles (never at a caller's deadline: a raced get keeps its mark).
-//   afterGets(ref, register)    — register() (the listener's existing call, e.g. () => ref.once('value')) runs NOW unless a marked get
+//   afterGets(ref, register)    — register(ref) (the listener's existing call on that ref: (r) => r.once('value')) runs NOW unless a marked get
 //                                 is in flight on the ref's path or an ANCESTOR; then it waits and is admitted in the same synchronous
 //                                 turn the last such get settles (one forward pass, FIFO). No deadline, no synthesized error: the
 //                                 promise returned is register()'s own. A listener never blocks a get (listener-first is clean), a
@@ -29,7 +29,7 @@ function admit(w) {
   const waited = Date.now() - w.at;
   if (waited > WAIT_LOG_MS) { try { console.warn('rtdb_gate_wait', JSON.stringify({ ms: waited })); } catch (_) { /* logging never blocks admission */ } }
   let out;
-  try { out = w.register(); } catch (e) { w.reject(e); return; }
+  try { out = w.register(w.ref); } catch (e) { w.reject(e); return; }
   w.resolve(out);
 }
 function settle(path) {
@@ -55,8 +55,8 @@ function gatedGet(ref) {
 
 function afterGets(refOrQuery, register) {
   const path = pathOf(refOrQuery);
-  if (!blocked(path)) return register();
-  return new Promise((resolve, reject) => { waiters.push({ path, register, resolve, reject, at: Date.now() }); });
+  if (!blocked(path)) return register(refOrQuery);
+  return new Promise((resolve, reject) => { waiters.push({ path, ref: refOrQuery, register, resolve, reject, at: Date.now() }); });
 }
 
 // observability / tests: pending marked gets, queued waiters, the oldest waiter's age, the max concurrent marked gets on one path

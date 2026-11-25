@@ -101,7 +101,7 @@ async function withOffer({ db, rid, items, tables, baseTotalL, dq, reward = null
     if (!cfg || cfg.offers_enabled !== true) return stale && !(dq && dq.grandfathered) ? OFFER_CHANGED : dq;   // a LIVE checkout keeps its economics (Codex #103 #5): only a fresh placement is judged stale
     const ctx = dq && dq.ctx ? dq.ctx : null;
     let offer = null;
-    if (placement && orderId) offer = storedOfferOf((await require('../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}/offer`), () => db.ref(`orders/${orderId}/offer`).once('value'))).val());
+    if (placement && orderId) offer = storedOfferOf((await require('../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}/offer`), (r) => r.once('value'))).val());
     if (offer) { const c0 = waivedCtx(ctx, offer); return c0 === CANNOT ? dq : { ...(dq || {}), ctx: c0, offer }; }   // a replay keeps its frozen economics (no audience re-check)
     if (dq && dq.grandfathered) return dq;               // a live issued checkout priced with no offer stays without one
     if (stale) return OFFER_CHANGED;

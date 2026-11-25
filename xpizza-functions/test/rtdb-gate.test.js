@@ -16,7 +16,7 @@ const sentKinds = (c, from) => c.sent().slice(from).filter((m) => m.a === 'g' ||
 (async () => {
   await cell('RG-GATE-UNIT gets never wait: a gated get goes out NOW even while a gated get and a queued listener exist on its path', async (L) => {
     const c = H.client('u1'); const from = c.sent().length;
-    const g1 = G.gatedGet(c.db.ref('orders/o1')); const l = G.afterGets(c.db.ref('orders/o1'), () => c.db.ref('orders/o1').once('value'));
+    const g1 = G.gatedGet(c.db.ref('orders/o1')); const l = G.afterGets(c.db.ref('orders/o1'), (r) => r.once('value'));
     const g2 = G.gatedGet(c.db.ref('orders/o1')); await H.flush();
     assert.deepStrictEqual(sentKinds(c, from), ['g:/orders/o1', 'g:/orders/o1'], `${L}: both gets sent, the listener held`);
     await c.serve(at); await Promise.all([g1, g2, l]);
@@ -24,24 +24,24 @@ const sentKinds = (c, from) => c.sent().slice(from).filter((m) => m.a === 'g' ||
   });
   await cell('RG-GATE-UNIT ancestor rule: a parent get blocks a descendant listener; a child get never blocks an ancestor listener', async (L) => {
     const c = H.client('u2'); let from = c.sent().length;
-    const g = G.gatedGet(c.db.ref('orders')); const l = G.afterGets(c.db.ref('orders/o1'), () => c.db.ref('orders/o1').once('value')); await H.flush();
+    const g = G.gatedGet(c.db.ref('orders')); const l = G.afterGets(c.db.ref('orders/o1'), (r) => r.once('value')); await H.flush();
     assert.deepStrictEqual(sentKinds(c, from), ['g:/orders'], `${L}: the descendant listener waits for the parent get`);
     await c.serve(at); await Promise.all([g, l]);
     from = c.sent().length;
-    const g2 = G.gatedGet(c.db.ref('orders/o1')); const l2 = G.afterGets(c.db.ref('orders'), () => c.db.ref('orders').once('value')); await H.flush();
+    const g2 = G.gatedGet(c.db.ref('orders/o1')); const l2 = G.afterGets(c.db.ref('orders'), (r) => r.once('value')); await H.flush();
     assert.deepStrictEqual(sentKinds(c, from), ['g:/orders/o1', 'q:/orders'], `${L}: the ancestor listener does not wait`);
     await c.serve(at); await Promise.all([g2, l2]); assert.deepStrictEqual(c.listens(), [], L); await c.close();
   });
   await cell('RG-GATE-UNIT the mark holds through a REJECTED get; the queued listener registers after the rejection', async (L) => {
     const c = H.client('u3'); const g = G.gatedGet(c.db.ref('orders/o1')); g.catch(() => {});
-    const l = G.afterGets(c.db.ref('orders/o1'), () => c.db.ref('orders/o1').once('value')); await H.flush();
+    const l = G.afterGets(c.db.ref('orders/o1'), (r) => r.once('value')); await H.flush();
     const [gm] = c.pending('g'); assert.strictEqual(c.pending('q').length, 0, `${L}: listener held`);
     c.reply(gm, 'permission_denied', 'permission_denied'); await H.flush(); await assert.rejects(g, L);
     await c.serve(at); assert.strictEqual((await l).val().n, 1, `${L}: the listener ran after the rejection`); await c.close();
   });
   await cell('RG-GATE-UNIT atomic admission: a get issued in the same turn as the wake cannot slip ahead of the admitted listener', async (L) => {
     const c = H.client('u4'); const g = G.gatedGet(c.db.ref('orders/o1'));
-    const l = G.afterGets(c.db.ref('orders/o1'), () => c.db.ref('orders/o1').once('value'));
+    const l = G.afterGets(c.db.ref('orders/o1'), (r) => r.once('value'));
     // the moment g settles, the continuation issues another gated get — the listener must already be registered (q before the 2nd g)
     const from = c.sent().length; let g2;
     g.then(() => { g2 = G.gatedGet(c.db.ref('orders/o1')); });

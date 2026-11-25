@@ -15,8 +15,8 @@
   "file": "checkout-guest-gate.js",
   "line": 62,
   "before": "  const o = (await db.ref('orders/' + orderId).once('value')).val();",
-  "after": "  const o = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), () => db.ref('orders/' + orderId).once('value'))).val();",
-  "anchor_after": "async function grantFor({ db, orderId, guest, secret, now }) {\n  const o = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), () => db.ref('orders/' + orderId).once('value'))).val();",
+  "after": "  const o = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), (r) => r.once('value'))).val();",
+  "anchor_after": "async function grantFor({ db, orderId, guest, secret, now }) {\n  const o = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), (r) => r.once('value'))).val();",
   "anchor_before": "async function grantFor({ db, orderId, guest, secret, now }) {\n  const o = (await db.ref('orders/' + orderId).once('value')).val();"
  },
  {
@@ -25,8 +25,8 @@
   "file": "checkout-guest-gate.js",
   "line": 53,
   "before": "  const o = (await db.ref('orders/' + orderId).once('value')).val();",
-  "after": "  const o = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), () => db.ref('orders/' + orderId).once('value'))).val();",
-  "anchor_after": "async function boundToGuest({ db, orderId, guest }) {\n  const o = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), () => db.ref('orders/' + orderId).once('value'))).val();",
+  "after": "  const o = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), (r) => r.once('value'))).val();",
+  "anchor_after": "async function boundToGuest({ db, orderId, guest }) {\n  const o = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), (r) => r.once('value'))).val();",
   "anchor_before": "async function boundToGuest({ db, orderId, guest }) {\n  const o = (await db.ref('orders/' + orderId).once('value')).val();"
  },
  {
@@ -35,8 +35,8 @@
   "file": "checkout-guest-gate.js",
   "line": 44,
   "before": "  const existing = (await db.ref('orders/' + orderId).once('value')).val();",
-  "after": "  const existing = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), () => db.ref('orders/' + orderId).once('value'))).val();",
-  "anchor_after": "  const existing = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), () => db.ref('orders/' + orderId).once('value'))).val();",
+  "after": "  const existing = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), (r) => r.once('value'))).val();",
+  "anchor_after": "  const existing = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), (r) => r.once('value'))).val();",
   "anchor_before": "  const existing = (await db.ref('orders/' + orderId).once('value')).val();"
  },
  {
@@ -105,8 +105,8 @@
   "file": "index.js",
   "line": 1682,
   "before": "    probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();",
-  "after": "    probeOrder = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
-  "anchor_after": "    probeOrder = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
+  "after": "    probeOrder = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();",
+  "anchor_after": "    probeOrder = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();",
   "anchor_before": "    probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();"
  },
  {
@@ -215,8 +215,8 @@
   "file": "catalog/bound-reuse.js",
   "line": 45,
   "before": "    const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();",
-  "after": "    const att = (await require('../lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();",
-  "anchor_after": "    const att = (await require('../lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();",
+  "after": "    const att = (await require('../lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), (r) => r.once('value'))).val();",
+  "anchor_after": "    const att = (await require('../lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), (r) => r.once('value'))).val();",
   "anchor_before": "    const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();"
  },
  {
@@ -225,8 +225,8 @@
   "file": "catalog/bound-reuse.js",
   "line": 34,
   "before": "    const order = probed && Object.prototype.hasOwnProperty.call(probed, 'order') ? probed.order : (await db.ref(`orders/${orderId}`).once('value')).val();",
-  "after": "    const order = probed && Object.prototype.hasOwnProperty.call(probed, 'order') ? probed.order : (await require('../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
-  "anchor_after": "    const order = probed && Object.prototype.hasOwnProperty.call(probed, 'order') ? probed.order : (await require('../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
+  "after": "    const order = probed && Object.prototype.hasOwnProperty.call(probed, 'order') ? probed.order : (await require('../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();",
+  "anchor_after": "    const order = probed && Object.prototype.hasOwnProperty.call(probed, 'order') ? probed.order : (await require('../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();",
   "anchor_before": "    const order = probed && Object.prototype.hasOwnProperty.call(probed, 'order') ? probed.order : (await db.ref(`orders/${orderId}`).once('value')).val();"
  },
  {
@@ -235,8 +235,8 @@
   "file": "client-floor.js",
   "line": 159,
   "before": "    const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();",
-  "after": "    const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();",
-  "anchor_after": "    const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();",
+  "after": "    const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), (r) => r.once('value'))).val();",
+  "anchor_after": "    const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), (r) => r.once('value'))).val();",
   "anchor_before": "    const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();"
  },
  {
@@ -245,8 +245,8 @@
   "file": "client-floor.js",
   "line": 157,
   "before": "    const order = (await db.ref(`orders/${id}`).once('value')).val();",
-  "after": "    const order = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${id}`), () => db.ref(`orders/${id}`).once('value'))).val();",
-  "anchor_after": "    const order = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${id}`), () => db.ref(`orders/${id}`).once('value'))).val();",
+  "after": "    const order = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${id}`), (r) => r.once('value'))).val();",
+  "anchor_after": "    const order = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${id}`), (r) => r.once('value'))).val();",
   "anchor_before": "    const order = (await db.ref(`orders/${id}`).once('value')).val();"
  },
  {
@@ -255,8 +255,8 @@
   "file": "marketing/offer-wire.js",
   "line": 104,
   "before": "    if (placement && orderId) offer = storedOfferOf((await db.ref(`orders/${orderId}/offer`).once('value')).val());",
-  "after": "    if (placement && orderId) offer = storedOfferOf((await require('../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}/offer`), () => db.ref(`orders/${orderId}/offer`).once('value'))).val());",
-  "anchor_after": "    if (placement && orderId) offer = storedOfferOf((await require('../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}/offer`), () => db.ref(`orders/${orderId}/offer`).once('value'))).val());",
+  "after": "    if (placement && orderId) offer = storedOfferOf((await require('../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}/offer`), (r) => r.once('value'))).val());",
+  "anchor_after": "    if (placement && orderId) offer = storedOfferOf((await require('../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}/offer`), (r) => r.once('value'))).val());",
   "anchor_before": "    if (placement && orderId) offer = storedOfferOf((await db.ref(`orders/${orderId}/offer`).once('value')).val());"
  },
  {
@@ -265,8 +265,8 @@
   "file": "payments/sdk/coordinator.js",
   "line": 320,
   "before": "  const st = (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val();",
-  "after": "  const st = (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), () => deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value'))).val();",
-  "anchor_after": "  const st = (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), () => deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value'))).val();",
+  "after": "  const st = (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), (r) => r.once('value'))).val();",
+  "anchor_after": "  const st = (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), (r) => r.once('value'))).val();",
   "anchor_before": "  const st = (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val();"
  },
  {
@@ -275,8 +275,8 @@
   "file": "payments/sdk/coordinator.js",
   "line": 16,
   "before": "const readOrder = async (db, orderId) => (await db.ref(`orders/${orderId}`).once('value')).val();",
-  "after": "const readOrder = async (db, orderId) => (await require('../../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
-  "anchor_after": "const readOrder = async (db, orderId) => (await require('../../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
+  "after": "const readOrder = async (db, orderId) => (await require('../../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();",
+  "anchor_after": "const readOrder = async (db, orderId) => (await require('../../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();",
   "anchor_before": "const readOrder = async (db, orderId) => (await db.ref(`orders/${orderId}`).once('value')).val();"
  },
  {
@@ -285,8 +285,8 @@
   "file": "pixelpay-hosted-charge.js",
   "line": 285,
   "before": "  const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();",
-  "after": "  const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();",
-  "anchor_after": "\n  const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();",
+  "after": "  const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), (r) => r.once('value'))).val();",
+  "anchor_after": "\n  const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), (r) => r.once('value'))).val();",
   "anchor_before": "\n  const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();"
  },
  {
@@ -295,8 +295,8 @@
   "file": "pixelpay-hosted-charge.js",
   "line": 252,
   "before": "  const order = (await db.ref(`orders/${orderId}`).once('value')).val();",
-  "after": "  const order = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
-  "anchor_after": "  const order = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
+  "after": "  const order = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();",
+  "anchor_after": "  const order = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();",
   "anchor_before": "  const order = (await db.ref(`orders/${orderId}`).once('value')).val();"
  },
  {
@@ -305,8 +305,8 @@
   "file": "pixelpay-hosted-charge.js",
   "line": 126,
   "before": "      const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();",
-  "after": "      const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();",
-  "anchor_after": "      const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();",
+  "after": "      const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), (r) => r.once('value'))).val();",
+  "anchor_after": "      const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), (r) => r.once('value'))).val();",
   "anchor_before": "      const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();"
  },
  {
@@ -315,8 +315,8 @@
   "file": "pixelpay-hosted-charge.js",
   "line": 104,
   "before": "    const order = (await orderRef.once('value')).val();",
-  "after": "    const order = (await require('./lib/rtdb-gate').afterGets(orderRef, () => orderRef.once('value'))).val();",
-  "anchor_after": "    const order = (await require('./lib/rtdb-gate').afterGets(orderRef, () => orderRef.once('value'))).val();",
+  "after": "    const order = (await require('./lib/rtdb-gate').afterGets(orderRef, (r) => r.once('value'))).val();",
+  "anchor_after": "    const order = (await require('./lib/rtdb-gate').afterGets(orderRef, (r) => r.once('value'))).val();",
   "anchor_before": "    const order = (await orderRef.once('value')).val();"
  },
  {
@@ -325,8 +325,8 @@
   "file": "pixelpay-confirm.js",
   "line": 238,
   "before": "  const preOrder = (await orderRef.once('value')).val();",
-  "after": "  const preOrder = (await require('./lib/rtdb-gate').afterGets(orderRef, () => orderRef.once('value'))).val();",
-  "anchor_after": "  const preOrder = (await require('./lib/rtdb-gate').afterGets(orderRef, () => orderRef.once('value'))).val();",
+  "after": "  const preOrder = (await require('./lib/rtdb-gate').afterGets(orderRef, (r) => r.once('value'))).val();",
+  "anchor_after": "  const preOrder = (await require('./lib/rtdb-gate').afterGets(orderRef, (r) => r.once('value'))).val();",
   "anchor_before": "  const preOrder = (await orderRef.once('value')).val();"
  },
  {
@@ -335,8 +335,8 @@
   "file": "materialize-guard.js",
   "line": 309,
   "before": "    const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();",
-  "after": "    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), () => deps.db.ref(`orders/${stamp.order_id}`).once('value'))).val();",
-  "anchor_after": "    if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') continue;\n    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), () => deps.db.ref(`orders/${stamp.order_id}`).once('value'))).val();",
+  "after": "    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), (r) => r.once('value'))).val();",
+  "anchor_after": "    if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') continue;\n    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), (r) => r.once('value'))).val();",
   "anchor_before": "    if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') continue;\n    const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();"
  },
  {
@@ -345,8 +345,8 @@
   "file": "materialize-guard.js",
   "line": 282,
   "before": "    const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();",
-  "after": "    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), () => deps.db.ref(`orders/${stamp.order_id}`).once('value'))).val();",
-  "anchor_after": "    if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') return null;\n    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), () => deps.db.ref(`orders/${stamp.order_id}`).once('value'))).val();",
+  "after": "    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), (r) => r.once('value'))).val();",
+  "anchor_after": "    if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') return null;\n    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), (r) => r.once('value'))).val();",
   "anchor_before": "    if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') return null;\n    const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();"
  },
  {
@@ -355,8 +355,8 @@
   "file": "payments/sdk/materialize-sdk.js",
   "line": 83,
   "before": "  const order = (await db.ref(`orders/${orderId}`).once('value')).val();",
-  "after": "  const order = (await require('../../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
-  "anchor_after": "  const order = (await require('../../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
+  "after": "  const order = (await require('../../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();",
+  "anchor_after": "  const order = (await require('../../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();",
   "anchor_before": "  const order = (await db.ref(`orders/${orderId}`).once('value')).val();"
  },
  {
@@ -365,8 +365,8 @@
   "file": "sequencing/cancel-promotion.js",
   "line": 33,
   "before": "  const st = (await bounded(db.ref(`orders/${t.order_id}/status`).once('value'), end - Date.now())).val();",
-  "after": "  const st = (await bounded(require('../lib/rtdb-gate').afterGets(db.ref(`orders/${t.order_id}/status`), () => db.ref(`orders/${t.order_id}/status`).once('value')), end - Date.now())).val();",
-  "anchor_after": "  const st = (await bounded(require('../lib/rtdb-gate').afterGets(db.ref(`orders/${t.order_id}/status`), () => db.ref(`orders/${t.order_id}/status`).once('value')), end - Date.now())).val();",
+  "after": "  const st = (await bounded(require('../lib/rtdb-gate').afterGets(db.ref(`orders/${t.order_id}/status`), (r) => r.once('value')), end - Date.now())).val();",
+  "anchor_after": "  const st = (await bounded(require('../lib/rtdb-gate').afterGets(db.ref(`orders/${t.order_id}/status`), (r) => r.once('value')), end - Date.now())).val();",
   "anchor_before": "  const st = (await bounded(db.ref(`orders/${t.order_id}/status`).once('value'), end - Date.now())).val();"
  },
  {
@@ -375,8 +375,8 @@
   "file": "superseded-capture.js",
   "line": 311,
   "before": "    const recheck = (await db.ref(`orders/${orderId}/paid_evidence/${attemptId}`).once('value')).val();",
-  "after": "    const recheck = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}/paid_evidence/${attemptId}`), () => db.ref(`orders/${orderId}/paid_evidence/${attemptId}`).once('value'))).val();",
-  "anchor_after": "    const recheck = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}/paid_evidence/${attemptId}`), () => db.ref(`orders/${orderId}/paid_evidence/${attemptId}`).once('value'))).val();",
+  "after": "    const recheck = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}/paid_evidence/${attemptId}`), (r) => r.once('value'))).val();",
+  "anchor_after": "    const recheck = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}/paid_evidence/${attemptId}`), (r) => r.once('value'))).val();",
   "anchor_before": "    const recheck = (await db.ref(`orders/${orderId}/paid_evidence/${attemptId}`).once('value')).val();"
  },
  {
@@ -385,8 +385,8 @@
   "file": "superseded-capture.js",
   "line": 245,
   "before": "  const recheck = (await evRef.once('value')).val();",
-  "after": "  const recheck = (await require('./lib/rtdb-gate').afterGets(evRef, () => evRef.once('value'))).val();",
-  "anchor_after": "  const recheck = (await require('./lib/rtdb-gate').afterGets(evRef, () => evRef.once('value'))).val();",
+  "after": "  const recheck = (await require('./lib/rtdb-gate').afterGets(evRef, (r) => r.once('value'))).val();",
+  "anchor_after": "  const recheck = (await require('./lib/rtdb-gate').afterGets(evRef, (r) => r.once('value'))).val();",
   "anchor_before": "  const recheck = (await evRef.once('value')).val();"
  },
  {
@@ -395,8 +395,8 @@
   "file": "superseded-capture.js",
   "line": 182,
   "before": "    db.ref(`orders/${orderId}`).once('value'),",
-  "after": "    require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value')),",
-  "anchor_after": "    require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value')),",
+  "after": "    require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value')),",
+  "anchor_after": "    require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value')),",
   "anchor_before": "    db.ref(`orders/${orderId}`).once('value'),"
  },
  {
@@ -405,8 +405,8 @@
   "file": "tip-pref.js",
   "line": 37,
   "before": "    const snap = await db.ref(createdAtPath || `orders/${orderId}/created_at`).once('value');",
-  "after": "    const snap = await require('./lib/rtdb-gate').afterGets(db.ref(createdAtPath || `orders/${orderId}/created_at`), () => db.ref(createdAtPath || `orders/${orderId}/created_at`).once('value'));",
-  "anchor_after": "    const snap = await require('./lib/rtdb-gate').afterGets(db.ref(createdAtPath || `orders/${orderId}/created_at`), () => db.ref(createdAtPath || `orders/${orderId}/created_at`).once('value'));",
+  "after": "    const snap = await require('./lib/rtdb-gate').afterGets(db.ref(createdAtPath || `orders/${orderId}/created_at`), (r) => r.once('value'));",
+  "anchor_after": "    const snap = await require('./lib/rtdb-gate').afterGets(db.ref(createdAtPath || `orders/${orderId}/created_at`), (r) => r.once('value'));",
   "anchor_before": "    const snap = await db.ref(createdAtPath || `orders/${orderId}/created_at`).once('value');"
  },
  {
@@ -415,8 +415,8 @@
   "file": "marketing/audience-place.js",
   "line": 21,
   "before": "      return attributionUid(dec, (await db.ref(`deleted_uids/${dec.uid}`).once('value')).exists()) || null;",
-  "after": "      return attributionUid(dec, (await require('../lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${dec.uid}`), () => db.ref(`deleted_uids/${dec.uid}`).once('value'))).exists()) || null;",
-  "anchor_after": "      return attributionUid(dec, (await require('../lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${dec.uid}`), () => db.ref(`deleted_uids/${dec.uid}`).once('value'))).exists()) || null;",
+  "after": "      return attributionUid(dec, (await require('../lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${dec.uid}`), (r) => r.once('value'))).exists()) || null;",
+  "anchor_after": "      return attributionUid(dec, (await require('../lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${dec.uid}`), (r) => r.once('value'))).exists()) || null;",
   "anchor_before": "      return attributionUid(dec, (await db.ref(`deleted_uids/${dec.uid}`).once('value')).exists()) || null;"
  },
  {
@@ -425,8 +425,8 @@
   "file": "member-auth.js",
   "line": 26,
   "before": "    db.ref(`deleted_uids/${uid}`).once('value'),",
-  "after": "    require('./lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), () => db.ref(`deleted_uids/${uid}`).once('value')),",
-  "anchor_after": "    require('./lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), () => db.ref(`deleted_uids/${uid}`).once('value')),",
+  "after": "    require('./lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), (r) => r.once('value')),",
+  "anchor_after": "    require('./lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), (r) => r.once('value')),",
   "anchor_before": "    db.ref(`deleted_uids/${uid}`).once('value'),"
  },
  {
@@ -435,8 +435,8 @@
   "file": "payments/sdk/cards.js",
   "line": 153,
   "before": "const isDeletedUid = async (db, uid) => (await db.ref(`deleted_uids/${uid}`).once('value')).exists();",
-  "after": "const isDeletedUid = async (db, uid) => (await require('../../lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), () => db.ref(`deleted_uids/${uid}`).once('value'))).exists();",
-  "anchor_after": "const isDeletedUid = async (db, uid) => (await require('../../lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), () => db.ref(`deleted_uids/${uid}`).once('value'))).exists();",
+  "after": "const isDeletedUid = async (db, uid) => (await require('../../lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), (r) => r.once('value'))).exists();",
+  "anchor_after": "const isDeletedUid = async (db, uid) => (await require('../../lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), (r) => r.once('value'))).exists();",
   "anchor_before": "const isDeletedUid = async (db, uid) => (await db.ref(`deleted_uids/${uid}`).once('value')).exists();"
  },
  {
@@ -445,8 +445,8 @@
   "file": "signup-core.js",
   "line": 358,
   "before": "  const [gone, priv] = await Promise.all([db.ref(`deleted_uids/${uid}`).once('value'), db.ref(`user_private/${uid}/deleted_at`).once('value')]);",
-  "after": "  const [gone, priv] = await Promise.all([require('./lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), () => db.ref(`deleted_uids/${uid}`).once('value')), db.ref(`user_private/${uid}/deleted_at`).once('value')]);",
-  "anchor_after": "  const [gone, priv] = await Promise.all([require('./lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), () => db.ref(`deleted_uids/${uid}`).once('value')), db.ref(`user_private/${uid}/deleted_at`).once('value')]);",
+  "after": "  const [gone, priv] = await Promise.all([require('./lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), (r) => r.once('value')), db.ref(`user_private/${uid}/deleted_at`).once('value')]);",
+  "anchor_after": "  const [gone, priv] = await Promise.all([require('./lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), (r) => r.once('value')), db.ref(`user_private/${uid}/deleted_at`).once('value')]);",
   "anchor_before": "  const [gone, priv] = await Promise.all([db.ref(`deleted_uids/${uid}`).once('value'), db.ref(`user_private/${uid}/deleted_at`).once('value')]);"
  },
  {
@@ -455,8 +455,8 @@
   "file": "signup-core.js",
   "line": 311,
   "before": "  const [name, priv] = await Promise.all([db.ref(`user_profiles/${uid}/name`).once('value'), db.ref(`user_private/${uid}`).once('value')]);",
-  "after": "  const [name, priv] = await Promise.all([require('./lib/rtdb-gate').afterGets(db.ref(`user_profiles/${uid}/name`), () => db.ref(`user_profiles/${uid}/name`).once('value')), db.ref(`user_private/${uid}`).once('value')]);",
-  "anchor_after": "  const [name, priv] = await Promise.all([require('./lib/rtdb-gate').afterGets(db.ref(`user_profiles/${uid}/name`), () => db.ref(`user_profiles/${uid}/name`).once('value')), db.ref(`user_private/${uid}`).once('value')]);",
+  "after": "  const [name, priv] = await Promise.all([require('./lib/rtdb-gate').afterGets(db.ref(`user_profiles/${uid}/name`), (r) => r.once('value')), db.ref(`user_private/${uid}`).once('value')]);",
+  "anchor_after": "  const [name, priv] = await Promise.all([require('./lib/rtdb-gate').afterGets(db.ref(`user_profiles/${uid}/name`), (r) => r.once('value')), db.ref(`user_private/${uid}`).once('value')]);",
   "anchor_before": "  const [name, priv] = await Promise.all([db.ref(`user_profiles/${uid}/name`).once('value'), db.ref(`user_private/${uid}`).once('value')]);"
  },
  {
@@ -465,8 +465,8 @@
   "file": "signup-core.js",
   "line": 303,
   "before": "  const created = (await db.ref(`user_profiles/${uid}/created_at`).once('value')).val();",
-  "after": "  const created = (await require('./lib/rtdb-gate').afterGets(db.ref(`user_profiles/${uid}/created_at`), () => db.ref(`user_profiles/${uid}/created_at`).once('value'))).val();",
-  "anchor_after": "  const created = (await require('./lib/rtdb-gate').afterGets(db.ref(`user_profiles/${uid}/created_at`), () => db.ref(`user_profiles/${uid}/created_at`).once('value'))).val();",
+  "after": "  const created = (await require('./lib/rtdb-gate').afterGets(db.ref(`user_profiles/${uid}/created_at`), (r) => r.once('value'))).val();",
+  "anchor_after": "  const created = (await require('./lib/rtdb-gate').afterGets(db.ref(`user_profiles/${uid}/created_at`), (r) => r.once('value'))).val();",
   "anchor_before": "  const created = (await db.ref(`user_profiles/${uid}/created_at`).once('value')).val();"
  },
  {
@@ -475,8 +475,8 @@
   "file": "marketing/brand-of.js",
   "line": 14,
   "before": "  const leaf = (await db.ref(`restaurants/${rid}/identity/brand_id`).once('value')).val();",
-  "after": "  const leaf = (await require('../lib/rtdb-gate').afterGets(db.ref(`restaurants/${rid}/identity/brand_id`), () => db.ref(`restaurants/${rid}/identity/brand_id`).once('value'))).val();",
-  "anchor_after": "  const leaf = (await require('../lib/rtdb-gate').afterGets(db.ref(`restaurants/${rid}/identity/brand_id`), () => db.ref(`restaurants/${rid}/identity/brand_id`).once('value'))).val();",
+  "after": "  const leaf = (await require('../lib/rtdb-gate').afterGets(db.ref(`restaurants/${rid}/identity/brand_id`), (r) => r.once('value'))).val();",
+  "anchor_after": "  const leaf = (await require('../lib/rtdb-gate').afterGets(db.ref(`restaurants/${rid}/identity/brand_id`), (r) => r.once('value'))).val();",
   "anchor_before": "  const leaf = (await db.ref(`restaurants/${rid}/identity/brand_id`).once('value')).val();"
  },
  {
@@ -485,8 +485,8 @@
   "file": "payments/sdk/sweeper.js",
   "line": 62,
   "before": "  const rewardState = order && order.redemption && order.customer_uid && order.restaurant_id ? (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val() : undefined;",
-  "after": "  const rewardState = order && order.redemption && order.customer_uid && order.restaurant_id ? (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), () => deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value'))).val() : undefined;",
-  "anchor_after": "  const rewardState = order && order.redemption && order.customer_uid && order.restaurant_id ? (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), () => deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value'))).val() : undefined;",
+  "after": "  const rewardState = order && order.redemption && order.customer_uid && order.restaurant_id ? (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), (r) => r.once('value'))).val() : undefined;",
+  "anchor_after": "  const rewardState = order && order.redemption && order.customer_uid && order.restaurant_id ? (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), (r) => r.once('value'))).val() : undefined;",
   "anchor_before": "  const rewardState = order && order.redemption && order.customer_uid && order.restaurant_id ? (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val() : undefined;"
  },
  {
@@ -495,8 +495,8 @@
   "file": "payments/sdk/sweeper.js",
   "line": 43,
   "before": "    const st = (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val();",
-  "after": "    const st = (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), () => deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value'))).val();",
-  "anchor_after": "    const st = (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), () => deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value'))).val();",
+  "after": "    const st = (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), (r) => r.once('value'))).val();",
+  "anchor_after": "    const st = (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), (r) => r.once('value'))).val();",
   "anchor_before": "    const st = (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val();"
  }
 ]

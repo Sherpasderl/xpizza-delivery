@@ -23,7 +23,7 @@ async function verifiedMemberUid(idToken, verifyIdToken) {
 // step 2 — any of the three account tombstones present
 async function isMemberTombstoned(db, uid) {
   const [gone, priv, claim] = await Promise.all([
-    require('./lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), () => db.ref(`deleted_uids/${uid}`).once('value')),
+    require('./lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), (r) => r.once('value')),
     db.ref(`user_private/${uid}/deleted_at`).once('value'),
     db.ref(`user_profiles/${uid}/deleting_at`).once('value'),
   ]);

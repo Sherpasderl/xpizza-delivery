@@ -279,7 +279,7 @@ async function mainPathSibling(deps, orderId, order, args) {
     const stamp = (await deps.db.ref(`recent_order_content/${rateLimitKey(order.customer_phone)}/${ck}`).once('value')).val();
     // fast-out before the sibling point-read (no stamp / self / non-cash → not our collision)
     if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') return null;
-    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), () => deps.db.ref(`orders/${stamp.order_id}`).once('value'))).val();
+    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), (r) => r.once('value'))).val();
     const dec = duplicateSiblingDecision(orderId, stamp, siblingOrder, 'cash');   // PIN 1: no 2-min gate — liveness of Y decides
     if (!dec.collision) return null;
     const c = siblingClientText(siblingOrder);
@@ -306,7 +306,7 @@ async function newPathSibling(deps, orderId, order, args) {
   for (const key of [...new Set([ck, legacyKey].filter((k) => typeof k === 'string' && k && k !== mainKey))]) {
     const stamp = await readContentStampByKeys(deps.db, order.customer_phone, [key]);
     if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') continue;
-    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), () => deps.db.ref(`orders/${stamp.order_id}`).once('value'))).val();
+    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), (r) => r.once('value'))).val();
     const dec = duplicateSiblingDecision(orderId, stamp, siblingOrder, 'cash');
     if (!dec.collision) continue;
     const c = siblingClientText(siblingOrder);

@@ -235,7 +235,7 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
   const orderRef = db.ref(`orders/${orderId}`);
 
   // Pre-read to avoid the Admin SDK first-call-null transaction abort (see §1).
-  const preOrder = (await require('./lib/rtdb-gate').afterGets(orderRef, () => orderRef.once('value'))).val();
+  const preOrder = (await require('./lib/rtdb-gate').afterGets(orderRef, (r) => r.once('value'))).val();
   if (!preOrder) return { outcome: 'no_order' }; if (require('./payments/sdk/flow').isSdkOrder(preOrder) && !(sdkGoLive === true && require('./payments/sdk/flow').sdkGoLiveAdmits(preOrder))) return { outcome: 'sdk_flow' };
 
   const claim = await orderRef.transaction((cur) => {

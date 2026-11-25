@@ -11,7 +11,7 @@ const TTL_MS = 60000;                // = offer-wire's mirror TTL
 const cache = new Map();             // rid → { at, v }
 
 async function resolve(db, rid) {
-  const leaf = (await require('../lib/rtdb-gate').afterGets(db.ref(`restaurants/${rid}/identity/brand_id`), () => db.ref(`restaurants/${rid}/identity/brand_id`).once('value'))).val();
+  const leaf = (await require('../lib/rtdb-gate').afterGets(db.ref(`restaurants/${rid}/identity/brand_id`), (r) => r.once('value'))).val();
   if (leaf !== null) return F1.brandIdOf(rid, { brand_id: leaf }, {});
   const own = (await db.ref(`brands/${rid}`).once('value')).val();
   return F1.brandIdOf(rid, {}, own === null ? {} : { [rid]: own });

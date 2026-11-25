@@ -18,7 +18,7 @@ function memberOf(req, db, { knownUid = null, getAuth, attributionUid }) {
     try {
       const dec = await getAuth().verifyIdToken(idTok);
       if (!(dec && dec.customer === true && dec.uid)) return null;
-      return attributionUid(dec, (await require('../lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${dec.uid}`), () => db.ref(`deleted_uids/${dec.uid}`).once('value'))).exists()) || null;
+      return attributionUid(dec, (await require('../lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${dec.uid}`), (r) => r.once('value'))).exists()) || null;
     } catch (_) { return null; }   // malformed / expired / foreign ⇒ a guest
   };
 }

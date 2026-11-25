@@ -13,7 +13,7 @@ const RECONCILE_AFTER_MS = 2 * 60 * 1000;   // an unanswered op older than this 
 const UNKNOWN_ALERT_MS = 10 * 60 * 1000;
 const OBLIGATION_DUE_MS = 3 * 24 * 3600 * 1000;
 
-const readOrder = async (db, orderId) => (await require('../../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();
+const readOrder = async (db, orderId) => (await require('../../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();
 const readRecord = async (db, orderId) => (await db.ref(`payment_sdk/${orderId}`).once('value')).val();
 const enrol = (deps, orderId) => deps.db.ref(`payment_sdk_due/${orderId}`).set(deps.clock());
 const isSdk = (order) => !!order && order.payment_flow === 'sdk_auth_v1';
@@ -317,7 +317,7 @@ async function reconcileSdkOps(deps, { orderId }) {
 // released / held_paid are left to their owners. Idempotent.
 async function consumeFulfilledRedemption(deps, orderId, order) {
   if (!F.terminalConsumeDue(order)) return null;
-  const st = (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), () => deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value'))).val();
+  const st = (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), (r) => r.once('value'))).val();
   if (st !== 'reserved') return null;
   return require('../../rewards-reserve').settleRedemptionAtConfirm(deps.db, { orderId, order, disposition: 'consume', now: deps.clock() });
 }
