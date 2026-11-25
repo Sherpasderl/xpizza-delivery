@@ -92,6 +92,26 @@ async function scheduleOn(on, caseOf, K = 24, { siteFirst = false } = {}) {
   }
   return null;
 }
+// RG-RACED-AFTER (r9 §RG-RACED-AFTER, #399 P1-2): the site's caller races its get against a deadline; the deadline fires and the caller
+// ANSWERS while the get is still in flight (its reply is held); THEN the next request's competitor registers. Gated, the competitor
+// waits until the held get settles; ungated (eb177fe58) its listen is orphaned and its next subscription asserts.
+async function racedAfter({ tree, site, path, compete, on = null }) {
+  const S = H.store(tree); const c = on || H.client('raced'); const sw = (p) => Promise.resolve(p).catch((e) => ({ threw: e.message }));
+  const from = c.sent().length;
+  // every frame is served EXCEPT the site's get on `path` (held): the caller's own deadline answers
+  const hold = (m) => m.a === 'g' && m.b && m.b.p === path;
+  const ans = sw(site(c.db)); let answered = false; ans.then(() => { answered = true; });
+  for (let i = 0; i < 400 && !answered; i++) { await H.flush(); await c.serve(S, { skip: hold, max: 400 }).catch(() => {}); if (!answered) await new Promise((r) => setTimeout(r, 10)); }
+  const answer = await ans;
+  const held = c.sent().slice(from).find((m) => m.a === 'g' && m.b.p === path && c.conn().requestCBHash_[m.r]);
+  assert.ok(held, `premise: the site's get on ${path} is still in flight after the caller answered (${String(JSON.stringify(answer)).slice(0, 80)})`);
+  const comp = sw(compete(c.db)); await H.flush();
+  const early = c.sent().slice(from).some((m) => m.a === 'q' && m.b.p === path);
+  await c.serve(S); await comp;
+  let asserted = false; const again = sw(compete(c.db)); await H.flush(); await c.serve(S); const a2 = await again; if (a2 && a2.threw && /listen\(\) called twice/.test(a2.threw)) asserted = true;
+  const residual = c.listens().filter(([p]) => p === path); if (!on) await c.close();
+  return { answer, early, residual, asserted };
+}
 const clean = (L, r, under = null) => {
   const mine = r.residual.filter(([p]) => !under || p === under || p.startsWith(`${under}/`));
   assert.deepStrictEqual({ residual: mine, asserted: under ? mine.length > 0 && r.asserted : r.asserted }, { residual: [], asserted: false }, `🔴 ${L}: the competitor's listen is orphaned / its next subscription asserts`);
@@ -171,6 +191,34 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
   //    cell is meaningful only on the candidate tree: at eb177fe58 its premise fails (the competitor still uses get); GREEN on the full
   //    candidate; RED on the candidate with only this site reverted (its mutant)
   const candidateSubscribes = async (L, tree, compete, path) => { const f = await framesOf(tree, compete); assert.ok(f.frames.includes(`q:${path}`), `${L}: premise (candidate) — the competitor subscribes to ${path} (${f.frames.join(' ')})`); };
+  // ── row 4, the THREE-PARTY route (Codex #400): acquireHostedAttempt held inside its order transaction (its live listener serves the
+  //    order from cache), chargeContext's attempt get on the wire, classifyHostedAttempt's attempt once registered behind it. At the
+  //    pre-gate tree acquire itself later throws «listen() called twice» (rtdb-build/r9 probe); gated: clean.
+  await cell('RG-SER-4-3P delivery/delivery-wire.js:61 vs classifyHostedAttempt (:285) while acquireHostedAttempt holds its order transaction', async (L) => {
+    const order = { order_type: 'pickup', payment_status: 'pending', fingerprint: 'fp2', total_cents: 10000, items_text: '1x X' };
+    const S = H.store({ orders: { o4: order }, payment_attempts: {} }); const c = H.client('3p'); const sw = (p) => Promise.resolve(p).catch((e) => ({ threw: e.message }));
+    const HC = require('../pixelpay-hosted-charge');
+    const acq = sw(HC.acquireHostedAttempt(c.db, 'o4', { ...order }, 'fp2', 1, [], () => 'a9', () => 'tok9')); await H.flush();
+    await c.serve(S, { only: ['g', 'q', 'n', 'm'] }).catch(() => {});
+    assert.ok(c.sent().some((m) => m.a === 'p' && m.b.p === '/orders/o4' && c.conn().requestCBHash_[m.r]), `${L}: premise, acquire is held inside its order transaction`);
+    const cc = sw(require('../delivery/delivery-wire').chargeContext(c.db, 'o4', { ctx: null }, { order_type: 'pickup' }, 1, Promise.resolve(null))); await H.flush();
+    const cl = sw(HC.classifyHostedAttempt(c.db, 'o4', 'fp2', 1)); await H.flush();
+    await c.serve(S); const out = await Promise.all([cc, cl, acq]);
+    assert.ok(!out.some((o) => o && o.threw && /listen\(\) called twice/.test(o.threw)), `🔴 ${L}: «listen() called twice» (${JSON.stringify(out).slice(0, 200)})`);
+    assert.deepStrictEqual(c.listens(), [], `🔴 ${L}: an orphaned listen`);
+    await c.close();
+  });
+
+  await cell('RG-RACED-AFTER-1 checkout-guest-gate.js:87: chargeUidOf answers at its deadline, its tombstone get still in flight; the next saved-card check waits', async (L) => {
+    const req = { get: (h) => (h === 'x-firebase-id-token' ? 't' : undefined) };
+    const r = await racedAfter({ tree: { deleted_uids: { r1: true } }, path: '/deleted_uids/r1',
+      site: (db) => require('../checkout-guest-gate').chargeUidOf(req, { getAuth: () => ({ verifyIdToken: async () => ({ customer: true, uid: 'r1' }) }), getDatabase: () => db, attributionUid: (d, t) => (t ? null : d.uid), deadlineMs: 40 }),
+      compete: (db) => require('../payments/sdk/cards').isDeletedUid(db, 'r1') });
+    assert.strictEqual(r.answer, undefined, `${L}: the caller's own deadline answer, as today (undecided)`);
+    assert.strictEqual(r.early, false, `🔴 ${L}: the competitor registered while the raced get was still in flight`);
+    assert.deepStrictEqual({ residual: r.residual, asserted: r.asserted }, { residual: [], asserted: false }, `🔴 ${L}`);
+  });
+
   // ── index.js inline reads, through the REAL exported handlers on the harness default app (H.indexApp)
   // the catalog the money handlers price from: published into the Firestore fake by the REAL writer (publishVersion), as in production
   const FS = require('../catalog/firestore-fake').makeDb();
@@ -238,6 +286,23 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
   });
   // ── class P (preventive): no reachable assertion with the real competitor (§4.3) — the op guard + the §3.2 matrix carry them ──────
   const REWARDS_TREE = { user_rewards: { u1: { x_pizza: { balance: 0, reserved: 0, reservations: {} } } } };
+  // RG-RACED-AFTER rows 7 / 8 — the REAL handlers' own 1.5 s races answer while the tombstone get is held
+  await cell('RG-RACED-AFTER-7 index.js:1511: placeSdkOrder\'s intake answers 503 auth_unavailable at its 1.5 s race, the get still in flight; the next saved-card check waits', async (L) => {
+    const r = await racedAfter({ on: X, tree: { deleted_uids: {}, restaurants: { x_pizza: { identity: IDENTITY } } }, path: '/deleted_uids/r7',
+      site: () => H.call(X.idx.placeSdkOrder, { headers: { authorization: `Bearer ${tok('r7')}`, origin: 'https://sherpa.hn' }, body: { ...orderBody('o7r', 'online'), entry_mode: 'app' } }),
+      compete: (db) => require('../payments/sdk/cards').isDeletedUid(db, 'r7') });
+    assert.deepStrictEqual(r.answer && [r.answer.status, r.answer.body && r.answer.body.error], [503, 'auth_unavailable'], `${L}: today's answer`);
+    assert.strictEqual(r.early, false, `🔴 ${L}: the competitor registered while the raced get was in flight`);
+    assert.deepStrictEqual({ residual: r.residual, asserted: r.asserted }, { residual: [], asserted: false }, `🔴 ${L}`);
+  });
+  await cell('RG-RACED-AFTER-8 index.js:1624: chargeOnlineOrder\'s attribution answers at its 1.5 s race (guest), the get still in flight; the next saved-card check waits', async (L) => {
+    const r = await racedAfter({ on: X, tree: { deleted_uids: {}, restaurants: { x_pizza: { identity: IDENTITY } } }, path: '/deleted_uids/r8',
+      site: () => H.call(X.idx.chargeOnlineOrder, { headers: bearer('r8'), body: { ...orderBody('o8r', 'online'), customer_phone: '99558008' } }),
+      compete: (db) => require('../payments/sdk/cards').isDeletedUid(db, 'r8') });
+    assert.ok(r.answer && typeof r.answer.status === 'number', `${L}: the handler answered (${JSON.stringify(r.answer).slice(0, 80)})`);
+    assert.strictEqual(r.early, false, `🔴 ${L}: the competitor registered while the raced get was in flight`);
+    assert.deepStrictEqual({ residual: r.residual, asserted: r.asserted }, { residual: [], asserted: false }, `🔴 ${L}`);
+  });
   if (process.env.RG_SEARCH) {   // class-run aid: print the first asserting schedule per pair (not a cell)
     const tree4 = { orders: { o1: { order_type: 'pickup', payment_status: 'pending', active_attempt_id: 'a1' } }, payment_attempts: { a1: { hosted_state: 'created', hosted_expires_at: 9e12, hosted_checkout_url: 'u' } } };
     const cc = (db) => require('../delivery/delivery-wire').chargeContext(db, 'o1', { ctx: null }, { order_type: 'pickup' }, 1, Promise.resolve(null));

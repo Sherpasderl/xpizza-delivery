@@ -73,11 +73,11 @@ function wrap(app, db) {
     // the server answers in REQUEST order, ONE frame per event turn — the production frame order. (Delivering every reply in one
     // synchronous burst HIDES the race: the listen's data lands before get()'s promise continuation runs.) A get is answered with
     // `at(path)`; a listen first with a data push of `at(path)`, then its ok; anything else with ok. `only` limits the actions served.
-    serve: async (atOrStore, { only = ['g', 'q', 'n', 'p', 'm'], max = 64, until = null } = {}) => {   // until(sent) → true stops early (a cell issues its competitor there)
+    serve: async (atOrStore, { only = ['g', 'q', 'n', 'p', 'm'], max = 64, until = null, skip = null } = {}) => {   // skip(msg) → true holds that request (never answered by this call)   // until(sent) → true stops early (a cell issues its competitor there)
       const at = typeof atOrStore === 'function' ? atOrStore : atOrStore.at; const apply = typeof atOrStore === 'function' ? null : atOrStore.apply;
       for (let i = 0; i < max; i++) {
         if (until && until(sent())) return i;
-        const m = sent().find((x) => only.includes(x.a) && conn().requestCBHash_[x.r] && !x.__done);
+        const m = sent().find((x) => only.includes(x.a) && conn().requestCBHash_[x.r] && !x.__done && !(skip && skip(x)));
         if (!m) { if (until) { await flush(); continue; } return i; }   // with until: the helper may not have issued its read yet — wait a turn
         if (m.a === 'g') { m.__done = true; conn().onDataMessage_({ r: m.r, b: { s: 'ok', d: at(m.b.p) } }); }
         else if (m.a === 'q' && !m.__data) { m.__data = true; conn().onDataMessage_({ a: 'd', b: { p: m.b.p, d: at(m.b.p) } }); }
