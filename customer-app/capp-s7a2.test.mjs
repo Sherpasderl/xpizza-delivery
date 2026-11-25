@@ -15,6 +15,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { payView, line as payLine } from './test/fake-sdk-pay.mjs';
+import { realSdkServer } from './test/real-sdk-server.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, '..');
 const require = createRequire(import.meta.url);
@@ -305,7 +306,7 @@ function bootShell({ realFrames = false, dirScript = defDir(), envelope = 'ok', 
   if (preMount) preMount(w);   // a host object present BEFORE the shell mounts (the installed app's Capacitor bridge)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-theme.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-splash.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-text.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'phone-countries.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-push.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-splash.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-text.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'phone-countries.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-pay-card.js', 'capp-pay-checkout.js', 'capp-push.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [], replaced = [];   // replaced: r3's restart (location.replace), recorded
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -2503,7 +2504,7 @@ async function pedidosBoot(db, opts = {}) {
     if (opts.push && /CustomerPush/.test(pth)) return opts.push.handler(u, i);   // push stage 2: 3a's REAL customer-push handlers
     return pth.endsWith('/getMyOrders') ? mo.handler(u, i) : g.fetch(u, i); };
   const fb = fakeFirebase({ persisted: 'u_ana', tokExp: T0 + 3600e3, ...(opts.fbOpts || {}) });
-  const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, readPublic: opts.readPublic, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation, ...(opts.search ? { search: opts.search } : {}), ...(opts.envelope ? { envelope: opts.envelope } : {}), ...(opts.preMount ? { preMount: opts.preMount } : {}), ...(opts.dirScript ? { dirScript: opts.dirScript } : {}), ...(opts.media ? { media: opts.media } : {}) });
+  const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, readPublic: opts.readPublic, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.mountExtra || {}), ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation, ...(opts.search ? { search: opts.search } : {}), ...(opts.envelope ? { envelope: opts.envelope } : {}), ...(opts.preMount ? { preMount: opts.preMount } : {}), ...(opts.dirScript ? { dirScript: opts.dirScript } : {}), ...(opts.media ? { media: opts.media } : {}) });
   if (!opts.noFlush) { await flush(); await flush(); }
   return { S, mo, fb, g };
 }
@@ -7581,4 +7582,417 @@ test('COUNTERFACTUAL guard: promo_free_counterfactual / complete_writer_raw are 
   const gen = readFileSync(join(HERE, 'fixtures/s7a2/gen-directory.mjs'), 'utf8');
   assert.ok(gen.includes('⚠ COUNTERFACTUAL') && gen.includes('pricing-admin-core.js:4-5'), '🔴 COUNTERFACTUAL: the generator labels both scenarios and cites addendum A');
   assert.equal(Object.keys(RAW).filter((k) => /counterfactual/.test(k)).join(), 'promo_free_counterfactual', 'ONE counterfactual scenario by name (+ its declared RULE 10 twin)');
+});
+
+// ── C-3 «Tarjetas guardadas» (PLAN-capp-C3-card-removal-r2 §5; MOCKUP-capp-card-removal v2, owner-approved 11-24) ───────────────────
+// The server is the REAL one (test/real-sdk-server.mjs: the HTTP wrappers + cores, cards written by the real completeVault); the runtime's
+// card endpoints come from the boot's OWN runtimeFor with the cards + signup flags and NO sdkPay (C3-20: the website, SDK checkout off)
+const CARDS_FN = createRequire(import.meta.url)('../xpizza-functions/payments/sdk/cards.js');
+const C3_RT = require('./capp-boot.js').runtimeFor({ functions_base: 'https://fn.test', flags: { cards: true, signup: true } }, require('./capp-signup-api.js'));
+const C3_RUNTIME = { ...G7_RUNTIME, cards: C3_RT.cards };
+const VISA_D = { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 }, MC_D = { brand: 'mastercard', last4: '8810', exp_month: 3, exp_year: 2031 }, AMEX_D = { brand: 'amex', last4: '1005', exp_month: 7, exp_year: 2032 };
+// seed: the cards in the order the server LISTS them (newest last_used_at first) — saved oldest first on the server's clock
+async function cardsBoot({ seed = [['u_ana', VISA_D, 'tok_v']], runtime = C3_RUNTIME, fbOpts = {}, storage } = {}) {
+  const sclock = { t: T0 - 60e3 };
+  const real = realSdkServer({ clock: sclock, members: { [TOK('u_ana')]: 'u_ana', [TOK('u_bea')]: 'u_bea' } });
+  const ids = [];
+  for (const [uid, d, tok] of [...seed].reverse()) { sclock.t += 1000; ids.unshift(await real.saveCard(uid, d, tok)); }
+  const C = { real, ids, reqs: [], fault: null };
+  const rf = real.fetchFor(C3_RT.cards.endpoints, async (u) => { throw new Error(`unscripted ${u}`); });
+  const payFetch = async (u, i) => {
+    C.reqs.push({ ep: String(u).split('/').pop(), method: (i && i.method) || 'GET', body: i && i.body ? JSON.parse(i.body) : null, auth: i && i.headers ? i.headers.Authorization || null : null });
+    return C.fault ? C.fault(u, i, rf) : rf(u, i);
+  };
+  const b = await pedidosBoot({}, { runtime, fbOpts, ...(storage ? { storage } : {}), mountExtra: { payFetch } });
+  return Object.assign(C, b, { of: (ep) => C.reqs.filter((r) => r.ep === ep) });
+}
+const toCuenta = async (S) => { S.click('.tabbar [data-tab="account"]'); await flush(); await flush(); };
+const openCards = async (C) => { await toCuenta(C.S); C.S.click('.rowbtn[data-act="cards"]'); await flush(); await flush(); };
+const cardLabels = (S) => S.qa('.saved-cards .urow .t b').map(txt);
+const rmOf = (S, id) => S.q(`.saved-cards [data-act="card-rm"][data-card="${id}"]`);
+const sheetOpen = (S) => !!S.q('#layer [aria-label="Quitar tarjeta"]');
+const errLine = (S) => txt(S.q('#layer .errsheet .err'));
+const toastTxt = (S) => { const t = S.q('#toast'); return t && t.classList.contains('on') ? t.textContent : null; };
+const backKey = async (S) => { S.w.history.back(); await flush(); await flush(); };
+
+test('C3-01 / C3-02: the member Cuenta row «Tarjetas guardadas» right after «Direcciones», no sub-line, ZERO card requests on the Cuenta paint; a guest, a runtime without cards, and sdkPay without cards show no row', async () => {
+  const C = await cardsBoot();
+  try {
+    await toCuenta(C.S);
+    const rows = C.S.qa('.rows .rowbtn').map((b) => b.querySelector('.t').firstChild.textContent);
+    const i = rows.indexOf('Direcciones');
+    assert.deepEqual(rows.slice(0, 4), ['Pedidos', 'Direcciones', 'Tarjetas guardadas', 'Notificaciones'], `🔴 C3-01: the row order (${rows.join(' · ')})`);
+    assert.ok(i >= 0 && rows[i + 1] === 'Tarjetas guardadas', 'right after Direcciones');
+    const row = C.S.q('.rowbtn[data-act="cards"]');
+    assert.equal(row.querySelector('.t span'), null, '🔴 C3-01: the row carries no sub-line (owner Q2)');
+    assert.equal(row.lastElementChild.outerHTML, C.S.q('.rowbtn[data-act="addresses"]').lastElementChild.outerHTML, 'the chevron, as its neighbours\' (frame 1)');
+    assert.equal(C.reqs.length, 0, '🔴 C3-01: the Cuenta paint read the cards (no read until the step opens)');
+  } finally { C.S.w.close(); }
+  for (const [label, runtime] of [['no cards', G7_RUNTIME], ['sdkPay without cards', { ...G7_RUNTIME, sdkPay: { endpoints: { listCards: 'https://fn.test/listCards', removeCard: 'https://fn.test/removeCard' } } }]]) {
+    const N = await cardsBoot({ runtime });
+    try { await toCuenta(N.S); assert.equal(N.S.q('[data-act="cards"]'), null, `🔴 C3-02: ${label}: the row shows`); assert.equal(N.reqs.length, 0, `${label}: no card request`); } finally { N.S.w.close(); }
+  }
+  const fb = fakeFirebase();
+  const G = bootShell({ auth: 'guest', runtime: C3_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, payFetch: async () => { throw new Error('a guest read cards'); } } }); await flush();
+  try { G.click('.tabbar [data-tab="account"]'); await flush(); assert.equal(G.q('[data-act="cards"]'), null, '🔴 C3-02: a guest sees the row'); } finally { G.w.close(); }
+});
+
+test('C3-03 / C3-04 / C3-05 / C3-20: the step reads ONCE (Bearer, the owned token), shows the loading line, then the rows in the server\'s order with their tiles; an expired card dims with «Quitar» live; a confirmed empty list is frame 5 — on the website runtime with the SDK checkout OFF', async () => {
+  assert.equal('sdkPay' in C3_RUNTIME, false, 'premise (C3-20): the runtime carries no sdkPay');
+  const C = await cardsBoot({ seed: [['u_ana', VISA_D, 'tok_v'], ['u_ana', MC_D, 'tok_m'], ['u_ana', AMEX_D, 'tok_a']] });
+  try {
+    await C.real.expire('u_ana', 'tok_m');
+    const rel = C.real.holdNext('listCards');
+    await openCards(C);
+    assert.equal(txt(C.S.q('.topbar h1')), 'Tarjetas guardadas', 'the step');
+    assert.equal(txt(C.S.q('.cards-step .note.aload')), 'Cargando tus tarjetas…', '🔴 C3-03: no loading line while the read is out');
+    assert.equal(C.S.q('.cards-step .empty'), null, '🔴 C3-05: frame 5 while the read is pending');
+    rel(); await flush(); await flush();
+    assert.equal(C.of('listCards').length, 1, '🔴 C3-03: one GET per open');
+    assert.deepEqual([C.of('listCards')[0].method, C.of('listCards')[0].auth], ['GET', `Bearer ${TOK('u_ana')}`], '🔴 C3-03: GET with the member\'s owned Bearer token');
+    assert.deepEqual(cardLabels(C.S), ['Visa ···· 4242', 'Mastercard ···· 8810', 'Amex ···· 1005'], '🔴 C3-03: the rows, in the server\'s order');
+    const rowsEl = C.S.qa('.saved-cards .urow');
+    assert.ok(rowsEl[0].querySelector('svg.bb text') && rowsEl[1].querySelector('svg.bb circle'), 'the visa and mastercard tiles');
+    assert.ok(rowsEl[2].querySelector('svg.i') && !rowsEl[2].querySelector('svg.bb'), 'amex ⇒ the plain glyph');
+    assert.ok(rowsEl[1].classList.contains('dim'), '🔴 C3-04: the expired card is not dimmed');
+    assert.equal(txt(rowsEl[1].querySelector('.t span')), 'Venció en 03/31', 'the expired wording');
+    assert.equal(rmOf(C.S, C.ids[1]).disabled, false, '🔴 C3-04: «Quitar» on an expired card is disabled');
+    assert.equal(C.S.q('.cards-step .empty'), null, 'rows ⇒ never frame 5');
+  } finally { C.S.w.close(); }
+  const E = await cardsBoot({ seed: [] });
+  try {
+    await openCards(E);
+    assert.equal(txt(E.S.q('.cards-step .empty b')), 'Todavía no guardaste ninguna tarjeta', '🔴 C3-05: a confirmed empty list is not frame 5');
+    assert.equal(E.S.q('.cards-step .retry'), null, 'frame 5 carries no button');
+  } finally { E.S.w.close(); }
+});
+
+test('C3-06 / C3-16b: a read that fails (network, 500, a malformed {cards:{}}, the 12 s bound) is frame 6b — never frame 5 — and «Reintentar» reads again', async () => {
+  for (const [label, fault] of [['network', async () => { throw new TypeError('Failed to fetch'); }], ['500', async () => ({ status: 500, ok: false, json: async () => ({ error: 'internal' }) })],
+    ['{cards:{}} (C3-16b)', async () => ({ status: 200, ok: true, json: async () => ({ cards: {} }) })], ['12 s', () => new Promise(() => {})]]) {
+    const C = await cardsBoot();
+    try {
+      C.fault = fault;
+      await openCards(C);
+      if (label === '12 s') {
+        assert.ok(C.S.q('.cards-step .note.aload'), 'premise: still loading before the bound');
+        await flush(12_000); await flush();
+        assert.equal(C.S.q('.cards-step .note.aload'), null, '🔴 C3-06: 12 s: the read is not bounded (still loading after 12 s)');
+      }
+      assert.equal(C.S.q('.cards-step .empty'), null, `🔴 C3-06: ${label}: a failed read shows frame 5`);
+      assert.equal(txt(C.S.q('.cards-step .sandline.act span')), 'No pudimos cargar tus tarjetas.', `🔴 C3-06: ${label}: not frame 6b`);
+      C.fault = null; C.S.click('.cards-step [data-act="cards-retry"]'); await flush(); await flush();
+      assert.deepEqual(cardLabels(C.S), ['Visa ···· 4242'], `🔴 C3-06: ${label}: «Reintentar» does not read again`);
+      assert.equal(C.of('listCards').length, 2, 'two reads: the failed one and the retry');
+    } finally { C.S.w.close(); }
+  }
+});
+
+test('C3-07 / C3-08 / C3-09 / C3-20: «Quitar» opens the sheet; a double tap sends ONE POST (the busy markup meanwhile); the real 200 ⇒ the sheet closes, the row goes, one toast, a quiet re-read — the real node: gone, removed_ids, the token retained, tomb.gen +1', async () => {
+  const C = await cardsBoot({ seed: [['u_ana', VISA_D, 'tok_v'], ['u_ana', MC_D, 'tok_m']] });
+  try {
+    await openCards(C);
+    C.S.click(rmOf(C.S, C.ids[0])); await flush();
+    assert.ok(sheetOpen(C.S), 'the sheet opens');
+    assert.equal(txt(C.S.q('#layer #cardrm-h')), '¿Quitar la tarjeta ···· 4242?', '🔴 C3-07: the sheet title');
+    const rel = C.real.holdNext('removeCard');
+    C.S.click('#layer [data-act="card-rm-confirm"]'); C.S.click('#layer [data-act="card-rm-confirm"]'); await flush();
+    const pill = C.S.q('#layer [data-act="card-rm-confirm"]');
+    assert.deepEqual([pill.disabled, pill.getAttribute('aria-busy'), txt(pill)], [true, 'true', 'Quitando…'], '🔴 C3-08: the busy pill (4a)');
+    assert.equal(C.S.q('#layer [data-act="card-rm-cancel"].btn2').disabled, true, '4a: «Cancelar» disabled');
+    assert.ok(C.S.qa('.saved-cards [data-act="card-rm"]').every((b) => b.disabled), '4a: every row action disabled');
+    C.S.click('#layer [data-act="card-rm-confirm"]'); await flush();
+    rel(); await flush(); await flush();
+    assert.equal(C.of('removeCard').length, 1, '🔴 C3-08: a tap burst sent more than one POST');
+    assert.deepEqual([C.of('removeCard')[0].method, C.of('removeCard')[0].body, C.of('removeCard')[0].auth], ['POST', { card_id: C.ids[0] }, `Bearer ${TOK('u_ana')}`], 'one POST {card_id} with the owned Bearer');
+    assert.equal(sheetOpen(C.S), false, '🔴 C3-09: the sheet stays open after the 200');
+    assert.deepEqual(cardLabels(C.S), ['Mastercard ···· 8810'], '🔴 C3-09: the removed row is still listed');
+    assert.equal(toastTxt(C.S), 'Tarjeta quitada.', '🔴 C3-09: no toast');
+    assert.equal(C.of('listCards').length, 2, '🔴 C3-09: no quiet re-read after the removal');
+    const n = await C.real.cardsNode('u_ana');
+    assert.ok(!n.cards[C.ids[0]] && n.removed_ids[C.ids[0]] === true, 'the real node: gone, in removed_ids');
+    assert.deepEqual(Object.values(n.removed_tokens), ['tok_v'], 'the token retained for S-2\'s provider delete');
+    assert.deepEqual(Object.values(n.tomb).map((t) => t.gen), [1], 'tomb.gen bumped once');
+  } finally { C.S.w.close(); }
+});
+
+test('C3-10 / C3-11: a 404 (the real fence: the card is already gone) is NOT an error — pruned, re-read; a 500 / network / 401 keeps the sheet with the inline error, the pill live, the card listed', async () => {
+  const C = await cardsBoot();
+  try {
+    await openCards(C);
+    await CARDS_FN.fenceCards(C.real.db, 'u_ana', T0);   // in-process: the account-deletion fence replaces the node (the real one)
+    C.S.click(rmOf(C.S, C.ids[0])); await flush();
+    C.S.click('#layer [data-act="card-rm-confirm"]'); await flush(); await flush();
+    assert.equal(C.of('removeCard').length, 1, 'premise: one POST');
+    assert.equal(sheetOpen(C.S), false, '🔴 C3-10: a 404 kept the sheet open');
+    assert.equal(cardLabels(C.S).length, 0, '🔴 C3-10: a 404 did not prune the row');
+    assert.equal(txt(C.S.q('.cards-step .empty b')), 'Todavía no guardaste ninguna tarjeta', 'the re-read: the fenced node lists nothing');
+  } finally { C.S.w.close(); }
+  for (const [label, fault] of [['500', async () => ({ status: 500, ok: false, json: async () => ({ error: 'internal' }) })], ['network', async () => { throw new TypeError('Failed to fetch'); }],
+    ['401 (the real handler, a token it does not know)', (u, i, rf) => rf(u, { ...i, headers: { ...i.headers, Authorization: 'Bearer nope' } })]]) {
+    const F = await cardsBoot();
+    try {
+      await openCards(F);
+      F.S.click(rmOf(F.S, F.ids[0])); await flush();
+      F.fault = (u, i, rf) => (String(u).endsWith('/removeCard') ? fault(u, i, rf) : rf(u, i));
+      F.S.click('#layer [data-act="card-rm-confirm"]'); await flush(); await flush();
+      assert.ok(sheetOpen(F.S), `🔴 C3-11: ${label}: the sheet closed`);
+      assert.equal(errLine(F.S), 'No pudimos quitar la tarjeta. Probá de nuevo.', `🔴 C3-11: ${label}: no inline error (frame 6)`);
+      const pill = F.S.q('#layer [data-act="card-rm-confirm"]');
+      assert.deepEqual([pill.disabled, txt(pill)], [false, 'Quitar tarjeta'], `🔴 C3-11: ${label}: the pill is not live again`);
+      assert.deepEqual(cardLabels(F.S), ['Visa ···· 4242'], `${label}: the card still listed`);
+      assert.equal(F.of('removeCard').length, 1, `${label}: no automatic retry`);
+      assert.ok((await F.real.cardsNode('u_ana')).cards[F.ids[0]], `${label}: the real node still holds the card`);
+    } finally { F.S.w.close(); }
+  }
+});
+
+test('C3-14 / C3-15: an identity change AFTER dispatch drops the late answer (no toast, no prune, no paint), closes the sheet and leaves the step; no card data is ever written to storage', async () => {
+  const storage = g7Store(G7_PROFILE({ promos: true }));
+  const C = await cardsBoot({ seed: [['u_ana', VISA_D, 'tok_v'], ['u_ana', MC_D, 'tok_m']], storage });
+  // the runner's own unhandledRejection listener would fail the test before the named assertion reads `thrown`: it is set aside for
+  // this window and put back in finally
+  const thrown = []; const onRej = (e) => thrown.push(String(e && e.stack || e));
+  const runnerRej = process.listeners('unhandledRejection'); process.removeAllListeners('unhandledRejection'); process.on('unhandledRejection', onRej);
+  try {
+    await openCards(C);
+    C.S.click(rmOf(C.S, C.ids[0])); await flush();
+    const rel = C.real.holdNext('removeCard');
+    C.S.click('#layer [data-act="card-rm-confirm"]'); await flush();
+    assert.equal(C.of('removeCard').length, 1, 'premise: the POST is out');
+    const sdk = await C.fb.loadSdk(); await sdk.authMod.signOut(); await flush(); await flush();
+    rel(); await flush(); await flush();
+    assert.equal(toastTxt(C.S), null, '🔴 C3-14: a late answer of a gone identity toasted');
+    assert.equal(sheetOpen(C.S), false, '🔴 C3-14: the sheet stayed open after the identity change');
+    assert.equal(C.S.q('.cards-step'), null, '🔴 C3-14: the step stayed after the identity change');
+    assert.equal(C.of('listCards').length, 1, 'no re-read for a gone identity');
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(thrown, [], '🔴 C3-14: the late answer was applied to the cleared list (it threw)');
+    const dump = [...storage._m.entries()].map(([k, v]) => `${k}=${v}`).join('\n');
+    for (const bad of [...C.ids, '4242', '8810', 'Visa ····', 'Mastercard ····']) assert.ok(!dump.includes(bad), `🔴 C3-15: storage holds card data («${bad}»)`);
+  } finally { process.off('unhandledRejection', onRej); for (const f of runnerRej) process.on('unhandledRejection', f); C.S.w.close(); }
+  const R = await cardsBoot();
+  try {
+    const rel = R.real.holdNext('listCards');
+    await openCards(R);
+    const sdk = await R.fb.loadSdk(); await sdk.authMod.signOut(); await flush(); await flush();
+    rel(); await flush(); await flush();
+    assert.equal(R.S.q('.saved-cards'), null, '🔴 C3-14: the read\'s late answer painted a gone identity\'s cards');
+    assert.equal(R.S.q('.cards-step .sandline.act'), null, 'nor frame 6b');
+  } finally { R.S.w.close(); }
+});
+
+test('C3-21 / C3-22: a token wait that outlives its identity sends NOTHING — read and remove (sign-out, destroy); a null token for the current member ⇒ frame 6, zero POSTs', async () => {
+  for (const exit of ['signout', 'destroy']) {
+    const hold = { on: false, q: [] };
+    const C = await cardsBoot({ fbOpts: { hold } });
+    try {
+      hold.on = true;
+      await openCards(C);
+      assert.equal(C.of('listCards').length, 0, 'premise: the read waits on the token');
+      if (exit === 'signout') { const sdk = await C.fb.loadSdk(); const p = sdk.authMod.signOut(); await flush(); await p; } else C.S.ui.destroy();
+      hold.on = false; for (const f of hold.q.splice(0)) f(); await flush(); await flush();
+      assert.equal(C.of('listCards').length, 0, `🔴 C3-21: ${exit}: a GET went out after the identity ended`);
+      assert.equal(C.S.q('.cards-step .sandline.act'), null, `${exit}: no 6b painted for the dead identity`);
+    } finally { C.S.w.close(); }
+  }
+  for (const exit of ['signout', 'destroy']) {
+    const hold = { on: false, q: [] };
+    const C = await cardsBoot({ fbOpts: { hold } });
+    try {
+      await openCards(C);
+      C.S.click(rmOf(C.S, C.ids[0])); await flush();
+      hold.on = true;
+      C.S.click('#layer [data-act="card-rm-confirm"]'); await flush();
+      if (exit === 'signout') { const sdk = await C.fb.loadSdk(); const p = sdk.authMod.signOut(); await flush(); await p; } else C.S.ui.destroy();
+      hold.on = false; for (const f of hold.q.splice(0)) f(); await flush(); await flush();
+      assert.equal(C.of('removeCard').length, 0, `🔴 C3-22: ${exit}: a POST went out after the identity ended`);
+      assert.ok((await C.real.cardsNode('u_ana')).cards[C.ids[0]], `${exit}: the real node unchanged`);
+    } finally { C.S.w.close(); }
+  }
+  let fail = false;
+  const N = await cardsBoot({ fbOpts: { failIf: () => fail } });
+  try {
+    await openCards(N);
+    N.S.click(rmOf(N.S, N.ids[0])); await flush();
+    fail = true; N.S.click('#layer [data-act="card-rm-confirm"]'); await flush(); await flush(); fail = false;
+    assert.equal(N.of('removeCard').length, 0, '🔴 C3-22: a POST without a token');
+    assert.equal(errLine(N.S), 'No pudimos quitar la tarjeta. Probá de nuevo.', '🔴 C3-22: no token (current member) is not frame 6');
+  } finally { N.S.w.close(); }
+});
+
+test('C3-23 / C3-24 / C3-25: the device Back closes an idle sheet (the step stays), then pops to Cuenta; while busy every Back, the scrim and the grab are refused; after the answer one Back acts normally', async () => {
+  const C = await cardsBoot({ seed: [['u_ana', VISA_D, 'tok_v'], ['u_ana', MC_D, 'tok_m']] });
+  try {
+    await openCards(C);
+    C.S.click(rmOf(C.S, C.ids[0])); await flush();
+    await backKey(C.S);
+    assert.equal(sheetOpen(C.S), false, '🔴 C3-23: Back did not close the idle sheet');
+    assert.equal(txt(C.S.q('.topbar h1')), 'Tarjetas guardadas', '🔴 C3-23: Back over the sheet left the step');
+    assert.equal(C.S.w.history.state && C.S.w.history.state.capp_shell, 1, 'the sentinel is back');
+    await backKey(C.S);
+    assert.ok(C.S.q('.rowbtn[data-act="cards"]'), '🔴 C3-23: the second Back did not pop the step to Cuenta');
+    C.S.click('.rowbtn[data-act="cards"]'); await flush(); await flush();
+    C.S.click(rmOf(C.S, C.ids[0])); await flush();
+    C.S.click('#layer .scrim'); await flush();
+    assert.equal(sheetOpen(C.S), false, '🔴 C3-25: the scrim does not close an idle sheet');
+    C.S.click(rmOf(C.S, C.ids[0])); await flush();
+    C.S.click('#layer .grab'); await flush();
+    assert.equal(sheetOpen(C.S), false, '🔴 C3-25: the grab does not close an idle sheet');
+    C.S.click(rmOf(C.S, C.ids[0])); await flush();
+    const rel = C.real.holdNext('removeCard');
+    C.S.click('#layer [data-act="card-rm-confirm"]'); await flush();
+    for (let k = 0; k < 3; k++) { await backKey(C.S); assert.ok(sheetOpen(C.S) && C.S.q('.cards-step'), `🔴 C3-24: Back #${k + 1} while busy was not refused`); }
+    for (const part of ['.scrim', '.grab']) {   // one at a time: a closed sheet has no grab left to tap
+      C.S.click(`#layer ${part}`); await flush();
+      assert.ok(sheetOpen(C.S), `🔴 C3-25: the scrim / grab closed a busy sheet (${part})`);
+    }
+    rel(); await flush(); await flush();
+    assert.equal(sheetOpen(C.S), false, 'the answer closed it');
+    await backKey(C.S);
+    assert.ok(C.S.q('.rowbtn[data-act="cards"]'), 'after the answer one Back pops normally');
+  } finally { C.S.w.close(); }
+});
+
+test('C3-26 / C3-28: cancelling the SECOND card\'s sheet gives focus back to the second card\'s «Quitar»; while busy focus sits on the sheet heading and Tab stays inside the sheet', async () => {
+  const C = await cardsBoot({ seed: [['u_ana', VISA_D, 'tok_v'], ['u_ana', MC_D, 'tok_m']] });
+  try {
+    await openCards(C);
+    rmOf(C.S, C.ids[1]).focus(); C.S.click(rmOf(C.S, C.ids[1])); await flush();
+    C.S.click('#layer .btn2[data-act="card-rm-cancel"]'); await flush();
+    assert.equal(C.S.w.document.activeElement && C.S.w.document.activeElement.dataset.card, C.ids[1], '🔴 C3-26: focus did not return to the second card\'s «Quitar»');
+    C.S.click(rmOf(C.S, C.ids[1])); await flush();
+    const rel = C.real.holdNext('removeCard');
+    C.S.click('#layer [data-act="card-rm-confirm"]'); await flush();
+    assert.equal(C.S.w.document.activeElement && C.S.w.document.activeElement.id, 'cardrm-h', '🔴 C3-28: busy focus is not on the sheet heading');
+    for (const shiftKey of [false, true]) {
+      C.S.w.document.dispatchEvent(new C.S.w.KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true })); await flush();
+      const ae = C.S.w.document.activeElement;
+      assert.ok(ae && C.S.q('#layer').contains(ae), `🔴 C3-28: ${shiftKey ? 'Shift+' : ''}Tab let focus out of the busy sheet`);
+    }
+    C.S.w.document.dispatchEvent(new C.S.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await flush();
+    assert.ok(sheetOpen(C.S), '🔴 C3-28: Escape closed a busy sheet');
+    rel(); await flush(); await flush();
+    C.S.click(rmOf(C.S, C.ids[0])); await flush();
+    C.S.w.document.dispatchEvent(new C.S.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await flush();
+    assert.equal(sheetOpen(C.S), false, 'Escape closes an idle sheet');
+  } finally { C.S.w.close(); }
+});
+
+test('C3-27: removing the MIDDLE of three cards puts focus on the next card\'s «Quitar» — after the prune AND after the quiet re-read; a re-read without it ⇒ the previous card; the last card ⇒ «Volver»; a user who moved focus is not pulled back', async () => {
+  const seed = [['u_ana', VISA_D, 'tok_v'], ['u_ana', MC_D, 'tok_m'], ['u_ana', AMEX_D, 'tok_a']];
+  const ae = (S) => S.w.document.activeElement;
+  const C = await cardsBoot({ seed });
+  try {
+    await openCards(C);
+    C.S.click(rmOf(C.S, C.ids[1])); await flush();
+    const relRead = () => C.real.holdNext('listCards');
+    const r = relRead();
+    C.S.click('#layer [data-act="card-rm-confirm"]'); await flush(); await flush();
+    assert.equal(ae(C.S) && ae(C.S).dataset.card, C.ids[2], '🔴 C3-27: after the prune focus is not on the next card');
+    r(); await flush(); await flush();
+    assert.equal(ae(C.S) && ae(C.S).dataset.card, C.ids[2], '🔴 C3-27: the re-read lost the focus target');
+  } finally { C.S.w.close(); }
+  const D = await cardsBoot({ seed });
+  try {
+    await openCards(D);
+    D.S.click(rmOf(D.S, D.ids[1])); await flush();
+    const r = D.real.holdNext('listCards');
+    D.S.click('#layer [data-act="card-rm-confirm"]'); await flush(); await flush();
+    await D.real.callHandler('removeCard', 'POST', { Authorization: `Bearer ${TOK('u_ana')}` }, { card_id: D.ids[2] });   // gone elsewhere before the re-read lands
+    r(); await flush(); await flush();
+    assert.deepEqual(cardLabels(D.S), ['Visa ···· 4242'], 'premise: the re-read no longer lists it');
+    assert.equal(ae(D.S) && ae(D.S).dataset.card, D.ids[0], '🔴 C3-27: the next card gone ⇒ focus is not on the previous card');
+    D.S.click(rmOf(D.S, D.ids[0])); await flush();
+    D.S.click('#layer [data-act="card-rm-confirm"]'); await flush(); await flush();
+    assert.equal(ae(D.S) && ae(D.S).dataset.act, 'cards-back', '🔴 C3-27: the last card removed ⇒ focus is not on «Volver»');
+  } finally { D.S.w.close(); }
+  const U = await cardsBoot({ seed });
+  try {
+    await openCards(U);
+    U.S.click(rmOf(U.S, U.ids[1])); await flush();
+    const r = U.real.holdNext('listCards');
+    U.S.click('#layer [data-act="card-rm-confirm"]'); await flush(); await flush();
+    rmOf(U.S, U.ids[0]).focus();
+    r(); await flush(); await flush();
+    assert.equal(ae(U.S) && ae(U.S).dataset.card, U.ids[0], '🔴 C3-27: a user who moved focus was pulled back by the re-read');
+  } finally { U.S.w.close(); }
+});
+
+test('C3-29 / C3-30 / C3-31 / C3-32: the remove is bounded at 12 s (a held token, a held request, a held body) with no automatic retry; a late 200 is ignored; a response lost AFTER the real handler committed ⇒ frame 6, and the re-tap answers 200 (removed_ids) — tomb.gen bumped once', async () => {
+  { const C = await cardsBoot();   // no automatic retry, on its own: a fast failure, so no bound's timing stands in front of the count
+    try {
+      await openCards(C);
+      C.S.click(rmOf(C.S, C.ids[0])); await flush();
+      C.fault = (u, i, rf) => (String(u).endsWith('/removeCard') ? Promise.resolve({ status: 500, ok: false, json: async () => ({ error: 'internal' }) }) : rf(u, i));
+      C.S.click('#layer [data-act="card-rm-confirm"]'); await flush(); await flush(); await flush(60_000);
+      assert.equal(C.of('removeCard').length, 1, '🔴 C3-29: a failed remove was retried on its own');
+      assert.equal(errLine(C.S), 'No pudimos quitar la tarjeta. Probá de nuevo.', 'frame 6');
+    } finally { C.S.w.close(); } }
+  { const hold = { on: false, q: [] };
+    const C = await cardsBoot({ fbOpts: { hold } });
+    try {
+      await openCards(C);
+      C.S.click(rmOf(C.S, C.ids[0])); await flush();
+      hold.on = true; C.S.click('#layer [data-act="card-rm-confirm"]'); await flush();
+      await flush(12_000); await flush();
+      assert.equal(errLine(C.S), 'No pudimos quitar la tarjeta. Probá de nuevo.', '🔴 C3-29: a held token is not frame 6 at 12 s');
+      assert.equal(C.S.q('#layer [data-act="card-rm-confirm"]').disabled, false, 'busy released');
+      hold.on = false; for (const f of hold.q.splice(0)) f(); await flush(60_000);
+      assert.equal(C.of('removeCard').length, 0, '🔴 C3-29: zero POSTs — no automatic retry');
+    } finally { C.S.w.close(); } }
+  { const C = await cardsBoot();
+    try {
+      await openCards(C);
+      C.S.click(rmOf(C.S, C.ids[0])); await flush();
+      const rel = C.real.holdNext('removeCard');
+      C.S.click('#layer [data-act="card-rm-confirm"]'); await flush();
+      await flush(12_000); await flush();
+      assert.equal(errLine(C.S), 'No pudimos quitar la tarjeta. Probá de nuevo.', '🔴 C3-30: a held request is not frame 6 at 12 s');
+      assert.equal(C.S.q('#layer [data-act="card-rm-confirm"]').disabled, false, '🔴 C3-30: the pill is not live after the bound');
+      rel(); await flush(); await flush();
+      assert.equal(toastTxt(C.S), null, '🔴 C3-30: the late 200 was applied (toast)');
+      assert.deepEqual(cardLabels(C.S), ['Visa ···· 4242'], '🔴 C3-30: the late 200 was applied (pruned)');
+      assert.equal(errLine(C.S), 'No pudimos quitar la tarjeta. Probá de nuevo.', 'the error stays');
+      await flush(60_000);
+      assert.equal(C.of('removeCard').length, 1, '🔴 C3-30: still exactly one POST (no automatic retry)');
+    } finally { C.S.w.close(); } }
+  { const C = await cardsBoot();
+    try {
+      await openCards(C);
+      C.S.click(rmOf(C.S, C.ids[0])); await flush();
+      C.real.holdBody('removeCard');
+      C.S.click('#layer [data-act="card-rm-confirm"]'); await flush();
+      await flush(12_000); await flush();
+      assert.equal(errLine(C.S), 'No pudimos quitar la tarjeta. Probá de nuevo.', '🔴 C3-31: a held body is not bounded');
+    } finally { C.S.w.close(); } }
+  { const C = await cardsBoot();
+    try {
+      await openCards(C);
+      C.S.click(rmOf(C.S, C.ids[0])); await flush();
+      C.real.loseAfterCommit('removeCard');
+      C.S.click('#layer [data-act="card-rm-confirm"]'); await flush(); await flush();
+      assert.equal(errLine(C.S), 'No pudimos quitar la tarjeta. Probá de nuevo.', '🔴 C3-32: a lost response is not frame 6');
+      assert.deepEqual(cardLabels(C.S), ['Visa ···· 4242'], 'the card still shown');
+      C.S.click('#layer [data-act="card-rm-confirm"]'); await flush(); await flush();
+      assert.equal(toastTxt(C.S), 'Tarjeta quitada.', '🔴 C3-32: the re-tap (the owner\'s idempotent 200) did not complete the removal');
+      assert.deepEqual(cardLabels(C.S), [], 'pruned');
+      const n = await C.real.cardsNode('u_ana');
+      assert.deepEqual(Object.values(n.tomb).map((t) => t.gen), [1], '🔴 C3-32: tomb.gen bumped more than once');
+      assert.equal(Object.keys(n.removed_tokens).length, 1, 'one retained token');
+    } finally { C.S.w.close(); } }
+});
+
+test('C3-34: the «La casa recomienda» carousel (.cards) and the other empty states compute the same styles as before C-3 (capp.css at HEAD vs this tree)', () => {
+  const { JSDOM: JD } = createRequire(new URL('../xpizza-functions/x.js', import.meta.url))('jsdom');
+  const before = execFileSync('git', ['show', 'HEAD:customer-app/capp.css'], { cwd: join(HERE, '..'), encoding: 'utf8', maxBuffer: 1 << 26 });
+  const now = readFileSync(join(HERE, 'capp.css'), 'utf8');
+  const probe = (css) => { const w = new JD(`<!doctype html><style>${css}</style><div class="app"><div class="cards"><div class="mcard">x</div></div><div class="empty"><b>t</b><span>un texto largo</span></div><div class="cards-step"><div class="empty"><span>y</span></div></div></div>`).window;
+    const st = (sel, props) => Object.fromEntries(props.map((p) => [p, w.getComputedStyle(w.document.querySelector(sel)).getPropertyValue(p)]));
+    const out = { carousel: st('.app > .cards', ['display', 'gap', 'overflow-x', 'padding-right', 'padding-left', 'padding-top', 'scroll-snap-type']), empty: st('.app > .empty span', ['max-width', 'text-wrap']), scoped: st('.cards-step .empty span', ['max-width']) };
+    w.close(); return out; };
+  const a = probe(before), b = probe(now);
+  assert.deepEqual(b.carousel, a.carousel, '🔴 C3-34: the carousel (.cards) computes differently');
+  assert.deepEqual(b.empty, a.empty, '🔴 C3-34: another screen\'s empty state computes differently');
+  assert.ok(/^\d+(\.\d+)?px$/.test(b.scoped['max-width']) && b.scoped['max-width'] !== b.empty['max-width'], `premise: the step's own empty line is capped (${b.scoped['max-width']})`);
 });

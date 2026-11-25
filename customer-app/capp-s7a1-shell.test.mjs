@@ -214,3 +214,35 @@ test('S7a-2 MenuCache: ONE retry on a network error / 5xx', async () => {
   const seq2 = [{ status: 500 }, { status: 500 }, env('q')]; const M2 = createMenuCache({ fetchEnvelope: async () => seq2.shift() });
   assert.equal((await M2.get('q')).state, 'failed', 'only one retry');
 });
+
+// C-3 / C-1 (PLAN-capp-C3-card-removal-r2 §3.6, ✓370-3): THE shared modal/busy Back seam — nav.guardBack(fn) → unregister(). A device /
+// browser Back asks the guards FIRST (most recent first; the first answer that is not 'none' wins): 'blocked' / 'closed' re-push the
+// sentinel and leave the stack; no guard (or every guard 'none') ⇒ today's logic byte for byte — the root exit included
+test('C3-35: guardBack — none registered ⇒ today\'s results; most recent first; \'none\' falls through; blocked / closed keep the stack and the sentinel; unregister restores (idempotent); consulted before the root exit', () => {
+  const R = rigNav();
+  assert.equal(R.win.device(), 'exit', 'premise: at the root with no guard, a Back leaves the app (today)');
+  R.nav.go({ name: 'account' }); R.nav.go({ name: 'cards' });
+  const depth = R.nav.depth(), seen = [];
+  const un1 = R.nav.guardBack(() => { seen.push('g1'); return 'closed'; });
+  const un2 = R.nav.guardBack(() => { seen.push('g2'); return 'none'; });
+  assert.equal(R.win.device(), 'closed', '🔴 C3-35: a guard\'s \'closed\' is not the Back\'s answer');
+  assert.deepEqual(seen, ['g2', 'g1'], '🔴 C3-35: the guards are not asked most recent first');
+  assert.deepEqual([R.nav.depth(), R.nav.current().name, R.win.history.state && R.win.history.state.capp_shell], [depth, 'cards', 1], '🔴 C3-35: a guarded Back changed the stack or lost the sentinel');
+  const un3 = R.nav.guardBack(() => 'blocked'); seen.length = 0;
+  assert.equal(R.win.device(), 'blocked', '🔴 C3-35: the most recent guard\'s \'blocked\' does not win');
+  assert.deepEqual([seen, R.nav.depth(), R.win.history.state && R.win.history.state.capp_shell], [[], depth, 1], 'blocked: nothing older asked, the stack and the sentinel kept');
+  assert.equal(R.win.device(), 'blocked', 'a repeated Back is handled the same way (the sentinel was re-pushed)');
+  un3(); un3(); un1(); un1();
+  assert.equal(R.win.device(), 'popped', '🔴 C3-35: unregister() does not restore today\'s Back');
+  assert.equal(R.nav.current().name, 'account', 'the step popped to its predecessor');
+  un2(); assert.equal(R.win.device(), 'popped'); assert.equal(R.win.device(), 'exit', 'every guard gone: the root exit is today\'s');
+  const S = rigNav(); S.nav.go({ name: 'store', rid: 'rid_a' }); let asked = 0;
+  S.nav.adapterFor(S.nav.current()).subscribe(() => { asked++; return 'consumed'; });
+  const unS = S.nav.guardBack(() => 'closed');
+  assert.deepEqual([S.win.device(), asked, S.left.length], ['closed', 0, 0], '🔴 C3-35: a guard\'s answer still reached the store mount');
+  unS(); assert.deepEqual([S.win.device(), asked], ['consumed', 1], 'no guard: the store mountBack is asked as today');
+  const X = rigNav(); const unX = X.nav.guardBack(() => 'closed');
+  assert.equal(X.win.device(), 'closed', '🔴 C3-35: a guard is not consulted before the root exit');
+  assert.equal(X.win.history.state && X.win.history.state.capp_shell, 1, 'the sentinel is back after a guarded root Back');
+  unX(); assert.equal(X.win.device(), 'exit', 'and once unregistered the root exit is today\'s');
+});

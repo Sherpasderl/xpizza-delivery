@@ -170,3 +170,30 @@ test('brand tiles: the mockup\'s Visa and Mastercard; any other brand gets the p
   for (const b of ['amex', 'other', null]) assert.ok(H.brandTile(b).startsWith('<svg class="i"') && !/text-anchor/.test(H.brandTile(b)), `🔴 CO-tile: ${b} ⇒ the plain card icon`);
   assert.ok(flat(H.payBarHtml({ method: { kind: 'card', brand: 'visa', label: '<b>x</b>' }, total_cents: 1, cta: { label: 'a', enabled: true } })).includes('<b>&lt;b&gt;x&lt;/b&gt;</b>'), 'escaped');
 });
+
+// C-3 (PLAN-capp-C3-card-removal-r2 §1.5; MOCKUP-capp-card-removal v2, owner-approved 11-24): the «Tarjetas guardadas» step and its confirm
+// sheet — the mockup's markup, with only data-act / data-card / the accessible names and the heading's focus target added
+const SAVED3 = P.cardsVm(listCards([{ card_id: 'CV4242000000000000AB', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028, expired: false },
+  { card_id: 'CM8810000000000000AB', brand: 'mastercard', last4: '8810', exp_month: 3, exp_year: 2027, expired: false },
+  { card_id: 'CO0005000000000000AB', brand: 'other', last4: '0005', exp_month: 10, exp_year: 2026, expired: true }])).rows;
+const TOP = (h = 'Tarjetas guardadas') => `<div class="topbar"><button class="iconbtn" data-act="cards-back" aria-label="Volver"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"></path><path d="M11 18l-6-6 6-6"></path></svg></button><h1>${h}</h1><span class="sp"></span></div>`;
+const GLYPH = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 10h18"></path></svg>';
+test('C-3 frames 2 / 2b / 5 / 6b / loading: the step — one .urow per card in server order (tile · label over sub · «Quitar»), the expired row dimmed with «Quitar» live; the empty, failed and loading bodies', () => {
+  const urow = (c, tile, dim) => `<div class="urow${dim ? ' dim' : ''}">${tile}<span class="t"><b>${c.label}</b><span>${c.sub}</span></span><button class="act" data-act="card-rm" data-card="${c.card_id}" aria-label="Quitar ${c.label}">Quitar</button></div>`;
+  assert.equal(flat(H.cardsStepHtml({ rows: SAVED3 })), flat(`<div class="flow cards-step">${TOP()}<div class="saved-cards"><div class="urows">${urow(SAVED3[0], VISA)}${urow(SAVED3[1], MC)}${urow(SAVED3[2], GLYPH, true)}</div></div></div>`), '🔴 C-3 frame 2/2b: the list markup');
+  assert.deepEqual(SAVED3.map((c) => [c.label, c.sub]), [['Visa ···· 4242', 'Vence 12/28'], ['Mastercard ···· 8810', 'Vence 03/27'], ['···· 0005', 'Venció en 10/26']], 'the labels and sub-lines (middle dots, the expired wording)');
+  assert.ok(flat(H.cardsStepHtml({ rows: SAVED3, inert: true })).split('disabled>Quitar').length === 4, 'frame 4a: every row action is disabled while busy');
+  assert.equal(flat(H.cardsStepHtml({ rows: [] })), flat(`<div class="flow cards-step">${TOP()}<div class="empty">${GLYPH}<b>Todavía no guardaste ninguna tarjeta</b><span>Al pagar con tarjeta podés elegir «Guardar tarjeta para la próxima». Las que guardás aparecen acá.</span></div></div>`), '🔴 C-3 frame 5: the empty state');
+  assert.equal(flat(H.cardsStepHtml({ rows: SAVED3, load: 'failed' })), flat(`<div class="flow cards-step">${TOP()}<div class="sandline act" role="status"><span>No pudimos cargar tus tarjetas.</span><button class="retry" data-act="cards-retry">Reintentar</button></div></div>`), '🔴 C-3 frame 6b: the failed read (never a stale list)');
+  assert.equal(flat(H.cardsStepHtml({ rows: [], load: 'pending' })), flat(`<div class="flow cards-step">${TOP()}<p class="note aload" role="status">Cargando tus tarjetas…</p></div>`), '🔴 C-3: the loading line (never frame 5)');
+  assert.equal(H.cardGlyph, GLYPH, 'the Cuenta row glyph is the chooser\'s own card icon (one source)');
+  assert.ok(!flat(H.cardsStepHtml({ rows: [{ ...SAVED3[0], label: '<b>x' }] })).includes('<b><b>x'), 'labels are escaped');
+});
+test('C3-07 + frames 3 / 4a / 6: the confirm sheet — the title tail is CappPayCard.cardLabel(null, last4) (never a stripped label: the «other» brand); busy and failed states', () => {
+  const sheet = (tail, { busy, err } = {}) => `<div class="scrim" data-act="card-rm-cancel"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Quitar tarjeta"><div class="grab" data-act="card-rm-cancel"></div><div class="errsheet"><div class="icon calm">${GLYPH}</div><h2 id="cardrm-h" tabindex="-1">¿Quitar la tarjeta ${tail}?</h2><p>La quitamos de Sherpa. Si querés volver a usarla, la ingresás de nuevo al pagar.</p>${err ? '<p class="err" role="alert"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5"></path><path d="M12 16h.01"></path></svg><span>No pudimos quitar la tarjeta. Probá de nuevo.</span></p>' : ''}<div class="acts">${busy ? '<button class="primary danger busy" data-act="card-rm-confirm" disabled aria-busy="true"><span class="ring" aria-hidden="true"></span>Quitando…</button>' : '<button class="primary danger" data-act="card-rm-confirm">Quitar tarjeta</button>'}<button class="btn2 wide" data-act="card-rm-cancel"${busy ? ' disabled' : ''}>Cancelar</button></div></div></div>`;
+  assert.match(flat(H.cardRemoveSheetHtml({ card: SAVED3[0], last4: '4242' })), /¿Quitar la tarjeta ···· 4242\?/, '🔴 C3-07: the visa title tail');
+  assert.match(flat(H.cardRemoveSheetHtml({ card: SAVED3[2], last4: '0005' })), /¿Quitar la tarjeta ···· 0005\?/, '🔴 C3-07: the «other» brand\'s title tail');
+  assert.equal(flat(H.cardRemoveSheetHtml({ card: SAVED3[0], last4: '4242' })), flat(sheet('···· 4242')), '🔴 C-3 frame 3: the sheet markup');
+  assert.equal(flat(H.cardRemoveSheetHtml({ card: SAVED3[0], last4: '4242', busy: true })), flat(sheet('···· 4242', { busy: true })), '🔴 C-3 frame 4a: busy');
+  assert.equal(flat(H.cardRemoveSheetHtml({ card: SAVED3[0], last4: '4242', err: true })), flat(sheet('···· 4242', { err: true })), '🔴 C-3 frame 6: failed');
+});
