@@ -175,4 +175,9 @@ function call(handler, { method = 'POST', headers = {}, body = {} } = {}) {
   });
 }
 
-module.exports = { FILE, SHA256, INTERNALS, client, flush, store, indexApp, idToken, call, NET, stubFetch, jsonResponse };
+// A file that drains its event loop before its last line (a cell awaiting a promise that never settles, e.g. an orphaned listen
+// under a planted bug) would exit 0 WITHOUT reporting its failed cells: an exit that did not pass through done() is a failure.
+let FINISHED = false;
+const done = () => { FINISHED = true; };
+process.on('exit', (code) => { if (code === 0 && !FINISHED) { console.error('rtdb-race-harness: FAILED — the file exited without completing (a cell never settled)'); process.exitCode = 1; } });
+module.exports = { FILE, SHA256, INTERNALS, client, flush, store, indexApp, idToken, call, NET, stubFetch, jsonResponse, done };

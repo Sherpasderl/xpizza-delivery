@@ -95,5 +95,5 @@ const sentKinds = (c, from) => c.sent().slice(from).filter((m) => m.a === 'g' ||
   });
   if (fails.length) { console.log(`FAIL(${fails.length}): ${fails.join(' | ')}`); process.exit(1); }
   console.log(`rtdb-gate: OK (${n})`);
-  process.exit(0);
+  H.done(); process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
