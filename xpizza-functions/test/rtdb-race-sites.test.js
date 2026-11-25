@@ -20,7 +20,7 @@ const quiet = async (fn) => { const l = console.log, w = console.warn, e = conso
 // many reads the helper makes before it
 // `on`: the shared index.js app (H.indexApp(): one default app per process — cells there use distinct keys and are not closed)
 async function race(tree, read, compete, at = null, on = null) {
-  const S = H.store(tree); const c = on || H.client('site');
+  const S = tree && typeof tree.at === 'function' ? tree : H.store(tree); const c = on || H.client('site');   // a STORE carries a cell's earlier real writes
   const swallow = (p) => Promise.resolve(p).catch(() => {});
   const r = read(c.db); swallow(r); await H.flush();
   if (at) { await c.serve(S, { until: (sent) => sent.some((m) => m.a === 'g' && m.b.p === at && !m.__done) }); assert.ok(c.sent().some((m) => m.a === 'g' && m.b.p === at), `premise: the helper issued its get on ${at}`); }
@@ -259,6 +259,19 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
     const tree = { deleted_uids: {}, restaurants: { x_pizza: { identity: IDENTITY } } };
     const r = await race(tree, () => H.call(X.idx.placeSdkOrder, { headers: { authorization: `Bearer ${tok('u7')}`, origin: 'https://sherpa.hn' }, body: { ...orderBody('o7', 'online'), entry_mode: 'app' } }), (db) => require('../payments/sdk/cards').isDeletedUid(db, 'u7'), '/deleted_uids/u7', X);
     clean(L, r, '/deleted_uids/u7');
+  });
+  await cell('RG-SITE-9 index.js:2132 chargeOnlineOrder\'s return-site brand read (a BRANCH\'s retry) vs the offers brand resolver\'s once (marketing/brand-of.js:14)', async (L) => {
+    // a branch (brand_id → a brand WITH its own deployment) re-charging an order its first attempt created: the retry skips the fresh
+    // identity read, so the return site resolves the brand through readBrandId. The branch's catalog is published by the real writer.
+    const pub = await quiet(() => require('../catalog/catalog-publish').publishVersion(FS, 'xp_sur', { items: CATALOG.built.items, structure: CATALOG.built.structure, extras: CATALOG.inputs.extras, extraRecords: CATALOG.built.extras, source_sha: 'rg9', ...(CATALOG.built.key_mode == null ? {} : { key_mode: CATALOG.built.key_mode }) }, { expected: { activeVersionId: null } }));
+    assert.ok(pub && pub.versionId, `${L}: premise, the branch catalog published`);
+    const S = H.store({ restaurants: { xp_sur: { identity: { ...IDENTITY, brand_id: 'x_pizza' } } } });
+    const body = { ...orderBody('o9', 'online'), restaurant_id: 'xp_sur' };
+    const charge = () => H.call(X.idx.chargeOnlineOrder, { headers: { authorization: 'Bearer rtdb-race-make-secret', origin: 'https://sherpa.hn' }, body });
+    const first = charge(); for (let i = 0; i < 200; i++) { await H.flush(); await X.serve(S).catch(() => {}); } await quiet(() => first);   // the first attempt: the pending order (its hosted create fails closed: no network)
+    assert.ok(S.at('/orders/o9'), `${L}: premise, the first attempt left the pending order`);
+    const r = await race(S, charge, (db) => require('../marketing/brand-of').brandOf(db, 'xp_sur', { nowMs: Date.now(), cached: false }), '/restaurants/xp_sur/identity/brand_id', X);
+    clean(L, r, '/restaurants/xp_sur/identity/brand_id');
   });
   // ── class P (preventive): no reachable assertion with the real competitor (§4.3) — the op guard + the §3.2 matrix carry them ──────
   await cell('RG-OP-4 delivery/delivery-wire.js:61 chargeContext reads the active attempt with once, never get', async (L) => {
