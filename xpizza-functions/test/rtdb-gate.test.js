@@ -79,6 +79,20 @@ const sentKinds = (c, from) => c.sent().slice(from).filter((m) => m.a === 'g' ||
     assert.deepStrictEqual([c.listens(), G.gateState().pending_gets, G.gateState().waiters], [[], 0, 0], `${L}: empty bookkeeping`);
     await c.close();
   });
+  await cell('RG-CACHED-LOCAL (r9 §2, measured): with a local transaction pending (its listener caches the path) an ungated once completes from local data, and the gated get is itself served from that cache, so the gated once is not delayed here; it never completes earlier, the value is the SDK\'s own', async (L) => {
+    const c = H.client('cl'); const t = c.db.ref('orders/o1').transaction((cur) => (cur ? { ...cur, n: (cur.n || 0) + 1 } : { n: 9 })); t.catch(() => {});
+    await H.flush();
+    const t0 = Date.now(); let tPlain = null; let tGated = null;
+    const plain = c.db.ref('orders/o1').once('value').then((s2) => { tPlain = Date.now(); return s2.val(); });
+    const g = G.gatedGet(c.db.ref('orders/o1')); g.catch(() => {});
+    const gated = G.afterGets(c.db.ref('orders/o1'), (r) => r.once('value')).then((s2) => { tGated = Date.now(); return s2.val(); });
+    await H.flush(); const plainEarly = tPlain !== null;
+    await c.serve(at); const [pv, gv] = await Promise.all([plain, gated]); await g.catch(() => {}); await t.catch(() => {});
+    console.log(`    RG-CACHED-LOCAL plain ${tPlain - t0} ms (before any server frame: ${plainEarly}) / gated ${tGated - t0} ms`);
+    assert.ok(tGated >= tPlain, `${L}: the gated listener completes no earlier`);
+    assert.ok(pv && gv, `${L}: both resolve with a value`);
+    assert.deepStrictEqual([c.listens(), G.gateState().pending_gets, G.gateState().waiters], [[], 0, 0], `${L}: empty bookkeeping`); await c.close();
+  });
   if (fails.length) { console.log(`FAIL(${fails.length}): ${fails.join(' | ')}`); process.exit(1); }
   console.log(`rtdb-gate: OK (${n})`);
   process.exit(0);
