@@ -1,4 +1,5 @@
 'use strict';
+const { pathFrom } = require('./_ref-path');   // the real ref's path API on a stand-in (lib/rtdb-gate reads it)
 // TRACKER FIXES T7 (BUILD-tracker-fixes r1.5 §3.2 = PLAN §7) — the ADVERSARIAL SCHEDULES, driven through the REAL exported triggers
 // of index.js (flag ON) on the RTDB emulator. Run: npm run test:tracker-schedules
 //
@@ -577,7 +578,7 @@ async function liveOn(uid, oid, extra = {}) {
     const n0 = await node('Y4');
     // a validator that READS a speculative (never committed) cancellation of the order
     const realRef = db.ref.bind(db);
-    const speculative = { ref: (p) => (p === 'orders/Y4' ? { once: async () => ({ val: () => ({ ...(n0 && {}), status: 'cancelled', tracking_token: 'TOK_Y4' }) }) } : realRef(p)) };
+    const speculative = { ref: (p) => (p === 'orders/Y4' ? { ...pathFrom(realRef(p)), once: async () => ({ val: () => ({ ...(n0 && {}), status: 'cancelled', tracking_token: 'TOK_Y4' }) }) } : realRef(p)) };
     const wrong = await validateLiveClaims(speculative, await v('tracker_claims'), Date.now());
     assert.strictEqual(wrong.staled, 1, 'premise: the speculative read wrongly tombstones the legitimate claim');
     assert.strictEqual((await v(`tracker_claims/${DA}/Y4`)).gone, true);

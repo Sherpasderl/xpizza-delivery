@@ -1,4 +1,5 @@
 'use strict';
+const { pathFrom } = require('./_ref-path');   // the real ref's path API on a stand-in (lib/rtdb-gate reads it)
 // Portal 1D · D4-b — readers on the Firestore + RTDB EMULATORS (PLAN-D4b §A races, §E manifest, F display).
 // Run: PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:d4b-readers
 //
@@ -204,7 +205,7 @@ const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, 
     const LEG = 'a'.repeat(64);
     // a CANONICAL record with a different fingerprint lands BETWEEN the advisory pre-read (order absent) and the CAS
     let raced = false;
-    const racy = { ref: (p) => { const r = rtdb.ref(p); return { ...r, once: async (...a) => { const s = await r.once(...a); if (!raced && p === 'orders/race1') { raced = true; await rtdb.ref('orders/race1').set({ ...ORDER, payment_fingerprint: 'c'.repeat(64), fp_format: 'canonical', active_attempt_id: 'att_other' }); } return s; }, transaction: (...a) => r.transaction(...a), update: (...a) => r.update(...a) }; } };
+    const racy = { ref: (p) => { const r = rtdb.ref(p); return { ...r, ...pathFrom(r), once: async (...a) => { const s = await r.once(...a); if (!raced && p === 'orders/race1') { raced = true; await rtdb.ref('orders/race1').set({ ...ORDER, payment_fingerprint: 'c'.repeat(64), fp_format: 'canonical', active_attempt_id: 'att_other' }); } return s; }, transaction: (...a) => r.transaction(...a), update: (...a) => r.update(...a) }; } };
     const res = await hosted.acquireHostedAttempt(racy, 'race1', ORDER, LEG, Date.now(), [], () => 'att_mine', () => 'tok', () => ({ ok: true, fp: 'd'.repeat(64) }));
     assert.ok(res.outcome === 'conflict', `the CAS (not the stale advisory read) decided: ${JSON.stringify(res)}`);
     const after = (await rtdb.ref('orders/race1').get()).val();
@@ -215,7 +216,7 @@ const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, 
     await rtdb.ref(`user_rewards/${uid}/${rid}`).set({ balance: 1000, reserved: 0 });
     const canonRec = { state: 'reserved', cost: red.cost, fp: 'e'.repeat(64), fp_format: 'canonical', canonical: { v: 'c1' }, order_fingerprint: 'c1:zz', config_version: REDEMPTION_CONFIG_VERSION, created_at: 1, updated_at: 1, seq: 1 };
     let injected = false;
-    const racyR = { ref: (p) => { const r = rtdb.ref(p); return { ...r, get: (...a) => r.get(...a), transaction: async (...a) => { if (!injected && p === `user_rewards/${uid}/${rid}`) { injected = true; await rtdb.ref(`user_rewards/${uid}/${rid}/reservations/o_race`).set(canonRec); await rtdb.ref(`user_rewards/${uid}/${rid}/reserved`).set(red.cost); } return r.transaction(...a); } }; } };
+    const racyR = { ref: (p) => { const r = rtdb.ref(p); return { ...r, ...pathFrom(r), get: (...a) => r.get(...a), transaction: async (...a) => { if (!injected && p === `user_rewards/${uid}/${rid}`) { injected = true; await rtdb.ref(`user_rewards/${uid}/${rid}/reservations/o_race`).set(canonRec); await rtdb.ref(`user_rewards/${uid}/${rid}/reserved`).set(red.cost); } return r.transaction(...a); } }; } };
     const rr = await reserve.reserveRedemption(racyR, { uid, rid, orderId: 'o_race', cost: red.cost, canonical: red.canonical, orderFingerprint: LEG, configVersion: REDEMPTION_CONFIG_VERSION, now: 5,
       canonicalBinding: () => ({ ok: true, fp: 'f'.repeat(64) }) });
     assert.deepStrictEqual(rr, { ok: false, reason: 'reservation_conflict' }, 'the concurrently-created other-format reservation is judged IN the transaction → conflict');

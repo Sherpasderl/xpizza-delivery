@@ -1,4 +1,5 @@
 'use strict';
+const { pathFrom } = require('./_ref-path');   // the real ref's path API on a stand-in (lib/rtdb-gate reads it)
 // Portal 1D · D4-c1 — CONTENT-ADDRESSED IDENTITY RECORDS, against the Firestore + RTDB EMULATORS.
 // Run: PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:identity-records
 //
@@ -349,7 +350,7 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
       const flaky = { ref: (path) => {
         const real = rtdb.ref(path);
         if (path !== failPath) return real;
-        return { get: (...a) => real.get(...a), transaction: async (fn) => { fn((await real.get()).val()); return { committed: false, snapshot: null }; } };
+        return { ...pathFrom(real), get: (...a) => real.get(...a), transaction: async (fn) => { fn((await real.get()).val()); return { committed: false, snapshot: null }; } };
       } };
       const g = W.normCursor((await cref.get()).val()).generation;
       await cref.set({ generation: g });
@@ -377,7 +378,7 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
     const hangOn = (paths, { tx = true, get = false } = {}) => ({ ref: (path) => {
       const real = rtdb.ref(path);
       if (!paths.includes(path)) return real;
-      return { get: get ? () => new Promise(() => {}) : (...a) => real.get(...a), transaction: tx ? () => new Promise(() => {}) : (...a) => real.transaction(...a) };
+      return { ...pathFrom(real), get: get ? () => new Promise(() => {}) : (...a) => real.get(...a), transaction: tx ? () => new Promise(() => {}) : (...a) => real.transaction(...a) };
     } });
     const vpath = (rid, v) => `${R.IDENTITY_PATH}/${rid}/${v}`;
     const { rid, all } = globalThis.__many;

@@ -12,4 +12,6 @@ function refPath(p) {
 // attach the path API to an existing fake ref object (keeps the object identity the fake's own methods close over); enumerable, so a
 // test that derives a fake by spreading one ({ ...r, once }) keeps the same path
 const withPath = (ref, p) => Object.defineProperties(ref, Object.fromEntries(Object.entries(refPath(p)).map(([k, v]) => [k, { value: v, configurable: true, writable: true, enumerable: true }])));
-module.exports = { refPath, withPath, URL };
+// a test object standing in for a REAL Admin SDK ref (emulator suites): the real ref's own path API (toString / root / key)
+const pathFrom = (real) => ({ toString: () => real.toString(), root: real.root, key: real.key });
+module.exports = { refPath, withPath, pathFrom, URL };
