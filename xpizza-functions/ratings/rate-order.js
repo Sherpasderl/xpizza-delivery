@@ -63,7 +63,7 @@ async function touchRedactJournal(db, uid, now) {
     at: cur && typeof cur.at === 'number' ? cur.at : now, v: (cur && Number.isInteger(cur.v) ? cur.v : 0) + 1 }));
 }
 async function fencedAfterWrite(db, uid, ref, now) {
-  if (!(await db.ref(`deleted_uids/${uid}`).get()).exists()) return false;
+  if (!(await require('../lib/rtdb-gate').gatedGet(db.ref(`deleted_uids/${uid}`))).exists()) return false;
   await touchRedactJournal(db, uid, now);
   await ref.transaction(V2.deletionUpdater({}));
   return true;

@@ -80,7 +80,7 @@ async function writeSdkLive(db, orderId, updates) {
 // Write every pending kind to its DERIVED destination (missing leaves only), then clear the list (only the value this pass
 // read). Skipped for a cancelled order. A malformed list is reported through onMalformed and dropped, never executed.
 async function completeSdkLive(db, orderId, { onMalformed } = {}) {
-  const order = (await db.ref(`orders/${orderId}`).once('value')).val();
+  const order = (await require('../../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();
   const raw = order && order[PENDING];
   if (raw === undefined || raw === null) return { replayed: 0 };
   const seen = JSON.stringify(raw);

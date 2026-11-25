@@ -40,7 +40,7 @@ async function visitDueOrder(deps, orderId) {
   } else if (F.consumeBackstopDue(order)) {
     // live with a redemption still reserved (its consume failed after materialization): re-enter the shared go-live, whose
     // already-confirmed branch consumes it idempotently
-    const st = (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val();
+    const st = (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), () => deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value'))).val();
     if (st === 'reserved') { try { await deps.goLive(deps, orderId); } catch (e) { console.error(`sdk consume backstop failed for ${orderId}: ${e && e.message}`); } }
   }
   // a fulfilled order's redemption still reserved is consumed here too (settlement may have stopped early or failed)
@@ -59,7 +59,7 @@ async function visitDueOrder(deps, orderId) {
     if (l.state === 'approved' && l.role === 'surplus' && now >= l.hold_expires_at + SURPLUS_ALERT_MS) await C.alertOnce(deps, 'surplus_unconfirmed', orderId, { leg_id: legId }, legId);
   }
   // a redemption keeps the order due until it is consumed or released (its reservation state, read here)
-  const rewardState = order && order.redemption && order.customer_uid && order.restaurant_id ? (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val() : undefined;
+  const rewardState = order && order.redemption && order.customer_uid && order.restaurant_id ? (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), () => deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value'))).val() : undefined;
   if (order && order.redemption && rewardState == null && now - ((rec && rec.created_at) || now) > CAPTURE_OVERDUE_MS) await C.alertOnce(deps, 'reward_reservation_missing', orderId, {});
   return R.isFinanciallyClosed(rec, order, { rewardState }) ? 'closed' : 'open';
 }

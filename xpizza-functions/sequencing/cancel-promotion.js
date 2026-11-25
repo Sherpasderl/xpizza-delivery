@@ -30,7 +30,7 @@ async function findSurvivor(db, driverId, orderId) {
   const [survivorId, t] = others[0];
   const pk = tasks[`${t.order_id}_pickup`];
   if (!pk || pk.status !== 'completed' || pk.assigned_driver_id !== driverId) return null;
-  const st = (await bounded(db.ref(`orders/${t.order_id}/status`).once('value'), end - Date.now())).val();
+  const st = (await bounded(require('../lib/rtdb-gate').afterGets(db.ref(`orders/${t.order_id}/status`), () => db.ref(`orders/${t.order_id}/status`).once('value')), end - Date.now())).val();
   return typeof st === 'string' && !TERMINAL_ORDER.has(st) ? survivorId : null;
 }
 

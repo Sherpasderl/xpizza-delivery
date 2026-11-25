@@ -1,0 +1,502 @@
+[
+ {
+  "kind": "get",
+  "row": 1,
+  "file": "checkout-guest-gate.js",
+  "line": 87,
+  "before": "          const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();",
+  "after": "          const tomb = await require('./lib/rtdb-gate').gatedGet(getDatabase().ref('deleted_uids/' + dec.uid));",
+  "anchor_after": "          const tomb = await require('./lib/rtdb-gate').gatedGet(getDatabase().ref('deleted_uids/' + dec.uid));",
+  "anchor_before": "          const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "checkout-guest-gate.js",
+  "line": 62,
+  "before": "  const o = (await db.ref('orders/' + orderId).once('value')).val();",
+  "after": "  const o = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), () => db.ref('orders/' + orderId).once('value'))).val();",
+  "anchor_after": "async function grantFor({ db, orderId, guest, secret, now }) {\n  const o = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), () => db.ref('orders/' + orderId).once('value'))).val();",
+  "anchor_before": "async function grantFor({ db, orderId, guest, secret, now }) {\n  const o = (await db.ref('orders/' + orderId).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "checkout-guest-gate.js",
+  "line": 53,
+  "before": "  const o = (await db.ref('orders/' + orderId).once('value')).val();",
+  "after": "  const o = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), () => db.ref('orders/' + orderId).once('value'))).val();",
+  "anchor_after": "async function boundToGuest({ db, orderId, guest }) {\n  const o = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), () => db.ref('orders/' + orderId).once('value'))).val();",
+  "anchor_before": "async function boundToGuest({ db, orderId, guest }) {\n  const o = (await db.ref('orders/' + orderId).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "checkout-guest-gate.js",
+  "line": 44,
+  "before": "  const existing = (await db.ref('orders/' + orderId).once('value')).val();",
+  "after": "  const existing = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), () => db.ref('orders/' + orderId).once('value'))).val();",
+  "anchor_after": "  const existing = (await require('./lib/rtdb-gate').afterGets(db.ref('orders/' + orderId), () => db.ref('orders/' + orderId).once('value'))).val();",
+  "anchor_before": "  const existing = (await db.ref('orders/' + orderId).once('value')).val();"
+ },
+ {
+  "kind": "get",
+  "row": 5,
+  "file": "delivery/delivery-wire.js",
+  "line": 146,
+  "before": "        if (dec && dec.customer === true && dec.uid) uid = attributionUid(dec, (await db.ref('deleted_uids/' + dec.uid).get()).exists());",
+  "after": "        if (dec && dec.customer === true && dec.uid) uid = attributionUid(dec, (await require('../lib/rtdb-gate').gatedGet(db.ref('deleted_uids/' + dec.uid))).exists());",
+  "anchor_after": "        if (dec && dec.customer === true && dec.uid) uid = attributionUid(dec, (await require('../lib/rtdb-gate').gatedGet(db.ref('deleted_uids/' + dec.uid))).exists());",
+  "anchor_before": "        if (dec && dec.customer === true && dec.uid) uid = attributionUid(dec, (await db.ref('deleted_uids/' + dec.uid).get()).exists());"
+ },
+ {
+  "kind": "get",
+  "row": 4,
+  "file": "delivery/delivery-wire.js",
+  "line": 61,
+  "before": "    at = (await db.ref(`payment_attempts/${order.active_attempt_id}`).get()).val();",
+  "after": "    at = (await require('../lib/rtdb-gate').gatedGet(db.ref(`payment_attempts/${order.active_attempt_id}`))).val();",
+  "anchor_after": "    at = (await require('../lib/rtdb-gate').gatedGet(db.ref(`payment_attempts/${order.active_attempt_id}`))).val();",
+  "anchor_before": "    at = (await db.ref(`payment_attempts/${order.active_attempt_id}`).get()).val();"
+ },
+ {
+  "kind": "get",
+  "row": 3,
+  "file": "delivery/delivery-wire.js",
+  "line": 57,
+  "before": "  const order = (await db.ref(`orders/${orderId}`).get()).val();",
+  "after": "  const order = (await require('../lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val();",
+  "anchor_after": "  const order = (await require('../lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val();",
+  "anchor_before": "  const order = (await db.ref(`orders/${orderId}`).get()).val();"
+ },
+ {
+  "kind": "get",
+  "row": 6,
+  "file": "delivery/zone-resume.js",
+  "line": 40,
+  "before": "  return deliveryResumeRefusal(db, (await db.ref(`orders/${orderId}`).get()).val(), pricingP);",
+  "after": "  return deliveryResumeRefusal(db, (await require('../lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val(), pricingP);",
+  "anchor_after": "  return deliveryResumeRefusal(db, (await require('../lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val(), pricingP);",
+  "anchor_before": "  return deliveryResumeRefusal(db, (await db.ref(`orders/${orderId}`).get()).val(), pricingP);"
+ },
+ {
+  "kind": "get",
+  "row": 15,
+  "file": "index.js",
+  "line": 7325,
+  "before": "      const prof = (await profRef.get()).val();",
+  "after": "      const prof = (await require('./lib/rtdb-gate').gatedGet(profRef)).val();",
+  "anchor_after": "      const prof = (await require('./lib/rtdb-gate').gatedGet(profRef)).val();",
+  "anchor_before": "      const prof = (await profRef.get()).val();"
+ },
+ {
+  "kind": "get",
+  "row": 9,
+  "file": "index.js",
+  "line": 2132,
+  "before": "    returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => db.ref(`restaurants/${restaurantId}/identity/brand_id`).get().then((s) => s.val()) });",
+  "after": "    returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => require('./lib/rtdb-gate').gatedGet(db.ref(`restaurants/${restaurantId}/identity/brand_id`)).then((s) => s.val()) });",
+  "anchor_after": "    returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => require('./lib/rtdb-gate').gatedGet(db.ref(`restaurants/${restaurantId}/identity/brand_id`)).then((s) => s.val()) });",
+  "anchor_before": "    returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => db.ref(`restaurants/${restaurantId}/identity/brand_id`).get().then((s) => s.val()) });"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "index.js",
+  "line": 1682,
+  "before": "    probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();",
+  "after": "    probeOrder = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
+  "anchor_after": "    probeOrder = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
+  "anchor_before": "    probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();"
+ },
+ {
+  "kind": "get",
+  "row": 8,
+  "file": "index.js",
+  "line": 1624,
+  "before": "            const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();",
+  "after": "            const tomb = await require('./lib/rtdb-gate').gatedGet(getDatabase().ref('deleted_uids/' + dec.uid));",
+  "anchor_after": "            const tomb = await require('./lib/rtdb-gate').gatedGet(getDatabase().ref('deleted_uids/' + dec.uid));",
+  "anchor_before": "            const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();"
+ },
+ {
+  "kind": "get",
+  "row": 7,
+  "file": "index.js",
+  "line": 1511,
+  "before": "      verifyIdToken: (t) => getAuth().verifyIdToken(t), isTombstoned: async (uid) => (await getDatabase().ref('deleted_uids/' + uid).get()).exists(),",
+  "after": "      verifyIdToken: (t) => getAuth().verifyIdToken(t), isTombstoned: async (uid) => (await require('./lib/rtdb-gate').gatedGet(getDatabase().ref('deleted_uids/' + uid))).exists(),",
+  "anchor_after": "      verifyIdToken: (t) => getAuth().verifyIdToken(t), isTombstoned: async (uid) => (await require('./lib/rtdb-gate').gatedGet(getDatabase().ref('deleted_uids/' + uid))).exists(),",
+  "anchor_before": "      verifyIdToken: (t) => getAuth().verifyIdToken(t), isTombstoned: async (uid) => (await getDatabase().ref('deleted_uids/' + uid).get()).exists(),"
+ },
+ {
+  "kind": "get",
+  "row": 10,
+  "file": "payments/sdk/stored-admission.js",
+  "line": 14,
+  "before": "  const order = (await db.ref(`orders/${orderId}`).get()).val();",
+  "after": "  const order = (await require('../../lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val();",
+  "anchor_after": "  const order = (await require('../../lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val();",
+  "anchor_before": "  const order = (await db.ref(`orders/${orderId}`).get()).val();"
+ },
+ {
+  "kind": "get",
+  "row": 11,
+  "file": "ratings/rate-order.js",
+  "line": 66,
+  "before": "  if (!(await db.ref(`deleted_uids/${uid}`).get()).exists()) return false;",
+  "after": "  if (!(await require('../lib/rtdb-gate').gatedGet(db.ref(`deleted_uids/${uid}`))).exists()) return false;",
+  "anchor_after": "  if (!(await require('../lib/rtdb-gate').gatedGet(db.ref(`deleted_uids/${uid}`))).exists()) return false;",
+  "anchor_before": "  if (!(await db.ref(`deleted_uids/${uid}`).get()).exists()) return false;"
+ },
+ {
+  "kind": "get",
+  "row": 12,
+  "file": "rewards-earn.js",
+  "line": 17,
+  "before": "  return (await db.ref(`deleted_uids/${uid}`).get()).val() != null;   // user-initiated deletion tombstone",
+  "after": "  return (await require('./lib/rtdb-gate').gatedGet(db.ref(`deleted_uids/${uid}`))).val() != null;   // user-initiated deletion tombstone",
+  "anchor_after": "  return (await require('./lib/rtdb-gate').gatedGet(db.ref(`deleted_uids/${uid}`))).val() != null;   // user-initiated deletion tombstone",
+  "anchor_before": "  return (await db.ref(`deleted_uids/${uid}`).get()).val() != null;   // user-initiated deletion tombstone"
+ },
+ {
+  "kind": "get",
+  "row": 24,
+  "file": "rewards-reserve.js",
+  "line": 532,
+  "before": "          const order = (await db.ref(`orders/${orderId}`).get()).val();",
+  "after": "          const order = (await require('./lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val();",
+  "anchor_after": "          if (!rec || rec.state !== 'reserved') continue;\n          const order = (await require('./lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val();",
+  "anchor_before": "          if (!rec || rec.state !== 'reserved') continue;\n          const order = (await db.ref(`orders/${orderId}`).get()).val();"
+ },
+ {
+  "kind": "get",
+  "row": 23,
+  "file": "rewards-reserve.js",
+  "line": 402,
+  "before": "          const order = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: now - (Number(rec.created_at) || 0) > CASH_STALE_MS, released, audited }); continue; }",
+  "after": "          const order = (await require('./lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: now - (Number(rec.created_at) || 0) > CASH_STALE_MS, released, audited }); continue; }",
+  "anchor_after": "          const order = (await require('./lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: now - (Number(rec.created_at) || 0) > CASH_STALE_MS, released, audited }); continue; }",
+  "anchor_before": "          const order = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: now - (Number(rec.created_at) || 0) > CASH_STALE_MS, released, audited }); continue; }"
+ },
+ {
+  "kind": "get",
+  "row": 22,
+  "file": "rewards-reserve.js",
+  "line": 389,
+  "before": "              const order = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: true, released, audited }); continue; }",
+  "after": "              const order = (await require('./lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: true, released, audited }); continue; }",
+  "anchor_after": "              const order = (await require('./lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: true, released, audited }); continue; }",
+  "anchor_before": "              const order = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: true, released, audited }); continue; }"
+ },
+ {
+  "kind": "get",
+  "row": 21,
+  "file": "rewards-reserve.js",
+  "line": 384,
+  "before": "            if (!(Number(rec.hosted_expires_at) < now)) { const pre = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(pre)) await sweepSdkHold(db, { uid, rid, orderId, rec, order: pre, now, expired: false, released, audited }); continue; }   // D4 row 24 (Codex r1 P2-1): an SDK hold is classified before its expiry too",
+  "after": "            if (!(Number(rec.hosted_expires_at) < now)) { const pre = (await require('./lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val(); if (require('./payments/sdk/flow').isSdkOrder(pre)) await sweepSdkHold(db, { uid, rid, orderId, rec, order: pre, now, expired: false, released, audited }); continue; }   // D4 row 24 (Codex r1 P2-1): an SDK hold is classified before its expiry too",
+  "anchor_after": "            if (!(Number(rec.hosted_expires_at) < now)) { const pre = (await require('./lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val(); if (require('./payments/sdk/flow').isSdkOrder(pre)) await sweepSdkHold(db, { uid, rid, orderId, rec, order: pre, now, expired: false, released, audited }); continue; }   // D4 row 24 (Codex r1 P2-1): an SDK hold is classified before its expiry too",
+  "anchor_before": "            if (!(Number(rec.hosted_expires_at) < now)) { const pre = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(pre)) await sweepSdkHold(db, { uid, rid, orderId, rec, order: pre, now, expired: false, released, audited }); continue; }   // D4 row 24 (Codex r1 P2-1): an SDK hold is classified before its expiry too"
+ },
+ {
+  "kind": "get",
+  "row": 13,
+  "file": "rewards-reserve.js",
+  "line": 59,
+  "before": "    const rec = (await db.ref(`user_rewards/${uid}/${rid}/reservations/${orderId}`).get()).val();",
+  "after": "    const rec = (await require('./lib/rtdb-gate').gatedGet(db.ref(`user_rewards/${uid}/${rid}/reservations/${orderId}`))).val();",
+  "anchor_after": "    const rec = (await require('./lib/rtdb-gate').gatedGet(db.ref(`user_rewards/${uid}/${rid}/reservations/${orderId}`))).val();",
+  "anchor_before": "    const rec = (await db.ref(`user_rewards/${uid}/${rid}/reservations/${orderId}`).get()).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "catalog/bound-reuse.js",
+  "line": 45,
+  "before": "    const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();",
+  "after": "    const att = (await require('../lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();",
+  "anchor_after": "    const att = (await require('../lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();",
+  "anchor_before": "    const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "catalog/bound-reuse.js",
+  "line": 34,
+  "before": "    const order = probed && Object.prototype.hasOwnProperty.call(probed, 'order') ? probed.order : (await db.ref(`orders/${orderId}`).once('value')).val();",
+  "after": "    const order = probed && Object.prototype.hasOwnProperty.call(probed, 'order') ? probed.order : (await require('../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
+  "anchor_after": "    const order = probed && Object.prototype.hasOwnProperty.call(probed, 'order') ? probed.order : (await require('../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
+  "anchor_before": "    const order = probed && Object.prototype.hasOwnProperty.call(probed, 'order') ? probed.order : (await db.ref(`orders/${orderId}`).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "client-floor.js",
+  "line": 159,
+  "before": "    const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();",
+  "after": "    const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();",
+  "anchor_after": "    const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();",
+  "anchor_before": "    const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "client-floor.js",
+  "line": 157,
+  "before": "    const order = (await db.ref(`orders/${id}`).once('value')).val();",
+  "after": "    const order = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${id}`), () => db.ref(`orders/${id}`).once('value'))).val();",
+  "anchor_after": "    const order = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${id}`), () => db.ref(`orders/${id}`).once('value'))).val();",
+  "anchor_before": "    const order = (await db.ref(`orders/${id}`).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "marketing/offer-wire.js",
+  "line": 104,
+  "before": "    if (placement && orderId) offer = storedOfferOf((await db.ref(`orders/${orderId}/offer`).once('value')).val());",
+  "after": "    if (placement && orderId) offer = storedOfferOf((await require('../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}/offer`), () => db.ref(`orders/${orderId}/offer`).once('value'))).val());",
+  "anchor_after": "    if (placement && orderId) offer = storedOfferOf((await require('../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}/offer`), () => db.ref(`orders/${orderId}/offer`).once('value'))).val());",
+  "anchor_before": "    if (placement && orderId) offer = storedOfferOf((await db.ref(`orders/${orderId}/offer`).once('value')).val());"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "payments/sdk/coordinator.js",
+  "line": 320,
+  "before": "  const st = (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val();",
+  "after": "  const st = (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), () => deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value'))).val();",
+  "anchor_after": "  const st = (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), () => deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value'))).val();",
+  "anchor_before": "  const st = (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "payments/sdk/coordinator.js",
+  "line": 16,
+  "before": "const readOrder = async (db, orderId) => (await db.ref(`orders/${orderId}`).once('value')).val();",
+  "after": "const readOrder = async (db, orderId) => (await require('../../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
+  "anchor_after": "const readOrder = async (db, orderId) => (await require('../../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
+  "anchor_before": "const readOrder = async (db, orderId) => (await db.ref(`orders/${orderId}`).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "pixelpay-hosted-charge.js",
+  "line": 285,
+  "before": "  const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();",
+  "after": "  const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();",
+  "anchor_after": "\n  const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();",
+  "anchor_before": "\n  const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "pixelpay-hosted-charge.js",
+  "line": 252,
+  "before": "  const order = (await db.ref(`orders/${orderId}`).once('value')).val();",
+  "after": "  const order = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
+  "anchor_after": "  const order = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
+  "anchor_before": "  const order = (await db.ref(`orders/${orderId}`).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "pixelpay-hosted-charge.js",
+  "line": 126,
+  "before": "      const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();",
+  "after": "      const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();",
+  "anchor_after": "      const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();",
+  "anchor_before": "      const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "pixelpay-hosted-charge.js",
+  "line": 104,
+  "before": "    const order = (await orderRef.once('value')).val();",
+  "after": "    const order = (await require('./lib/rtdb-gate').afterGets(orderRef, () => orderRef.once('value'))).val();",
+  "anchor_after": "    const order = (await require('./lib/rtdb-gate').afterGets(orderRef, () => orderRef.once('value'))).val();",
+  "anchor_before": "    const order = (await orderRef.once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "pixelpay-confirm.js",
+  "line": 238,
+  "before": "  const preOrder = (await orderRef.once('value')).val();",
+  "after": "  const preOrder = (await require('./lib/rtdb-gate').afterGets(orderRef, () => orderRef.once('value'))).val();",
+  "anchor_after": "  const preOrder = (await require('./lib/rtdb-gate').afterGets(orderRef, () => orderRef.once('value'))).val();",
+  "anchor_before": "  const preOrder = (await orderRef.once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "materialize-guard.js",
+  "line": 309,
+  "before": "    const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();",
+  "after": "    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), () => deps.db.ref(`orders/${stamp.order_id}`).once('value'))).val();",
+  "anchor_after": "    if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') continue;\n    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), () => deps.db.ref(`orders/${stamp.order_id}`).once('value'))).val();",
+  "anchor_before": "    if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') continue;\n    const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "materialize-guard.js",
+  "line": 282,
+  "before": "    const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();",
+  "after": "    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), () => deps.db.ref(`orders/${stamp.order_id}`).once('value'))).val();",
+  "anchor_after": "    if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') return null;\n    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), () => deps.db.ref(`orders/${stamp.order_id}`).once('value'))).val();",
+  "anchor_before": "    if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') return null;\n    const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "payments/sdk/materialize-sdk.js",
+  "line": 83,
+  "before": "  const order = (await db.ref(`orders/${orderId}`).once('value')).val();",
+  "after": "  const order = (await require('../../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
+  "anchor_after": "  const order = (await require('../../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();",
+  "anchor_before": "  const order = (await db.ref(`orders/${orderId}`).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "sequencing/cancel-promotion.js",
+  "line": 33,
+  "before": "  const st = (await bounded(db.ref(`orders/${t.order_id}/status`).once('value'), end - Date.now())).val();",
+  "after": "  const st = (await bounded(require('../lib/rtdb-gate').afterGets(db.ref(`orders/${t.order_id}/status`), () => db.ref(`orders/${t.order_id}/status`).once('value')), end - Date.now())).val();",
+  "anchor_after": "  const st = (await bounded(require('../lib/rtdb-gate').afterGets(db.ref(`orders/${t.order_id}/status`), () => db.ref(`orders/${t.order_id}/status`).once('value')), end - Date.now())).val();",
+  "anchor_before": "  const st = (await bounded(db.ref(`orders/${t.order_id}/status`).once('value'), end - Date.now())).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "superseded-capture.js",
+  "line": 311,
+  "before": "    const recheck = (await db.ref(`orders/${orderId}/paid_evidence/${attemptId}`).once('value')).val();",
+  "after": "    const recheck = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}/paid_evidence/${attemptId}`), () => db.ref(`orders/${orderId}/paid_evidence/${attemptId}`).once('value'))).val();",
+  "anchor_after": "    const recheck = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}/paid_evidence/${attemptId}`), () => db.ref(`orders/${orderId}/paid_evidence/${attemptId}`).once('value'))).val();",
+  "anchor_before": "    const recheck = (await db.ref(`orders/${orderId}/paid_evidence/${attemptId}`).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "superseded-capture.js",
+  "line": 245,
+  "before": "  const recheck = (await evRef.once('value')).val();",
+  "after": "  const recheck = (await require('./lib/rtdb-gate').afterGets(evRef, () => evRef.once('value'))).val();",
+  "anchor_after": "  const recheck = (await require('./lib/rtdb-gate').afterGets(evRef, () => evRef.once('value'))).val();",
+  "anchor_before": "  const recheck = (await evRef.once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "superseded-capture.js",
+  "line": 182,
+  "before": "    db.ref(`orders/${orderId}`).once('value'),",
+  "after": "    require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value')),",
+  "anchor_after": "    require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value')),",
+  "anchor_before": "    db.ref(`orders/${orderId}`).once('value'),"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "tip-pref.js",
+  "line": 37,
+  "before": "    const snap = await db.ref(createdAtPath || `orders/${orderId}/created_at`).once('value');",
+  "after": "    const snap = await require('./lib/rtdb-gate').afterGets(db.ref(createdAtPath || `orders/${orderId}/created_at`), () => db.ref(createdAtPath || `orders/${orderId}/created_at`).once('value'));",
+  "anchor_after": "    const snap = await require('./lib/rtdb-gate').afterGets(db.ref(createdAtPath || `orders/${orderId}/created_at`), () => db.ref(createdAtPath || `orders/${orderId}/created_at`).once('value'));",
+  "anchor_before": "    const snap = await db.ref(createdAtPath || `orders/${orderId}/created_at`).once('value');"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "marketing/audience-place.js",
+  "line": 21,
+  "before": "      return attributionUid(dec, (await db.ref(`deleted_uids/${dec.uid}`).once('value')).exists()) || null;",
+  "after": "      return attributionUid(dec, (await require('../lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${dec.uid}`), () => db.ref(`deleted_uids/${dec.uid}`).once('value'))).exists()) || null;",
+  "anchor_after": "      return attributionUid(dec, (await require('../lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${dec.uid}`), () => db.ref(`deleted_uids/${dec.uid}`).once('value'))).exists()) || null;",
+  "anchor_before": "      return attributionUid(dec, (await db.ref(`deleted_uids/${dec.uid}`).once('value')).exists()) || null;"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "member-auth.js",
+  "line": 26,
+  "before": "    db.ref(`deleted_uids/${uid}`).once('value'),",
+  "after": "    require('./lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), () => db.ref(`deleted_uids/${uid}`).once('value')),",
+  "anchor_after": "    require('./lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), () => db.ref(`deleted_uids/${uid}`).once('value')),",
+  "anchor_before": "    db.ref(`deleted_uids/${uid}`).once('value'),"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "payments/sdk/cards.js",
+  "line": 153,
+  "before": "const isDeletedUid = async (db, uid) => (await db.ref(`deleted_uids/${uid}`).once('value')).exists();",
+  "after": "const isDeletedUid = async (db, uid) => (await require('../../lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), () => db.ref(`deleted_uids/${uid}`).once('value'))).exists();",
+  "anchor_after": "const isDeletedUid = async (db, uid) => (await require('../../lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), () => db.ref(`deleted_uids/${uid}`).once('value'))).exists();",
+  "anchor_before": "const isDeletedUid = async (db, uid) => (await db.ref(`deleted_uids/${uid}`).once('value')).exists();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "signup-core.js",
+  "line": 358,
+  "before": "  const [gone, priv] = await Promise.all([db.ref(`deleted_uids/${uid}`).once('value'), db.ref(`user_private/${uid}/deleted_at`).once('value')]);",
+  "after": "  const [gone, priv] = await Promise.all([require('./lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), () => db.ref(`deleted_uids/${uid}`).once('value')), db.ref(`user_private/${uid}/deleted_at`).once('value')]);",
+  "anchor_after": "  const [gone, priv] = await Promise.all([require('./lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), () => db.ref(`deleted_uids/${uid}`).once('value')), db.ref(`user_private/${uid}/deleted_at`).once('value')]);",
+  "anchor_before": "  const [gone, priv] = await Promise.all([db.ref(`deleted_uids/${uid}`).once('value'), db.ref(`user_private/${uid}/deleted_at`).once('value')]);"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "signup-core.js",
+  "line": 311,
+  "before": "  const [name, priv] = await Promise.all([db.ref(`user_profiles/${uid}/name`).once('value'), db.ref(`user_private/${uid}`).once('value')]);",
+  "after": "  const [name, priv] = await Promise.all([require('./lib/rtdb-gate').afterGets(db.ref(`user_profiles/${uid}/name`), () => db.ref(`user_profiles/${uid}/name`).once('value')), db.ref(`user_private/${uid}`).once('value')]);",
+  "anchor_after": "  const [name, priv] = await Promise.all([require('./lib/rtdb-gate').afterGets(db.ref(`user_profiles/${uid}/name`), () => db.ref(`user_profiles/${uid}/name`).once('value')), db.ref(`user_private/${uid}`).once('value')]);",
+  "anchor_before": "  const [name, priv] = await Promise.all([db.ref(`user_profiles/${uid}/name`).once('value'), db.ref(`user_private/${uid}`).once('value')]);"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "signup-core.js",
+  "line": 303,
+  "before": "  const created = (await db.ref(`user_profiles/${uid}/created_at`).once('value')).val();",
+  "after": "  const created = (await require('./lib/rtdb-gate').afterGets(db.ref(`user_profiles/${uid}/created_at`), () => db.ref(`user_profiles/${uid}/created_at`).once('value'))).val();",
+  "anchor_after": "  const created = (await require('./lib/rtdb-gate').afterGets(db.ref(`user_profiles/${uid}/created_at`), () => db.ref(`user_profiles/${uid}/created_at`).once('value'))).val();",
+  "anchor_before": "  const created = (await db.ref(`user_profiles/${uid}/created_at`).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "marketing/brand-of.js",
+  "line": 14,
+  "before": "  const leaf = (await db.ref(`restaurants/${rid}/identity/brand_id`).once('value')).val();",
+  "after": "  const leaf = (await require('../lib/rtdb-gate').afterGets(db.ref(`restaurants/${rid}/identity/brand_id`), () => db.ref(`restaurants/${rid}/identity/brand_id`).once('value'))).val();",
+  "anchor_after": "  const leaf = (await require('../lib/rtdb-gate').afterGets(db.ref(`restaurants/${rid}/identity/brand_id`), () => db.ref(`restaurants/${rid}/identity/brand_id`).once('value'))).val();",
+  "anchor_before": "  const leaf = (await db.ref(`restaurants/${rid}/identity/brand_id`).once('value')).val();"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "payments/sdk/sweeper.js",
+  "line": 62,
+  "before": "  const rewardState = order && order.redemption && order.customer_uid && order.restaurant_id ? (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val() : undefined;",
+  "after": "  const rewardState = order && order.redemption && order.customer_uid && order.restaurant_id ? (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), () => deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value'))).val() : undefined;",
+  "anchor_after": "  const rewardState = order && order.redemption && order.customer_uid && order.restaurant_id ? (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), () => deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value'))).val() : undefined;",
+  "anchor_before": "  const rewardState = order && order.redemption && order.customer_uid && order.restaurant_id ? (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val() : undefined;"
+ },
+ {
+  "kind": "listen",
+  "row": null,
+  "file": "payments/sdk/sweeper.js",
+  "line": 43,
+  "before": "    const st = (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val();",
+  "after": "    const st = (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), () => deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value'))).val();",
+  "anchor_after": "    const st = (await require('../../lib/rtdb-gate').afterGets(deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`), () => deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value'))).val();",
+  "anchor_before": "    const st = (await deps.db.ref(`user_rewards/${order.customer_uid}/${order.restaurant_id}/reservations/${orderId}/state`).once('value')).val();"
+ }
+]

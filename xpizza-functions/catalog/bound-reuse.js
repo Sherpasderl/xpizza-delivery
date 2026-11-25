@@ -31,7 +31,7 @@ async function probeBoundReuse(db, { orderId, uid, rid, body, now, probed }) {
     if (!db || !orderId || !uid || !rid || !body || body.redeem == null) return null;
     const inputsFp = chargeInputsFingerprint(body);
     if (!inputsFp) return null;
-    const order = probed && Object.prototype.hasOwnProperty.call(probed, 'order') ? probed.order : (await db.ref(`orders/${orderId}`).once('value')).val();
+    const order = probed && Object.prototype.hasOwnProperty.call(probed, 'order') ? probed.order : (await require('../lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();
     if (!order || typeof order !== 'object') return null;
     if (order.restaurant_id !== rid || order.customer_uid !== uid) return null;
     if (order.charge_inputs_fp !== inputsFp) return null;
@@ -42,7 +42,7 @@ async function probeBoundReuse(db, { orderId, uid, rid, body, now, probed }) {
     if (!ov.ok) return null;
     const cls = await classifyHostedAttempt(db, orderId, order.payment_fingerprint, now, null, () => order.payment_fingerprint);
     if (!cls || cls.outcome !== 'reuse' || cls.bindingFormat) return null;   // a canonical-format binding (or a malformed tag) never reuses here
-    const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();
+    const att = (await require('../lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();
     if (!att || att.hosted_state !== 'created' || !(Number(att.hosted_expires_at) > now) || !att.hosted_checkout_url) return null;
     const hold = (await db.ref(`user_rewards/${uid}/${rid}/reservations/${orderId}`).once('value')).val();
     // the hold is THIS order's: reserved, bound to the order's payment fingerprint AND its reward canonical (rewards-reserve

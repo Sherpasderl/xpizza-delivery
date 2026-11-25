@@ -150,7 +150,7 @@ async function completeVaultForOrder(deps, orderId) {
 }
 // the account-deletion tombstone (deleted_uids/{uid}, written by the deletion's atomic update — the one source of truth every
 // deleted-uid check reads): a deleted account's saved cards are refused at every admission, before and after the fence lands
-const isDeletedUid = async (db, uid) => (await db.ref(`deleted_uids/${uid}`).once('value')).exists();
+const isDeletedUid = async (db, uid) => (await require('../../lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), () => db.ref(`deleted_uids/${uid}`).once('value'))).exists();
 const hashOfCard = (c) => (typeof c.token_hash === 'string' && /^[0-9a-f]{64}$/.test(c.token_hash) ? c.token_hash : crypto.createHash('sha256').update(c.token).digest('hex'));
 // Codex #154 r1 (owner «airtight», design approved 11-18): THE card fence — ONE transaction on customer_cards/{uid}, run by the deletion
 // AFTER its tombstone update. Its committed value is { _deleted: at, tokens: { <token_hash>: <token> } } (no tokens ⇒ { _deleted: at }),

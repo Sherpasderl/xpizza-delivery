@@ -1508,7 +1508,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   if (SDK_MODE) {   // D4 §A2 B1: exactly ONE credential kind (member ID token | guest ticket), validated HERE, no fail-open; app semantics
     const b1 = await require('./payments/sdk/intake').authorize(req, {
       db: getDatabase(), clock: () => Date.now(), deadlineMs: 1500, attributionUid,
-      verifyIdToken: (t) => getAuth().verifyIdToken(t), isTombstoned: async (uid) => (await getDatabase().ref('deleted_uids/' + uid).get()).exists(),
+      verifyIdToken: (t) => getAuth().verifyIdToken(t), isTombstoned: async (uid) => (await require('./lib/rtdb-gate').gatedGet(getDatabase().ref('deleted_uids/' + uid))).exists(),
       normalizePhone: require('./whatsapp').normalizePhone, phoneHash: (d) => require('./otp-lib').phoneHash(d), cartFpFromBody: require('./checkout-guest-lib').cartFpFromBody,
     });
     if (b1.refuse) return res.status(b1.refuse.status).json(b1.refuse.body);
@@ -1621,7 +1621,7 @@ chargeOnlineApp.all('*', async (req, res) => {
         (async () => {
           const dec = await getAuth().verifyIdToken(idTok);
           if (dec && dec.customer === true && dec.uid) {
-            const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();
+            const tomb = await require('./lib/rtdb-gate').gatedGet(getDatabase().ref('deleted_uids/' + dec.uid));
             return attributionUid(dec, tomb.exists());
           }
           return null;
@@ -1679,7 +1679,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // bookkeeping write (content stamp / prune, rate limits, the audience stamp); acquireHostedAttempt re-applies it to the records it observes
   let probeOrder;
   try {
-    probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();
+    probeOrder = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value'))).val();
   } catch (e) {
     console.error(`chargeOnlineOrder: order probe failed for ${orderId}`, e.message);
     return res.status(500).json({ error: 'Database error', detail: e.message });
@@ -2129,7 +2129,7 @@ chargeOnlineApp.all('*', async (req, res) => {
       console.error('chargeOnlineOrder: PixelPay config error', e.message);
       return res.status(500).json({ error: 'Payment not configured', detail: e.message });
     }
-    returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => db.ref(`restaurants/${restaurantId}/identity/brand_id`).get().then((s) => s.val()) });
+    returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => require('./lib/rtdb-gate').gatedGet(db.ref(`restaurants/${restaurantId}/identity/brand_id`)).then((s) => s.val()) });
     if (returnBase.error) {
       console.error(`chargeOnlineOrder: ${returnBase.error} for ${orderId} (${restaurantId})`);
       return res.status(500).json({ error: 'Payment not configured', detail: 'return URL not configured for restaurant' });
@@ -7322,7 +7322,7 @@ exports.verifyOtp = onRequest(
       /* lifecycle:end login-uid */
       const now2 = Date.now();
       const profRef = db.ref('user_profiles/' + uid);
-      const prof = (await profRef.get()).val();
+      const prof = (await require('./lib/rtdb-gate').gatedGet(profRef)).val();
       // phone_hash is stored (server-only write) so deleteAccount/sweep can find /phone_index in O(1).
       if (!prof) await profRef.set({ phone: OTP.normalizePhone(phone), phone_hash: pHash, created_at: now2, last_login: now2 });
       else await profRef.child('last_login').set(now2);

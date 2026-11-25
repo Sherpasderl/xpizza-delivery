@@ -154,9 +154,9 @@ async function liveCheckoutProbe(db, rawOrderId, now) {
   const id = typeof rawOrderId === 'string' ? rawOrderId : (rawOrderId == null ? '' : String(rawOrderId));
   if (!ORDER_ID_RE.test(id)) return { admit: false };
   try {
-    const order = (await db.ref(`orders/${id}`).once('value')).val();
+    const order = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${id}`), () => db.ref(`orders/${id}`).once('value'))).val();
     if (!order || !order.active_attempt_id || order.payment_status === 'confirmed') return { admit: false };
-    const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();
+    const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), () => db.ref(`payment_attempts/${order.active_attempt_id}`).once('value'))).val();
     return { admit: !!(att && att.hosted_state === 'created' && Number(att.hosted_expires_at) > now && att.hosted_checkout_url) };
   } catch (_) { return { admit: false }; }
 }

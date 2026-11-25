@@ -56,7 +56,7 @@ const entry = (type, delta, cost, orderId, state, ts) => ({ type, delta, cost, o
 // residual instead of silently granting a free discount). Best-effort dispatcher alert; never blocks consume.
 async function alertIfUndercollateralized(db, { uid, rid, orderId, now }) {
   try {
-    const rec = (await db.ref(`user_rewards/${uid}/${rid}/reservations/${orderId}`).get()).val();
+    const rec = (await require('./lib/rtdb-gate').gatedGet(db.ref(`user_rewards/${uid}/${rid}/reservations/${orderId}`))).val();
     if (rec && Number(rec.debit_applied) < Number(rec.cost)) {
       await db.ref('dispatcher_alerts').push({ type: 'rewards_undercollateralized', order_id: orderId, uid, rid,
         cost: Number(rec.cost), debit_applied: Number(rec.debit_applied), shortfall: Number(rec.cost) - Number(rec.debit_applied), created_at: now });
@@ -381,12 +381,12 @@ async function sweepStaleReservations(db, { now }) {
           const rec = reservations[orderId];
           if (!rec || rec.state !== 'reserved') continue;                 // only reserved orphans
           if (rec.hosted_expires_at != null) {                            // online checkout
-            if (!(Number(rec.hosted_expires_at) < now)) { const pre = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(pre)) await sweepSdkHold(db, { uid, rid, orderId, rec, order: pre, now, expired: false, released, audited }); continue; }   // D4 row 24 (Codex r1 P2-1): an SDK hold is classified before its expiry too
+            if (!(Number(rec.hosted_expires_at) < now)) { const pre = (await require('./lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val(); if (require('./payments/sdk/flow').isSdkOrder(pre)) await sweepSdkHold(db, { uid, rid, orderId, rec, order: pre, now, expired: false, released, audited }); continue; }   // D4 row 24 (Codex r1 P2-1): an SDK hold is classified before its expiry too
             if (Number(rec.hosted_expires_at) < now) {
               // Expired ≠ necessarily abandoned: a PAID order whose primary consume fail-opened ALSO has an
               // expired expiry + a reserved hold. Consult the order — if it realized (paid + live/terminal),
               // do NOT release (leave it for consume-recovery).
-              const order = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: true, released, audited }); continue; }
+              const order = (await require('./lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: true, released, audited }); continue; }
               if (consumeEligible(order)) continue;                       // paid + live → realized, not abandoned
               // [C] CONSERVATIVE: release ONLY a DEFINITIVELY-not-captured hold. An AMBIGUOUS one
               // (manual_reconciliation / still pending / unknown) MIGHT be paid-but-lost → releasing it risks a
@@ -399,7 +399,7 @@ async function sweepStaleReservations(db, { now }) {
             continue;
           }
           // cash / scheduled (no hosted expiry): consult the FULL order (need release_at / materialized_at too).
-          const order = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: now - (Number(rec.created_at) || 0) > CASH_STALE_MS, released, audited }); continue; }
+          const order = (await require('./lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: now - (Number(rec.created_at) || 0) > CASH_STALE_MS, released, audited }); continue; }
           const status = order && order.status;
           if (status == null || TERMINAL_CANCEL.has(status)) { await releaseRedemption(db, { uid, rid, orderId, now }); await db.ref(`dispatcher_alerts/reward_hold_stale_${orderId}`).remove().catch(() => {}); released.push({ uid, rid, orderId, kind: status == null ? 'cash_orphan' : 'cash_cancelled' }); continue; }
           // [F/#22] Scheduled: LEGITIMATE until its slot — NEVER flag before release_at. Only stale when PAST
@@ -529,7 +529,7 @@ async function sweepConsumeRecovery(db, { now, staleMs = CASH_STALE_MS }) {
         for (const orderId of Object.keys(reservations)) {
           const rec = reservations[orderId];
           if (!rec || rec.state !== 'reserved') continue;
-          const order = (await db.ref(`orders/${orderId}`).get()).val();
+          const order = (await require('./lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val();
           if (!consumeEligible(order)) continue; if (require('./payments/sdk/flow').isSdkOrder(order)) continue;   // an SDK card order's redemption is coordinator-owned
           const r = await consumeRedemption(db, { uid, rid, orderId, now });   // idempotent
           if (r && r.action === 'applied') {

@@ -34,7 +34,7 @@ async function recordLastTip(db, { uid, body, orderType, orderId, createdAtPath 
   const p = prefOf({ uid, body, orderType });
   if (!p) return { written: false, reason: 'not_eligible' };
   try {
-    const snap = await db.ref(createdAtPath || `orders/${orderId}/created_at`).once('value');
+    const snap = await require('./lib/rtdb-gate').afterGets(db.ref(createdAtPath || `orders/${orderId}/created_at`), () => db.ref(createdAtPath || `orders/${orderId}/created_at`).once('value'));
     const at = snap.val();
     if (!Number.isFinite(at)) return { written: false, reason: 'no_created_at' };
     const next = { cents: p.cents, at };

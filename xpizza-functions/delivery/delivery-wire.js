@@ -54,11 +54,11 @@ async function deliveryFor(db, { rid, mode, pin, customerUid, getIdentity, prici
    A refusal dq is answered by the handler BEFORE any pending order or hold exists. */
 async function chargeContext(db, orderId, dq, body, now, pricingP) {
   if (!dq) return dq;
-  const order = (await db.ref(`orders/${orderId}`).get()).val();
+  const order = (await require('../lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val();
   if (!order || order.payment_status === 'confirmed') return dq;   // fresh, or already paid (the acquire answers already_paid as today)
   let at = null;
   if (typeof order.active_attempt_id === 'string' && order.active_attempt_id) {
-    at = (await db.ref(`payment_attempts/${order.active_attempt_id}`).get()).val();
+    at = (await require('../lib/rtdb-gate').gatedGet(db.ref(`payment_attempts/${order.active_attempt_id}`))).val();
     // LIVE now → GRANDFATHERED: priced at its STORED economics so the acquire can REUSE it. Whether it IS reused is decided
     // by the acquire, not by this clock read (codex S3a r2 P1): if the checkout expires before the acquire and a FRESH one
     // would be issued instead, the gate step refuses it (refusalGate → re-quote) — a fresh checkout is always priced now.
@@ -143,7 +143,7 @@ async function quoteDeliveryFor(req, db, rid, body, { getIdentity, getAuth, attr
     if (idTok) {
       try {
         const dec = await getAuth().verifyIdToken(idTok);
-        if (dec && dec.customer === true && dec.uid) uid = attributionUid(dec, (await db.ref('deleted_uids/' + dec.uid).get()).exists());
+        if (dec && dec.customer === true && dec.uid) uid = attributionUid(dec, (await require('../lib/rtdb-gate').gatedGet(db.ref('deleted_uids/' + dec.uid))).exists());
       } catch (_) { uid = null; }   // malformed/expired/foreign → guest (pays envío)
     }
   }

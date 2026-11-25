@@ -37,7 +37,7 @@ async function deliveryResumeRefusal(db, order, pricingP) {
    · null-dq route (a non-app-classified retry: entry_mode omitted / direct): ONE read of orders/{id}; a first attempt reads null → null */
 async function preBookkeepingRefusal(db, orderId, dq, pricingP) {
   if (dq) return null;
-  return deliveryResumeRefusal(db, (await db.ref(`orders/${orderId}`).get()).val(), pricingP);
+  return deliveryResumeRefusal(db, (await require('../lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val(), pricingP);
 }
 /* r5 §2.4 — the acquire BACKSTOP's compensation: the content stamps (the bookkeeping stamp and the A8 stamp share the
    recent_order_content/{phone} family) that still name THIS order_id are removed, each in its own transaction, so a newer stamp is

@@ -300,7 +300,7 @@ async function setPromos(db, { uid, rid, value, now, confirm = false }) {
 async function completionState(db, uid, scope, env) {
   const cfg = await signupConfig(db, scope, env);
   if (typeof cfg.rollout_at !== 'number' || cfg.legal_ready !== true) return 'off';
-  const created = (await db.ref(`user_profiles/${uid}/created_at`).once('value')).val();
+  const created = (await require('./lib/rtdb-gate').afterGets(db.ref(`user_profiles/${uid}/created_at`), () => db.ref(`user_profiles/${uid}/created_at`).once('value'))).val();
   if (!isNum(created)) return 'needed';
   if (created < cfg.rollout_at) return 'off';
   const terms = (await db.ref(`user_private/${uid}/consent/${scope}/terms`).once('value')).val();
@@ -308,7 +308,7 @@ async function completionState(db, uid, scope, env) {
 }
 // {name, email} + `promos` (the stored consent for this scope; OMITTED when none is stored — the client treats absent as inert)
 async function profileOf(db, uid, scope) {
-  const [name, priv] = await Promise.all([db.ref(`user_profiles/${uid}/name`).once('value'), db.ref(`user_private/${uid}`).once('value')]);
+  const [name, priv] = await Promise.all([require('./lib/rtdb-gate').afterGets(db.ref(`user_profiles/${uid}/name`), () => db.ref(`user_profiles/${uid}/name`).once('value')), db.ref(`user_private/${uid}`).once('value')]);
   const p = priv.val() || {};
   const out = { name: typeof name.val() === 'string' ? name.val() : null, email: typeof p.email === 'string' && p.deleted_at == null ? p.email : null };
   const pr = p.consent && p.consent[scope] && p.consent[scope].promos;
@@ -355,7 +355,7 @@ async function sweepClaim(db, uid, cutoff, now) {
   return out;
 }
 async function isTombstoned(db, uid) {
-  const [gone, priv] = await Promise.all([db.ref(`deleted_uids/${uid}`).once('value'), db.ref(`user_private/${uid}/deleted_at`).once('value')]);
+  const [gone, priv] = await Promise.all([require('./lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), () => db.ref(`deleted_uids/${uid}`).once('value')), db.ref(`user_private/${uid}/deleted_at`).once('value')]);
   return gone.exists() || priv.exists();
 }
 // every auth_links row of the account, found by the uid query, removed only if it still points at it

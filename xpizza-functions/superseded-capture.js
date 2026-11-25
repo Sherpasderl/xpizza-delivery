@@ -179,7 +179,7 @@ async function underLease(db, { orderId, attemptId, now, clock, hook, itemRef, g
 
   // 2. fresh read + classify, AFTER the lease
   const [orderSnap, attemptSnap] = await Promise.all([
-    db.ref(`orders/${orderId}`).once('value'),
+    require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), () => db.ref(`orders/${orderId}`).once('value')),
     db.ref(`payment_attempts/${attemptId}`).once('value'),
   ]);
   const order = orderSnap.val();
@@ -242,7 +242,7 @@ async function underLease(db, { orderId, attemptId, now, clock, hook, itemRef, g
     return { outcome: 'alert_failed' };
   }
   await hook('afterAlert');
-  const recheck = (await evRef.once('value')).val();
+  const recheck = (await require('./lib/rtdb-gate').afterGets(evRef, () => evRef.once('value'))).val();
   if (!recheck || fenceOf(recheck) !== fence || recheck.version !== version || dismissedFor(recheck, ev.kind, version)) {
     await removeAlertIf(aRef, (cur) => fenceOf(cur) === fence);                  // withdraw only MY alert
     if (recheck && fenceOf(recheck) === fence && dismissedFor(recheck, ev.kind, version)) {
@@ -308,7 +308,7 @@ async function repairAlert(db, orderId, attemptId, ev, order, fence) {
       if (cur && cur.version === ev.version && seqOf(cur) === seqOf(ev) && fenceOf(cur) === fence) return;   // consistent
       return alertRecord(orderId, attemptId, ev, order, fence);
     });
-    const recheck = (await db.ref(`orders/${orderId}/paid_evidence/${attemptId}`).once('value')).val();
+    const recheck = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}/paid_evidence/${attemptId}`), () => db.ref(`orders/${orderId}/paid_evidence/${attemptId}`).once('value'))).val();
     if (!recheck || fenceOf(recheck) !== fence || dismissedFor(recheck, ev.kind, ev.version)) await removeAlertIf(aRef, (cur) => fenceOf(cur) === fence);
   }
   await withdrawOtherKinds(db, orderId, attemptId, ev.kind, fence);
