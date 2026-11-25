@@ -44,6 +44,28 @@ const RULINGS = {
   'catalog/seed-catalog-core.js|seedCatalog|col': { firestore: true },
   'stats/stats-store.js|readShards|ref': { firestore: true },
   'stats/stats-store.js|serverNow|ref': { firestore: true },
+  'tip-pref.js|recordLastTip|db.ref(createdAtPath || `orders/${orderId}/created_at`)': { path: 'orders/{}/created_at' },
+  // LISTENER receivers built by params / imported helpers (r9 manifest, 11-25 hand rulings; path = the family it touches)
+  "access/access-census-core.js|pageKeys|q.limitToFirst(pageSize)": { path: "{}", note: "pageKeys(rtdb, path): root-collection key pages (restaurants / orders roots): an ANCESTOR query, clean (RG-ANC)" },
+  "catalog/identity-record-writer.js|casCursor|ref": { path: "catalog_ctx_cursor/{}", note: "casCursor on(value) on the cursor refs: not a gated family; on+off clean (RG-ON)" },
+  "marketing/audience-read.js|val|q": { path: "user_profiles/{}/phone_hash", note: "resolveAudience (offer pricing in charge / quote functions); SAFE: the only gated user_profiles get (index.js:7325) is in verifyOtp" },
+  "my-orders.js|getMyOrders|qr.limitToLast(limit + 1)": { path: "user_orders/{}", note: "not a gated family" },
+  "payments/sdk/cards.js|page|q.limitToFirst(batch)": { path: "card_fence_owed", note: "not a gated family" },
+  "payments/sdk/record-token.js|page|after ? q.startAt(after).limitToFirst(batch + 1) : q.limitToFirst(batch)": { path: "payment_sdk_tokens", note: "not a gated family" },
+  "payments/sdk/token-queue.js|get|after ? q.startAt(after).limitToFirst(batch + 1) : q.limitToFirst(batch)": { path: "payment_sdk_token_queue", note: "not a gated family" },
+  "platform-config/drift.js|checkDrift|projectionRef(db, rid)": { path: "platform_config/{}", note: "not a gated family" },
+  "platform-config/reader.js|read|projectionRef(db, rid)": { path: "platform_config/{}", note: "not a gated family" },
+  "prep-stats.js|read|q": { path: "orders/{}/restaurant_id", note: "runPrepStats (its own scheduled export, index.js:7640); SAFE: no gated orders get in that function" },
+  "ratings/aggregate-producer.js|fulfilledOn|V2.indexRef(db, rid).orderByKey().startAt(lo).endAt(hi).limitToFirst(DAY_BUDGET + 1)": { path: "ratings_v2_index/{}", note: "not a gated family" },
+  "ratings/aggregate-producer.js|countableRatings|q.limitToFirst(PAGE)": { path: "ratings_v2_index/{}", note: "not a gated family" },
+  "ratings/merchant-comments.js|merchantRatingCommentsCore|query.limitToFirst(CANDIDATES)": { path: "ratings_v2_index/{}", note: "not a gated family" },
+  "ratings/merchant-reviews.js|merchantReviewsCore|q.endAt(oldest).limitToFirst(per)": { path: "ratings_v2_index/{}", note: "not a gated family" },
+  "ratings/rating-v2.js|readCountable|ratingRef(db, orderId)": { path: "ratings_v2/{}", note: "not a gated family" },
+  "ratings/rating-v2.js|readRatingWindow|ratingRef(db, orderId)": { path: "ratings_v2/{}", note: "not a gated family" },
+  "ratings/review-buckets.js|dayRows|q.endAt(`${V2.indexPrefix(start)}-~`).limitToFirst(max + 1)": { path: "ratings_v2_index/{}", note: "not a gated family" },
+  "stats/stats-api.js|ordersCsv|q.endBefore(toMs).limitToFirst(ORDERS_CSV_PAGE)": { path: "", note: "orders ROOT query (ancestor), clean (RG-ANC)" },
+  "stats/stats-job.js|readOrdersBounded|q": { path: "", note: "orders ROOT query (ancestor), clean (RG-ANC)" },
+  "superseded-capture.js|pagedPass|q.limitToFirst(PAGE + 1)": { path: "", note: "payment_attempts ROOT query (ancestor), clean (RG-ANC)" },
   // readCursor(ref): one of the four cursor refs (catalog_ctx_cursor/{rid}, catalog_ctx_restaurant_cursor, catalog_ctx_verify_cursor/{rid},
   // catalog_ctx_verify_restaurant_cursor) — audit row 8 / plan row 17
   'catalog/identity-record-writer.js|readCursor|ref': { path: 'catalog_ctx_cursor/{}' },
@@ -86,6 +108,8 @@ function fnName(parents) {
       // an inline handler: exports.X = onRequest(opts, async (req, res) => …) / onSchedule(…) → X
       const call = up && up.type === 'CallExpression' ? up : null; const asg = call && parents[i - 2];
       if (asg && asg.type === 'AssignmentExpression' && asg.left.type === 'MemberExpression' && asg.left.object.name === 'exports') return `exports.${asg.left.property.name}`;
+      // an Express route callback: createOrderApp.all(async (req, res) => …) → createOrderApp.all (the census's own name)
+      if (call && call.callee.type === 'MemberExpression' && !call.callee.computed && call.callee.object.type === 'Identifier' && ['all', 'post', 'get', 'use', 'put'].includes(call.callee.property.name)) return `${call.callee.object.name}.${call.callee.property.name}`;
     }
   }
   return '(top)';
@@ -155,11 +179,21 @@ function scanFile(file, root) {
   };
   walk(ast, (n, parents) => {
     if (n.type !== 'CallExpression' || n.callee.type !== 'MemberExpression' || n.callee.computed) return;
+    // the RTDB in-flight-get gate (lib/rtdb-gate): gatedGet(R) is a GATED get of R; afterGets(R, (r) => r.once('value')) a GATED once of R
+    if ((n.callee.property.name === 'gatedGet' || n.callee.property.name === 'afterGets') && n.arguments[0]) {
+      const gr = receiverPath(n.arguments[0], varsOf(parents), 0, helpers); const gfn = fnName(parents);
+      let grr = gr; if (gr.unresolved) { const ru = RULINGS[`${path.relative(root, file)}|${gfn}|${src.slice(n.arguments[0].start, n.arguments[0].end)}`] || RULINGS[`${path.relative(root, file)}|${src.slice(n.arguments[0].start, n.arguments[0].end)}`]; if (ru) grr = ru; }
+      if (grr.firestore) return;
+      out.push({ file: path.relative(root, file), line: n.loc.start.line, fn: gfn, op: n.callee.property.name === 'gatedGet' ? 'get' : 'once', gated: true, path: grr.path != null ? grr.path : null, how: grr.path != null ? 'ref' : `UNRESOLVED ${grr.unresolved}` });
+      return;
+    }
     const op = n.callee.property.name;
     if (!OPS.has(op)) return;
     if (op === 'get' && n.arguments.length) return;                       // Map#get / headers get(k): an RTDB get takes no arguments
     if (op === 'on' && !(n.arguments[0] && n.arguments[0].type === 'Literal' && /^(value|child_)/.test(n.arguments[0].value))) return;
     if (op === 'once' && !(n.arguments[0] && n.arguments[0].type === 'Literal' && /^(value|child_)/.test(n.arguments[0].value))) return;
+    { const cb = parents[parents.length - 1]; const call = parents[parents.length - 2];   // (r) => r.once('value') as afterGets' 2nd argument
+      if (cb && FN.has(cb.type) && call && call.type === 'CallExpression' && call.callee.type === 'MemberExpression' && call.callee.property.name === 'afterGets' && call.arguments[1] === cb && n.callee.object.type === 'Identifier' && cb.params[0] && cb.params[0].name === n.callee.object.name) return; }
     if (op === 'push' && !(n.callee.object.type === 'CallExpression' || n.callee.object.type === 'Identifier')) return;
     let r = receiverPath(n.callee.object, varsOf(parents), 0, helpers);
     const fn = fnName(parents); const text = src.slice(n.callee.object.start, n.callee.object.end); const rel = path.relative(root, file);
@@ -179,7 +213,7 @@ function scanFile(file, root) {
   return out;
 }
 
-const SKIP = /(^|\/)(node_modules|test|tests|tools|scripts|deploy|coverage|contract)(\/|$)|(^|\/)catalog\/identity-fixture\.js$|\.test\.(js|mjs)$|(^|\/)_[^/]*\.js$|-fake\.js$|fake-db\.js$/;
+const SKIP = /(^|\/)(node_modules|test|tests|tools|scripts|deploy|coverage|contract)(\/|$)|(^|\/)catalog\/identity-fixture\.js$|(^|\/)lib\/rtdb-gate\.js$|\.test\.(js|mjs)$|(^|\/)_[^/]*\.js$|-fake\.js$|fake-db\.js$/;
 function productionFiles(root) {
   const files = [];
   const rec = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); const rel = path.relative(root, p); if (SKIP.test(rel)) continue; if (e.isDirectory()) rec(p); else if (e.name.endsWith('.js')) files.push(p); } };
