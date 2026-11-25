@@ -95,6 +95,7 @@ const EXPECTED = [
   'photos/branch-photos.js', 'photos/served-photos.js',   // DISH PHOTOS A2 step 12 (E-P4): the branch's published photo cards (pure + one Firestore read)
   'delivery/delivery-pricing.js', 'delivery/limits.js', 'delivery/zones.js',   // envío restaurant limit r5 §5: Sucursales' effective app limit (pure readers of the one policy read)
   'delivery/zone-shape.js',   // Z2 §A (PLAN-portal-zones-protocol-v3-r4): zones.js's pure shape check, moved into a UMD-lite leaf (requires nothing)
+  'catalog/pending-summary.js',   // S3 r1 (PLAN-5f-inicio-s3-pending-rebase-r0): getMyBranches' has_pending — self-contained (no review-lines, no source-store), three point reads per catalog
 ].sort();
 const CONDITIONAL = ['lib/emulator-endpoint.js'];   // reached via lib/admin.js only when an emulator env var is set
 const FORBIDDEN = /^(catalog\/catalog-publish\.js|catalog\/portal-reads\.js|stats\/.*|factura\/.*|index\.js|merchant\/merchant-location\.js|merchant\/merchant-orders\.js|portal\/functions\.js)$/;

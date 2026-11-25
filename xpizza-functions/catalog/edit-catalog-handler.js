@@ -438,7 +438,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   const sourceHash = sha256(payload);
   // Bound to the POST-write updateTime, deliberately. Binding the pre-write one would let a publish land
   // against a draft that had already moved on.
-  const token = issueEditToken({ rid, baseActiveVersionId, sourceUpdateTime: writeTime, sourceHash, diff });   { const PS = require('./pending-summary'); await PS.record(db, rid, { pending: PS.pendingOf(diff, PS.ctxOf(next, live.items)), sourceUpdateTime: writeTime, baseActiveVersion: baseActiveVersionId }); }   // S3 r1 (PLAN-5f-inicio-s3-pending-rebase-r0): has_pending for getMyBranches — the review model over THIS diff, beside the draft; best effort
+  const token = issueEditToken({ rid, baseActiveVersionId, sourceUpdateTime: writeTime, sourceHash, diff });   { const PS = { ...require('./pending-summary'), ...require('./pending-answer') }; await PS.record(db, rid, { pending: PS.pendingOf(diff, PS.ctxOf(next, live.items)), sourceUpdateTime: writeTime, baseActiveVersion: baseActiveVersionId }); }   // S3 r1 (PLAN-5f-inicio-s3-pending-rebase-r0): has_pending for getMyBranches — the review model over THIS diff, beside the draft; best effort
 
   console.log('catalog_edit_saved', JSON.stringify({
     rid, actor: auth.actor || auth.uid, role: auth.role, updateTime: writeTime,

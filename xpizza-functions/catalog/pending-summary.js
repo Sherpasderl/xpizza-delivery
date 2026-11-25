@@ -9,7 +9,8 @@
 //   the draft's body is never downloaded) AND its base_active_version is the current active pointer. Anything else — a writer that does
 //   not record, a lost follow-up write, a race between two saves, a new live version — is `null`: unknown, never a stale answer.
 //   Recording is best-effort for the same reason: a failed record only makes the answer null.
-// SELF-CONTAINED for the read (no source-store / catalog-firestore): getMyBranches' static closure stays light. The paths and the
+// The ANSWER (the review model) is catalog/pending-answer.js, required by the writers only. SELF-CONTAINED for the read (no review-lines,
+// no source-store / catalog-firestore): getMyBranches' static closure stays light. The paths and the
 // updateTime encoding are the store's own — pinned against source-store / catalog-firestore by PS-PARITY.
 const metaRefOf = (fs, rid, id) => fs.collection('restaurants').doc(rid).collection('meta').doc(id);
 const sourceRefOf = (fs, rid) => metaRefOf(fs, rid, 'source');
@@ -17,23 +18,6 @@ const activePointerRef = (fs, rid) => metaRefOf(fs, rid, 'active_version');
 const summaryRefOf = (fs, rid) => metaRefOf(fs, rid, 'pending_summary');
 const encodeUpdateTime = (ts) => (ts && typeof ts.seconds === 'number' ? `${ts.seconds}.${String(ts.nanoseconds || 0).padStart(9, '0')}` : String(ts));
 const codeOf = (e) => (e && e.code != null ? String(e.code).slice(0, 40) : 'unknown');
-
-// Every top-level field a review diff carries today. The model draws from all but `fiscal` / `reach` (facts the screen never lists as
-// lines). A field NOT here makes the answer null (unknown) — a new diff facet is a decision (PS-CLASSIFY pins it against real diffs).
-const KNOWN_FIELDS = Object.freeze(['added', 'removed', 'renamed', 'changed', 'largeChangeSet', 'consequences', 'extras', 'structure', 'attachments', 'choices', 'sections', 'fiscal', 'reach']);
-
-/* pendingOf(diff, ctx) → true | false | null — the review model's own answer; null for anything it cannot classify */
-function pendingOf(diff, ctx) {
-  if (!diff || typeof diff !== 'object' || Array.isArray(diff)) return null;
-  if (Object.keys(diff).some((k) => !KNOWN_FIELDS.includes(k))) return null;
-  try { return require('./review-lines').hasPending(diff, ctx || {}) === true; } catch (_) { return null; }
-}
-
-/* ctxOf(source, liveItems) — the model's context from the SAVED draft source, as app.js builds it (a removed row from live) */
-function ctxOf(source, liveItems) {
-  const rows = Array.isArray(liveItems) ? liveItems : [];
-  try { return require('./review-lines').reviewCtxFromSource(source || {}, { removedRowFor: (k) => rows.find((r) => r && r.key === k) || null }); } catch (_) { return {}; }
-}
 
 /* record(fs, rid, { pending, sourceUpdateTime, baseActiveVersion }) — best-effort; never throws (a failed record ⇒ the read's null) */
 async function record(fs, rid, { pending, sourceUpdateTime, baseActiveVersion }, log = console) {
@@ -68,4 +52,4 @@ async function readHasPending(fs, catalogId, log = console) {
   }
 }
 
-module.exports = { pendingOf, ctxOf, record, readHasPending, summaryRefOf, sourceRefOf, activePointerRef, encodeUpdateTime, KNOWN_FIELDS };
+module.exports = { record, readHasPending, summaryRefOf, sourceRefOf, activePointerRef, encodeUpdateTime };

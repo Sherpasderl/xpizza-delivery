@@ -6,7 +6,7 @@
 // while FRESH; anything unknown ⇒ null. Real handlers on one Firestore fake (test/_s2core-harness.js). Run: node catalog/pending-summary.test.js
 const assert = require('assert');
 const H = require('../test/_s2core-harness');
-const PS = require('./pending-summary');
+const PS = { ...require('./pending-summary'), ...require('./pending-answer') };
 const RL = require('./review-lines');
 let n = 0; const fails = [];
 async function cell(label, fn) { try { await fn(label); console.log(`  ✓ ${++n} ${label}`); } catch (e) { fails.push(label); console.log(`  ✗ ${label}: ${e.message}`); } }
