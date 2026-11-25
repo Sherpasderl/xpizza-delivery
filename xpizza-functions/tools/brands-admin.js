@@ -3,6 +3,7 @@
 // PLATFORM F1 — the OWNER's brands CLI (PLAN-multi-location §1.2). DRY RUN unless --apply.
 //
 //   node tools/brands-admin.js --project <id> status                      ← every brand: validity + membership findings (read-only)
+//   node tools/brands-admin.js --project <id> resolution                  ← ML E2 gate: every restaurant → its brand; founders → self (read-only)
 //   node tools/brands-admin.js --project <id> seed-legacy <rid> [--apply]  ← /brands/<rid> = legacy singleton of an existing restaurant
 //   node tools/brands-admin.js --project <id> publish <brandId> [--apply]  ← /public/brands/<brandId> from the brand + member identities
 //
