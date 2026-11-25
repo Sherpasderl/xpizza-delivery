@@ -178,6 +178,107 @@ const rowsOf = (out) => Object.fromEntries(out.body.branches.map((b) => [b.rid, 
     const got = await capture(() => call('ownerT1', { ...good, collection: (...a) => good.collection(...a), getAll: () => Promise.reject(err) }));
     assert.deepStrictEqual(got, [['warn', 'getMyBranches: pending_summary read failed', JSON.stringify({ rid: 'tb', code: '14' })]], `${L}: one line for the one catalog, code + id only`);
   });
+  // S3 r2 (Codex #393): the summary is OPTIONAL — its computation, its write and its read never change, delay past a short bound, or
+  // fail the response the handler gave before S3 (P1-1 a throwing computation at publish, P1-2 a stalled / rejected write, P2-3 a stalled read)
+  const BOUND = PS.SUMMARY_WAIT_MS;
+  const NEVER = () => new Promise(() => {});
+  // patch THIS world's fake in place (the handlers hold the same object): the pending_summary doc's set / delete behave as `how` says
+  const summaryWrites = (fs, how) => {
+    const col0 = fs.collection.bind(fs);
+    const wrap = (o) => new Proxy(o, { get(t, k) {
+      const v = t[k];
+      if (k === 'collection' || k === 'doc') return (...a) => { const r = v.apply(t, a); if (k === 'doc' && a[0] === 'pending_summary') return new Proxy(r, { get(t2, k2) { if (k2 === 'set' || k2 === 'delete') return () => how(); const v2 = t2[k2]; return typeof v2 === 'function' ? v2.bind(t2) : v2; } }); return wrap(r); };
+      return typeof v === 'function' ? v.bind(t) : v;
+    } });
+    fs.collection = (...a) => wrap(col0(...a));
+  };
+  const steady = (body) => { const o = { ...body }; for (const k of ['token', 'updateTime', 'sourceUpdateTime']) delete o[k]; return o; };
+  // a watchdog keeps the loop alive and fails AT the cell: a stalled await leaves no pending handle, so node would otherwise exit 0 mid-file
+  const WATCH = BOUND + 3000;
+  const watched = (p) => { let t; return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej(new Error(`still waiting after ${WATCH} ms`)), WATCH); })]).finally(() => clearTimeout(t)); };
+  // console is silenced and RESTORED around the watched race (quiet() restores only when fn settles, which a stall never does)
+  const timed = async (fn) => { const l = console.log, w = console.warn; console.log = () => {}; console.warn = () => {}; const t0 = Date.now(); try { const r = await watched(fn()); return { r, ms: Date.now() - t0 }; } finally { console.log = l; console.warn = w; } };
+  const publishVia = async (w, { kds } = {}) => {
+    await quiet(() => w.save((d) => reprice(d, 2)));
+    const { token } = await w.tokenFor(); const { source, updateTime } = await w.draft();
+    return require('./publish-edited-handler').publishEditedCore({
+      db: w.fs, authorize: async () => ({ ok: true, uid: 'ownerA', role: 'owner', actor: 'o@x.hn' }),
+      readActiveBuilt: async () => ({ built: { ...w.L.built, extras: w.L.inputs.extras }, versionId: 'v1', extraRecords: w.L.built.extras }),
+      readDraft: async () => ({ source, updateTime }),
+      publishVersion: async () => { await meta(w.fs, 'la_musa', 'active_version').set({ version: 'v2', generation: 4 }); return { versionId: 'v2', item_count: 0, extra_count: 0 }; },
+      addProduct: { syncKds: async () => { if (kds) kds.n += 1; return { pending: false }; } },
+    }, { restaurantId: 'la_musa', token, fiscalAck: true, acknowledgedChanges: [] }, {});
+  };
+  await cell('PS-PUBLISH-COMPUTE-THROWS: the summary\'s own review diff throwing AFTER the publish ⇒ the original 200 (same body) and the KDS sync still runs', async (L) => {
+    const RD = require('./review-diff'); const orig = RD.reviewDiff;
+    let calls = 0; RD.reviewDiff = (...a) => { calls += 1; return orig(...a); };
+    const k0 = { n: 0 }; let base;
+    try { base = await quiet(() => publishVia(H.world('la_musa'), { kds: k0 })); } finally { RD.reviewDiff = orig; }
+    const perPublish = calls; calls = 0;
+    assert.strictEqual(base.status, 200, `${L}: premise, baseline 200`); assert.strictEqual(k0.n, 1, `${L}: premise, KDS runs`);
+    const w = H.world('la_musa'); const k1 = { n: 0 }; let r;
+    RD.reviewDiff = (...a) => { calls += 1; if (calls === perPublish) throw new Error('summary diff boom'); return orig(...a); };   // the LAST diff call of the publish = the summary's (the save before it has its own)
+    try { r = await quiet(() => publishVia(w, { kds: k1 })); } finally { RD.reviewDiff = orig; }
+    assert.strictEqual(calls, perPublish, `${L}: premise, the injected (last) call was reached`);
+    assert.strictEqual(r.status, 200, `${L}: ${JSON.stringify(r.body).slice(0, 160)}`);
+    assert.deepStrictEqual(steady(r.body), steady(base.body), `${L}: the original body`);
+    assert.strictEqual(k1.n, 1, `${L}: the KDS sync still runs`);
+    assert.strictEqual(await PS.readHasPending(w.fs, 'la_musa', { warn() {} }), null, `${L}: no summary ⇒ null`);
+  });
+  for (const [what, how] of [['stalls', NEVER], ['rejects', () => Promise.reject(Object.assign(new Error('DEADLINE restaurants/la_musa'), { code: 4 }))]]) {
+    await cell(`PS-SAVE-WRITE-${what.toUpperCase()}: the summary write ${what} ⇒ the save answers its original response within the bound`, async (L) => {
+      const base = await quiet(() => H.world('la_musa').save((d) => reprice(d, 3)));
+      const w = H.world('la_musa'); summaryWrites(w.fs, how);
+      const { r, ms } = await timed(() => w.save((d) => reprice(d, 3)));
+      assert.strictEqual(r.status, base.status, `${L}: status`);
+      assert.deepStrictEqual(steady(r.body), steady(base.body), `${L}: the original body`);
+      assert.ok(ms < BOUND + 1000, `${L}: answered in ${ms} ms (bound ${BOUND})`);
+    });
+    await cell(`PS-PUBLISH-WRITE-${what.toUpperCase()}: the summary write ${what} after the publish ⇒ the original 200 within the bound, KDS runs`, async (L) => {
+      const base = await quiet(() => publishVia(H.world('la_musa')));
+      const w = H.world('la_musa'); const k = { n: 0 };
+      await quiet(() => w.save((d) => reprice(d, 2)));   // seed then stall: the save before the publish records normally
+      summaryWrites(w.fs, how);
+      const { r, ms } = await timed(async () => {
+        const { token } = await w.tokenFor(); const { source, updateTime } = await w.draft();
+        return require('./publish-edited-handler').publishEditedCore({
+          db: w.fs, authorize: async () => ({ ok: true, uid: 'ownerA', role: 'owner', actor: 'o@x.hn' }),
+          readActiveBuilt: async () => ({ built: { ...w.L.built, extras: w.L.inputs.extras }, versionId: 'v1', extraRecords: w.L.built.extras }),
+          readDraft: async () => ({ source, updateTime }),
+          publishVersion: async () => { await meta(w.fs, 'la_musa', 'active_version').set({ version: 'v2', generation: 4 }); return { versionId: 'v2', item_count: 0, extra_count: 0 }; },
+          addProduct: { syncKds: async () => { k.n += 1; return { pending: false }; } },
+        }, { restaurantId: 'la_musa', token, fiscalAck: true, acknowledgedChanges: [] }, {});
+      });
+      assert.strictEqual(r.status, 200, `${L}: ${JSON.stringify(r.body).slice(0, 160)}`);
+      assert.deepStrictEqual(steady(r.body), steady(base.body), `${L}: the original body`);
+      assert.strictEqual(k.n, 1, `${L}: KDS runs`);
+      assert.ok(ms < BOUND + 1000, `${L}: answered in ${ms} ms (bound ${BOUND})`);
+    });
+  }
+  await cell('PS-RECORD-LATE: a write that settles AFTER the bound — late success or late rejection — logs one timeout line {rid, code:"timeout"}, never an unhandled rejection', async (L) => {
+    const unhandled = []; const on = (e) => unhandled.push(e); process.on('unhandledRejection', on);
+    try {
+      for (const late of [() => new Promise((res) => setTimeout(res, BOUND + 200)), () => new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('late +50499998888'), { code: 4 })), BOUND + 200))]) {
+        const fs = { collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ({ set: late, delete: late }) }) }) }) };
+        const got = await capture(() => watched(PS.recordAfter(fs, 'la_musa', () => ({ pending: true, sourceUpdateTime: '1.000000000', baseActiveVersion: 'v1' }))));
+        assert.deepStrictEqual(got, [['warn', 'pending_summary_record_failed', JSON.stringify({ rid: 'la_musa', code: 'timeout' })]], `${L}: one line at the bound`);
+        await new Promise((res) => setTimeout(res, 400));
+      }
+      assert.deepStrictEqual(unhandled, [], `${L}: no unhandled rejection after settling`);
+    } finally { process.off('unhandledRejection', on); }
+  });
+  await cell('PS-BRANCHES-STALLED-READ: a summary read that never answers ⇒ getMyBranches answers within the bound, every other field unchanged, has_pending null, one timeout line', async (L) => {
+    const { call } = await branchesWorld();
+    const good = await seededCatalog('tb', true);
+    const ok = await call('ownerT1', good);
+    const t0 = Date.now(); let out;
+    const got = await capture(async () => { out = await watched(call('ownerT1', { ...good, collection: (...a) => good.collection(...a), getAll: NEVER })); });
+    const ms = Date.now() - t0;
+    assert.strictEqual(out.status, 200, L);
+    assert.deepStrictEqual(out.body, { ...ok.body, branches: ok.body.branches.map((b) => ({ ...b, has_pending: null })) }, `${L}: the list intact, has_pending null`);
+    assert.ok(ms < BOUND + 1000, `${L}: answered in ${ms} ms (bound ${BOUND})`);
+    assert.deepStrictEqual(got, [['warn', 'getMyBranches: pending_summary read failed', JSON.stringify({ rid: 'tb', code: 'timeout' })]], `${L}: one line per catalog`);
+  });
   await cell('PS-NO-COUNT-READ: nothing in the functions tree reads (code, not comments) pending_count / a summary count outside this module and its tests', (L) => {
     const path = require('path'); const fs = require('fs'); const root = path.join(__dirname, '..', '..');
     const hits = []; const codeOnly = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1');   // a comment that NAMES the field is not a reader

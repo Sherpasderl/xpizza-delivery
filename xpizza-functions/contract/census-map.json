@@ -208,6 +208,10 @@
   }
  ],
  "timerReview": {
+  "xpizza-functions/catalog/pending-summary.js:within>anon:setTimeout": {
+   "class": "io-deadline",
+   "reason": "S3 r2 (Codex #393 P1-2/P2-3): within() bounds the OPTIONAL has_pending summary — the save / publish hook (computation + write) and getMyBranches' read — at SUMMARY_WAIT_MS (1500); on expiry the write is abandoned (a late write is served only while exactly fresh) or the read answers null; the timer is cleared when the race settles — REAL"
+  },
   "xpizza-functions/checkout-guest-gate.js:chargeUidOf>anon:setTimeout": {
    "class": "io-deadline",
    "reason": "PLAN-guest-checkout-server, Codex S2 r1 P2-4 (3a): chargeUidOf races chargeOnlineOrder's own identity resolution (verifyIdToken + the tombstone read) against deadlineMs (default 1500, mirroring the handler's 1.5 s identity deadline); on expiry (or any error) it resolves UNDEFINED = unresolved, which FAILS CLOSED: the caller then takes the generic online-only 400, byte-identical to today, never the guest path (Codex r2 P2, 7ef9fb2d); only a VERIFIED null selects the typed guest_cash_not_allowed reason. Never delays an answer past 1.5 s; never writes. 2e REVIEWED 2026-10-31: io-deadline CONFIRMED; REAL"
@@ -419,6 +423,7 @@
   "catalog/context-writer.js#rawFromNode": "catalog",
   "catalog/draft-assess.js#assessDraft": "catalog",
   "catalog/edit-catalog-handler.js#editCatalogCore": "catalog",
+  "catalog/edit-catalog-handler.js#editCatalogCore>anon": "catalog",
   "catalog/edit-catalog-handler.js#refusal": "catalog",
   "catalog/evidence-encoding.js#read": "catalog",
   "catalog/exposure-source.js#deriveExposure": "catalog",
@@ -533,6 +538,7 @@
   "catalog/public-menu.js#fromSource": "catalog",
   "catalog/public-photos.js#buildPhotos": "catalog",
   "catalog/publish-edited-handler.js#publishEditedCore": "catalog",
+  "catalog/publish-edited-handler.js#publishEditedCore>anon": "catalog",
   "catalog/publish-parity.js#catalogDescriptor": "catalog",
   "catalog/redeem-source.js#assertRedeemAllowMatchesToday": "catalog",
   "catalog/redeem-source.js#attachRedeemFields": "catalog",

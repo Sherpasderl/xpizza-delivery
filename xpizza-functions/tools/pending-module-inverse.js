@@ -8,7 +8,7 @@ const BASE = '468a2c1d1';
 const HUNKS = Object.freeze([
  {
   "file": "catalog/edit-catalog-handler.js",
-  "now": "  const token = issueEditToken({ rid, baseActiveVersionId, sourceUpdateTime: writeTime, sourceHash, diff });   { const PS = { ...require('./pending-summary'), ...require('./pending-answer') }; await PS.record(db, rid, { pending: PS.pendingOf(diff, PS.ctxOf(next, live.items)), sourceUpdateTime: writeTime, baseActiveVersion: baseActiveVersionId }); }   // S3 r1 (PLAN-5f-inicio-s3-pending-rebase-r0): has_pending for getMyBranches — the review model over THIS diff, beside the draft; best effort\n",
+  "now": "  const token = issueEditToken({ rid, baseActiveVersionId, sourceUpdateTime: writeTime, sourceHash, diff });   { const PS = { ...require('./pending-summary'), ...require('./pending-answer') }; await PS.recordAfter(db, rid, () => ({ pending: PS.pendingOf(diff, PS.ctxOf(next, live.items)), sourceUpdateTime: writeTime, baseActiveVersion: baseActiveVersionId })); }   // S3 r1 (PLAN-5f-inicio-s3-pending-rebase-r0): has_pending for getMyBranches — the review model over THIS diff, beside the draft; best effort\n",
   "was": "  const token = issueEditToken({ rid, baseActiveVersionId, sourceUpdateTime: writeTime, sourceHash, diff });\n"
  },
  {
@@ -18,17 +18,17 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/publish-edited-handler.js",
-  "now": "    if (preparedPhotos) await photos.markPublished(rid, preparedPhotos.pids); { const PS = { ...require('./pending-summary'), ...require('./pending-answer') }; const pub = { items: publishedInput.items, structure: publishedInput.structure, extras: publishedInput.extras }; await PS.record(db, rid, { pending: PS.pendingOf(require('./review-diff').reviewDiff({ rid, live: pub, liveExtraRecords: publishedInput.extraRecords, draftBuilt, draftExtraRecords, photos: photos ? { active: draftPhotos, draft: draftPhotos } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, removal: require('./catalog-edit').removalDiffOptions(pub, draft) }), PS.ctxOf(draft, pub.items)), sourceUpdateTime, baseActiveVersion: res && res.versionId }); }   // after the flip; best effort (the sweeper repairs) · S3 r1: the saved draft vs what was JUST published — the review model's answer, best effort\n",
+  "now": "    if (preparedPhotos) await photos.markPublished(rid, preparedPhotos.pids); { const PS = { ...require('./pending-summary'), ...require('./pending-answer') }; await PS.recordAfter(db, rid, () => { const pub = { items: publishedInput.items, structure: publishedInput.structure, extras: publishedInput.extras }; return { pending: PS.pendingOf(require('./review-diff').reviewDiff({ rid, live: pub, liveExtraRecords: publishedInput.extraRecords, draftBuilt, draftExtraRecords, photos: photos ? { active: draftPhotos, draft: draftPhotos } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, removal: require('./catalog-edit').removalDiffOptions(pub, draft) }), PS.ctxOf(draft, pub.items)), sourceUpdateTime, baseActiveVersion: res && res.versionId }; }); }   // after the flip; best effort (the sweeper repairs) · S3 r1: the saved draft vs what was JUST published — the review model's answer, best effort\n",
   "was": "    if (preparedPhotos) await photos.markPublished(rid, preparedPhotos.pids);   // after the flip; best effort (the sweeper repairs)\n"
  },
  {
   "file": "portal/ops-core.js",
-  "now": "const { hnDateISO } = require('../lib/hn-date'); const { readHasPending } = require('../catalog/pending-summary');   // S3 r1: getMyBranches' has_pending (self-contained, three point reads per catalog)\n",
+  "now": "const { hnDateISO } = require('../lib/hn-date'); const { readHasPending } = require('../catalog/pending-summary');   // S3 r1: getMyBranches' has_pending (self-contained; per catalog: 2 parallel RPCs, 3 documents, bounded)\n",
   "was": "const { hnDateISO } = require('../lib/hn-date');\n"
  },
  {
   "file": "portal/ops-core.js",
-  "now": "async function getMyBranchesCore({ db, verifyIdToken, now = () => Date.now(), log = console, fs = null }, req) {   const pendingBy = new Map(); const pendingOf = (cid) => { if (!pendingBy.has(cid)) pendingBy.set(cid, fs ? readHasPending(fs, cid) : Promise.resolve(null)); return pendingBy.get(cid); };   // S3 r1: ONE read per catalog id (the brand's)\n",
+  "now": "async function getMyBranchesCore({ db, verifyIdToken, now = () => Date.now(), log = console, fs = null }, req) {   const pendingBy = new Map(); const pendingOf = (cid) => { if (!pendingBy.has(cid)) pendingBy.set(cid, fs ? readHasPending(fs, cid) : Promise.resolve(null)); return pendingBy.get(cid); };   // S3 r1: ONE lookup per catalog id (the brand's), shared by its branches\n",
   "was": "async function getMyBranchesCore({ db, verifyIdToken, now = () => Date.now(), log = console }, req) {\n"
  },
  {

@@ -22,7 +22,7 @@ const { availKey } = require('../avail-key');
 const { getActiveVersionId } = require('../catalog/catalog-firestore');
 const DP = require('../delivery/delivery-pricing');   // envío restaurant limit (PLAN-envio-restaurant-limit-r5 §5): the ONE reader of the policy node
 const { readVersionMenu } = require('../catalog/catalog-menu'); const { branchPhotosOf } = require('../photos/branch-photos');   // DISH PHOTOS A2 step 12 (E-P4)
-const { hnDateISO } = require('../lib/hn-date'); const { readHasPending } = require('../catalog/pending-summary');   // S3 r1: getMyBranches' has_pending (self-contained, three point reads per catalog)
+const { hnDateISO } = require('../lib/hn-date'); const { readHasPending } = require('../catalog/pending-summary');   // S3 r1: getMyBranches' has_pending (self-contained; per catalog: 2 parallel RPCs, 3 documents, bounded)
 const { displayName } = require('./location-name');
 const { PAUSE_REASONS } = require('./pause-reasons');
 const { effectiveResetList } = require('./reset-list');
@@ -133,7 +133,7 @@ function appLimitOf(raw, rid) {
   return eff === DP.LIMIT_INVALID ? { app_max_km: null, limit_invalid: true } : { app_max_km: eff, limit_invalid: false };
 }
 
-async function getMyBranchesCore({ db, verifyIdToken, now = () => Date.now(), log = console, fs = null }, req) {   const pendingBy = new Map(); const pendingOf = (cid) => { if (!pendingBy.has(cid)) pendingBy.set(cid, fs ? readHasPending(fs, cid) : Promise.resolve(null)); return pendingBy.get(cid); };   // S3 r1: ONE read per catalog id (the brand's)
+async function getMyBranchesCore({ db, verifyIdToken, now = () => Date.now(), log = console, fs = null }, req) {   const pendingBy = new Map(); const pendingOf = (cid) => { if (!pendingBy.has(cid)) pendingBy.set(cid, fs ? readHasPending(fs, cid) : Promise.resolve(null)); return pendingBy.get(cid); };   // S3 r1: ONE lookup per catalog id (the brand's), shared by its branches
   if (!req || req.method !== 'GET') return reply(405, { error: 'method_not_allowed' });
   const v = await verifiedContext({ verifyIdToken }, req);
   if (v.fail) return v.fail;

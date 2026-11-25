@@ -60,7 +60,7 @@
   "projections": 160,
   "sentinel": 41,
   "timers": {
-   "io-deadline": 47,
+   "io-deadline": 48,
    "sleep-body": 2,
    "job-pacing": 1,
    "application-sleep": 2
@@ -2994,7 +2994,7 @@
    "exempt": true
   },
   {
-   "id": "xpizza-functions/catalog/edit-catalog-handler.js#editCatalogCore#items#16",
+   "id": "xpizza-functions/catalog/edit-catalog-handler.js#editCatalogCore>anon#items#0",
    "line": 441,
    "kind": "member",
    "facts": [
@@ -4744,7 +4744,7 @@
    "exempt": true
   },
   {
-   "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore#items#11",
+   "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore>anon#items#0",
    "line": 248,
    "kind": "member",
    "facts": [
@@ -4754,7 +4754,7 @@
    "exempt": true
   },
   {
-   "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore#items#12",
+   "id": "xpizza-functions/catalog/publish-edited-handler.js#publishEditedCore>anon#items#1",
    "line": 248,
    "kind": "member",
    "facts": [
@@ -62859,6 +62859,13 @@
    "line": 31,
    "delay": "ms",
    "class": "io-deadline"
+  },
+  {
+   "key": "xpizza-functions/catalog/pending-summary.js:within>anon:setTimeout",
+   "line": 28,
+   "delay": "ms",
+   "class": "io-deadline",
+   "reviewed": "S3 r2 (Codex #393 P1-2/P2-3): within() bounds the OPTIONAL has_pending summary — the save / publish hook (computation + write) and getMyBranches' read — at SUMMARY_WAIT_MS (1500); on expiry the write is abandoned (a late write is served only while exactly fresh) or the read answers null; the timer is cleared when the race settles — REAL"
   },
   {
    "key": "xpizza-functions/catalog/pricing-tables.js:withDeadline>anon:setTimeout",
