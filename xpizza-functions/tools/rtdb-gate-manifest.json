@@ -1122,15 +1122,15 @@
    "access/kitchen-roster-core.js|runKitchenRoster > access/kitchen-roster-core.js|planRoster > access/access-census-core.js|readWorld > access/access-census-core.js|val"
   ],
   "access/invites.js|val": [
-   "access/team-core.js|(top) > access/invites.js|acceptInvite > access/invites.js|val",
-   "access/team-core.js|(top) > access/invites.js|cancelInvite > access/invites.js|isOwner > access/invites.js|val",
-   "access/team-core.js|(top) > access/invites.js|cancelInvite > access/invites.js|val",
-   "access/team-core.js|(top) > access/invites.js|createInvite > access/invites.js|isOwner > access/invites.js|val",
-   "access/team-core.js|(top) > access/invites.js|createInvite > access/invites.js|val",
-   "access/team-core.js|(top) > access/invites.js|reissueInvite > access/invites.js|createInvite > access/invites.js|isOwner > access/invites.js|val",
-   "access/team-core.js|(top) > access/invites.js|reissueInvite > access/invites.js|createInvite > access/invites.js|val",
-   "access/team-core.js|(top) > access/invites.js|reissueInvite > access/invites.js|val",
-   "access/team-core.js|teamInvitePreview > access/invites.js|invitePreview > access/invites.js|val"
+   "access/team-core.js|teamAcceptInvite > access/invites.js|acceptInvite > access/invites.js|val",
+   "access/team-core.js|teamCancelInvite > access/invites.js|cancelInvite > access/invites.js|isOwner > access/invites.js|val",
+   "access/team-core.js|teamCancelInvite > access/invites.js|cancelInvite > access/invites.js|val",
+   "access/team-core.js|teamInvite > access/invites.js|createInvite > access/invites.js|isOwner > access/invites.js|val",
+   "access/team-core.js|teamInvite > access/invites.js|createInvite > access/invites.js|val",
+   "access/team-core.js|teamInvitePreview > access/invites.js|invitePreview > access/invites.js|val",
+   "access/team-core.js|teamReissueInvite > access/invites.js|reissueInvite > access/invites.js|createInvite > access/invites.js|isOwner > access/invites.js|val",
+   "access/team-core.js|teamReissueInvite > access/invites.js|reissueInvite > access/invites.js|createInvite > access/invites.js|val",
+   "access/team-core.js|teamReissueInvite > access/invites.js|reissueInvite > access/invites.js|val"
   ],
   "access/kitchen-roster-core.js|runKitchenRoster": [
    "access/kitchen-roster-core.js|runKitchenRoster"
@@ -1163,17 +1163,17 @@
    "access/membership-admin-core.js|myRestaurants > catalog/portal-reads.js|getMyRestaurantsCore > access/membership.js|myLocations > access/membership.js|val",
    "access/membership-admin-core.js|runMembershipAdmin > access/membership-admin-core.js|backfill > access/roster.js|mutateRoster > access/roster.js|validateTarget > access/membership.js|resolveLocation > access/membership.js|val",
    "access/membership-admin-core.js|runMembershipAdmin > access/roster.js|mutateRoster > access/roster.js|validateTarget > access/membership.js|resolveLocation > access/membership.js|val",
-   "access/team-core.js|(top) > access/invites.js|acceptInvite > access/roster.js|mutateRoster > access/roster.js|validateTarget > access/membership.js|resolveLocation > access/membership.js|val",
-   "access/team-core.js|(top) > access/invites.js|cancelInvite > access/roster.js|mutateRoster > access/roster.js|validateTarget > access/membership.js|resolveLocation > access/membership.js|val",
-   "access/team-core.js|(top) > access/invites.js|createInvite > access/membership.js|resolveLocation > access/membership.js|val",
-   "access/team-core.js|(top) > access/invites.js|createInvite > access/roster.js|mutateRoster > access/roster.js|validateTarget > access/membership.js|resolveLocation > access/membership.js|val",
-   "access/team-core.js|(top) > access/invites.js|reissueInvite > access/invites.js|createInvite > access/membership.js|resolveLocation > access/membership.js|val",
-   "access/team-core.js|(top) > access/invites.js|reissueInvite > access/invites.js|createInvite > access/roster.js|mutateRoster > access/roster.js|validateTarget > access/membership.js|resolveLocation > access/membership.js|val",
    "access/team-core.js|(top) > access/team-core.js|asOwner > access/roster.js|mutateRoster > access/roster.js|validateTarget > access/membership.js|resolveLocation > access/membership.js|val",
+   "access/team-core.js|teamAcceptInvite > access/invites.js|acceptInvite > access/roster.js|mutateRoster > access/roster.js|validateTarget > access/membership.js|resolveLocation > access/membership.js|val",
+   "access/team-core.js|teamCancelInvite > access/invites.js|cancelInvite > access/roster.js|mutateRoster > access/roster.js|validateTarget > access/membership.js|resolveLocation > access/membership.js|val",
+   "access/team-core.js|teamInvite > access/invites.js|createInvite > access/membership.js|resolveLocation > access/membership.js|val",
+   "access/team-core.js|teamInvite > access/invites.js|createInvite > access/roster.js|mutateRoster > access/roster.js|validateTarget > access/membership.js|resolveLocation > access/membership.js|val",
+   "access/team-core.js|teamReissueInvite > access/invites.js|reissueInvite > access/invites.js|createInvite > access/membership.js|resolveLocation > access/membership.js|val",
+   "access/team-core.js|teamReissueInvite > access/invites.js|reissueInvite > access/invites.js|createInvite > access/roster.js|mutateRoster > access/roster.js|validateTarget > access/membership.js|resolveLocation > access/membership.js|val",
    "access/team-http-core.js|fn > catalog/publish-request.js|requestPublishCore > access/membership.js|resolveAccess > access/membership.js|resolveLocation > access/membership.js|val",
    "access/team-http-core.js|fn > catalog/publish-request.js|requestPublishCore > access/membership.js|resolveAccess > access/membership.js|val",
-   "access/team-http.js|(top) > access/team-http.js|endpoint > access/team-http-core.js|handle > access/team-http-core.js|canAtBrand > access/membership.js|resolveAccess > access/membership.js|resolveLocation > access/membership.js|val",
-   "access/team-http.js|(top) > access/team-http.js|endpoint > access/team-http-core.js|handle > access/team-http-core.js|canAtBrand > access/membership.js|resolveAccess > access/membership.js|val",
+   "access/team-http.js|map(cb) > access/team-http.js|endpoint > access/team-http-core.js|handle > access/team-http-core.js|canAtBrand > access/membership.js|resolveAccess > access/membership.js|resolveLocation > access/membership.js|val",
+   "access/team-http.js|map(cb) > access/team-http.js|endpoint > access/team-http-core.js|handle > access/team-http-core.js|canAtBrand > access/membership.js|resolveAccess > access/membership.js|val",
    "marketing/anuncio-core.js|anuncioBookCore > marketing/offers-core.js|admit > portal/ops-core.js|accessFor > access/membership.js|resolveAccess > access/membership.js|resolveLocation > access/membership.js|val",
    "marketing/anuncio-core.js|anuncioBookCore > marketing/offers-core.js|admit > portal/ops-core.js|accessFor > access/membership.js|resolveAccess > access/membership.js|val",
    "marketing/anuncio-core.js|anuncioCancelCore > marketing/offers-core.js|admit > portal/ops-core.js|accessFor > access/membership.js|resolveAccess > access/membership.js|resolveLocation > access/membership.js|val",
@@ -1244,12 +1244,12 @@
    "ratings/merchant-reviews.js|getMerchantReviews > ratings/merchant-reviews.js|merchantReviewsCore > access/membership.js|resolveAccess > access/membership.js|val"
   ],
   "access/team-core.js|val": [
-   "access/team-core.js|(top) > access/team-core.js|val",
+   "access/team-core.js|teamAcceptInvite > access/team-core.js|val",
    "access/team-core.js|teamList > access/team-core.js|val"
   ],
   "access/team-http-core.js|val": [
-   "access/team-http.js|(top) > access/team-http.js|endpoint > access/team-http-core.js|handle > access/team-http-core.js|canAtBrand > access/team-http-core.js|val",
-   "access/team-http.js|(top) > access/team-http.js|endpoint > access/team-http-core.js|handle > access/team-http-core.js|val"
+   "access/team-http.js|map(cb) > access/team-http.js|endpoint > access/team-http-core.js|handle > access/team-http-core.js|canAtBrand > access/team-http-core.js|val",
+   "access/team-http.js|map(cb) > access/team-http.js|endpoint > access/team-http-core.js|handle > access/team-http-core.js|val"
   ],
   "arrived-notify.js|read": [
    "index.js|exports.notifyArrivedOnTap > arrived-notify.js|notifyArrived > arrived-notify.js|eligible > arrived-notify.js|read",
@@ -1328,7 +1328,7 @@
    "portal/branch-lifecycle-core.js|updateBranchProfileCore > portal/branch-lifecycle-core.js|publishAfterCommit > brands/brand-store.js|publishBrandProjection > brands/brand-store.js|readNode"
   ],
   "cancel-order-core.js|cancelOrderCore": [
-   "index.js|(top) > cancel-order-core.js|cancelOrderCore",
+   "index.js|bindCancelCore(cb) > cancel-order-core.js|cancelOrderCore",
    "index.js|exports.cancelPaidOrder > cancel-order-core.js|cancelOrderCore"
   ],
   "cancel-order-core.js|escalateConfirmedRefunds": [
@@ -1674,25 +1674,25 @@
    "marketing/sponsored-serve.js|readSponsored > marketing/sponsored-serve.js|val"
   ],
   "materialize-guard.js|holdIfClosedAtMaterialize": [
-   "index.js|(top) > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfClosedAtMaterialize",
    "index.js|exports.materializeOnConfirm > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfClosedAtMaterialize",
    "index.js|exports.pixelPayWebhook > pixelpay-hosted-webhook.js|handleHostedCallback > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfClosedAtMaterialize",
    "index.js|exports.sweepStalePending > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfClosedAtMaterialize",
-   "index.js|runConfirm > pixelpay-confirm.js|confirmOnlinePayment > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfClosedAtMaterialize"
+   "index.js|runConfirm > pixelpay-confirm.js|confirmOnlinePayment > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfClosedAtMaterialize",
+   "index.js|setSdkGoLive(cb) > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfClosedAtMaterialize"
   ],
   "materialize-guard.js|mainPathSibling": [
-   "index.js|(top) > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|mainPathSibling",
    "index.js|exports.materializeOnConfirm > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|mainPathSibling",
    "index.js|exports.pixelPayWebhook > pixelpay-hosted-webhook.js|handleHostedCallback > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|mainPathSibling",
    "index.js|exports.sweepStalePending > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|mainPathSibling",
-   "index.js|runConfirm > pixelpay-confirm.js|confirmOnlinePayment > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|mainPathSibling"
+   "index.js|runConfirm > pixelpay-confirm.js|confirmOnlinePayment > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|mainPathSibling",
+   "index.js|setSdkGoLive(cb) > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|mainPathSibling"
   ],
   "materialize-guard.js|newPathSibling": [
-   "index.js|(top) > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|newPathSibling",
    "index.js|exports.materializeOnConfirm > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|newPathSibling",
    "index.js|exports.pixelPayWebhook > pixelpay-hosted-webhook.js|handleHostedCallback > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|newPathSibling",
    "index.js|exports.sweepStalePending > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|newPathSibling",
-   "index.js|runConfirm > pixelpay-confirm.js|confirmOnlinePayment > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|newPathSibling"
+   "index.js|runConfirm > pixelpay-confirm.js|confirmOnlinePayment > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|newPathSibling",
+   "index.js|setSdkGoLive(cb) > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|newPathSibling"
   ],
   "member-auth.js|isMemberTombstoned": [
    "index.js|(top) > customer-push.js|makeCustomerPush > customer-push.js|admit > member-auth.js|isMemberTombstoned",
@@ -1703,7 +1703,7 @@
    "my-last-tip.js|getMyLastTip > member-auth.js|isMemberTombstoned",
    "my-orders.js|getMyOrders > member-auth.js|isMemberTombstoned",
    "ratings/my-rating.js|getMyRating > ratings/my-rating.js|myRatingCore > ratings/rate-order.js|customerUidOf > member-auth.js|memberUidOf > member-auth.js|isMemberTombstoned",
-   "ratings/rate-order.js|(top) > ratings/rate-order.js|rateOrderCore > ratings/rate-order.js|customerUidOf > member-auth.js|memberUidOf > member-auth.js|isMemberTombstoned",
+   "ratings/rate-order.js|rateOrder > ratings/rate-order.js|rateOrderCore > ratings/rate-order.js|customerUidOf > member-auth.js|memberUidOf > member-auth.js|isMemberTombstoned",
    "signup-platform.js|getMyProfile > member-auth.js|memberUidOf > member-auth.js|isMemberTombstoned",
    "support/support-tickets.js|createSupportTicket > support/support-tickets.js|createSupportTicketCore > ratings/rate-order.js|customerUidOf > member-auth.js|memberUidOf > member-auth.js|isMemberTombstoned"
   ],
@@ -1741,18 +1741,18 @@
   ],
   "merchant/merchant-push-io.js|val": [
    "merchant/merchant-push-io.js|pendingOrders > merchant/merchant-push-io.js|val",
-   "merchant/merchant-push-wiring.js|(top) > merchant/merchant-push-io.js|onAnsweredWritten > merchant/merchant-push-io.js|guardServed > merchant/merchant-push-io.js|val",
-   "merchant/merchant-push-wiring.js|(top) > merchant/merchant-push-io.js|onAnsweredWritten > merchant/merchant-push-io.js|sendTo > merchant/merchant-push-io.js|val",
-   "merchant/merchant-push-wiring.js|(top) > merchant/merchant-push-io.js|onAnsweredWritten > merchant/merchant-push-io.js|val",
-   "merchant/merchant-push-wiring.js|(top) > merchant/merchant-push-io.js|onStatusWritten > merchant/merchant-push-io.js|guardServed > merchant/merchant-push-io.js|val",
-   "merchant/merchant-push-wiring.js|(top) > merchant/merchant-push-io.js|onStatusWritten > merchant/merchant-push-io.js|sendTo > merchant/merchant-push-io.js|val",
-   "merchant/merchant-push-wiring.js|(top) > merchant/merchant-push-io.js|onStatusWritten > merchant/merchant-push-io.js|val"
+   "merchant/merchant-push-wiring.js|merchantPushOnAnswered > merchant/merchant-push-io.js|onAnsweredWritten > merchant/merchant-push-io.js|guardServed > merchant/merchant-push-io.js|val",
+   "merchant/merchant-push-wiring.js|merchantPushOnAnswered > merchant/merchant-push-io.js|onAnsweredWritten > merchant/merchant-push-io.js|sendTo > merchant/merchant-push-io.js|val",
+   "merchant/merchant-push-wiring.js|merchantPushOnAnswered > merchant/merchant-push-io.js|onAnsweredWritten > merchant/merchant-push-io.js|val",
+   "merchant/merchant-push-wiring.js|merchantPushOnStatus > merchant/merchant-push-io.js|onStatusWritten > merchant/merchant-push-io.js|guardServed > merchant/merchant-push-io.js|val",
+   "merchant/merchant-push-wiring.js|merchantPushOnStatus > merchant/merchant-push-io.js|onStatusWritten > merchant/merchant-push-io.js|sendTo > merchant/merchant-push-io.js|val",
+   "merchant/merchant-push-wiring.js|merchantPushOnStatus > merchant/merchant-push-io.js|onStatusWritten > merchant/merchant-push-io.js|val"
   ],
   "merchant/merchant-reject.js|settle": [
-   "merchant/merchant-wiring.js|(top) > merchant/merchant-reject.js|runReject > merchant/merchant-reject.js|settle"
+   "merchant/merchant-wiring.js|merchantReject > merchant/merchant-reject.js|runReject > merchant/merchant-reject.js|settle"
   ],
   "merchant/merchant-reject.js|storedState": [
-   "merchant/merchant-wiring.js|(top) > merchant/merchant-reject.js|runReject > merchant/merchant-reject.js|storedState"
+   "merchant/merchant-wiring.js|merchantReject > merchant/merchant-reject.js|runReject > merchant/merchant-reject.js|storedState"
   ],
   "merchant/merchant-scope.js|readVal": [
    "merchant/merchant-devices.js|heartbeat > merchant/merchant-scope.js|authorizeHandheld > merchant/merchant-scope.js|readVal",
@@ -1772,15 +1772,15 @@
    "my-orders.js|getMyOrders"
   ],
   "order-dedup.js|readContentStampByKeys": [
-   "index.js|(top) > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|newPathSibling > order-dedup.js|readContentStampByKeys",
    "index.js|createOrderApp.all > order-dedup.js|readContentStamp > order-dedup.js|readContentStampByKeys",
    "index.js|exports.materializeOnConfirm > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|newPathSibling > order-dedup.js|readContentStampByKeys",
    "index.js|exports.pixelPayWebhook > pixelpay-hosted-webhook.js|handleHostedCallback > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|newPathSibling > order-dedup.js|readContentStampByKeys",
    "index.js|exports.sweepStalePending > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|newPathSibling > order-dedup.js|readContentStampByKeys",
-   "index.js|runConfirm > pixelpay-confirm.js|confirmOnlinePayment > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|newPathSibling > order-dedup.js|readContentStampByKeys"
+   "index.js|runConfirm > pixelpay-confirm.js|confirmOnlinePayment > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|newPathSibling > order-dedup.js|readContentStampByKeys",
+   "index.js|setSdkGoLive(cb) > pixelpay-confirm.js|confirmAndMaterialize > materialize-guard.js|holdIfDuplicateSibling > materialize-guard.js|newPathSibling > order-dedup.js|readContentStampByKeys"
   ],
   "payments/review-attest.js|attestManualReview": [
-   "index.js|(top) > payments/review-attest.js|endpoint > payments/review-attest.js|attestManualReview"
+   "index.js|exports.attestManualReview > payments/review-attest.js|endpoint > payments/review-attest.js|attestManualReview"
   ],
   "payments/sdk/cards.js|completeVaultForOrder": [
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/cards.js|completeVaultForOrder"
@@ -1788,34 +1788,28 @@
   "payments/sdk/cards.js|isDeletedUid": [
    "index.js|chargeOnlineApp.all > payments/sdk/finish.js|finishSdk > payments/sdk/cards.js|isDeletedUid",
    "index.js|chargeOnlineApp.all > payments/sdk/finish.js|finishSdk > payments/sdk/cards.js|resolveSavedCard > payments/sdk/cards.js|isDeletedUid",
-   "payments/sdk/functions.js|(top) > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/cards.js|listCardsCore > payments/sdk/cards.js|isDeletedUid",
-   "payments/sdk/functions.js|(top) > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/cards.js|removeCardCore > payments/sdk/cards.js|isDeletedUid",
-   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/cards.js|listCardsCore > payments/sdk/cards.js|isDeletedUid",
-   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/cards.js|removeCardCore > payments/sdk/cards.js|isDeletedUid",
-   "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/cards.js|completeVaultForOrder > payments/sdk/cards.js|isDeletedUid",
-   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/cards.js|listCardsCore > payments/sdk/cards.js|isDeletedUid",
-   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/cards.js|removeCardCore > payments/sdk/cards.js|isDeletedUid"
+   "payments/sdk/functions.js|exports.listCards > payments/sdk/endpoints.js|listCards > payments/sdk/cards.js|listCardsCore > payments/sdk/cards.js|isDeletedUid",
+   "payments/sdk/functions.js|exports.removeCard > payments/sdk/endpoints.js|removeCard > payments/sdk/cards.js|removeCardCore > payments/sdk/cards.js|isDeletedUid",
+   "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/cards.js|completeVaultForOrder > payments/sdk/cards.js|isDeletedUid"
   ],
   "payments/sdk/cards.js|nullSpentToken": [
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/cards.js|sweepTokenOrphans > payments/sdk/cards.js|nullSpentToken",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/cards.js|nullSpentToken"
   ],
   "payments/sdk/coordinator.js|consumeFulfilledRedemption": [
-   "index.js|(top) > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption",
+   "index.js|bindCancelCore(cb) > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption",
    "index.js|chargeOnlineApp.all > payments/sdk/finish.js|finishSdk > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption",
    "index.js|exports.cancelPaidOrder > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption",
-   "payments/sdk/functions.js|(top) > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption",
-   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption",
+   "payments/sdk/functions.js|exports.cancelSdkPending > payments/sdk/endpoints.js|cancelSdkPending > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption",
    "payments/sdk/functions.js|exports.settleSdkOnStatus > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|consumeFulfilledRedemption",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|expirePending > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption",
-   "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption",
-   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption"
+   "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption"
   ],
   "payments/sdk/coordinator.js|readOrder": [
-   "index.js|(top) > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|readOrder",
-   "index.js|(top) > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|readOrder",
+   "index.js|bindCancelCore(cb) > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|readOrder",
+   "index.js|bindCancelCore(cb) > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|readOrder",
    "index.js|chargeOnlineApp.all > payments/sdk/finish.js|finishSdk > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|readOrder",
    "index.js|chargeOnlineApp.all > payments/sdk/finish.js|finishSdk > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|readOrder",
    "index.js|chargeOnlineApp.all > payments/sdk/finish.js|finishSdk > payments/sdk/coordinator.js|placeOriginal > payments/sdk/coordinator.js|readOrder",
@@ -1834,47 +1828,33 @@
    "payments/sdk/coordinator.js|recordConsent > payments/sdk/coordinator.js|readOrder",
    "payments/sdk/coordinator.js|requestDecrease > payments/sdk/coordinator.js|decideProposal > payments/sdk/coordinator.js|readOrder",
    "payments/sdk/coordinator.js|requestDecrease > payments/sdk/coordinator.js|readOrder",
-   "payments/sdk/functions.js|(top) > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/status-endpoint.js|placeSdkStatusCore > payments/sdk/coordinator.js|readOrder",
-   "payments/sdk/functions.js|(top) > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/status-endpoint.js|placeSdkStatusCore > payments/sdk/status-endpoint.js|answerOrder > payments/sdk/coordinator.js|readOrder",
-   "payments/sdk/functions.js|(top) > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|readOrder",
-   "payments/sdk/functions.js|(top) > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|readOrder",
-   "payments/sdk/functions.js|(top) > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|readOrder",
-   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/status-endpoint.js|placeSdkStatusCore > payments/sdk/coordinator.js|readOrder",
-   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/status-endpoint.js|placeSdkStatusCore > payments/sdk/status-endpoint.js|answerOrder > payments/sdk/coordinator.js|readOrder",
-   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|readOrder",
-   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|readOrder",
-   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|readOrder",
+   "payments/sdk/functions.js|exports.cancelSdkPending > payments/sdk/endpoints.js|cancelSdkPending > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|readOrder",
+   "payments/sdk/functions.js|exports.cancelSdkPending > payments/sdk/endpoints.js|cancelSdkPending > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|readOrder",
+   "payments/sdk/functions.js|exports.cancelSdkPending > payments/sdk/endpoints.js|cancelSdkPending > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|readOrder",
+   "payments/sdk/functions.js|exports.placeSdkStatus > payments/sdk/endpoints.js|placeSdkStatus > payments/sdk/status-endpoint.js|placeSdkStatusCore > payments/sdk/coordinator.js|readOrder",
+   "payments/sdk/functions.js|exports.placeSdkStatus > payments/sdk/endpoints.js|placeSdkStatus > payments/sdk/status-endpoint.js|placeSdkStatusCore > payments/sdk/status-endpoint.js|answerOrder > payments/sdk/coordinator.js|readOrder",
    "payments/sdk/functions.js|exports.settleSdkOnStatus > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|readOrder",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|readOrder",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|readOrder",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|expirePending > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|readOrder",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|expirePending > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|readOrder",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|readOrder",
-   "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|readOrder",
-   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/status-endpoint.js|placeSdkStatusCore > payments/sdk/coordinator.js|readOrder",
-   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/status-endpoint.js|placeSdkStatusCore > payments/sdk/status-endpoint.js|answerOrder > payments/sdk/coordinator.js|readOrder",
-   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|readOrder",
-   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|readOrder",
-   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|readOrder"
+   "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|readOrder"
   ],
   "payments/sdk/functions.js|exports.settleSdkOnStatus": [
    "payments/sdk/functions.js|exports.settleSdkOnStatus"
   ],
   "payments/sdk/materialize-sdk.js|completeSdkLive": [
-   "index.js|(top) > pixelpay-confirm.js|confirmAndMaterialize > payments/sdk/materialize-sdk.js|writeSdkLive > payments/sdk/materialize-sdk.js|completeSdkLive",
    "index.js|exports.materializeOnConfirm > pixelpay-confirm.js|confirmAndMaterialize > payments/sdk/materialize-sdk.js|writeSdkLive > payments/sdk/materialize-sdk.js|completeSdkLive",
    "index.js|exports.pixelPayWebhook > pixelpay-hosted-webhook.js|handleHostedCallback > pixelpay-confirm.js|confirmAndMaterialize > payments/sdk/materialize-sdk.js|writeSdkLive > payments/sdk/materialize-sdk.js|completeSdkLive",
    "index.js|exports.sweepStalePending > pixelpay-confirm.js|confirmAndMaterialize > payments/sdk/materialize-sdk.js|writeSdkLive > payments/sdk/materialize-sdk.js|completeSdkLive",
    "index.js|runConfirm > pixelpay-confirm.js|confirmOnlinePayment > pixelpay-confirm.js|confirmAndMaterialize > payments/sdk/materialize-sdk.js|writeSdkLive > payments/sdk/materialize-sdk.js|completeSdkLive",
+   "index.js|setSdkGoLive(cb) > pixelpay-confirm.js|confirmAndMaterialize > payments/sdk/materialize-sdk.js|writeSdkLive > payments/sdk/materialize-sdk.js|completeSdkLive",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/materialize-sdk.js|completeSdkLive"
   ],
   "payments/sdk/order-auth.js|authorizeExistingOrder": [
-   "payments/sdk/functions.js|(top) > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/status-endpoint.js|placeSdkStatusCore > payments/sdk/order-auth.js|authorizeExistingOrder",
-   "payments/sdk/functions.js|(top) > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/order-auth.js|authorizeExistingOrderAs > payments/sdk/order-auth.js|authorizeExistingOrder",
-   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/status-endpoint.js|placeSdkStatusCore > payments/sdk/order-auth.js|authorizeExistingOrder",
-   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/order-auth.js|authorizeExistingOrderAs > payments/sdk/order-auth.js|authorizeExistingOrder",
-   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/status-endpoint.js|placeSdkStatusCore > payments/sdk/order-auth.js|authorizeExistingOrder",
-   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/order-auth.js|authorizeExistingOrderAs > payments/sdk/order-auth.js|authorizeExistingOrder"
+   "payments/sdk/functions.js|exports.cancelSdkPending > payments/sdk/endpoints.js|cancelSdkPending > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/order-auth.js|authorizeExistingOrderAs > payments/sdk/order-auth.js|authorizeExistingOrder",
+   "payments/sdk/functions.js|exports.placeSdkStatus > payments/sdk/endpoints.js|placeSdkStatus > payments/sdk/status-endpoint.js|placeSdkStatusCore > payments/sdk/order-auth.js|authorizeExistingOrder"
   ],
   "payments/sdk/record-token.js|enqueueAndDrop": [
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/cards.js|sweepTokenOrphans > payments/sdk/cards.js|nullSpentToken > payments/sdk/record-token.js|enqueueAndDrop",
@@ -1890,13 +1870,11 @@
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/cards.js|completeVaultForOrder > payments/sdk/record-token.js|readAttemptToken"
   ],
   "payments/sdk/recovery.js|processRecoveryEntry": [
-   "payments/sdk/endpoints.js|processSdkRecovery > payments/sdk/recovery.js|processRecoveryEntry",
-   "payments/sdk/endpoints.js|sweepSdkRecovery > payments/sdk/recovery.js|processRecoveryQueue > payments/sdk/recovery.js|processRecoveryEntry"
+   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/endpoints.js|processSdkRecovery > payments/sdk/recovery.js|processRecoveryEntry",
+   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/endpoints.js|sweepSdkRecovery > payments/sdk/recovery.js|processRecoveryQueue > payments/sdk/recovery.js|processRecoveryEntry"
   ],
   "payments/sdk/recovery.js|recoverOrderAccessCore": [
-   "payments/sdk/functions.js|(top) > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/recovery.js|recoverOrderAccessCore",
-   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/recovery.js|recoverOrderAccessCore",
-   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/recovery.js|recoverOrderAccessCore"
+   "payments/sdk/functions.js|exports.recoverOrderAccess > payments/sdk/endpoints.js|recoverOrderAccess > payments/sdk/recovery.js|recoverOrderAccessCore"
   ],
   "payments/sdk/stored-admission.js|storedAdmission": [
    "index.js|chargeOnlineApp.all > payments/sdk/finish.js|finishSdk > payments/sdk/stored-admission.js|storedAdmission",
@@ -1937,11 +1915,11 @@
    "pixelpay-charge.js|acquireOnlineAttempt"
   ],
   "pixelpay-confirm.js|confirmAndMaterialize": [
-   "index.js|(top) > pixelpay-confirm.js|confirmAndMaterialize",
    "index.js|exports.materializeOnConfirm > pixelpay-confirm.js|confirmAndMaterialize",
    "index.js|exports.pixelPayWebhook > pixelpay-hosted-webhook.js|handleHostedCallback > pixelpay-confirm.js|confirmAndMaterialize",
    "index.js|exports.sweepStalePending > pixelpay-confirm.js|confirmAndMaterialize",
-   "index.js|runConfirm > pixelpay-confirm.js|confirmOnlinePayment > pixelpay-confirm.js|confirmAndMaterialize"
+   "index.js|runConfirm > pixelpay-confirm.js|confirmOnlinePayment > pixelpay-confirm.js|confirmAndMaterialize",
+   "index.js|setSdkGoLive(cb) > pixelpay-confirm.js|confirmAndMaterialize"
   ],
   "pixelpay-confirm.js|confirmOnlinePayment": [
    "index.js|runConfirm > pixelpay-confirm.js|confirmOnlinePayment"
@@ -2009,10 +1987,10 @@
    "ratings/my-rating.js|getMyRating > ratings/my-rating.js|myRatingCore"
   ],
   "ratings/rate-order.js|fencedAfterWrite": [
-   "ratings/rate-order.js|(top) > ratings/rate-order.js|rateOrderCore > ratings/rate-order.js|fencedAfterWrite"
+   "ratings/rate-order.js|rateOrder > ratings/rate-order.js|rateOrderCore > ratings/rate-order.js|fencedAfterWrite"
   ],
   "ratings/rate-order.js|rateOrderCore": [
-   "ratings/rate-order.js|(top) > ratings/rate-order.js|rateOrderCore"
+   "ratings/rate-order.js|rateOrder > ratings/rate-order.js|rateOrderCore"
   ],
   "ratings/rating-fulfilment.js|stampRatingFulfilment": [
    "index.js|exports.stampRatingFulfilment > ratings/rating-fulfilment.js|stampRatingFulfilment"
@@ -2033,7 +2011,7 @@
    "ratings/my-rating.js|getMyRating > ratings/my-rating.js|myRatingCore > ratings/rating-v2.js|readCountable"
   ],
   "ratings/ratings-config.js|readWriteGate": [
-   "ratings/rate-order.js|(top) > ratings/rate-order.js|rateOrderCore > ratings/ratings-config.js|readWriteGate"
+   "ratings/rate-order.js|rateOrder > ratings/rate-order.js|rateOrderCore > ratings/ratings-config.js|readWriteGate"
   ],
   "ready-time-predict-core.js|runLabelAndUpdate": [
    "index.js|exports.logReadyTimeActual > ready-time-predict-core.js|runLabelAndUpdate"
@@ -2048,18 +2026,18 @@
    "index.js|exports.resolveManualReconciliation > resolve-manual.js|resolveManualReconciliationCore"
   ],
   "restaurant-config.js|getIdentity": [
-   "index.js|(top) > directory/directory-endpoint.js|makeDirectoryEndpoint > directory/directory-endpoint.js|depsOf > directory/directory-deps.js|makeDirectoryDeps > catalog/public-menu.js|activityWithSource > restaurant-config.js|getIdentity",
    "index.js|chargeOnlineApp.all > restaurant-config.js|getIdentity",
    "index.js|createOrderApp.all > restaurant-config.js|getIdentity",
    "index.js|exports.getPublicMenu > catalog/public-menu.js|defaultIsActive > restaurant-config.js|getIdentity",
+   "index.js|exports.getRestaurantDirectory > directory/directory-endpoint.js|makeDirectoryEndpoint > directory/directory-endpoint.js|depsOf > directory/directory-deps.js|makeDirectoryDeps > catalog/public-menu.js|activityWithSource > restaurant-config.js|getIdentity",
    "index.js|readMenu > catalog/public-menu.js|defaultIsActive > restaurant-config.js|getIdentity"
   ],
   "retention-sweep.js|runTaskPass": [
    "index.js|exports.retentionSweepTasks > retention-sweep.js|runRetentionSweep > retention-sweep.js|runTaskPass"
   ],
   "rewards-earn.js|isDeleted": [
-   "index.js|(top) > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-earn.js|reverseEarnForOrder > rewards-earn.js|isDeleted",
-   "index.js|(top) > cancel-order-core.js|cancelOrderCore > rewards-earn.js|reverseEarnForOrder > rewards-earn.js|isDeleted",
+   "index.js|bindCancelCore(cb) > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-earn.js|reverseEarnForOrder > rewards-earn.js|isDeleted",
+   "index.js|bindCancelCore(cb) > cancel-order-core.js|cancelOrderCore > rewards-earn.js|reverseEarnForOrder > rewards-earn.js|isDeleted",
    "index.js|chargeOnlineApp.all > payments/sdk/finish.js|finishSdk > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-earn.js|reverseEarnForOrder > rewards-earn.js|isDeleted",
    "index.js|exports.cancelPaidOrder > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-earn.js|reverseEarnForOrder > rewards-earn.js|isDeleted",
    "index.js|exports.cancelPaidOrder > cancel-order-core.js|cancelOrderCore > rewards-earn.js|reverseEarnForOrder > rewards-earn.js|isDeleted",
@@ -2071,21 +2049,18 @@
    "index.js|exports.verifyOtp > rewards-earn.js|creditWelcome > rewards-earn.js|creditNode > rewards-earn.js|isDeleted",
    "index.js|exports.verifyOtp > rewards-earn.js|creditWelcome > rewards-earn.js|isDeleted",
    "payments/sdk/deps.js|releaseResources > payments/sdk/release.js|releaseSdkOrder > rewards-earn.js|reverseEarnForOrder > rewards-earn.js|isDeleted",
-   "payments/sdk/functions.js|(top) > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-earn.js|reverseEarnForOrder > rewards-earn.js|isDeleted",
-   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-earn.js|reverseEarnForOrder > rewards-earn.js|isDeleted",
+   "payments/sdk/functions.js|exports.cancelSdkPending > payments/sdk/endpoints.js|cancelSdkPending > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-earn.js|reverseEarnForOrder > rewards-earn.js|isDeleted",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-earn.js|reverseEarnForOrder > rewards-earn.js|isDeleted",
-   "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|expirePending > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-earn.js|reverseEarnForOrder > rewards-earn.js|isDeleted",
-   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-earn.js|reverseEarnForOrder > rewards-earn.js|isDeleted"
+   "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|expirePending > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-earn.js|reverseEarnForOrder > rewards-earn.js|isDeleted"
   ],
   "rewards-redeem-intake.js|quoteRedemptionCore": [
    "index.js|exports.quoteRedemption > rewards-redeem-intake.js|quoteRedemptionCore"
   ],
   "rewards-reserve.js|alertIfUndercollateralized": [
-   "index.js|(top) > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
-   "index.js|(top) > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-reserve.js|reverseRedemptionForOrder > rewards-reserve.js|reverseRedemptionForRefund > rewards-reserve.js|alertIfUndercollateralized",
-   "index.js|(top) > cancel-order-core.js|cancelOrderCore > rewards-reserve.js|holdRedemptionForManual > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
-   "index.js|(top) > cancel-order-core.js|cancelOrderCore > rewards-reserve.js|reverseRedemptionForOrder > rewards-reserve.js|reverseRedemptionForRefund > rewards-reserve.js|alertIfUndercollateralized",
-   "index.js|(top) > pixelpay-confirm.js|confirmAndMaterialize > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
+   "index.js|bindCancelCore(cb) > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
+   "index.js|bindCancelCore(cb) > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-reserve.js|reverseRedemptionForOrder > rewards-reserve.js|reverseRedemptionForRefund > rewards-reserve.js|alertIfUndercollateralized",
+   "index.js|bindCancelCore(cb) > cancel-order-core.js|cancelOrderCore > rewards-reserve.js|holdRedemptionForManual > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
+   "index.js|bindCancelCore(cb) > cancel-order-core.js|cancelOrderCore > rewards-reserve.js|reverseRedemptionForOrder > rewards-reserve.js|reverseRedemptionForRefund > rewards-reserve.js|alertIfUndercollateralized",
    "index.js|chargeOnlineApp.all > payments/sdk/finish.js|finishSdk > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
    "index.js|chargeOnlineApp.all > payments/sdk/finish.js|finishSdk > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-reserve.js|reverseRedemptionForOrder > rewards-reserve.js|reverseRedemptionForRefund > rewards-reserve.js|alertIfUndercollateralized",
    "index.js|exports.cancelPaidOrder > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
@@ -2113,20 +2088,17 @@
    "index.js|runConfirm > pixelpay-confirm.js|confirmOnlinePayment > pixelpay-confirm.js|routeManualReconciliation > rewards-reserve.js|holdRedemptionForManual > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
    "index.js|runConfirm > pixelpay-confirm.js|confirmOnlinePayment > rewards-reserve.js|holdRedemptionForManual > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
    "index.js|runConfirm > pixelpay-confirm.js|confirmOnlinePayment > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
+   "index.js|setSdkGoLive(cb) > pixelpay-confirm.js|confirmAndMaterialize > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
    "payments/sdk/deps.js|releaseResources > payments/sdk/release.js|releaseSdkOrder > rewards-reserve.js|reverseRedemptionForOrder > rewards-reserve.js|reverseRedemptionForRefund > rewards-reserve.js|alertIfUndercollateralized",
-   "payments/sdk/functions.js|(top) > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
-   "payments/sdk/functions.js|(top) > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-reserve.js|reverseRedemptionForOrder > rewards-reserve.js|reverseRedemptionForRefund > rewards-reserve.js|alertIfUndercollateralized",
-   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
-   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-reserve.js|reverseRedemptionForOrder > rewards-reserve.js|reverseRedemptionForRefund > rewards-reserve.js|alertIfUndercollateralized",
+   "payments/sdk/functions.js|exports.cancelSdkPending > payments/sdk/endpoints.js|cancelSdkPending > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
+   "payments/sdk/functions.js|exports.cancelSdkPending > payments/sdk/endpoints.js|cancelSdkPending > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-reserve.js|reverseRedemptionForOrder > rewards-reserve.js|reverseRedemptionForRefund > rewards-reserve.js|alertIfUndercollateralized",
    "payments/sdk/functions.js|exports.settleSdkOnStatus > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-reserve.js|reverseRedemptionForOrder > rewards-reserve.js|reverseRedemptionForRefund > rewards-reserve.js|alertIfUndercollateralized",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|consumeFulfilledRedemption > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|expirePending > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|expirePending > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-reserve.js|reverseRedemptionForOrder > rewards-reserve.js|reverseRedemptionForRefund > rewards-reserve.js|alertIfUndercollateralized",
-   "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
-   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized",
-   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > rewards-reserve.js|reverseRedemptionForOrder > rewards-reserve.js|reverseRedemptionForRefund > rewards-reserve.js|alertIfUndercollateralized"
+   "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|settleTerminal > payments/sdk/coordinator.js|consumeFulfilledRedemption > rewards-reserve.js|settleRedemptionAtConfirm > rewards-reserve.js|consumeRedemption > rewards-reserve.js|alertIfUndercollateralized"
   ],
   "rewards-reserve.js|isDeleted": [
    "index.js|chargeOnlineApp.all > rewards-reserve.js|reserveRedemption > rewards-reserve.js|isDeleted",
@@ -2142,36 +2114,32 @@
    "seed_identity.js|(top) > seed_identity.js|main"
   ],
   "sequencing/cancel-promotion.js|findSurvivor": [
-   "index.js|(top) > cancel-order-core.js|cancelOrderCore > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|cleanupWithPromotion > sequencing/cancel-promotion.js|findSurvivor",
-   "index.js|(top) > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|cleanupWithPromotion > sequencing/cancel-promotion.js|findSurvivor",
+   "index.js|bindCancelCore(cb) > cancel-order-core.js|cancelOrderCore > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|cleanupWithPromotion > sequencing/cancel-promotion.js|findSurvivor",
+   "index.js|bindCancelCore(cb) > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|cleanupWithPromotion > sequencing/cancel-promotion.js|findSurvivor",
    "index.js|chargeOnlineApp.all > payments/sdk/finish.js|finishSdk > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|cleanupWithPromotion > sequencing/cancel-promotion.js|findSurvivor",
    "index.js|exports.cancelPaidOrder > cancel-order-core.js|cancelOrderCore > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|cleanupWithPromotion > sequencing/cancel-promotion.js|findSurvivor",
    "index.js|exports.cancelPaidOrder > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|cleanupWithPromotion > sequencing/cancel-promotion.js|findSurvivor",
    "index.js|exports.onOrderCancelled > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|cleanupWithPromotion > sequencing/cancel-promotion.js|findSurvivor",
    "payments/sdk/deps.js|releaseResources > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|cleanupWithPromotion > sequencing/cancel-promotion.js|findSurvivor",
-   "payments/sdk/functions.js|(top) > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|cleanupWithPromotion > sequencing/cancel-promotion.js|findSurvivor",
-   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|cleanupWithPromotion > sequencing/cancel-promotion.js|findSurvivor",
+   "payments/sdk/functions.js|exports.cancelSdkPending > payments/sdk/endpoints.js|cancelSdkPending > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|cleanupWithPromotion > sequencing/cancel-promotion.js|findSurvivor",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|cleanupWithPromotion > sequencing/cancel-promotion.js|findSurvivor",
-   "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|expirePending > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|cleanupWithPromotion > sequencing/cancel-promotion.js|findSurvivor",
-   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|cleanupWithPromotion > sequencing/cancel-promotion.js|findSurvivor"
+   "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|expirePending > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|cleanupWithPromotion > sequencing/cancel-promotion.js|findSurvivor"
   ],
   "sequencing/detector.js|detectOutOfSequence": [
    "index.js|exports.detectOutOfSequence > sequencing/detector.js|detectOutOfSequence"
   ],
   "sequencing/flags.js|readSeqFlag": [
-   "index.js|(top) > cancel-order-core.js|cancelOrderCore > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag",
-   "index.js|(top) > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag",
+   "index.js|bindCancelCore(cb) > cancel-order-core.js|cancelOrderCore > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag",
+   "index.js|bindCancelCore(cb) > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag",
    "index.js|chargeOnlineApp.all > payments/sdk/finish.js|finishSdk > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag",
    "index.js|exports.cancelPaidOrder > cancel-order-core.js|cancelOrderCore > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag",
    "index.js|exports.cancelPaidOrder > cancel-order-core.js|cancelOrderCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag",
    "index.js|exports.onOrderCancelled > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag",
    "index.js|exports.retentionSweepTasks > retention-sweep.js|runRetentionSweep > sequencing/retention.js|runStackPassIfOn > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag",
    "payments/sdk/deps.js|releaseResources > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag",
-   "payments/sdk/functions.js|(top) > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag",
-   "payments/sdk/functions.js|exports.processSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag",
+   "payments/sdk/functions.js|exports.cancelSdkPending > payments/sdk/endpoints.js|cancelSdkPending > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag",
    "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag",
-   "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|expirePending > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag",
-   "payments/sdk/functions.js|exports.sweepSdkRecovery > payments/sdk/functions.js|handlerOf > payments/sdk/endpoints.js|makeHandlers > payments/sdk/switch-endpoint.js|cancelSdkPendingCore > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag"
+   "payments/sdk/functions.js|exports.sweepSdkPayments > payments/sdk/sweeper.js|sweepSdkPayments > payments/sdk/sweeper.js|visitDueOrder > payments/sdk/coordinator.js|expirePending > payments/sdk/coordinator.js|cancelSdkOrder > payments/sdk/release.js|releaseSdkOrder > cancel-order-core.js|cleanupTasksAndDriver > sequencing/cancel-promotion.js|readSeqFlagSafe > sequencing/flags.js|readSeqFlag"
   ],
   "sequencing/plan-stack.js|planStack": [
    "index.js|exports.autoAssignOnOrderCreate > sequencing/writer.js|planForWriter > sequencing/plan-stack.js|planStack",
@@ -2272,7 +2240,7 @@
    "index.js|exports.resolveManualReconciliation > resolve-manual.js|resolveManualReconciliationCore > superseded-capture.js|unresolvedEvidenceOnOrder"
   ],
   "superseded-capture.js|unresolvedMoneyOnOrder": [
-   "index.js|(top) > cancel-order-core.js|cancelOrderCore > superseded-capture.js|unresolvedMoneyOnOrder",
+   "index.js|bindCancelCore(cb) > cancel-order-core.js|cancelOrderCore > superseded-capture.js|unresolvedMoneyOnOrder",
    "index.js|exports.cancelPaidOrder > cancel-order-core.js|cancelOrderCore > superseded-capture.js|unresolvedMoneyOnOrder"
   ],
   "support/support-tickets.js|createSupportTicketCore": [

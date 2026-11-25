@@ -6,7 +6,7 @@
 //   • exactly ONE provider authorization;
 //   • neither answer is a 5xx («listen() called twice» surfaces as the handler's 500 internal), both are real answers (200 with an
 //     outcome, or a 4xx refusal with an error code — the replay / in-progress rules);
-//   • a DIGEST line (both answers as a sorted pair + the normalized persisted tree) that the slot compares with the SAME file run in the
+//   • a DIGEST line (both answers, structured + the normalized persisted tree; parity.js canonicalizes tokens and sorts the pair) that the slot compares with the SAME file run in the
 //     base worktree (production eb177fe58): persisted-state parity with base (rtdb-build/r9/slot.sh step DT-PARITY).
 // Run: npm run test:rtdb-double-tap
 require('./_emulator-required')('database', 'firestore');
@@ -119,7 +119,8 @@ const SDK = (b) => post(app.placeSdkOrder, b, { Authorization: `Bearer idt_m${PH
     // the DIGEST first, so a base run that fails the assertions below still yields its state for the parity step
     const tree = norm((await rtdb.ref().once('value')).val());
     for (const k of ['catalog', 'catalog_versions', 'menus', 'restaurants', 'platform_admins', 'platform_config', 'delivery_pricing']) delete tree[k];   // the seed, identical by construction
-    console.log(`DIGEST DT-SDK-EMU ${JSON.stringify({ answers: answers.map((x) => JSON.stringify(x)).sort(), tree })}`);
+    // answers stay STRUCTURED (Codex #406): parity.js canonicalizes the generated tracking tokens inside them, then sorts the pair
+    console.log(`DIGEST DT-SDK-EMU ${JSON.stringify({ answers, tree })}`);
     for (const x of [a, b]) {
       assert.ok(x.status < 500, `🔴 DT-SDK-EMU: no 5xx («listen() called twice» answers 500 internal): ${x.status} ${x.text.slice(0, 200)}`);
       assert.ok(x.json && ((x.status === 200 && typeof x.json.outcome === 'string') || (x.status >= 400 && typeof x.json.error === 'string')), `🔴 DT-SDK-EMU: a real answer (an outcome, or a refusal code): ${x.status} ${x.text.slice(0, 200)}`);
