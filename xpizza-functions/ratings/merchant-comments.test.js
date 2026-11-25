@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('../test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // S-A(d) (NOTE-S-Ad-merchant-comments-build, approved 2026-11-02) — getMerchantRatingComments(rid, cursor), the P-1 merchant view.
 // Orders from the REAL intake writers, the REAL fulfilment stamp (which now writes rating_index), the REAL rateOrderCore (v2 comment,
 // edit, withdraw), the REAL deletion updater and a deleted_uids tombstone; authorization through the REAL access/membership
@@ -29,7 +30,7 @@ function fakeDb(seed = {}) {
   const prune = (v) => { if (v === null || typeof v !== 'object') return v; if (Array.isArray(v)) return v.map(prune); const o = {}; for (const [k, x] of Object.entries(v)) { const p = prune(x); if (p !== null && p !== undefined && !(typeof p === 'object' && !Object.keys(p).length)) o[k] = p; } return o; };
   const snap = (v, ordered) => ({ exists: () => v != null, val: () => (v == null ? null : clone(v)),
     forEach: (cb) => { for (const [k, x] of (ordered || Object.entries(v || {}))) if (cb({ key: k, val: () => clone(x) }) === true) return true; return false; } });
-  const ref = (p = '') => ({
+  const ref = (p = '') => (withPath({
     get: async () => { reads.push({ kind: 'get', path: p }); return snap(get(p)); },
     once: async () => { reads.push({ kind: 'get', path: p }); return snap(get(p)); },
     set: async (v) => set(p, prune(v)), update: async (m) => { for (const [k, v] of Object.entries(m)) set(p ? `${p}/${k}` : k, prune(v)); },
@@ -50,7 +51,7 @@ function fakeDb(seed = {}) {
       if (actual !== null) { next = fn(actual); if (next === undefined) return { committed: false, snapshot: snap(get(p)) }; }
       set(p, prune(next)); return { committed: true, snapshot: snap(get(p)) };
     },
-  });
+  }, p));
   return { tree, reads, get, set, ref };
 }
 

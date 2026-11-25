@@ -672,13 +672,13 @@
   },
   {
     "file": "index.js",
-    "line_sha256": "2d449df5897dc181c05487f7df578fa47cddfa435a0a81bc00dbb99e0a4d8c78",
+    "line_sha256": "90454ef4784d91f18930162a98e8a743e11803f3de2144eee22b8d1b6170f121",
     "occurrence": 1,
     "rules": [
       "R4"
     ],
-    "line": 2113,
-    "text": "returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => db.ref(`restaurants/${restaurantId}/identity/brand_id`).get().then((s) => s.val()) });",
+    "line": 2132,
+    "text": "returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => require('./lib/rtdb-gate').gatedGet(db.ref(`restaurants/${restaurantId}/identity/brand_id`)).then((s) => s.val()) });",
     "reason": "R4 false positive: S3b hosted-checkout return routing reads identity/brand_id (resolveReturnBaseForCharge readBrandId), no hours"
   },
   {
@@ -705,13 +705,13 @@
   },
   {
     "file": "marketing/brand-of.js",
-    "line_sha256": "b3dd97f8fc4eef5152e06822f85641f0a2044ae7fae1977b5b79932ad56d4bdc",
+    "line_sha256": "e936a5c648fb0221447ce1a37e5bfcc6beb219fc08eaade188aca1d870918267",
     "occurrence": 1,
     "rules": [
       "R4"
     ],
     "line": 14,
-    "text": "const leaf = (await db.ref(`restaurants/${rid}/identity/brand_id`).once('value')).val();",
+    "text": "const leaf = (await require('../lib/rtdb-gate').afterGets(db.ref(`restaurants/${rid}/identity/brand_id`), (r) => r.once('value'))).val();",
     "reason": "R4 false positive: identity/brand_id leaf read (the shared offer brand reader, brandIdOf), no hours (advisor 2026-11-14)"
   }
 ]

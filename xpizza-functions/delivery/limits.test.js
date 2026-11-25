@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('../test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // ENVÍO — each restaurant's own maximum delivery distance (PLAN-envio-restaurant-limit-r5, APPROVED 2026-11-12): the per-BRANCH
 // `max_km` lives IN platform_config/delivery_pricing (`restaurants[rid] = { max_km }`), written only by setDeliveryPricing's ONE
 // transaction; every app quote / order / resume reads it from the request's ONE fresh policy read. Every VALID stored node here is
@@ -38,7 +39,7 @@ function world(init = {}, { registry, ids = IDS, directory = DIRECTORY } = {}) {
   const deps = { db, verifyIdToken: async (t) => { if (!TOKENS[t]) throw new Error('bad'); return TOKENS[t]; }, timestamp: () => ++AT,
     readRegistry: registry || (async () => ({ ok: true, fresh: true, ids })) };
   // the order path reads with ref(p).get() (delivery-wire loadPricing) — the same store, read the order path's way
-  const reader = { ref: (p) => ({ get: () => db.ref(p).once() }) };
+  const reader = { ref: (p) => (withPath({ get: () => db.ref(p).once() }, p)) };
   return { db, deps, reader, set: (body) => A.setDeliveryPricingCore(deps, req('admin', body)), get: () => A.getDeliveryPricingCore(deps, req('admin')) };
 }
 const save = async (w, over) => {

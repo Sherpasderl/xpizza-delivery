@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // NOTE-getMyOrders (approved 2026-11-01) — the capp «Pedidos» history read, getMyOrders. History entries come from the REAL writers
 // (create-order-build.attachCustomerAttribution at intake, materialize.buildMaterializeUpdates at confirm, claim-order.claimOrderCore)
 // and statuses from the REAL status-mirror decision; the handler runs over an in-memory RTDB whose ordered queries match production
@@ -46,13 +47,13 @@ function fakeDb() {
     };
     return api;
   };
-  const ref = (p = '') => ({
+  const ref = (p = '') => (withPath({
     get: async () => { reads.push({ kind: 'get', path: p }); return snapOf(get(p)); },
     once: async () => { reads.push({ kind: 'get', path: p }); return snapOf(get(p)); },
     set: async (v) => set(p, v), update: async (m) => { for (const [k, v] of Object.entries(m)) set(p ? `${p}/${k}` : k, v); },
     transaction: async (fn) => { const next = fn(clone(get(p)) ?? null); if (next === undefined) return { committed: false, snapshot: snapOf(get(p)) }; set(p, next); return { committed: true, snapshot: snapOf(get(p)) }; },
     orderByChild: (c) => query(p, c),
-  });
+  }, p));
   return { tree, reads, get, set, ref };
 }
 

@@ -1,3 +1,4 @@
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 /**
  * Unit tests for acquireHostedAttempt (Stage H2). Run: `node pixelpay-hosted-charge.test.js`.
  * In-memory db models the Admin SDK's null-first transaction call (uses the 2nd call's result).
@@ -10,7 +11,7 @@ function makeDb(initial = {}) {
   const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
   const getAt = (p) => { if (!p) return root; let n = root; for (const k of p.split('/')) { if (n == null) return null; n = n[k]; } return n === undefined ? null : n; };
   const setAt = (p, val) => { const a = p.split('/'); let n = root; for (let i = 0; i < a.length - 1; i++) { if (n[a[i]] == null || typeof n[a[i]] !== 'object') n[a[i]] = {}; n = n[a[i]]; } const l = a[a.length - 1]; if (val === null) delete n[l]; else n[l] = val; };
-  const ref = (p = '') => ({
+  const ref = (p = '') => (withPath({
     async once() { return { val: () => clone(getAt(p)) }; },
     async transaction(fn) {
       fn(null);                                   // model Admin SDK first (uncached) null call
@@ -21,7 +22,7 @@ function makeDb(initial = {}) {
       return { committed: true, snapshot: { val: () => clone(getAt(p)) } };
     },
     async update(patch) { if (!p) { for (const [k, v] of Object.entries(patch)) setAt(k, clone(v)); return; } setAt(p, Object.assign({}, getAt(p) || {}, clone(patch))); }
-  });
+  }, p));
   return { ref, getAt };
 }
 

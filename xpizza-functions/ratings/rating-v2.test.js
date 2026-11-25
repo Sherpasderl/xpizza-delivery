@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('../test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // S-A1 — ratings v2 (NOTE-S-A-ratings-v2-build, approved 2026-11-01). Orders from the REAL intake writers (buildCreateOrderUpdates +
 // attachCustomerAttribution), the REAL fulfilment stamp core, the REAL rateOrderCore and the REAL deleteAccountCore, over an
 // in-memory RTDB whose transactions run the updater FIRST on null (the Admin SDK's uncached run) like production.
@@ -28,7 +29,7 @@ function fakeDb() {
   // RTDB drops nulls and empty objects on write
   const prune = (v) => { if (v === null || typeof v !== 'object') return v; if (Array.isArray(v)) return v.map(prune); const o = {}; for (const [k, x] of Object.entries(v)) { const p = prune(x); if (p !== null && p !== undefined && !(typeof p === 'object' && !Array.isArray(p) && !Object.keys(p).length)) o[k] = p; } return o; };
   const snap = (v) => ({ exists: () => v != null, val: () => (v == null ? null : clone(v)) });
-  const ref = (p = '') => ({
+  const ref = (p = '') => (withPath({
     get: async () => snap(get(p)), once: async () => snap(get(p)),
     set: async (v) => set(p, prune(v)), update: async (m) => { for (const [k, v] of Object.entries(m)) set(p ? `${p}/${k}` : k, prune(v)); },
     // RTDB ordering: a missing child first, then numbers ascending, ties by key; filters, then limitToFirst (Codex r4 fairness needs it)
@@ -51,7 +52,7 @@ function fakeDb() {
       if (actual !== null) { next = fn(actual); if (next === undefined) return { committed: false, snapshot: snap(get(p)) }; }
       set(p, prune(next)); return { committed: true, snapshot: snap(get(p)) };
     },
-  });
+  }, p));
   return { tree, get, set, ref };
 }
 const A = 'u_' + 'a'.repeat(24), B = 'u_' + 'b'.repeat(24);

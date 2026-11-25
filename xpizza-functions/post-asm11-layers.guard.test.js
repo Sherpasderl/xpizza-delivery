@@ -33,11 +33,11 @@ for (const f of L.FILES) {
 ok(`each owned file (${L.FILES.join(', ')}) minus its post-asm11 hunks (${L.HUNKS.length} in all) === ${L.BASE.slice(0, 9)} byte-for-byte`);
 
 for (const h of L.HUNKS) {
-  const disk = diskOf(h.file);
+  const disk = L.stripInner(h.file, diskOf(h.file));   // the HUNKS live in (disk − INNER) (advisor ruling (A))
   assert.strictEqual(disk.split(h.now).length - 1, 1, `🔴 POST-ASM11: «${h.label}» occurs exactly once`);
   const k = h.now.search(/[A-Za-z]/);
-  assert.throws(() => L.stripPostAsm11(h.file, disk.replace(h.now, h.now.slice(0, k) + '#' + h.now.slice(k + 1))), /occurs 0 times/, `🔴 POST-ASM11: a byte inside «${h.label}» is refused`);
-  assert.throws(() => L.stripPostAsm11(h.file, disk + h.now), /occurs 2 times/, `🔴 POST-ASM11: a duplicated «${h.label}» is refused`);
+  assert.throws(() => L.stripHunks(h.file, disk.replace(h.now, h.now.slice(0, k) + '#' + h.now.slice(k + 1))), /occurs 0 times/, `🔴 POST-ASM11: a byte inside «${h.label}» is refused`);
+  assert.throws(() => L.stripHunks(h.file, disk + h.now), /occurs 2 times/, `🔴 POST-ASM11: a duplicated «${h.label}» is refused`);
 }
 ok('every hunk occurs exactly once; tamper (a byte inside) and duplicate are refused');
 
@@ -45,7 +45,7 @@ ok('every hunk occurs exactly once; tamper (a byte inside) and duplicate are ref
 for (const f of L.FILES) {
   // asm12 H3 (A): the diff of the per-site-peeled file against BASE (a no-index diff of two temp files), not of the raw tree
   const os = require('os'); const d = fs.mkdtempSync(path.join(os.tmpdir(), 'post-asm11-'));
-  fs.writeFileSync(path.join(d, 'base'), git(['show', `${L.BASE}:xpizza-functions/${f}`])); fs.writeFileSync(path.join(d, 'now'), diskOf(f));
+  fs.writeFileSync(path.join(d, 'base'), git(['show', `${L.BASE}:xpizza-functions/${f}`])); fs.writeFileSync(path.join(d, 'now'), L.stripInner(f, diskOf(f)));
   const r = require('child_process').spawnSync('git', ['diff', '--no-index', '-U0', path.join(d, 'base'), path.join(d, 'now')], { encoding: 'utf8', maxBuffer: 1 << 27 });
   fs.rmSync(d, { recursive: true, force: true });
   assert.ok(r.status === 0 || r.status === 1, `POST-ASM11: the no-index diff ran (${r.status})`);
@@ -58,7 +58,36 @@ for (const f of L.FILES) {
   }
   assert.deepStrictEqual(L.HUNKS.filter((h) => h.file === f).map((h) => ({ now: h.now, was: h.was })), got, `🔴 POST-ASM11: ${f}'s hunks are exactly the current diff vs ${L.BASE.slice(0, 9)} (regenerate the hook)`);
 }
-ok('the hook\'s hunks are exactly the current `git diff -U0 BASE` of each owned file, in diff order');
+ok('the hook\'s hunks are exactly the current `git diff -U0 BASE` of each owned file minus INNER, in diff order');
+
+// INNER (advisor ruling (A), 11-25): the newest layer's exact-line swaps, peeled FIRST. Each occurs exactly once on disk (a byte inside
+// or a duplicate is refused); INNER is EXACTLY the line diff of disk vs (disk − INNER), in diff order; its layer is declared LAST in
+// ORDER (newest) and owns no HUNKS; stripPostAsm11 peels INNER before the HUNKS.
+assert.ok(L.INNER.length >= 1, 'POST-ASM11 INNER: non-vacuity');
+for (const h of L.INNER) {
+  const disk = diskOf(h.file);
+  assert.strictEqual(disk.split(h.now).length - 1, 1, `🔴 POST-ASM11 INNER: «${h.label}» occurs exactly once`);
+  const k = h.now.search(/[A-Za-z]/);
+  assert.throws(() => L.stripInner(h.file, disk.replace(h.now, h.now.slice(0, k) + '#' + h.now.slice(k + 1))), /occurs 0 times/, `🔴 POST-ASM11 INNER: a byte inside «${h.label}» is refused`);
+  assert.throws(() => L.stripInner(h.file, disk + h.now), /occurs 2 times/, `🔴 POST-ASM11 INNER: a duplicated «${h.label}» is refused`);
+}
+for (const f of L.INNER_FILES) {
+  const os = require('os'); const d = fs.mkdtempSync(path.join(os.tmpdir(), 'post-asm11-inner-'));
+  const disk = diskOf(f); fs.writeFileSync(path.join(d, 'was'), L.stripInner(f, disk)); fs.writeFileSync(path.join(d, 'now'), disk);
+  const r = require('child_process').spawnSync('git', ['diff', '--no-index', '-U0', path.join(d, 'was'), path.join(d, 'now')], { encoding: 'utf8', maxBuffer: 1 << 27 });
+  fs.rmSync(d, { recursive: true, force: true });
+  const got = []; let cur = null;
+  for (const l of r.stdout.split('\n')) {
+    if (l.startsWith('@@')) { cur = { now: '', was: '' }; got.push(cur); }
+    else if (cur && l.startsWith('+') && !l.startsWith('+++')) cur.now += `\n${l.slice(1)}\n`;
+    else if (cur && l.startsWith('-') && !l.startsWith('---')) cur.was += `\n${l.slice(1)}\n`;
+  }
+  assert.deepStrictEqual(L.INNER.filter((h) => h.file === f).map((h) => ({ now: h.now, was: h.was })), got, `🔴 POST-ASM11 INNER: ${f}'s swaps are exactly the diff of disk vs (disk − INNER), one line each, in diff order`);
+}
+const innerLayers = [...new Set(L.INNER.map((h) => h.layer))];
+assert.ok(innerLayers.every((x) => L.ORDER.includes(x) && !L.HUNKS.some((h) => h.layer === x)) && L.ORDER.slice(-innerLayers.length).join() === innerLayers.join(), '🔴 POST-ASM11 INNER: its layer is declared LAST in ORDER (newest) and owns no HUNKS');
+assert.ok(/const inner = INNER_FILES\.includes\(file\) \? stripInner\(file, src\) : src;\n  return FILES\.includes\(file\) \? stripHunks\(file, inner\) : inner;/.test(fs.readFileSync(require.resolve('./tools/post-asm11-layers'), 'utf8')), '🔴 POST-ASM11 INNER: stripPostAsm11 peels INNER first');
+ok(`INNER (${L.INNER.length} swaps, ${innerLayers.join(', ')}): each once, tamper + duplicate refused, exactly the remaining diff, newest in ORDER, peeled first`);
 
 // the ORDER: layers appear grouped, in the declared landing order; the peel walks HUNKS newest-first
 const seq = L.HUNKS.map((h) => h.layer).filter((x, i, a) => i === 0 || a[i - 1] !== x);

@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('../test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // Calificaciones v2 S3 — getMerchantReviews, the portal's NAMED reviews list (PLAN-3a-merchant-reviews-v2 r1 §1–§3, r2 + rulings,
 // r3 §5–§7, r4.2 §1–§2 + §7, r5 §1, r6.1 §3). Every input through the REAL writers: orders by the real intake builders + the real
 // dish snapshot (dish-qty), the delivered status mirrored into the history by the real status-mirror core, the real fulfilment stamp,
@@ -35,7 +36,7 @@ function fakeDb(seed = {}) {
   const prune = (v) => { if (v === null || typeof v !== 'object') return v; if (Array.isArray(v)) return v.map(prune); const o = {}; for (const [k, x] of Object.entries(v)) { const p = prune(x); if (p !== null && p !== undefined && !(typeof p === 'object' && !Array.isArray(p) && !Object.keys(p).length)) o[k] = p; } return o; };
   const snap = (v, ordered) => ({ exists: () => v != null, val: () => (v == null ? null : clone(v)),
     forEach: (cb) => { for (const [k, x] of (ordered || Object.entries(v || {}))) if (cb({ key: k, val: () => clone(x) }) === true) return true; return false; } });
-  const ref = (p = '') => ({
+  const ref = (p = '') => (withPath({
     get: async () => { reads.push({ kind: 'get', path: p }); return snap(get(p)); },
     once: async () => { reads.push({ kind: 'get', path: p }); return snap(get(p)); },
     set: async (v) => set(p, prune(v)), update: async (m) => { for (const [k, v] of Object.entries(m)) set(p ? `${p}/${k}` : k, prune(v)); },
@@ -70,7 +71,7 @@ function fakeDb(seed = {}) {
       if (actual !== null) { next = fn(actual); if (next === undefined) return { committed: false, snapshot: snap(get(p)) }; }
       set(p, prune(next)); return { committed: true, snapshot: snap(get(p)) };
     },
-  });
+  }, p));
   return { tree, reads, get, set, ref };
 }
 

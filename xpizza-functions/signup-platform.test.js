@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // PLAN-guest-checkout-server r4 §3 — S3a (context:'platform' across the signup family), S3b (redeemSignupGrant), S3d (getMyProfile)
 // over an in-memory RTDB whose TRANSACTION + multi-path UPDATE semantics match production (undefined ABORTS, null DELETES, a
 // root update writes every path at once). The REAL handlers, otp-lib, signup-core and checkout-guest-lib; the grant comes from
@@ -28,7 +29,7 @@ function fakeDb() {
   const FAIL = { at: null, skip: 0 };   // inject a failure: a path prefix whose next write throws once (after `skip` matching writes)
   const HOOK = { after: null, fn: null, skip: 0 };   // run fn ONCE right after the next transaction on a path with this prefix (after `skip` matching ones)
   const guard = (p) => { if (FAIL.at && String(p).startsWith(FAIL.at)) { if (FAIL.skip > 0) { FAIL.skip -= 1; return; } FAIL.at = null; throw new Error(`injected failure at ${p}`); } };
-  const ref = (p = '') => ({
+  const ref = (p = '') => (withPath({
     get: async () => snap(get(p)), once: async () => snap(get(p)),
     set: async (v) => { guard(p); set(p, v); },
     remove: async () => { guard(p); set(p, null); },
@@ -40,7 +41,7 @@ function fakeDb() {
       if (HOOK.after && String(p).startsWith(HOOK.after)) { if (HOOK.skip > 0) HOOK.skip -= 1; else { const f = HOOK.fn; HOOK.after = null; HOOK.fn = null; await f(); } }
       return out;
     },
-  });
+  }, p));
   return { tree, get, set, ref, FAIL, HOOK };
 }
 function res() { const r = { statusCode: 0, body: null, headers: {} }; r.status = (c) => { r.statusCode = c; return r; }; r.json = (b) => { r.body = b; return r; }; r.set = (k, v) => { r.headers[k] = v; return r; }; return r; }

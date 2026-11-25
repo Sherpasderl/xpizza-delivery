@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('../test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // ENVÍO STEP 2 — drawn no-delivery zones on the order path (PLAN-envio-zones-step2-r2 §4; Codex r1 F1/F4/F5). Zone lists are built by
 // the writer's own normalizer (zones.js normalizeInput), never by hand. Run: node delivery/zones-wire.test.js
 const assert = require('assert');
@@ -18,7 +19,7 @@ const BANDS = [{ max_km: 2, cents: 3000 }, { max_km: 5, cents: 5000 }, { max_km:
 const RAW = (extra = {}) => ({ policy_version: 3, bands: BANDS, ...extra });
 const MALFORMED = [{ ...ZONES[0], points: ZONES[0].points.slice(0, 2) }];   // direct corruption: a 2-point stored zone
 // a db over a path map (pricing + orders + attempts)
-const fakeDb = (paths) => ({ ref: (p) => ({ get: async () => ({ val: () => (p in paths ? paths[p] : null), exists: () => paths[p] != null }) }) });
+const fakeDb = (paths) => ({ ref: (p) => (withPath({ get: async () => ({ val: () => (p in paths ? paths[p] : null), exists: () => paths[p] != null }) }, p)) });
 const getIdentity = async () => ({ hub_lat: HUB.lat, hub_lng: HUB.lng, delivery_radius_km: 8 });
 const PRICING = 'platform_config/delivery_pricing';
 
@@ -95,7 +96,7 @@ const PRICING = 'platform_config/delivery_pricing';
 
   await cell('ZW-READ-COUNT-PINNED', async (L) => {
     // F8: zones add NO read to the order path — one pricing read per order and per quote, as step 1
-    const counting = (paths) => { const reads = []; return { reads, db: { ref: (p) => ({ get: async () => { reads.push(p); return { val: () => (p in paths ? paths[p] : null), exists: () => paths[p] != null }; } }) } }; };
+    const counting = (paths) => { const reads = []; return { reads, db: { ref: (p) => (withPath({ get: async () => { reads.push(p); return { val: () => (p in paths ? paths[p] : null), exists: () => paths[p] != null }; } }, p)) } }; };
     const o = counting({ [PRICING]: RAW({ no_delivery_zones: ZONES }) });
     await DW.deliveryFor(o.db, { rid: 'tb_r1', mode: 'delivery', pin: { ...north(1), confirmed: true }, getIdentity, app: true });
     assert.deepStrictEqual(o.reads, [PRICING], `${L}: an order reads the pricing node once (${JSON.stringify(o.reads)})`);
@@ -106,7 +107,7 @@ const PRICING = 'platform_config/delivery_pricing';
 
   // Codex build r1 #2: the RESUME guards reuse the request's one pricing read (the handler's dpP) — the complete traces are pinned
   await cell('ZW-RESUME-TRACE-ONE-PRICING-READ', async (L) => {
-    const counting = (paths) => { const reads = []; return { reads, db: { ref: (p) => ({ get: async () => { reads.push(p); return { val: () => (p in paths ? paths[p] : null), exists: () => paths[p] != null }; } }) } }; };
+    const counting = (paths) => { const reads = []; return { reads, db: { ref: (p) => (withPath({ get: async () => { reads.push(p); return { val: () => (p in paths ? paths[p] : null), exists: () => paths[p] != null }; } }, p)) } }; };
     const NOW = 1_800_000_000_000;
     const stored = { order_type: 'delivery', lat: PIN.lat, lng: PIN.lng, hub_lat: HUB.lat, hub_lng: HUB.lng, payment_status: 'pending', active_attempt_id: 'att1', delivery_snapshot: { mode: 'delivery', policy_version: 3 } };
     const world = { [PRICING]: RAW({ no_delivery_zones: ZONES }), 'orders/o1': stored, 'payment_attempts/att1': { hosted_state: 'created', hosted_expires_at: NOW + 60000 } };

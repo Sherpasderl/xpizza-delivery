@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('../test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // S3 D3 (advisor 11-13, ruling (A)) — a reward key the intake gate snapshot cannot classify is decided by ONE fresh read of the
 // live pointer, on that branch only: live == the snapshot's version ⇒ the gate is current, the key was really removed ⇒ 409
 // menu_changed (the keyedRewardRefusal / resolutionRefusal shape), no order, no hold; live != snapshot ⇒ the gate cache is
@@ -101,7 +102,7 @@ function reader({ deadlineMs } = {}) {
      reward too, so a reuse that drifts to a FRESH issuance is refused before the CAS with today's 503 menu_updating; the retry
      classifies fresh and chargeDecision answers 409 menu_changed (RR-REMOVED) — no dead end */
   {
-    const db = { ref: () => ({ async once() { return { val: () => null }; }, async transaction() { throw new Error('no CAS expected'); }, async update() { throw new Error('no write expected'); } }) };
+    const db = { ref: (p) => (withPath({ async once() { return { val: () => null }; }, async transaction() { throw new Error('no CAS expected'); }, async update() { throw new Error('no write expected'); } }, p)) };
     const PENDING = { order_id: 'O1', status: 'pending_payment', payment_status: 'pending', payment_method: 'online', total: 299, total_cents: 29900 };
     const acq = async (menu) => { try { return await acquireHostedAttempt(db, 'O1', PENDING, 'fp', 1e9, [], () => 'A', () => 'T', null, false, false, menu); } catch (e) { return { threw: String(e && e.message) }; } };
     assert.deepStrictEqual(await acq(true), { outcome: 'conflict', reason: 'menu_updating' }, '🔴 RR-ACQUIRE an armed menu guard refuses a fresh issuance before the CAS (menu_updating)');

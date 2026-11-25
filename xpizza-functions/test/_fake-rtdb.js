@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // PLATFORM F1 — test-only in-memory RTDB handle for the brand store and CLI core. Supports ref(path).once('value') / set / transaction,
 // counts writes (`sets`, `txns`) and reads (`reads`), and `beforeTxn` injects a concurrent write just before a transaction commits.
 // Empty objects are dropped on write, as RTDB does.
@@ -19,7 +20,7 @@ function fakeRtdb(init = {}) {
     const pv = prune(clone(v));
     if (pv === null) delete o[ks.at(-1)]; else o[ks.at(-1)] = pv;
   };
-  db.ref = (p) => ({
+  db.ref = (p) => (withPath({
     once: async () => { db.reads.push(p); const v = get(p); return { val: () => (v === undefined ? null : clone(v)) }; },
     set: async (v) => { db.sets += 1; put(p, v); },
     transaction: async (fn) => {
@@ -31,7 +32,7 @@ function fakeRtdb(init = {}) {
       put(p, next);
       return { committed: true };
     },
-  });
+  }, p));
   return db;
 }
 

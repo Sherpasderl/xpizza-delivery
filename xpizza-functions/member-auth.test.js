@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // PLAN-3a-capp-member-reads r4 §R2.1 — member-auth.memberUidOf: the ONE member predicate of the capp's member reads. Its callers'
 // handler suites (my-orders.test.js M1, …) prove the wiring; this file pins the predicate itself, cell by cell. Run: node member-auth.test.js
 const assert = require('assert');
@@ -11,7 +12,7 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { process.stderr.write('�
 function fakeDb(seed = {}) {
   const reads = [];
   const get = (p) => p.split('/').reduce((o, k) => (o == null ? undefined : o[k]), seed);
-  return { reads, ref: (p) => ({ once: async () => { reads.push(p); const v = get(p); return { exists: () => v != null, val: () => (v == null ? null : v) }; } }) };
+  return { reads, ref: (p) => (withPath({ once: async () => { reads.push(p); const v = get(p); return { exists: () => v != null, val: () => (v == null ? null : v) }; } }, p)) };
 }
 const U = 'u_member';
 const TOK = { good: { uid: U, customer: true }, hh: { uid: U, customer: true, handheld: true }, staff: { uid: U }, nouid: { customer: true }, blank: { uid: '', customer: true } };
@@ -55,9 +56,9 @@ const UNAUTH = { status: 401, reason: 'unauthenticated' };
   for (const failing of [`deleted_uids/${U}`, `user_private/${U}/deleted_at`, `user_profiles/${U}/deleting_at`]) {
     const base = fakeDb({ user_profiles: { [U]: { name: 'Ana' } } });
     const writes = [];
-    const db = { reads: base.reads, ref: (p) => ({
+    const db = { reads: base.reads, ref: (p) => (withPath({
       once: async () => { if (p === failing) { base.reads.push(p); throw new Error('rtdb unavailable'); } return base.ref(p).once(); },
-      set: async () => { writes.push(p); }, update: async () => { writes.push(p); }, transaction: async () => { writes.push(p); }, remove: async () => { writes.push(p); } }) };
+      set: async () => { writes.push(p); }, update: async () => { writes.push(p); }, transaction: async () => { writes.push(p); }, remove: async () => { writes.push(p); } }, p)) };
     let out = 'resolved';
     try { out = await memberUidOf(db, 'good', verify); } catch (_) { out = 'rejected'; }
     assert.strictEqual(out, 'rejected', `🔴 ${failing} unreadable ⇒ refused (rejected), never a uid (${JSON.stringify(out)})`);

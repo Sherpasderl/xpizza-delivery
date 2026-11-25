@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // S2-srv-tip — the tip's money core and P-C, through the REAL modules (PLAN-capp-S2-r4 §3.1/§3.2/§3.5/§3.6/§4.1).
 // Real carts (parity-carts.fixture) on the real catalog tables; envío contexts from the real quoteDelivery/deliveryFor; tokens
 // from the real issuer and gate; acquisition against the in-memory RTDB model of pixelpay-hosted-charge.test.js.
@@ -59,7 +60,7 @@ function makeDb(initial = {}, { beforeTx = null } = {}) {
   const getAt = (p) => { if (!p) return root; let x = root; for (const k of p.split('/')) { if (x == null) return null; x = x[k]; } return x === undefined ? null : x; };
   const setAt = (p, val) => { const a = p.split('/'); let x = root; for (let i = 0; i < a.length - 1; i++) { if (x[a[i]] == null || typeof x[a[i]] !== 'object') x[a[i]] = {}; x = x[a[i]]; } const l = a[a.length - 1]; if (val === null) delete x[l]; else x[l] = val; };
   let writes = 0;
-  const ref = (p = '') => ({
+  const ref = (p = '') => (withPath({
     async once() { return { val: () => clone(getAt(p)) }; },
     async get() { return { val: () => clone(getAt(p)), exists: () => getAt(p) != null }; },
     async transaction(fn) {
@@ -73,7 +74,7 @@ function makeDb(initial = {}, { beforeTx = null } = {}) {
       return { committed: true, snapshot: { val: () => clone(getAt(p)) } };
     },
     async update(patch) { writes++; if (!p) { for (const [k, v] of Object.entries(patch)) setAt(k, clone(v)); return; } setAt(p, Object.assign({}, getAt(p) || {}, clone(patch))); },
-  });
+  }, p));
   return { ref, getAt, writes: () => writes };
 }
 const seq = (...ids) => { let i = 0; return () => ids[i++]; };

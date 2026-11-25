@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // PLAN-3a-capp-member-reads r4 — (1) getMyFavorites + setFavorite (§1.2, R2.2, R3.1, R4.1, R4.2) and the deletion FENCE.
 // History rows come from the REAL intake writer (create-order-build.attachCustomerAttribution); deletion is the REAL
 // signup-endpoints.deleteAccountCore; the in-memory RTDB models production TRANSACTION semantics that the cells depend on:
@@ -52,7 +53,7 @@ function fakeDb() {
     return api;
   };
   const T = { cold: new Set(), pause: new Map(), txs: [] };   // txs: every transaction ATTEMPT (path), committed or not   // cold: a path whose NEXT transaction first sees null; pause: path → async fn run before the commit
-  const ref = (p = '') => ({
+  const ref = (p = '') => (withPath({
     get: async () => { reads.push({ kind: 'get', path: p }); return snapOf(get(p)); },
     once: async () => { reads.push({ kind: 'get', path: p }); return snapOf(get(p)); },
     set: async (v) => { writes.push(p); set(p, v); }, remove: async () => { writes.push(p); set(p, null); },
@@ -71,7 +72,7 @@ function fakeDb() {
       }
       throw new Error('transaction: too many retries');
     },
-  });
+  }, p));
   return { tree, reads, writes, get, set, ref, T };
 }
 

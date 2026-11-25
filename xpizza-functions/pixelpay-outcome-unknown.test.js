@@ -1,3 +1,4 @@
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 /**
  * P5a — a 2xx PixelPay response whose BODY is lost is an UNKNOWN outcome, never a decline.
  *
@@ -41,7 +42,7 @@ function makeDb(initial = {}) {
     if (val === null) delete node[last]; else node[last] = val;
   };
   let pk = 0;
-  const ref = (path = '') => ({
+  const ref = (path = '') => (withPath({
     async once() { const v = getAt(path); return { val: () => clone(v) }; },
     async transaction(fn) {
       const real = clone(getAt(path));
@@ -61,7 +62,7 @@ function makeDb(initial = {}) {
     async set(val) { setAt(path, clone(val)); },
     async push(val) { const k = `k${++pk}`; setAt(path ? `${path}/${k}` : k, clone(val)); return { key: k }; },
     async remove() { setAt(path, null); }
-  });
+  }, path));
   return { root, ref, getAt };
 }
 

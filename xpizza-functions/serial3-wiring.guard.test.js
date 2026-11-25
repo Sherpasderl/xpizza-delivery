@@ -88,10 +88,12 @@ for (const [label, start, end, tag, recordUse] of [
   const baseMg = execFileSync('git', ['show', `${BASE}:xpizza-functions/materialize-guard.js`], { cwd: __dirname, encoding: 'utf8' });
   for (const line of ["    const stamp = (await deps.db.ref(`recent_order_content/${rateLimitKey(order.customer_phone)}/${ck}`).once('value')).val();",
     "    if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') return false;".replace('return false;', 'return null;'),
-    "    const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();",
+    // r9: the in-flight-get gate wrap (PLAN-rtdb-get-once-race r9); main's own line is the unwrapped read (R9_MAIN below)
+    "    const siblingOrder = (await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), (r) => r.once('value'))).val();",
     "    const dec = duplicateSiblingDecision(orderId, stamp, siblingOrder, 'cash');   // PIN 1: no 2-min gate — liveness of Y decides"]) {
     assert.ok(mainFn.includes(line), `MAIN_PATH keeps main's lookup byte-recognisable: ${line.trim().slice(0, 60)}…`);
-    assert.ok(baseMg.includes(line.replace('return null;', 'return false;')), `…and that line IS main's (${BASE})`);
+    const R9_MAIN = (l) => l.replace("(await require('./lib/rtdb-gate').afterGets(deps.db.ref(`orders/${stamp.order_id}`), (r) => r.once('value'))).val()", "(await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val()");
+    assert.ok(baseMg.includes(R9_MAIN(line.replace('return null;', 'return false;'))), `…and that line IS main's (${BASE})`);
   }
   assert.ok(/const ck = orderContentKeyVerbatim\(args\);/.test(mainFn) && !/legacyKey|content_key|readContentStampByKeys/.test(mainFn), 'MAIN_PATH keys the incoming VERBATIM text (main\'s key) and nothing else');
   assert.ok(/if \(c\.known && !sameCart\(siblingOrder, c\.text, orderContentKey\(args\)\)\) \{ logRefused\(orderId, stamp\.order_id, 'main', 'sibling_content_mismatch'\); return null; \}/.test(mainFn), 'MAIN_PATH refuses ONLY a PROVABLE mismatch (known client content), logged');

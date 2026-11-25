@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // §3 r3 (codex serialization r3 P1) — the materialize-side duplicate guard through the ACTUAL production wiring, COLD.
 // Run: node serial3-confirm-cold.test.js
 //
@@ -32,12 +33,12 @@ const CONFIRM_DEPS = src.slice(src.indexOf('function confirmDeps(db) {'), src.in
 assert.ok(CONFIRM_DEPS.length > 200 && /return \{\s*db,/.test(CONFIRM_DEPS), 'premise: confirmDeps lifted');
 
 function fakeDb(store) {
-  const ref = (p) => ({
+  const ref = (p) => (withPath({
     child: (k) => ref(`${p}/${k}`),
     async once() { return { val: () => store[p] }; },
     async set(v) { store[p] = v; },
     async transaction(fn) { const next = fn(store[p]); if (next === undefined) return { committed: false }; store[p] = next; return { committed: true, snapshot: { val: () => next } }; },
-  });
+  }, p));
   return { ref };
 }
 // the intake block, verbatim, over exactly the names it uses

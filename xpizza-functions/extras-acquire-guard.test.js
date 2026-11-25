@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // PER-PRODUCT EXTRAS, stage 2 — the acquire guard at unit level (PLAN rev 2.2 §5). Run: node extras-acquire-guard.test.js
 //   acquireHostedAttempt's `extrasRefuseFresh` ('extra_not_allowed' | 'eligibility_unavailable'): every FRESH issuance (create /
 //   install / recover / rotate) is refused with the conflict shape and THAT reason, BEFORE the CAS — nothing written; a
@@ -13,11 +14,11 @@ function makeDb(initial = {}) {
   const ops = [];
   const getAt = (p) => { if (!p) return root; let x = root; for (const k of p.split('/')) { if (x == null) return null; x = x[k]; } return x === undefined ? null : x; };
   const setAt = (p, val) => { const a = p.split('/'); let x = root; for (let i = 0; i < a.length - 1; i++) { if (x[a[i]] == null || typeof x[a[i]] !== 'object') x[a[i]] = {}; x = x[a[i]]; } if (val === null) delete x[a[a.length - 1]]; else x[a[a.length - 1]] = val; };
-  const ref = (p = '') => ({
+  const ref = (p = '') => (withPath({
     async once() { ops.push(['once', p]); return { val: () => clone(getAt(p)) }; },
     async transaction(fn) { ops.push(['transaction', p]); fn(null); const cur = clone(getAt(p)); const nx = fn(cur); if (nx === undefined) return { committed: false, snapshot: { val: () => cur } }; setAt(p, clone(nx)); return { committed: true, snapshot: { val: () => clone(getAt(p)) } }; },
     async update(patch) { ops.push(['update', p, Object.keys(patch).sort()]); if (!p) { for (const [k, v] of Object.entries(patch)) setAt(k, clone(v)); return; } for (const [k, v] of Object.entries(patch)) setAt(`${p}/${k}`, clone(v)); },
-  });
+  }, p));
   return { ref, getAt, ops, root };
 }
 const NOW = 1_000_000_000;

@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // §3 r5/r6 (codex serialization r5 + r6) — the materialize-side duplicate guard is a provable SUPERSET of MAIN, every extra
 // hold verified. Run: node serial3-differential.test.js
 //
@@ -55,7 +56,7 @@ function runBlock0(block, provided, ret) {
   return new Function('scope', `with (scope) { return (async () => { ${block}\n return ${ret}; })(); }`)(scope).finally(() => {});   // eslint-disable-line no-new-func
 }
 function fakeDb(store) {
-  const ref = (p) => ({
+  const ref = (p) => (withPath({
     child: (k) => ref(`${p}/${k}`),
     async once() {
       if (/^recent_order_content\/[^/]+$/.test(p)) { const pre = `${p}/`; const o = {}; for (const [k, v] of Object.entries(store)) if (k.startsWith(pre)) o[k.slice(pre.length)] = v; return { val: () => (Object.keys(o).length ? o : null) }; }
@@ -64,7 +65,7 @@ function fakeDb(store) {
     async set(v) { store[p] = v; },
     async update(o) { for (const [k, v] of Object.entries(o)) { if (v === null) delete store[`${p}/${k}`]; else store[`${p}/${k}`] = v; } },
     async transaction(fn) { const next = fn(store[p]); if (next === undefined) return { committed: false }; store[p] = next; return { committed: true }; },
-  });
+  }, p));
   return { ref };
 }
 const quiet = async (fn) => { const logs = []; const w = console.warn; console.warn = (...a) => logs.push(a.join(' ')); try { return { r: await fn(), logs }; } finally { console.warn = w; } };

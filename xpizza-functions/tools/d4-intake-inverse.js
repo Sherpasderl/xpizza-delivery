@@ -97,17 +97,17 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "rewards-reserve.js",
-  "now": "          if (rec.hosted_expires_at != null) {                            // online checkout\n            if (!(Number(rec.hosted_expires_at) < now)) { const pre = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(pre)) await sweepSdkHold(db, { uid, rid, orderId, rec, order: pre, now, expired: false, released, audited }); continue; }   // D4 row 24 (Codex r1 P2-1): an SDK hold is classified before its expiry too\n            if (Number(rec.hosted_expires_at) < now) {\n",
+  "now": "          if (rec.hosted_expires_at != null) {                            // online checkout\n            if (!(Number(rec.hosted_expires_at) < now)) { const pre = (await require('./lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val(); if (require('./payments/sdk/flow').isSdkOrder(pre)) await sweepSdkHold(db, { uid, rid, orderId, rec, order: pre, now, expired: false, released, audited }); continue; }   // D4 row 24 (Codex r1 P2-1): an SDK hold is classified before its expiry too\n            if (Number(rec.hosted_expires_at) < now) {\n",
   "was": "          if (rec.hosted_expires_at != null) {                            // online checkout\n            if (Number(rec.hosted_expires_at) < now) {\n"
  },
  {
   "file": "rewards-reserve.js",
-  "now": "              // do NOT release (leave it for consume-recovery).\n              const order = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: true, released, audited }); continue; }\n              if (consumeEligible(order)) continue;                       // paid + live → realized, not abandoned\n",
+  "now": "              // do NOT release (leave it for consume-recovery).\n              const order = (await require('./lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: true, released, audited }); continue; }\n              if (consumeEligible(order)) continue;                       // paid + live → realized, not abandoned\n",
   "was": "              // do NOT release (leave it for consume-recovery).\n              const order = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { audited.push({ uid, rid, orderId, kind: 'sdk_flow_coordinator' }); continue; }\n              if (consumeEligible(order)) continue;                       // paid + live → realized, not abandoned\n"
  },
  {
   "file": "rewards-reserve.js",
-  "now": "          // cash / scheduled (no hosted expiry): consult the FULL order (need release_at / materialized_at too).\n          const order = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: now - (Number(rec.created_at) || 0) > CASH_STALE_MS, released, audited }); continue; }\n          const status = order && order.status;\n",
+  "now": "          // cash / scheduled (no hosted expiry): consult the FULL order (need release_at / materialized_at too).\n          const order = (await require('./lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { await sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired: now - (Number(rec.created_at) || 0) > CASH_STALE_MS, released, audited }); continue; }\n          const status = order && order.status;\n",
   "was": "          // cash / scheduled (no hosted expiry): consult the FULL order (need release_at / materialized_at too).\n          const order = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(order)) { audited.push({ uid, rid, orderId, kind: 'sdk_flow_coordinator' }); continue; }\n          const status = order && order.status;\n"
  },
  {

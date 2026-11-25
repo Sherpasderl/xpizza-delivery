@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // PLAN-3a-capp-member-reads r4 — (2) getMyLastTip: the header-token replacement for the capp's `?auth=<ID token>` RTDB REST read of
 // user_private/{uid}/last_tip (rule 20). The stored value comes from the REAL writer (tip-pref.recordLastTip). Run: node my-last-tip.test.js
 const assert = require('assert');
@@ -15,10 +16,10 @@ function fakeDb(init = {}) {
   const get = (p) => parts(p).reduce((o, k) => (o == null ? undefined : o[k]), tree);
   const set = (p, v) => { const ks = parts(p); let o = tree; for (const k of ks.slice(0, -1)) { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; } if (v == null) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = v; };
   const snap = (v) => ({ exists: () => v != null, val: () => (v == null ? null : JSON.parse(JSON.stringify(v))) });
-  return { tree, reads, get, set, ref: (p) => ({
+  return { tree, reads, get, set, ref: (p) => (withPath({
     once: async () => { reads.push(p); return snap(get(p)); },
     transaction: async (fn) => { const cur = get(p) === undefined ? null : JSON.parse(JSON.stringify(get(p))); const next = fn(cur); if (next === undefined) return { committed: false }; set(p, next); return { committed: true }; },
-  }) };
+  }, p)) };
 }
 const A = 'u_' + 'a'.repeat(24), B = 'u_' + 'b'.repeat(24);
 const TOK = { [`tok-${A}`]: { uid: A, customer: true }, [`tok-${B}`]: { uid: B, customer: true }, 'tok-hh': { uid: A, customer: true, handheld: true }, 'tok-staff': { uid: 'staff1' } };

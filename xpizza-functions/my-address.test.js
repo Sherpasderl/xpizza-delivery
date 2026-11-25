@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // PLAN-3a-addr r0 S-ADDR-2 — useMyAddress, the «en uso» selection persisted as default_address (advisor Q1).
 // The BOOK is written by the REAL writer (the frozen form's own saveAddress, lifted from xpizza-orders/account.js); the sweep's
 // claim by the REAL signup-core.sweepClaim; the purge by the REAL account-lib.accountDeleteUpdates. The in-memory RTDB is
@@ -61,7 +62,7 @@ function fakeDb() {
   // Codex #165 P2 (rule 29: never laxer than the SDK): the SDK QUEUES transactions per path — a dependent that PROPOSED on a pending
   // base is held until its predecessor settles, and only then checked against the server (re-run on a mismatch). T.events records
   // { tid, kind, … } so a cell can assert that ordering.
-  const mkRef = (local, inflight = new Map()) => (p = '') => ({
+  const mkRef = (local, inflight = new Map()) => (p = '') => (withPath({
     get: async () => { reads.push({ kind: 'get', path: p }); return snapOf(get(p)); },
     once: async () => { reads.push({ kind: 'get', path: p }); return snapOf(get(p)); },
     set: async (v) => { writes.push(p); set(p, v); }, remove: async () => { writes.push(p); set(p, null); },
@@ -91,7 +92,7 @@ function fakeDb() {
         settle(); if (inflight.get(p) === mine) inflight.delete(p);
       }
     },
-  });
+  }, p));
   const ref = mkRef(new Map());
   // another Functions instance: its own SDK (its own pending writes), the SAME server
   const instance = () => ({ tree, reads, writes, get, set, ref: mkRef(new Map()), T });

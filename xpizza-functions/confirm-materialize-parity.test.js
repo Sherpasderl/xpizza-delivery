@@ -1,3 +1,4 @@
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 /**
  * BRAND-AGNOSTIC SERVER (PLAN-brand-agnostic-server r3 §E) — MONEY-PATH PARITY for the one line this slice adds to
  * pixelpay-confirm.js#confirmAndMaterialize (`const restaurant = await materializeRestaurant(deps, order)`).
@@ -48,14 +49,14 @@ function makeDb(initial = {}) {
   const getAt = (p) => { if (!p) return root; let node = root; for (const k of p.split('/')) { if (node == null) return null; node = node[k]; } return node === undefined ? null : node; };
   const setAt = (p, val) => { const parts = p.split('/'); let node = root; for (let i = 0; i < parts.length - 1; i++) { if (node[parts[i]] == null || typeof node[parts[i]] !== 'object') node[parts[i]] = {}; node = node[parts[i]]; } const last = parts[parts.length - 1]; if (val === null) delete node[last]; else node[last] = val; };
   let pk = 0;
-  const ref = (p = '') => ({
+  const ref = (p = '') => (withPath({
     async once() { const v = getAt(p); return { val: () => clone(v), exists: () => v != null }; },
     async transaction(fn) { const real = clone(getAt(p)); let next = fn(null); if (next === undefined) return { committed: false, snapshot: { val: () => real } }; if (real !== null) { next = fn(clone(real)); if (next === undefined) return { committed: false, snapshot: { val: () => real } }; } setAt(p, clone(next)); return { committed: true, snapshot: { val: () => clone(getAt(p)) } }; },
     async update(patch) { if (!p) { for (const [k, v] of Object.entries(patch)) setAt(k, clone(v)); return; } setAt(p, Object.assign({}, getAt(p) || {}, clone(patch))); },
     async set(val) { setAt(p, clone(val)); },
     async push(val) { const k = `k${++pk}`; setAt(p ? `${p}/${k}` : k, clone(val)); return { key: k }; },
     async remove() { setAt(p, null); },
-  });
+  }, p));
   return { root, ref, getAt };
 }
 function mkClient({ statusValue = 'authorized', capture, captureThrows = false } = {}) {

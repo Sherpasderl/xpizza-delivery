@@ -11,6 +11,10 @@ const acorn = require('acorn');
 
 // HAND RULINGS for receivers built by helpers IMPORTED from another file (the scan follows same-file helpers only). Keyed by the
 // file and the receiver's exact source text (never a line number): a NEW unresolved receiver, or an edited one, is UNRESOLVED again.
+// a ruled receiver OUTSIDE every gated family resolves to this sentinel, never its real path: the scanner only needs «out of
+// scope», and naming e.g. a ratings / token store here would break those stores' single-owner path guards (record-token RT-PATH,
+// ratings-reader-contract)
+const OUT_OF_SCOPE = '(out-of-scope)';
 const RULINGS = {
   'catalog/catalog-publish.js|sourceRefOf(db, rid)': { firestore: true },
   'catalog/context-source.js|contextRefOf(rtdb, rid)': { path: 'catalog_snapshot_ctx/{}' },
@@ -49,20 +53,20 @@ const RULINGS = {
   "access/access-census-core.js|pageKeys|q.limitToFirst(pageSize)": { path: "{}", note: "pageKeys(rtdb, path): root-collection key pages (restaurants / orders roots): an ANCESTOR query, clean (RG-ANC)" },
   "catalog/identity-record-writer.js|casCursor|ref": { path: "catalog_ctx_cursor/{}", note: "casCursor on(value) on the cursor refs: not a gated family; on+off clean (RG-ON)" },
   "marketing/audience-read.js|val|q": { path: "user_profiles/{}/phone_hash", note: "resolveAudience (offer pricing in charge / quote functions); SAFE: the only gated user_profiles get (index.js:7325) is in verifyOtp" },
-  "my-orders.js|getMyOrders|qr.limitToLast(limit + 1)": { path: "user_orders/{}", note: "not a gated family" },
-  "payments/sdk/cards.js|page|q.limitToFirst(batch)": { path: "card_fence_owed", note: "not a gated family" },
-  "payments/sdk/record-token.js|page|after ? q.startAt(after).limitToFirst(batch + 1) : q.limitToFirst(batch)": { path: "payment_sdk_tokens", note: "not a gated family" },
-  "payments/sdk/token-queue.js|get|after ? q.startAt(after).limitToFirst(batch + 1) : q.limitToFirst(batch)": { path: "payment_sdk_token_queue", note: "not a gated family" },
-  "platform-config/drift.js|checkDrift|projectionRef(db, rid)": { path: "platform_config/{}", note: "not a gated family" },
-  "platform-config/reader.js|read|projectionRef(db, rid)": { path: "platform_config/{}", note: "not a gated family" },
+  "my-orders.js|getMyOrders|qr.limitToLast(limit + 1)": { path: OUT_OF_SCOPE, note: "not a gated family" },
+  "payments/sdk/cards.js|page|q.limitToFirst(batch)": { path: OUT_OF_SCOPE, note: "not a gated family" },
+  "payments/sdk/record-token.js|page|after ? q.startAt(after).limitToFirst(batch + 1) : q.limitToFirst(batch)": { path: OUT_OF_SCOPE, note: "not a gated family" },
+  "payments/sdk/token-queue.js|get|after ? q.startAt(after).limitToFirst(batch + 1) : q.limitToFirst(batch)": { path: OUT_OF_SCOPE, note: "not a gated family" },
+  "platform-config/drift.js|checkDrift|projectionRef(db, rid)": { path: OUT_OF_SCOPE, note: "not a gated family" },
+  "platform-config/reader.js|read|projectionRef(db, rid)": { path: OUT_OF_SCOPE, note: "not a gated family" },
   "prep-stats.js|read|q": { path: "orders/{}/restaurant_id", note: "runPrepStats (its own scheduled export, index.js:7640); SAFE: no gated orders get in that function" },
-  "ratings/aggregate-producer.js|fulfilledOn|V2.indexRef(db, rid).orderByKey().startAt(lo).endAt(hi).limitToFirst(DAY_BUDGET + 1)": { path: "ratings_v2_index/{}", note: "not a gated family" },
-  "ratings/aggregate-producer.js|countableRatings|q.limitToFirst(PAGE)": { path: "ratings_v2_index/{}", note: "not a gated family" },
-  "ratings/merchant-comments.js|merchantRatingCommentsCore|query.limitToFirst(CANDIDATES)": { path: "ratings_v2_index/{}", note: "not a gated family" },
-  "ratings/merchant-reviews.js|merchantReviewsCore|q.endAt(oldest).limitToFirst(per)": { path: "ratings_v2_index/{}", note: "not a gated family" },
-  "ratings/rating-v2.js|readCountable|ratingRef(db, orderId)": { path: "ratings_v2/{}", note: "not a gated family" },
-  "ratings/rating-v2.js|readRatingWindow|ratingRef(db, orderId)": { path: "ratings_v2/{}", note: "not a gated family" },
-  "ratings/review-buckets.js|dayRows|q.endAt(`${V2.indexPrefix(start)}-~`).limitToFirst(max + 1)": { path: "ratings_v2_index/{}", note: "not a gated family" },
+  "ratings/aggregate-producer.js|fulfilledOn|V2.indexRef(db, rid).orderByKey().startAt(lo).endAt(hi).limitToFirst(DAY_BUDGET + 1)": { path: OUT_OF_SCOPE, note: "not a gated family" },
+  "ratings/aggregate-producer.js|countableRatings|q.limitToFirst(PAGE)": { path: OUT_OF_SCOPE, note: "not a gated family" },
+  "ratings/merchant-comments.js|merchantRatingCommentsCore|query.limitToFirst(CANDIDATES)": { path: OUT_OF_SCOPE, note: "not a gated family" },
+  "ratings/merchant-reviews.js|merchantReviewsCore|q.endAt(oldest).limitToFirst(per)": { path: OUT_OF_SCOPE, note: "not a gated family" },
+  "ratings/rating-v2.js|readCountable|ratingRef(db, orderId)": { path: OUT_OF_SCOPE, note: "not a gated family" },
+  "ratings/rating-v2.js|readRatingWindow|ratingRef(db, orderId)": { path: OUT_OF_SCOPE, note: "not a gated family" },
+  "ratings/review-buckets.js|dayRows|q.endAt(`${V2.indexPrefix(start)}-~`).limitToFirst(max + 1)": { path: OUT_OF_SCOPE, note: "not a gated family" },
   "stats/stats-api.js|ordersCsv|q.endBefore(toMs).limitToFirst(ORDERS_CSV_PAGE)": { path: "", note: "orders ROOT query (ancestor), clean (RG-ANC)" },
   "stats/stats-job.js|readOrdersBounded|q": { path: "", note: "orders ROOT query (ancestor), clean (RG-ANC)" },
   "superseded-capture.js|pagedPass|q.limitToFirst(PAGE + 1)": { path: "", note: "payment_attempts ROOT query (ancestor), clean (RG-ANC)" },

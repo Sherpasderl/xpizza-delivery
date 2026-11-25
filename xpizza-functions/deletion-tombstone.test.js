@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // SECURITY BACKLOG (advisor 2026-11-01, design approved) — account deletion, ONE tombstone source of truth + session revocation:
 //   (ii) `deleted_uids/{uid}` is THE tombstone every server check reads (customerOf, createOrder / charge attribution, claim-order,
 //        rewards earn / reserve, the guest gate) — so BOTH deletion paths write it: user-initiated deleteAccount (as before) AND
@@ -54,7 +55,7 @@ function fakeDb() {
   const AFTER = { fn: null };                    // run fn ONCE right after the next ROOT multi-path update commits (the deletion's step 1)
   const TOUCH = { at: null, fn: null };          // run fn ONCE right after the next read OR txn of EXACTLY this path (the gap after a snapshot)
   const touched = async (p) => { if (TOUCH.at !== null && String(p) === TOUCH.at) { const f = TOUCH.fn; TOUCH.at = null; TOUCH.fn = null; await f(); } };
-  const ref = (p = '') => ({
+  const ref = (p = '') => (withPath({
     get: async () => { const s = snap(get(p)); await touched(p); return s; }, once: async () => { const s = snap(get(p)); await touched(p); return s; },
     set: async (v) => set(p, v), remove: async () => set(p, null),
     update: async (m) => { if (FAIL.update) { FAIL.update = false; throw new Error('injected update failure'); } for (const [k, v] of Object.entries(m)) set(p ? `${p}/${k}` : k, v); if (AFTER.fn && !p) { const f = AFTER.fn; AFTER.fn = null; await f(); } },
@@ -70,7 +71,7 @@ function fakeDb() {
       await touched(p);
       return out;
     },
-  });
+  }, p));
   return { tree, get, set, ref, FAIL, HOOK, TOUCH, AFTER };
 }
 const UID = 'u_' + 'a'.repeat(24), PH = 'ph_a';

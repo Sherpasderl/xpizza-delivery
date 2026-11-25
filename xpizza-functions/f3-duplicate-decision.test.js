@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // F3 double-order guard — pure collision decision + the materialize-side hold (DI'd RTDB). Run: node f3-duplicate-decision.test.js
 const assert = require('assert');
 const { duplicateSiblingDecision, holdIfDuplicateSibling } = require('./materialize-guard');
@@ -35,12 +36,12 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 // ── async holdIfDuplicateSibling (fake RTDB) ─────────────────────────────────
 function fakeDb(store, opts = {}) {
   return { ref(path) {
-    return {
+    return withPath({
       async once() { if (opts.throwOn && opts.throwOn(path)) throw new Error('read fail'); return { val: () => store[path] }; },
       async transaction(fn) { const next = fn(store[path]); store[path] = next; return { committed: true }; },
       async set(v) { store[path] = v; },
       async update() {},
-    };
+    }, path);
   } };
 }
 const PHONE = '+50433903062';

@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // Portal 1D · D4-b — a minimal in-memory RTDB for driving the REAL reward/payment writers in unit tests
 // (reserveRedemption, prepareRedemption, the charge acquirers). It implements only what those writers
 // call: ref(path).get / once('value') / set / update / transaction / child / push. Values are stored as
@@ -31,7 +32,7 @@ function createFakeRtdb(initial = {}) {
   const snap = (path) => { const v = getAt(path); const c = v == null ? null : JSON.parse(JSON.stringify(v)); return { val: () => c, exists: () => c !== null, key: split(path).pop() || null }; };
   let pushSeq = 0;
   function ref(path = '') {
-    return {
+    return withPath({
       path,
       child: (c) => ref(`${path}/${c}`),
       get: async () => { calls.push(`get ${path}`); return snap(path); },
@@ -47,7 +48,7 @@ function createFakeRtdb(initial = {}) {
         setAt(path, next);
         return { committed: true, snapshot: snap(path) };
       },
-    };
+    }, path);
   }
   return { ref, calls, dump: () => JSON.parse(JSON.stringify(root)), _getAt: getAt };
 }

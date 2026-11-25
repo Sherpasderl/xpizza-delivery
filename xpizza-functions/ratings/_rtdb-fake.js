@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('../test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // The in-memory RTDB the ratings producer's tests run on (moved verbatim from aggregate-producer.test.js so the Anuncio's day-recorder
 // cells run the SAME double): ordered key queries (orderByKey + startAt / endAt / startAfter / limitToFirst), equality child queries,
 // a read log (every get / once / query), and production's transaction semantics (the SDK's uncached first run sees null; an
@@ -12,7 +13,7 @@ function fakeDb() {
   const prune = (v) => { if (v === null || typeof v !== 'object') return v; if (Array.isArray(v)) return v.map(prune); const o = {}; for (const [k, x] of Object.entries(v)) { const p = prune(x); if (p !== null && p !== undefined && !(typeof p === 'object' && !Object.keys(p).length)) o[k] = p; } return o; };
   const snap = (v, rows) => ({ exists: () => v != null, val: () => (v == null ? null : clone(v)),
     forEach: (cb) => { for (const [k, x] of (rows || Object.entries(v || {}))) if (cb({ key: k, val: () => clone(x) }) === true) return true; return false; } });
-  const ref = (p = '') => ({
+  const ref = (p = '') => (withPath({
     get: async () => { reads.push({ kind: 'get', path: p }); return snap(get(p)); }, once: async () => { reads.push({ kind: 'get', path: p }); return snap(get(p)); },
     set: async (v) => set(p, prune(v)), update: async (m) => { for (const [k, v] of Object.entries(m)) set(p ? `${p}/${k}` : k, v === null ? null : prune(v)); },
     orderByKey: () => { const q = {}; const api = {
@@ -32,7 +33,7 @@ function fakeDb() {
       if (actual !== null) { next = fn(actual); if (next === undefined) return { committed: false, snapshot: snap(get(p)) }; }
       set(p, prune(next)); return { committed: true, snapshot: snap(get(p)) };
     },
-  });
+  }, p));
   return { tree, reads, get, set, ref };
 }
 

@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // ORCHESTRATION O1a (Codex r1/r2 on the lifecycle writers) — test-only deterministic interleavings over ANY RTDB handle (the in-memory
 // fake or the REAL emulator Admin db): gated(db).pause(method, path) arms a one-shot gate; the first matching ref call (once /
 // transaction / update / remove / set — `method` a name or a predicate(method, path); `path` exact or a predicate(path)) waits at
@@ -16,14 +17,14 @@ function gated(db) {
   };
   const wrapRef = (path) => {
     const r = path ? db.ref(path) : db.ref();
-    return {
+    return withPath({
       once: async (...a) => { await hit('once', path); return r.once(...a); },
       transaction: async (fn) => { await hit('transaction', path); return r.transaction(fn); },
       update: async (v) => { await hit('update', path); return r.update(v); },
       remove: async () => { await hit('remove', path); return r.remove(); },
       set: async (v) => { await hit('set', path); return r.set(v); },
       orderByChild: (c) => r.orderByChild(c),
-    };
+    }, path);
   };
   return {
     db: { ref: (p) => wrapRef(p || '') },

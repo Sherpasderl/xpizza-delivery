@@ -34,7 +34,7 @@ const body = live.slice(vStart, vEnd);
 const i = (t) => { const k = body.indexOf(t); assert.ok(k >= 0, `premise: verifyOtp carries ${t}`); return k; };
 const hunkAt = body.indexOf(H.begin);
 assert.ok(i("if (!uid) { uid = 'u_' + require('crypto').randomBytes(12).toString('hex'); await idxRef.set(uid); }") < hunkAt, 'AFTER the phone_index resolution');
-for (const t of ["const prof = (await profRef.get()).val();", 'await getAuth().createCustomToken(uid', 'await creditWelcome(db,']) assert.ok(hunkAt < i(t), `BEFORE ${t.slice(0, 40)}`);
+for (const t of ["const prof = (await require('./lib/rtdb-gate').gatedGet(profRef)).val();", 'await getAuth().createCustomToken(uid', 'await creditWelcome(db,']) assert.ok(hunkAt < i(t), `BEFORE ${t.slice(0, 40)}`);   // r9: the in-flight-get gate wrap (PLAN-rtdb-get-once-race r9)
 ok('placement: inside verifyOtp, after the phone_index resolution and before the profile read, the mint and the welcome credit');
 
 assert.ok(block.includes("uid = await SE.loginUid(db, { pHash, uid: lcUid, now: Date.now(), newUid: () => 'u_' + require('crypto').randomBytes(12).toString('hex') });"), 'the gate call, on the CLAIM\'s winner, with the resolution\'s uid shape');

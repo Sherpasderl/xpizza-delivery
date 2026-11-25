@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('../test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // S-F (PLAN §S-F; NOTE-S-F-support-tickets-build) — createSupportTicket: a ticket for an OWNED order only. Member proof = the ONE customer
 // predicate (rate-order.customerUidOf) + orders/{id}.customer_uid; guest proof = the order's tracking_token (the claimOrder capability),
 // compared in constant time. Any failure is ONE generic 403 with NOTHING written. The ticket carries no identity; ≤ 5 per order.
@@ -21,7 +22,7 @@ function fakeDb() {
   const set = (p, v) => { const ks = parts(p); let o = tree; for (const k of ks.slice(0, -1)) { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; } if (v === null || v === undefined) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = clone(v); };
   const prune = (v) => { if (v === null || typeof v !== 'object') return v; if (Array.isArray(v)) return v.map(prune); const o = {}; for (const [k, x] of Object.entries(v)) { const p = prune(x); if (p !== null && p !== undefined && !(typeof p === 'object' && !Object.keys(p).length)) o[k] = p; } return o; };
   const snap = (v) => ({ exists: () => v != null, val: () => (v == null ? null : clone(v)) });
-  const ref = (p = '') => ({
+  const ref = (p = '') => (withPath({
     get: async () => snap(get(p)), once: async () => snap(get(p)),
     set: async (v) => set(p, prune(v)), update: async (m) => { for (const [k, v] of Object.entries(m)) set(p ? `${p}/${k}` : k, prune(v)); },
     transaction: async (fn) => {
@@ -31,7 +32,7 @@ function fakeDb() {
       if (actual !== null) { next = fn(actual); if (next === undefined) return { committed: false, snapshot: snap(get(p)) }; }
       set(p, prune(next)); return { committed: true, snapshot: snap(get(p)) };
     },
-  });
+  }, p));
   return { tree, get, set, ref };
 }
 const A = 'u_' + 'a'.repeat(24), B = 'u_' + 'b'.repeat(24);

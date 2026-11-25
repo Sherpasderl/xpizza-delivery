@@ -64,7 +64,7 @@ function realOrder(uid) {
   assert.ok(/tracking_token: own === 'owner' \? \(ev\.tracking_token \|\| null\) : null/.test(idem), '🔴 OWN-CASH-TOKEN: the idempotent 200 carries the token for the OWNER only (unverifiable ⇒ null)');
   // chargeOnlineOrder: on the order the probe already read (no added I/O), beside the cross-restaurant guard, BEFORE any reserve /
   // acquire (a non_owner never touches the owner's hold or attempt)
-  const probeAt = SRC.indexOf("probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();");
+  const probeAt = SRC.indexOf("probeOrder = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();");   // r9: the in-flight-get gate wrap (PLAN-rtdb-get-once-race r9)
   const hosted = SRC.indexOf("require('./order-owner').ownerOf(probeOrder, customer_uid)", probeAt);
   assert.ok(probeAt !== -1 && hosted !== -1, '🔴 OWN-HOSTED: chargeOnlineOrder runs ownerOf(probeOrder, customer_uid) on the probe\'s snapshot');
   assert.ok(hosted < SRC.indexOf('reserveRedemption(db, { uid: customer_uid', probeAt) && hosted < SRC.indexOf('acq = await acquireHostedAttempt(', probeAt), '🔴 OWN-HOSTED-FIRST: before every reserve and acquire');
@@ -75,7 +75,7 @@ function realOrder(uid) {
   // probe is the SAME single read, hoisted to the first point the verified uid is known (no read added) ──
   const H0 = SRC.indexOf("chargeOnlineApp.all('*', async (req, res) => {"); const H1 = SRC.indexOf('exports.chargeOnlineOrder = onRequest(', H0);
   const H = SRC.slice(H0, H1);
-  const PROBE = "probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();";
+  const PROBE = "probeOrder = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();";   // r9: the in-flight-get gate wrap (PLAN-rtdb-get-once-race r9)
   assert.strictEqual(H.split(PROBE).length - 1, 1, '🔴 OWN-HOSTED-ONE-READ: the probe read occurs exactly once in the handler (moved, never duplicated)');
   const own = H.indexOf("require('./order-owner').ownerOf(probeOrder, customer_uid) === 'non_owner'");
   assert.ok(own > H.indexOf('if (cappGuest && cappGuest.refuse)'), 'premise: after the verified uid (and the capp-guest gate) are resolved');

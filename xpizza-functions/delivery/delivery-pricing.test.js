@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('../test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // S3a — envío, pure core + the order-path seam (no I/O beyond an injected fake db). Run: node delivery/delivery-pricing.test.js
 // The emulator suite (test/s3a-envio.emulator.test.js) drives the REAL handlers; this file pins the decisions.
 const assert = require('assert');
@@ -176,7 +177,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   {
     // P1-1 / P1-2: the charge path against the STORED order (chargeContext)
     const now = Date.now();
-    const mk = (orders, attempts = {}) => { const reads = []; return { reads, ref: (p) => ({ get: async () => { reads.push(p); const v = p.startsWith('orders/') ? orders[p.slice(7)] : attempts[p.slice('payment_attempts/'.length)]; return { val: () => (v === undefined ? null : v) }; } }) }; };
+    const mk = (orders, attempts = {}) => { const reads = []; return { reads, ref: (p) => (withPath({ get: async () => { reads.push(p); const v = p.startsWith('orders/') ? orders[p.slice(7)] : attempts[p.slice('payment_attempts/'.length)]; return { val: () => (v === undefined ? null : v) }; } }, p)) }; };
     const fresh4 = { ctx: q({ pin: { ...north(4), confirmed: true } }).ctx };
     const d0 = mk({});
     assert.strictEqual(await DW.chargeContext(d0, 'o1', null, {}, now), null); assert.deepStrictEqual(d0.reads, [], 'dark → no read');

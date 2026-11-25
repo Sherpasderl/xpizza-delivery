@@ -12,7 +12,7 @@
 // always peels first (innermost of all), so per-site layers see a raw read minus only the post-asm11 hunks.
 const BASE = '31f05c8a40c35fe0c442be8839593954c3afc8b1';
 // the LANDING order of the layers (oldest → newest): a new lane APPENDS its name here and its hunks at the end of HUNKS
-const ORDER = Object.freeze(['order-owner', 'uid-path']);
+const ORDER = Object.freeze(['order-owner', 'uid-path', 'rtdb-gate']);
 const HUNKS = Object.freeze([
  {
   "layer": "order-owner",
@@ -106,9 +106,140 @@ const HUNKS = Object.freeze([
   "was": "  if (!uidOk(uid)) return { fail: reply(403, { error: 'not_authorized' }) };\n"
  }
 ]);
+// INNER (advisor ruling (A), 11-25): the NEWEST layer's exact-line swaps that interleave with, or sit inside, the HUNKS above (one
+// file's HUNKS must stay in diff order AND grouped by layer, so a scattered newer layer cannot be appended to them). Peeled FIRST,
+// newest-first, each exactly once (else it throws: tamper / duplicate); the HUNKS are then the diff of (file − INNER) vs BASE.
+// Each swap is framed '\n<line>\n', so a less-indented twin line never matches inside a longer one.
+const INNER = Object.freeze([
+ {
+  "layer": "rtdb-gate",
+  "label": "index.js:1511 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
+  "file": "index.js",
+  "now": "\n      verifyIdToken: (t) => getAuth().verifyIdToken(t), isTombstoned: async (uid) => (await require('./lib/rtdb-gate').gatedGet(getDatabase().ref('deleted_uids/' + uid))).exists(),\n",
+  "was": "\n      verifyIdToken: (t) => getAuth().verifyIdToken(t), isTombstoned: async (uid) => (await getDatabase().ref('deleted_uids/' + uid).get()).exists(),\n"
+ },
+ {
+  "layer": "rtdb-gate",
+  "label": "index.js:1624 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
+  "file": "index.js",
+  "now": "\n            const tomb = await require('./lib/rtdb-gate').gatedGet(getDatabase().ref('deleted_uids/' + dec.uid));\n",
+  "was": "\n            const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();\n"
+ },
+ {
+  "layer": "rtdb-gate",
+  "label": "index.js:1682 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
+  "file": "index.js",
+  "now": "\n    probeOrder = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();\n",
+  "was": "\n    probeOrder = (await db.ref(`orders/${orderId}`).once('value')).val();\n"
+ },
+ {
+  "layer": "rtdb-gate",
+  "label": "index.js:2132 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
+  "file": "index.js",
+  "now": "\n    returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => require('./lib/rtdb-gate').gatedGet(db.ref(`restaurants/${restaurantId}/identity/brand_id`)).then((s) => s.val()) });\n",
+  "was": "\n    returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => db.ref(`restaurants/${restaurantId}/identity/brand_id`).get().then((s) => s.val()) });\n"
+ },
+ {
+  "layer": "rtdb-gate",
+  "label": "index.js:7325 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
+  "file": "index.js",
+  "now": "\n      const prof = (await require('./lib/rtdb-gate').gatedGet(profRef)).val();\n",
+  "was": "\n      const prof = (await profRef.get()).val();\n"
+ },
+ {
+  "layer": "rtdb-gate",
+  "label": "pixelpay-hosted-charge.js:104 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
+  "file": "pixelpay-hosted-charge.js",
+  "now": "\n    const order = (await require('./lib/rtdb-gate').afterGets(orderRef, (r) => r.once('value'))).val();\n",
+  "was": "\n    const order = (await orderRef.once('value')).val();\n"
+ },
+ {
+  "layer": "rtdb-gate",
+  "label": "pixelpay-hosted-charge.js:126 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
+  "file": "pixelpay-hosted-charge.js",
+  "now": "\n      const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), (r) => r.once('value'))).val();\n",
+  "was": "\n      const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();\n"
+ },
+ {
+  "layer": "rtdb-gate",
+  "label": "pixelpay-hosted-charge.js:252 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
+  "file": "pixelpay-hosted-charge.js",
+  "now": "\n  const order = (await require('./lib/rtdb-gate').afterGets(db.ref(`orders/${orderId}`), (r) => r.once('value'))).val();\n",
+  "was": "\n  const order = (await db.ref(`orders/${orderId}`).once('value')).val();\n"
+ },
+ {
+  "layer": "rtdb-gate",
+  "label": "pixelpay-hosted-charge.js:285 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
+  "file": "pixelpay-hosted-charge.js",
+  "now": "\n  const att = (await require('./lib/rtdb-gate').afterGets(db.ref(`payment_attempts/${order.active_attempt_id}`), (r) => r.once('value'))).val();\n",
+  "was": "\n  const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();\n"
+ },
+ {
+  "layer": "rtdb-gate",
+  "label": "delivery/delivery-wire.js:57 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
+  "file": "delivery/delivery-wire.js",
+  "now": "\n  const order = (await require('../lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val();\n",
+  "was": "\n  const order = (await db.ref(`orders/${orderId}`).get()).val();\n"
+ },
+ {
+  "layer": "rtdb-gate",
+  "label": "delivery/delivery-wire.js:61 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
+  "file": "delivery/delivery-wire.js",
+  "now": "\n    at = (await require('../lib/rtdb-gate').gatedGet(db.ref(`payment_attempts/${order.active_attempt_id}`))).val();\n",
+  "was": "\n    at = (await db.ref(`payment_attempts/${order.active_attempt_id}`).get()).val();\n"
+ },
+ {
+  "layer": "rtdb-gate",
+  "label": "delivery/delivery-wire.js:146 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
+  "file": "delivery/delivery-wire.js",
+  "now": "\n        if (dec && dec.customer === true && dec.uid) uid = attributionUid(dec, (await require('../lib/rtdb-gate').gatedGet(db.ref('deleted_uids/' + dec.uid))).exists());\n",
+  "was": "\n        if (dec && dec.customer === true && dec.uid) uid = attributionUid(dec, (await db.ref('deleted_uids/' + dec.uid).get()).exists());\n"
+ },
+ {
+  "layer": "rtdb-gate",
+  "label": "rewards-reserve.js:59 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
+  "file": "rewards-reserve.js",
+  "now": "\n    const rec = (await require('./lib/rtdb-gate').gatedGet(db.ref(`user_rewards/${uid}/${rid}/reservations/${orderId}`))).val();\n",
+  "was": "\n    const rec = (await db.ref(`user_rewards/${uid}/${rid}/reservations/${orderId}`).get()).val();\n"
+ },
+ {
+  "layer": "rtdb-gate",
+  "label": "rewards-reserve.js:532 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
+  "file": "rewards-reserve.js",
+  "now": "\n          const order = (await require('./lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val();\n",
+  "was": "\n          const order = (await db.ref(`orders/${orderId}`).get()).val();\n"
+ },
+ {
+  "layer": "rtdb-gate",
+  "label": "pixelpay-confirm.js:238 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
+  "file": "pixelpay-confirm.js",
+  "now": "\n  const preOrder = (await require('./lib/rtdb-gate').afterGets(orderRef, (r) => r.once('value'))).val();\n",
+  "was": "\n  const preOrder = (await orderRef.once('value')).val();\n"
+ },
+ {
+  "layer": "rtdb-gate",
+  "label": "delivery/zone-resume.js:40 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
+  "file": "delivery/zone-resume.js",
+  "now": "\n  return deliveryResumeRefusal(db, (await require('../lib/rtdb-gate').gatedGet(db.ref(`orders/${orderId}`))).val(), pricingP);\n",
+  "was": "\n  return deliveryResumeRefusal(db, (await db.ref(`orders/${orderId}`).get()).val(), pricingP);\n"
+ }
+]);
+// the files the HUNKS own (=== BASE after the peel) and the files INNER touches (a file outside FILES gets ONLY its INNER swaps peeled:
+// the r9 wraps that sit in no hunk of any peel layer, e.g. delivery-wire.js, so every guard reading through the hook sees eb177fe58's text)
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);
-function stripPostAsm11(file, src) {
-  if (!FILES.includes(file)) return src;
+const INNER_FILES = Object.freeze([...new Set(INNER.map((h) => h.file))]);
+function stripInner(file, src) {
+  let out = src;
+  for (let i = INNER.length - 1; i >= 0; i--) {
+    const h = INNER[i];
+    if (h.file !== file) continue;
+    const n = out.split(h.now).length - 1;
+    if (n !== 1) throw new Error(`post-asm11-layers: ${file}: the ${h.layer} inner swap «${h.label}» occurs ${n} times (expected exactly 1)`);
+    out = out.replace(h.now, () => h.was);
+  }
+  return out;
+}
+function stripHunks(file, src) {
   let out = src;
   for (let i = HUNKS.length - 1; i >= 0; i--) {
     const h = HUNKS[i];
@@ -119,4 +250,10 @@ function stripPostAsm11(file, src) {
   }
   return out;
 }
-module.exports = { BASE, ORDER, HUNKS, FILES, stripPostAsm11 };
+// THE hook: INNER first (newest), then the HUNKS newest-first
+function stripPostAsm11(file, src) {
+  if (!FILES.includes(file) && !INNER_FILES.includes(file)) return src;
+  const inner = INNER_FILES.includes(file) ? stripInner(file, src) : src;
+  return FILES.includes(file) ? stripHunks(file, inner) : inner;
+}
+module.exports = { BASE, ORDER, HUNKS, INNER, FILES, INNER_FILES, stripInner, stripHunks, stripPostAsm11 };

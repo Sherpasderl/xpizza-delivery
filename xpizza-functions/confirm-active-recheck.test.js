@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 
 /**
  * 3c (plan 10b) — confirm-time active-recheck with getIdentity PRESENT (prod-style deps).
@@ -23,7 +24,7 @@ function makeDb(initial = {}) {
   const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
   const getAt = (p) => { if (!p) return root; let nn = root; for (const k of p.split('/')) { if (nn == null) return null; nn = nn[k]; } return nn === undefined ? null : nn; };
   const setAt = (p, val) => { const parts = p.split('/'); let nn = root; for (let i = 0; i < parts.length - 1; i++) { const k = parts[i]; if (nn[k] == null || typeof nn[k] !== 'object') nn[k] = {}; nn = nn[k]; } const last = parts[parts.length - 1]; if (val === null) delete nn[last]; else nn[last] = val; };
-  const ref = (p = '') => ({
+  const ref = (p = '') => (withPath({
     async once() { return { val: () => clone(getAt(p)) }; },
     async transaction(fn) {
       const real = clone(getAt(p));
@@ -34,7 +35,7 @@ function makeDb(initial = {}) {
       return { committed: true, snapshot: { val: () => clone(getAt(p)) } };
     },
     async update(patch) { if (!p) { for (const [k, v] of Object.entries(patch)) setAt(k, clone(v)); } else setAt(p, Object.assign({}, getAt(p) || {}, clone(patch))); },
-  });
+  }, p));
   return { ref, _get: getAt };
 }
 

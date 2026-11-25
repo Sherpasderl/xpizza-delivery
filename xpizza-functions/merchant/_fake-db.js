@@ -1,4 +1,5 @@
 'use strict';
+const { withPath } = require('../test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1)
 // H1a test helper — a tiny in-memory RTDB stand-in (ref().once/set/update/remove/transaction) for the merchant unit tests.
 // It mirrors the Admin SDK surface the merchant modules use, nothing more. `failReads` makes the next reads under a prefix
 // throw (an injected outage); `onTxn` lets a test interleave a write between a transaction's read and its commit.
@@ -28,7 +29,7 @@ function createFakeDb(initial = {}) {
   function guard(path) { for (const p of failReads) if (String(path).startsWith(p)) throw new Error(`injected read failure: ${path}`); }
 
   function ref(path = "") {
-    return {
+    return withPath({
       async once() { guard(path); const v = get(path); return { val: () => v, exists: () => v !== null }; },
       // an equality query over direct children (orderByChild(k).equalTo(v).once()), as the Admin SDK returns it: matches or null
       orderByChild(k) { return { equalTo(v) { return { async once() {
@@ -81,7 +82,7 @@ function createFakeDb(initial = {}) {
         }
         throw new Error('transaction retries exhausted');
       },
-    };
+    }, path);
   }
   return { ref, get, put, failReads, hooks };
 }

@@ -74,7 +74,7 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === their ba
   '25ccb39e19ebf4374a12a3f2f93e8d633a20c962de20ee5b1c005139b21cfd2b',   // payments/sdk/cards.js
   '6dd9800e290f06eed59fa23c55fc8caff7414fb633d5c767b60305a5c8353ab5',   // payments/sdk/cards.js
   'eb8ba401ffcbdee66632b95dffe5c4b9a13c5a8ad17b4486c14bd934b82e1ed8',   // payments/sdk/cards.js
-  'dec397f314b482a15c614c0edcb9289d5f00fa5781963fc7a5a229bea5eb144d',   // payments/sdk/cards.js — asm12: the fence block, now its own hunk (cardclean's code sits between it and the exports)
+  '5ae872356c7ebaf0e82d68365f7bda30bf535795a68981ca827d6c9a84a2a8bd',   // payments/sdk/cards.js — asm12: the fence block, now its own hunk (cardclean's code sits between it and the exports)
   '551b8984b4f3dda845e5eec8cbe6b8005b82c20991cd70137ccf8512b4fb39fa',   // payments/sdk/cards.js — asm12: the exports line (the privacy names added to cardclean's exports)
     ],
   });
@@ -97,7 +97,7 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === their ba
   ["payments/sdk/cards.js","now","  if (await isDeletedUid(deps.db, uid)) return { status: 404, body: { error: 'not_found' } };   // Codex #154 r1"],
   ["payments/sdk/cards.js","now","  const r = !ok ? { outcome: 'skipped' } : (await isDeletedUid(deps.db, order.customer_uid)) ? { outcome: 'dropped' } : await completeVault(deps, { uid: order.customer_uid, token, token_hash: att.token_hash, display: att.display, vault_gen: att.vault_gen });"],
   ["payments/sdk/cards.js","was","  const r = ok ? await completeVault(deps, { uid: order.customer_uid, token, token_hash: att.token_hash, display: att.display, vault_gen: att.vault_gen }) : { outcome: 'skipped' };"],
-  ["payments/sdk/cards.js","now","const isDeletedUid = async (db, uid) => (await db.ref(`deleted_uids/${uid}`).once('value')).exists();"],
+  ["payments/sdk/cards.js","now","const isDeletedUid = async (db, uid) => (await require('../../lib/rtdb-gate').afterGets(db.ref(`deleted_uids/${uid}`), (r) => r.once('value'))).exists();"],   // r9: the in-flight-get gate wrap (PLAN-rtdb-get-once-race r9)
   ["payments/sdk/cards.js","now","const hashOfCard = (c) => (typeof c.token_hash === 'string' && /^[0-9a-f]{64}$/.test(c.token_hash) ? c.token_hash : crypto.createHash('sha256').update(c.token).digest('hex'));"],
   ["payments/sdk/cards.js","now","async function fenceCards(db, uid, at) {"],
   ["payments/sdk/cards.js","now","  const res = await node(db, uid).transaction((cur) => {"],
