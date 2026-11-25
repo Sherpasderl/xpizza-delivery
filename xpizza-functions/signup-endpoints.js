@@ -304,7 +304,7 @@ async function revokeSessions(db, uid, now, revoke, deadlineMs) {
 // (signup-platform's claimUid draws eagerly: a new path, no byte-identity duty — advisor 2026-11-01.)
 async function claimPhoneUid(db, pHash, newUid) {
   const ref = db.ref(`phone_index/${pHash}`);
-  const seen = (await ref.get()).val();
+  const seen = (await ref.once('value')).val();
   if (typeof seen === 'string' && seen) return seen;
   let cand = null;
   const tx = await ref.transaction((cur) => (typeof cur === 'string' && cur ? undefined : (cand = cand || newUid())));

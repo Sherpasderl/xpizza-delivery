@@ -22,8 +22,11 @@ const quiet = async (fn) => { const l = console.log, w = console.warn, e = conso
 async function race(tree, read, compete, at = null, on = null) {
   const S = tree && typeof tree.at === 'function' ? tree : H.store(tree); const c = on || H.client('site');   // a STORE carries a cell's earlier real writes
   const swallow = (p) => Promise.resolve(p).catch(() => {});
+  const from = c.sent().length;
   const r = read(c.db); swallow(r); await H.flush();
-  if (at) { await c.serve(S, { until: (sent) => sent.some((m) => m.a === 'g' && m.b.p === at && !m.__done) }); assert.ok(c.sent().some((m) => m.a === 'g' && m.b.p === at), `premise: the helper issued its get on ${at}`); }
+  // the site's read in flight: a get ('g', the base) or a listen ('q', once / onceWithin) on its path — only the site has issued it yet
+  const inFlight = (m) => (m.a === 'g' || m.a === 'q') && m.b && m.b.p === at && c.conn().requestCBHash_[m.r];
+  if (at) { await c.serve(S, { until: (sent) => sent.slice(from).some(inFlight) }); assert.ok(c.sent().slice(from).some((m) => (m.a === 'g' || m.a === 'q') && m.b && m.b.p === at), `premise: the helper issued its read on ${at}`); }
   swallow(compete(c.db)); await H.flush();
   await c.serve(S);
   const value = await r;
@@ -189,6 +192,9 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
   const CATALOG = (() => { const { buildSourceCandidate } = require('../catalog/candidate-validate'); const { inputs, built } = buildSourceCandidate('x_pizza', require('../tools/seed-source-store').buildSourceFromCode('x_pizza')); return { inputs, built }; })();
   await quiet(() => require('../catalog/catalog-publish').publishVersion(FS, 'x_pizza', { items: CATALOG.built.items, structure: CATALOG.built.structure, extras: CATALOG.inputs.extras, extraRecords: CATALOG.built.extras, source_sha: 'rg0', ...(CATALOG.built.key_mode == null ? {} : { key_mode: CATALOG.built.key_mode }) }, { expected: { activeVersionId: null } }));
   const CARNIVORA = CATALOG.built.items.find((i) => i.key === 'Carnivora');
+  // the branch xp_sur (row 9) is published HERE, before any handler loads the restaurant registry (a cached, TTL'd id list)
+  const pub = await quiet(() => require('../catalog/catalog-publish').publishVersion(FS, 'xp_sur', { items: CATALOG.built.items, structure: CATALOG.built.structure, extras: CATALOG.inputs.extras, extraRecords: CATALOG.built.extras, source_sha: 'rg9', ...(CATALOG.built.key_mode == null ? {} : { key_mode: CATALOG.built.key_mode }) }, { expected: { activeVersionId: null } }));
+  assert.ok(pub && pub.versionId, 'premise: the branch catalog published');
   const OPEN = { open: true, start: '00:00', end: '24:00' };
   const IDENTITY = { name: 'X', phone: '+50400000000', active: true, hub_lat: 14.1, hub_lng: -87.2, delivery_radius_km: 8, version: 1, hours: { sun: OPEN, mon: OPEN, tue: OPEN, wed: OPEN, thu: OPEN, fri: OPEN, sat: OPEN } };
   const tok = (uid) => H.idToken(uid, { customer: true });
@@ -263,13 +269,11 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
   await cell('RG-SITE-9 index.js:2132 chargeOnlineOrder\'s return-site brand read (a BRANCH\'s retry) vs the offers brand resolver\'s once (marketing/brand-of.js:14)', async (L) => {
     // a branch (brand_id → a brand WITH its own deployment) re-charging an order its first attempt created: the retry skips the fresh
     // identity read, so the return site resolves the brand through readBrandId. The branch's catalog is published by the real writer.
-    const pub = await quiet(() => require('../catalog/catalog-publish').publishVersion(FS, 'xp_sur', { items: CATALOG.built.items, structure: CATALOG.built.structure, extras: CATALOG.inputs.extras, extraRecords: CATALOG.built.extras, source_sha: 'rg9', ...(CATALOG.built.key_mode == null ? {} : { key_mode: CATALOG.built.key_mode }) }, { expected: { activeVersionId: null } }));
-    assert.ok(pub && pub.versionId, `${L}: premise, the branch catalog published`);
     const S = H.store({ restaurants: { xp_sur: { identity: { ...IDENTITY, brand_id: 'x_pizza' } } } });
-    const body = { ...orderBody('o9', 'online'), restaurant_id: 'xp_sur' };
+    const body = { ...orderBody('o9', 'online'), restaurant_id: 'xp_sur', customer_phone: '99559009' };   // its own phone: the shared app keeps per-phone process state across cells
     const charge = () => H.call(X.idx.chargeOnlineOrder, { headers: { authorization: 'Bearer rtdb-race-make-secret', origin: 'https://sherpa.hn' }, body });
-    const first = charge(); for (let i = 0; i < 200; i++) { await H.flush(); await X.serve(S).catch(() => {}); } await quiet(() => first);   // the first attempt: the pending order (its hosted create fails closed: no network)
-    assert.ok(S.at('/orders/o9'), `${L}: premise, the first attempt left the pending order`);
+    const first = charge(); for (let i = 0; i < 200; i++) { await H.flush(); await X.serve(S).catch(() => {}); } const firstRes = await quiet(() => first);   // the first attempt: the pending order (its hosted create fails closed: no network)
+    assert.ok(S.at('/orders/o9'), `${L}: premise, the first attempt left the pending order (it answered ${JSON.stringify(firstRes).slice(0, 200)})`);
     const r = await race(S, charge, (db) => require('../marketing/brand-of').brandOf(db, 'xp_sur', { nowMs: Date.now(), cached: false }), '/restaurants/xp_sur/identity/brand_id', X);
     clean(L, r, '/restaurants/xp_sur/identity/brand_id');
   });

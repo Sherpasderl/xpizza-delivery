@@ -84,7 +84,7 @@ async function chargeUidOf(req, { getAuth, getDatabase, attributionUid, deadline
       (async () => {
         const dec = await getAuth().verifyIdToken(idTok);
         if (dec && dec.customer === true && dec.uid) {
-          const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();
+          const tomb = await require('./lib/rtdb-once').onceWithin(getDatabase().ref('deleted_uids/' + dec.uid), deadlineMs);
           return attributionUid(dec, tomb.exists());
         }
         return null;

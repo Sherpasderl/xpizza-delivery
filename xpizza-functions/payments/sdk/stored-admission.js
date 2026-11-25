@@ -11,7 +11,7 @@ const refusalOf = (lr, orderId) => ({ status: lr.httpStatus, body: { error: lr.r
 // the stored order of this id, read once ⇒ { order, refusal } — refusal null ⇒ admitted (or no order yet)
 async function storedAdmission(db, orderId, deliveryResume) {
   if (typeof deliveryResume !== 'function') throw new Error('storedAdmission: deliveryResume is required');   // never silently unguarded
-  const order = (await db.ref(`orders/${orderId}`).get()).val();
+  const order = (await db.ref(`orders/${orderId}`).once('value')).val();
   if (order == null) return { order: null, refusal: null };
   const lr = await deliveryResume(order);
   return { order, refusal: lr ? refusalOf(lr, orderId) : null };

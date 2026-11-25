@@ -47,13 +47,13 @@ async function claimOrderCore(db, { uid, orderId, token, now }) {
   if (hasToken && !TOKEN_RE.test(tok)) return FORBIDDEN;
 
   // H10 durability (defense-in-depth; the wrapper also checks): a tombstoned uid never binds/earns.
-  if ((await db.ref(`deleted_uids/${uid}`).get()).exists()) return FORBIDDEN;
+  if ((await db.ref(`deleted_uids/${uid}`).once('value')).exists()) return FORBIDDEN;
 
   // Verified uid must own a profile with a stored phone_hash (h2). No profile → forbidden.
   const h2 = (await db.ref(`user_profiles/${uid}/phone_hash`).get()).val();
   if (!h2) return FORBIDDEN;
 
-  const order = (await db.ref(`orders/${orderId}`).get()).val();
+  const order = (await db.ref(`orders/${orderId}`).once('value')).val();
   if (!order) return FORBIDDEN;                                                   // uniform (no missing-order oracle)
 
   // Token path: strict token↔order bind (belt-and-suspenders; the token is the capability).
