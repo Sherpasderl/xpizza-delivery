@@ -219,69 +219,75 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
     assert.deepStrictEqual({ residual: r.residual, asserted: r.asserted }, { residual: [], asserted: false }, `🔴 ${L}`);
   });
 
-  // RG-AFTER-504, the POST-AUTH site (r9 §2): finish.js:99 reads the order (coordinator.js:16, gated) AFTER placeOriginal authorized.
-  // (a) GATED WAIT: right after the authorization another request's gated order get (stored-admission.js:14) is in flight and HELD
-  //     ~120 ms (the response deadline passes for the waiting request); then it settles and finishSdk continues.
-  // (b) UNDELAYED: no competitor, nothing held (holding finish's own listen would also starve the order transactions' listens).
-  // The persisted state, the answer and the provider calls must be identical — the queued wait changes timing only.
-  await cell('RG-AFTER-504-POSTAUTH finish.js:99: a waiter queued past the response deadline continues to the same answer, state and provider calls as an undelayed request', async (L) => {
-    const { makeAdapter } = require('../payments/sdk/psp-adapter'); const { makeFakePsp } = require('../payments/sdk/fake-adapter');
-    const C = require('../payments/sdk/coordinator'); const DW = require('../delivery/delivery-wire'); const G = require('../lib/rtdb-gate');
+  // RG-AFTER-504 (r9 §2, Codex #404 P4) — the same file runs in BOTH trees: WIRED (candidate) ⇔ the sites go through lib/rtdb-gate.
+  //   candidate: another request's gated order get is HELD for HOLD ms, so the site's listener QUEUES behind it;
+  //   base (eb177fe58, no gate): the site's OWN order read is delayed the same HOLD ms (an equally delayed request): the probe's order
+  //   listen frame is held (PRE); finish.js:99's once is served from the SDK cache (its order transactions hold a listen, no frame), so
+  //   its coordinator.readOrder call waits HOLD ms before reading (POST-AUTH). Both trees: the HOLD runs from the moment the read waits.
+  // The response deadline (DEADLINE ms, < HOLD) expires while the read waits (premise, asserted: the client got no answer in time); the
+  // hold is released, the request runs on to its end for nobody, then the REAL recovery runs (payments/sdk/sweeper.sweepSdkPayments,
+  // clocked past REVISIT_MS). In-tree: one authorization, the recovery ran, empty gate bookkeeping. Cross-tree: the DIGEST line
+  // (late answer, persisted tree, provider calls, all normalized) must equal the base run's (rtdb-build/r9/slot.sh step 504-PARITY).
+  const WIRED = require('fs').readFileSync(require.resolve('../payments/sdk/coordinator.js'), 'utf8').includes('rtdb-gate');
+  const HOLD = 150; const DEADLINE = 60;
+  const norm504 = (v) => {
+    if (Array.isArray(v)) return v.map(norm504);
+    if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v).sort().map((k) => [/^-[A-Za-z0-9_-]{19}$/.test(k) ? '<push>' : k, norm504(v[k])]));
+    if (typeof v === 'number' && v > 1e12) return '<T>';
+    if (typeof v === 'string' && v.length >= 24 && /^[A-Za-z0-9_\-.=+/]+$/.test(v) && !/^(att|sdk|uid|o)_/.test(v)) return '<TOKEN>';
+    return v;
+  };
+  const SEED_KEYS = ['platform_config', 'restaurants', 'deleted_uids', 'catalog', 'menus'];
+  const treeOf = (S) => { const t = JSON.parse(JSON.stringify(S.tree())); for (const k of SEED_KEYS) delete t[k]; return norm504(t); };
+  async function recover(c, S, deps) {   // the REAL SDK recovery, clocked past the revisit window
+    const SW = require('../payments/sdk/sweeper'); const t0 = deps.clock();
+    const p = SW.sweepSdkPayments({ ...deps, clock: () => t0 + SW.REVISIT_MS + 1 }).then((v) => ({ ok: true, v }), (e) => ({ threw: e.message })); let done = false; p.then(() => { done = true; });
+    for (let i = 0; i < 2000 && !done; i++) { await H.flush(); await c.serve(S, { max: 400 }).catch(() => {}); if (!done) await new Promise((r) => setTimeout(r, 5)); }
+    return p;
+  }
+  const G504 = () => (WIRED ? require('../lib/rtdb-gate').gateState() : { pending_gets: 0, waiters: 0 });
+
+  // POST-AUTH: finish.js:99 reads the order (coordinator.js:16) AFTER placeOriginal authorized
+  await cell(`RG-AFTER-504-POSTAUTH finish.js:99 [${WIRED ? 'candidate' : 'base'}]: the deadline passes while the post-auth read waits; the request completes for nobody; the sweeper recovers; DIGEST for base parity`, async (L) => {
+    const { makeAdapter } = require('../payments/sdk/psp-adapter'); const { makeFakePsp } = require('../payments/sdk/fake-adapter'); const DW = require('../delivery/delivery-wire');
     const OID = 'o504'; const ATT = 'att_504_cell_000001';
     const order = { order_id: OID, restaurant_id: 'x_pizza', status: 'pending_payment', payment_status: 'pending', payment_method: 'online', order_type: 'pickup', customer_uid: 'u504',
       customer_name: 'Ana', customer_phone: '+50499990504', items_text: '1x Pizza', total: 100, total_cents: 10000, subtotal_cents: 8696, tax_cents: 1304, created_at: 1000 };
     const card = { kind: 'new', sdk_token: 'tok_new', save: false, authentication_identifier: null, display: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 } };
-    async function variant(kind) {
-      const S = H.store({ platform_config: { sdk_pay: { available: true, restaurants: { x_pizza: true } } } }); const c = H.client(`p${kind}`);
-      const fake = makeFakePsp({}); let authed = false; const impl = { ...fake.impl };
-      for (const k of Object.keys(impl)) { const f = impl[k]; if (typeof f === 'function') impl[k] = async (...a) => { const r = await f(...a); if (/auth/i.test(k)) authed = true; return r; }; }
-      const deps = { db: c.db, psp: makeAdapter(impl), clock: () => 1000, voidEligible: () => false, ppNamespace: 'sandbox', releaseResources: async () => {}, goLive: async () => {} };
-      const ctx = { orderId: OID, kind: 'member', uid: 'u504', guestPhoneHash: null, attemptId: ATT, card, replacesOrderId: null, pendingOrderRecord: { ...order }, fingerprint: 'fp504', tipCents: 0,
-        flags: { controlRefuseFresh: false, menuRefuseFresh: false, choiceRefuseFresh: false, extrasRefuseFresh: null, cartBlocked: [], refuseFresh: false, payerRefuseFresh: false }, nowTs: 1000,
-        runGate: async () => ({ refuse: null, provenance: null }), answerRefusal: (r) => ({ status: 'REFUSAL', body: r }), deliveryResume: (ord) => DW.deliveryResumeRefusal(c.db, ord, DW.loadPricing(c.db)) };
-      const fin = require('../payments/sdk/finish').finishSdk(deps, ctx); let done = false; const res = fin.then((v) => { done = true; return v; }, (e) => { done = true; return { threw: e.message }; });
-      let compGet = null; let heldFrom = null; let releaseAt = 0; let maxWaiters = 0;
-      const hold = (m) => kind === 'gated' && heldFrom != null && Date.now() < releaseAt && m.a === 'g' && m.b && m.b.p === `/orders/${OID}` && c.sent().indexOf(m) >= heldFrom;
-      for (let i = 0; i < 2000 && !done; i++) {
-        if (authed && heldFrom == null) { heldFrom = c.sent().length; releaseAt = Date.now() + 120; if (kind === 'gated') compGet = require('../payments/sdk/stored-admission').storedAdmission(c.db, OID, async () => null).catch(() => {}); }
-        await H.flush(); await c.serve(S, { skip: hold, max: 400, until: heldFrom == null ? () => authed : null }).catch(() => {}); maxWaiters = Math.max(maxWaiters, G.gateState().waiters); if (!done) await new Promise((r) => setTimeout(r, 5));
-      }
-      const answer = await res; if (compGet) await compGet; await c.serve(S).catch(() => {});
-      const out = { answer, tree: JSON.stringify(S.tree()), auths: fake.calls.length, gate: G.gateState(), maxWaiters }; await c.close(); return out;
+    const S = H.store({ platform_config: { sdk_pay: { available: true, restaurants: { x_pizza: true } } } }); const c = H.client('p504');
+    const fake = makeFakePsp({}); let authed = false; const impl = { ...fake.impl }; const effects = [];
+    for (const k of Object.keys(impl)) { const f = impl[k]; if (typeof f === 'function') impl[k] = async (...a) => { const r = await f(...a); if (/auth/i.test(k)) authed = true; return r; }; }
+    const deps = { db: c.db, psp: makeAdapter(impl), clock: () => 1000, voidEligible: () => false, ppNamespace: 'sandbox', releaseResources: async () => { effects.push('releaseResources'); }, goLive: async () => { effects.push('goLive'); } };
+    const ctx = { orderId: OID, kind: 'member', uid: 'u504', guestPhoneHash: null, attemptId: ATT, card, replacesOrderId: null, pendingOrderRecord: { ...order }, fingerprint: 'fp504', tipCents: 0,
+      flags: { controlRefuseFresh: false, menuRefuseFresh: false, choiceRefuseFresh: false, extrasRefuseFresh: null, cartBlocked: [], refuseFresh: false, payerRefuseFresh: false }, nowTs: 1000,
+      runGate: async () => ({ refuse: null, provenance: null }), answerRefusal: (r) => ({ status: 'REFUSAL', body: r }), deliveryResume: (ord) => DW.deliveryResumeRefusal(c.db, ord, DW.loadPricing(c.db)) };
+    let compGet = null; let compFrame = null; let tWait = null; let timedOut = null; let maxWaiters = 0; let tAuth = 0;
+    const C = require('../payments/sdk/coordinator'); const readOrder0 = C.readOrder;
+    if (!WIRED) C.readOrder = async (db, id, ...r) => { if (authed && tWait == null && id === OID) { tWait = Date.now(); await new Promise((z) => setTimeout(z, HOLD)); } return readOrder0(db, id, ...r); };
+    const fin = require('../payments/sdk/finish').finishSdk(deps, ctx); let done = false; const res = fin.then((v) => { done = true; return v; }, (e) => { done = true; return { threw: e.message }; });
+    const hold = (m) => WIRED && m === compFrame && (tWait == null ? Date.now() < tAuth + 3000 : Date.now() < tWait + HOLD);
+    try {
+    for (let i = 0; i < 2000 && !done; i++) {
+      if (authed && !tAuth) { tAuth = Date.now(); if (WIRED) { const from = c.sent().length; compGet = require('../payments/sdk/stored-admission').storedAdmission(c.db, OID, async () => null).catch(() => {}); await H.flush(); compFrame = c.sent().slice(from).find((m) => m.a === 'g' && m.b && m.b.p === `/orders/${OID}`); } }
+      if (WIRED && tWait == null && G504().waiters >= 1) tWait = Date.now();
+      if (tWait != null && timedOut === null && Date.now() - tWait >= DEADLINE) timedOut = !done;
+      await H.flush(); await c.serve(S, { skip: hold, max: 400, until: !tAuth ? () => authed : null }).catch(() => {}); maxWaiters = Math.max(maxWaiters, G504().waiters); if (!done) await new Promise((r) => setTimeout(r, 5));
     }
-    const a = await variant('gated'); const b = await variant('undelayed');
-    assert.ok(a.auths >= 1, `${L}: premise, the PSP was called (${a.auths})`);
-    assert.ok(a.maxWaiters >= 1, `${L}: premise, finish.js:99 actually queued behind the held gated get (${a.maxWaiters})`);
-    assert.ok(a.answer && !a.answer.threw && a.answer.status !== 'REFUSAL', `${L}: premise, a real (non-refusal) answer: ${JSON.stringify(a.answer).slice(0, 120)}`);
-    assert.strictEqual(a.auths, b.auths, `🔴 ${L}: provider calls gated ${a.auths} vs undelayed ${b.auths}`);
-    assert.deepStrictEqual(a.answer, b.answer, `🔴 ${L}: the answer`);
-    assert.strictEqual(a.tree, b.tree, `🔴 ${L}: the persisted state`);
-    assert.deepStrictEqual([a.gate.pending_gets, a.gate.waiters], [0, 0], `${L}: gate bookkeeping empty`);
+    } finally { C.readOrder = readOrder0; }
+    const answer = await res; if (compGet) await compGet; await c.serve(S).catch(() => {});
+    const rec = await recover(c, S, deps);
+    const out = { answer: norm504(answer), tree: treeOf(S), calls: fake.calls.map((x) => x.action), effects, recovery: rec.threw ? { threw: rec.threw } : 'ok' };
+    console.log(`DIGEST RG-AFTER-504-POSTAUTH ${JSON.stringify(out)}`);
+    assert.strictEqual(timedOut, true, `${L}: premise, the response deadline (${DEADLINE} ms after the read began waiting) passed while it waited (waitStart=${tWait == null ? null : tWait - tAuth} ms after auth)`);
+    if (WIRED) assert.ok(maxWaiters >= 1, `${L}: premise, finish.js:99 actually queued behind the held gated get (${maxWaiters})`);
+    assert.ok(answer && !answer.threw && answer.status !== 'REFUSAL', `${L}: the request ran to a real answer for nobody: ${JSON.stringify(answer).slice(0, 160)}`);
+    assert.strictEqual(fake.calls.filter((x) => /auth/i.test(x.action)).length, 1, `🔴 ${L}: exactly one provider authorization (incl. the recovery)`);
+    assert.strictEqual(rec.threw, undefined, `🔴 ${L}: the sweeper recovery ran: ${rec.threw}`);
+    assert.deepStrictEqual([G504().pending_gets, G504().waiters], [0, 0], `${L}: gate bookkeeping empty`); await c.close();
   });
 
-  // RG-DOUBLE-TAP SDK (scoped per #399 P2-5: a PERSISTED SDK attempt): two concurrent identical finishSdk for one order + attempt, the
-  // repo's fake PSP. ONE provider authorization; the second answers by today's replay / in-progress rules. The pre-gate tree must match.
-  await cell('RG-DOUBLE-TAP SDK: two concurrent identical SDK finishes ⇒ one provider authorization, answers as today', async (L) => {
-    const { makeAdapter } = require('../payments/sdk/psp-adapter'); const { makeFakePsp } = require('../payments/sdk/fake-adapter'); const DW = require('../delivery/delivery-wire');
-    const OID = 'odtsdk'; const ATT = 'att_dt_sdk_00000001';
-    const order = { order_id: OID, restaurant_id: 'x_pizza', status: 'pending_payment', payment_status: 'pending', payment_method: 'online', order_type: 'pickup', customer_uid: 'udt',
-      customer_name: 'Ana', customer_phone: '+50499990777', items_text: '1x Pizza', total: 100, total_cents: 10000, subtotal_cents: 8696, tax_cents: 1304, created_at: 1000 };
-    const S = H.store({ platform_config: { sdk_pay: { available: true, restaurants: { x_pizza: true } } } }); const c = H.client('dtsdk'); const fake = makeFakePsp({});
-    const deps = { db: c.db, psp: makeAdapter(fake.impl), clock: () => 1000, voidEligible: () => false, ppNamespace: 'sandbox', releaseResources: async () => {}, goLive: async () => {} };
-    const ctx = () => ({ orderId: OID, kind: 'member', uid: 'udt', guestPhoneHash: null, attemptId: ATT, card: { kind: 'new', sdk_token: 'tok_new', save: false, authentication_identifier: null, display: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 } },
-      replacesOrderId: null, pendingOrderRecord: { ...order }, fingerprint: 'fpdt', tipCents: 0, flags: { controlRefuseFresh: false, menuRefuseFresh: false, choiceRefuseFresh: false, extrasRefuseFresh: null, cartBlocked: [], refuseFresh: false, payerRefuseFresh: false },
-      nowTs: 1000, runGate: async () => ({ refuse: null, provenance: null }), answerRefusal: (r) => ({ status: 'REFUSAL', body: r }), deliveryResume: (ord) => DW.deliveryResumeRefusal(c.db, ord, DW.loadPricing(c.db)) });
-    const F = require('../payments/sdk/finish');
-    const sw = (p) => p.then((v) => v, (e) => ({ threw: e.message }));
-    const a = sw(F.finishSdk(deps, ctx())); const b = sw(F.finishSdk(deps, ctx())); let n2 = 0; a.then(() => n2++); b.then(() => n2++);
-    for (let i = 0; i < 2000 && n2 < 2; i++) { await H.flush(); await c.serve(S, { max: 400 }).catch(() => {}); if (n2 < 2) await new Promise((r) => setTimeout(r, 5)); }
-    const [ra, rb] = await Promise.all([a, b]);
-    const auths = fake.calls.filter((x) => /auth/i.test(x.action)).length;
-    console.log(`    RG-DOUBLE-TAP SDK answers: ${JSON.stringify(ra).slice(0, 120)} / ${JSON.stringify(rb).slice(0, 120)}; provider calls=${JSON.stringify(fake.calls.map((x) => x.action))}`);
-    assert.ok(!(ra && ra.threw && /listen\(\) called twice/.test(ra.threw)) && !(rb && rb.threw && /listen\(\) called twice/.test(rb.threw)), `🔴 ${L}: «listen() called twice»`);
-    assert.strictEqual(auths, 1, `🔴 ${L}: provider authorizations`);
-    await c.close();
-  });
+  // RG-DOUBLE-TAP SDK moved to the EMULATOR (Codex #404 P3: this harness acks writes without pushing server updates, so a transaction
+  // retry could only end maxretry): test/rtdb-double-tap.emulator.test.js, npm run test:rtdb-double-tap, + the slot's base-parity step.
 
   // ── index.js inline reads, through the REAL exported handlers on the harness default app (H.indexApp)
   // the catalog the money handlers price from: published into the Firestore fake by the REAL writer (publishVersion), as in production
@@ -386,31 +392,46 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
       assert.strictEqual(attempts.length, 1, `🔴 ${L}: persisted attempts`);
     } finally { H.stubFetch(null); }
   });
-  // RG-AFTER-504, a PRE site (r9 §2): index.js:1682's existing-order probe (gated listener) queued behind another request's gated order
-  // get HELD ~120 ms, in a real hosted chargeOnlineOrder (provider create stubbed to succeed) vs an undelayed one: the same answer shape,
-  // ONE create, ONE attempt, the same order state (ids / tokens are random per run, so the comparison is on decisions and counts).
-  await cell('RG-AFTER-504-PRE index.js:1682: the probe queued past the deadline continues to the same decision, one create, one attempt', async (L) => {
-    const G = require('../lib/rtdb-gate');
-    async function variant(kind, oid) {
-      let created = 0; H.stubFetch((u) => (/pixelpay\.dev\/api\/v2\/transaction\/hosted/.test(u) ? (created += 1, H.jsonResponse(200, { success: true, url: `https://pay.example/${oid}` })) : null));
-      try {
-        const S = H.store({ deleted_uids: {}, restaurants: { x_pizza: { identity: IDENTITY } } });
-        const body = { ...orderBody(oid, 'online'), customer_phone: kind === 'gated' ? '99557504' : '99557505' };
-        let compGet = null; let releaseAt = 0; let maxWaiters = 0;
-        if (kind === 'gated') { compGet = require('../payments/sdk/stored-admission').storedAdmission(X.db, oid, async () => null).catch(() => {}); releaseAt = Date.now() + 120; }
-        const hold = (m) => kind === 'gated' && Date.now() < releaseAt && m.a === 'g' && m.b && m.b.p === `/orders/${oid}`;
-        const res = H.call(X.idx.chargeOnlineOrder, { headers: bearer(`u${oid}`), body }); let done = false; res.then(() => { done = true; }, () => { done = true; });
-        for (let i = 0; i < 2000 && !done; i++) { await H.flush(); await X.serve(S, { skip: hold, max: 400 }).catch(() => {}); maxWaiters = Math.max(maxWaiters, G.gateState().waiters); if (!done) await new Promise((r) => setTimeout(r, 5)); }
-        const answer = await res; if (compGet) await compGet;
-        const o = S.at(`/orders/${oid}`) || {};
-        return { status: answer.status, keys: Object.keys(answer.body || {}).sort().join(','), created, attempts: Object.keys(S.at('/payment_attempts') || {}).length, orderStatus: o.status, payStatus: o.payment_status, maxWaiters };
-      } finally { H.stubFetch(null); }
-    }
-    const a = await variant('gated', 'o504p'); const b = await variant('undelayed', 'o504q');
-    assert.ok(a.maxWaiters >= 1, `${L}: premise, the probe actually queued (${a.maxWaiters})`);
-    const pick = (v) => ({ status: v.status, keys: v.keys, created: v.created, attempts: v.attempts, orderStatus: v.orderStatus, payStatus: v.payStatus });
-    assert.deepStrictEqual(pick(a), pick(b), `🔴 ${L}`);
-    assert.deepStrictEqual([a.created, a.attempts], [1, 1], `${L}: one create, one attempt`);
+  // PRE: index.js:1682's existing-order probe, through the REAL exported placeSdkOrder (r9 §2 as specified); the PSP is the contract
+  // fake behind payments/sdk/deps.productionDeps (as test/sdk-envlim), swapped in for this cell only
+  await cell(`RG-AFTER-504-PRE index.js:1682 via placeSdkOrder [${WIRED ? 'candidate' : 'base'}]: the deadline passes while the probe waits; the request completes for nobody; the sweeper recovers; DIGEST for base parity`, async (L) => {
+    const { makeAdapter } = require('../payments/sdk/psp-adapter'); const { makeFakePsp } = require('../payments/sdk/fake-adapter'); const PC = require('../../customer-app/capp-pay-card.js');
+    const fake = makeFakePsp({}); const depsPath = require.resolve('../payments/sdk/deps'); const realDeps = require(depsPath); const saved = require.cache[depsPath];
+    const sdkDeps = (db) => ({ ...realDeps.productionDeps(db), psp: makeAdapter(fake.impl), ppNamespace: 'sandbox' });
+    require.cache[depsPath] = { ...saved, exports: { ...realDeps, productionDeps: sdkDeps } };
+    const net0 = H.NET.length;
+    try {
+      const oid = 'sdk_261125-150401-RTDB504P'; const S = H.store({ deleted_uids: {}, restaurants: { x_pizza: { identity: IDENTITY } }, platform_config: { sdk_pay: { available: true, restaurants: { x_pizza: true } } } });
+      const card = { kind: 'new', sdk_token: 'tok_504', save: false, authentication_identifier: null, display: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2031 } };
+      const body = PC.placeBody({ ...orderBody(oid, 'online'), customer_phone: '99557504' }, card, 'att_rtdb504p_000000001', { guest: false }, null);
+      assert.ok(body, `${L}: premise, the client builds the SDK body`);
+      // the wait starts when the probe waits: candidate ⇔ its listener is queued (gate waiters ≥ 1) behind the competitor's get, held
+      // until then; base ⇔ its own order listen (the first q on the order) is on the wire. Both are then held HOLD ms from that moment.
+      let compGet = null; let maxWaiters = 0; let tWait = null; let timedOut = null; const t0 = Date.now();
+      let from = X.sent().length; let compFrame = null;
+      if (WIRED) { compGet = require('../payments/sdk/stored-admission').storedAdmission(X.db, oid, async () => null).catch(() => {}); await H.flush();
+        compFrame = X.sent().slice(from).find((m) => m.a === 'g' && m.b && m.b.p === `/orders/${oid}`); assert.ok(compFrame, `${L}: premise, the competitor's gated get is on the wire`); from = X.sent().length; }
+      // candidate: ONLY the competitor's get is held (the request's own order gets are served); base: the request's first order listen
+      const isHeld = (m) => (WIRED ? m === compFrame : m.a === 'q' && m.b && m.b.p === `/orders/${oid}` && m === X.sent().slice(from).find((x) => x.a === 'q' && x.b && x.b.p === `/orders/${oid}`));
+      const hold = (m) => isHeld(m) && (tWait == null ? Date.now() < t0 + 3000 : Date.now() < tWait + HOLD);
+      const res = H.call(X.idx.placeSdkOrder, { headers: { authorization: `Bearer ${tok('u504p')}`, origin: 'https://sherpa.hn' }, body }); let done = false; res.then(() => { done = true; }, () => { done = true; });
+      for (let i = 0; i < 2000 && !done; i++) {
+        if (tWait == null && (WIRED ? G504().waiters >= 1 : X.sent().slice(from).some((m) => m.a === 'q' && m.b && m.b.p === `/orders/${oid}`))) tWait = Date.now();
+        if (tWait != null && timedOut === null && Date.now() - tWait >= DEADLINE) timedOut = !done;
+        await H.flush(); await X.serve(S, { skip: hold, max: 400 }).catch(() => {}); maxWaiters = Math.max(maxWaiters, G504().waiters); if (!done) await new Promise((r) => setTimeout(r, 5));
+      }
+      const answer = await res; if (compGet) await compGet; await X.serve(S).catch(() => {});
+      const rec = await recover(X, S, sdkDeps(X.db));
+      const out = { answer: { status: answer.status, body: norm504(answer.body) }, tree: treeOf(S), calls: fake.calls.map((x) => x.action), recovery: rec.threw ? { threw: rec.threw } : 'ok', net: H.NET.length - net0 };
+      console.log(`DIGEST RG-AFTER-504-PRE ${JSON.stringify(out)}`);
+      assert.strictEqual(timedOut, true, `${L}: premise, the response deadline (${DEADLINE} ms after the probe began waiting) passed while it waited (waitStart=${tWait == null ? null : tWait - t0} ms, maxWaiters=${maxWaiters}, total=${Date.now() - t0} ms)`);
+      if (WIRED) assert.ok(maxWaiters >= 1, `${L}: premise, the probe actually queued (${maxWaiters})`);
+      assert.ok(answer.status === 200 && answer.body && typeof answer.body.outcome === 'string', `${L}: the request ran to a real answer for nobody: ${answer.status} ${JSON.stringify(answer.body).slice(0, 200)}`);
+      assert.strictEqual(fake.calls.filter((x) => /auth/i.test(x.action)).length, 1, `🔴 ${L}: exactly one provider authorization (incl. the recovery)`);
+      assert.strictEqual(rec.threw, undefined, `🔴 ${L}: the sweeper recovery ran: ${rec.threw}`);
+      assert.strictEqual(H.NET.length - net0, 0, `${L}: no outbound call attempted`);
+      assert.deepStrictEqual([G504().pending_gets, G504().waiters], [0, 0], `${L}: gate bookkeeping empty`);
+    } finally { require.cache[depsPath] = saved; }
   });
   if (process.env.RG_SEARCH) {   // class-run aid: print the first asserting schedule per pair (not a cell)
     const tree4 = { orders: { o1: { order_type: 'pickup', payment_status: 'pending', active_attempt_id: 'a1' } }, payment_attempts: { a1: { hosted_state: 'created', hosted_expires_at: 9e12, hosted_checkout_url: 'u' } } };

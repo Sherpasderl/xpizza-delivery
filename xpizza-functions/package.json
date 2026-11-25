@@ -245,6 +245,7 @@
     "test:sdk-hosted-parity": "npm run sync:rules && node tools/emulator-run.js --only database,firestore --project demo-xpizza \"node test/sdk-hosted-parity.emulator.test.js\"",
     "test:sdk-fence-client": "node payments/sdk/d4-fence-client.test.js",
     "test:sdk-fence": "npm run sync:rules && node tools/emulator-run.js --only database,firestore --project demo-xpizza \"node test/sdk-fence.emulator.test.js\"",
+    "test:rtdb-double-tap": "npm run sync:rules && node tools/emulator-run.js --only database,firestore --project demo-xpizza \"node test/rtdb-double-tap.emulator.test.js\"",
     "test:sdk-envlim": "npm run sync:rules && node tools/emulator-run.js --only database,firestore --project demo-xpizza \"node test/sdk-envlim.emulator.test.js\"",
     "test:sdk-intake": "npm run sync:rules && node tools/emulator-run.js --only database,firestore --project demo-xpizza \"node test/sdk-intake.emulator.test.js\"",
     "test:sdk-pay-rules": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/sdk-pay-rules.emulator.test.js\"",
