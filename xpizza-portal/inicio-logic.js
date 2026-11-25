@@ -50,31 +50,42 @@ export function figures(body, today) {
   };
 }
 export const NO_FIGURES = Object.freeze({ sales: { value: '—' }, orders: { value: '—' }, ticket: { value: '—' } });
-// Codex backfill item 6: «Todo en orden» claims only over KNOWN results — every in-scope branch's control readable (a known state) and its
-// pending_count a number (S3; absent / null = unknown). `scopeRid` null = every branch the page shows.
+// S3 r1 has_pending (owner 11-23: NO number; mockup JfNRMF8L APPROVED; advisor 11-25 Q1–Q3). getMyBranches serves, per branch,
+// has_pending: true | false | null, read ONCE per catalog id (= the brand: every branch of a brand carries the same value), and ONLY to a
+// member with catalog.read_editor. A branch's menu state: 'na' without that permission (no menu item to review: Q2) · the boolean · null
+// (unknown: null, or the key absent on an editor branch). A legacy pending_count is never read.
+const menuEditor = (b) => Array.isArray(b.caps) && b.caps.includes('catalog.read_editor');
+const menuState = (b) => (!menuEditor(b) ? 'na' : typeof b.has_pending === 'boolean' ? b.has_pending : null);
+const inScope = (branches, scopeRid) => (Array.isArray(branches) ? branches : []).filter((b) => b && (scopeRid == null || b.rid === scopeRid));
+
+// Codex backfill item 6: «Todo en orden» claims only over KNOWN results — every in-scope branch's control readable (a known state) and
+// its menu state known (a boolean, or n/a). `scopeRid` null = every branch the page shows.
 export function allKnown(branches, scopeRid) {
-  const bs = (Array.isArray(branches) ? branches : []).filter((b) => b && (scopeRid == null || b.rid === scopeRid));
-  return bs.length > 0 && bs.every((b) => knownControl(b.control) && Number.isInteger(b.pending_count));   // r2: the server's enum, whitelisted
+  const bs = inScope(branches, scopeRid);
+  return bs.length > 0 && bs.every((b) => knownControl(b.control) && menuState(b) !== null);   // r2: the server's enum, whitelisted
 }
 
 // ann 3: «Para revisar» — only REAL attention items with a source today: a paused branch (getMyBranches control), with since-when;
 // «Reanudar» only where the member may resume (location.pause). `scopeRid` null = every branch the page shows.
-// + «Tenés N cambios sin publicar en el menú» from the SERVER's count (S3: branches[i].pending_count = the publish review's line count;
-// null = stale ⇒ absent — never a guess, never the editor's session count, never a catalog load on the home). The frame's order.
-export function reviewRows(branches, scopeRid) {
+// + ONE menu row for the brand (one brand menu, frame 6): has_pending true ⇒ «Tenés cambios sin publicar en el menú» (frame 1); unknown ⇒
+// the quiet invitation «Revisá si hay algo sin publicar» (frame 3: `quiet`, never counted, never a claim). Under «Todas» with 2+
+// branches the row names the brand, «… en el menú de {Marca}», «de» + the name ONE non-breaking unit (frame 6 note 11; Q3). The frame's
+// order: pause rows first. `rid` = the first in-scope branch in that state, whose «Revisar» opens its menu.
+export function reviewRows(branches, scopeRid, brandName) {
   const rows = [];
-  for (const b of (Array.isArray(branches) ? branches : [])) {
-    if (!b || (scopeRid != null && b.rid !== scopeRid)) continue;
+  const bs = inScope(branches, scopeRid);
+  for (const b of bs) {
     if (b.control && b.control.state === 'paused') {
       rows.push({ kind: 'pause', rid: b.rid, text: `Sucursal ${b.name} está en pausa`, when: when(b.control.pause_since),
         resume: Array.isArray(b.caps) && b.caps.includes('location.pause') });
     }
   }
-  for (const b of (Array.isArray(branches) ? branches : [])) {
-    if (!b || (scopeRid != null && b.rid !== scopeRid)) continue;
-    const n = b.pending_count;
-    if (Number.isInteger(n) && n > 0) rows.push({ kind: 'menu', rid: b.rid, text: `Tenés ${n} ${n === 1 ? 'cambio' : 'cambios'} sin publicar en el menú` });
-  }
+  const named = scopeRid == null && bs.length > 1 && typeof brandName === 'string' && brandName.trim() !== '';
+  const of = named ? ` de\u00a0${brandName.trim().replace(/\s+/g, '\u00a0')}` : '';
+  const pending = bs.find((b) => menuState(b) === true);
+  const unknown = bs.find((b) => menuState(b) === null);
+  if (pending) rows.push({ kind: 'menu', rid: pending.rid, text: `Tenés cambios sin publicar en el menú${of}` });
+  else if (unknown) rows.push({ kind: 'menu', quiet: true, rid: unknown.rid, text: named ? `Revisá si hay algo sin publicar en el menú${of}` : 'Revisá si hay algo sin publicar' });
   return rows;
 }
 
