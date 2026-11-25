@@ -185,6 +185,14 @@ function makeDb() {
       },
       limit: (nn) => query([], nn),
       doc: (id) => docRef(`${path}/${id === undefined ? `auto${++autoId}` : id}`),
+      /* CollectionReference.listDocuments() — every child doc id that EXISTS or has a SUBCOLLECTION beneath it ("missing" documents
+         included, exactly as the real call returns them: restaurants/{rid} exists only through restaurants/{rid}/meta/... after a
+         publish). Doc-id order. (RTDB race harness: restaurant-registry's makeFirestoreRegistryReader.) */
+      listDocuments: async () => {
+        const ids = new Set();
+        for (const p of docs.keys()) { if (!p.startsWith(`${path}/`)) continue; ids.add(p.slice(path.length + 1).split('/')[0]); }
+        return [...ids].sort().map((id) => docRef(`${path}/${id}`));
+      },
       get: async () => {
         const out = [];
         for (const p of docs.keys()) {

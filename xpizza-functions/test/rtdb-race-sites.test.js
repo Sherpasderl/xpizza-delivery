@@ -6,12 +6,14 @@
 // A competitor's own later failure (deps a cell does not model) is ignored: only its REGISTRATION is the competing event.
 // Run: node test/rtdb-race-sites.test.js [CELL-PREFIX]
 const assert = require('assert');
+process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'rtdb-race-make-secret';   // createOrder's bearer check (test value)
 process.env.OTP_SALT = process.env.OTP_SALT || 'rtdb-race-test-salt-0123456789abcdef';   // otp-lib fails closed without one (test value)
 const H = require('./_rtdb-race-harness');
 let n = 0; const fails = [];
 const only = process.argv[2] || '';
 async function cell(label, fn) { if (only && !label.startsWith(only)) return; try { await fn(label); console.log(`  ✓ ${++n} ${label}`); } catch (e) { fails.push(label); console.log(`  ✗ ${label}: ${e.message}`); } }
 const TWICE = /listen\(\) called twice for same path\/queryId/;
+const quiet = async (fn) => { const l = console.log, w = console.warn, e = console.error; console.log = () => {}; console.warn = () => {}; console.error = () => {}; try { return await fn(); } finally { console.log = l; console.warn = w; console.error = e; } };
 
 // the race: `read` (the site's helper) first, then `compete`; serve; then `compete` again — the competitor's NEXT subscription
 // `at`: the SITE's path — the competitor subscribes while the site's get on it is IN FLIGHT (the hazard order, RG-1-ORDER), however
@@ -177,11 +179,18 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
     const req = { get: (h) => (h === 'x-firebase-id-token' ? 't' : undefined) };
     const attrib = (db) => require('../checkout-guest-gate').chargeUidOf(req, { getAuth: () => ({ verifyIdToken: async () => ({ customer: true, uid: 'u1' }) }), getDatabase: () => db, attributionUid: (d, t) => (t ? null : d.uid), deadlineMs: 60000 });
     await candidateSubscribes(L, tree, attrib, '/deleted_uids/u1');
-    const r = await race(tree, (db) => require('../rewards-reserve').reserveRedemption(db, { uid: 'u1', rid: 'x_pizza', orderId: 'o1', cost: 100, canonical: {}, orderFingerprint: 'fp', configVersion: 1, now: 1 }), attrib, '/deleted_uids/u1');
+    const r = await race(tree, (db) => require('../rewards-reserve').reserveRedemption(db, { uid: 'u1', rid: 'x_pizza', orderId: 'o1', cost: 100, canonical: {}, orderFingerprint: 'fp', configVersion: require('../rewards-redeem-config').REDEMPTION_CONFIG_VERSION, now: 1 }), attrib, '/deleted_uids/u1');
     clean(L, r, '/deleted_uids/u1');
   });
   // ── index.js inline reads, through the REAL exported handlers on the harness default app (H.indexApp)
-  const X = H.indexApp();
+  // the catalog the money handlers price from: published into the Firestore fake by the REAL writer (publishVersion), as in production
+  const FS = require('../catalog/firestore-fake').makeDb();
+  const X = H.indexApp({ firestore: FS });
+  const CATALOG = (() => { const { buildSourceCandidate } = require('../catalog/candidate-validate'); const { inputs, built } = buildSourceCandidate('x_pizza', require('../tools/seed-source-store').buildSourceFromCode('x_pizza')); return { inputs, built }; })();
+  await quiet(() => require('../catalog/catalog-publish').publishVersion(FS, 'x_pizza', { items: CATALOG.built.items, structure: CATALOG.built.structure, extras: CATALOG.inputs.extras, extraRecords: CATALOG.built.extras, source_sha: 'rg0', ...(CATALOG.built.key_mode == null ? {} : { key_mode: CATALOG.built.key_mode }) }, { expected: { activeVersionId: null } }));
+  const CARNIVORA = CATALOG.built.items.find((i) => i.key === 'Carnivora');
+  const OPEN = { open: true, start: '00:00', end: '24:00' };
+  const IDENTITY = { name: 'X', phone: '+50400000000', active: true, hub_lat: 14.1, hub_lng: -87.2, delivery_radius_km: 8, version: 1, hours: { sun: OPEN, mon: OPEN, tue: OPEN, wed: OPEN, thu: OPEN, fri: OPEN, sat: OPEN } };
   const tok = (uid) => H.idToken(uid, { customer: true });
   const handler = (name, uid, body) => () => H.call(X.idx[name], { headers: { 'x-firebase-id-token': tok(uid), origin: 'https://sherpa.hn' }, body });
   await cell('RG-INTRO-26 index.js:2791 claimOrder\'s tombstone read vs another claim\'s earn credit (rewards-earn.js:17, converted)', async (L) => {
@@ -230,6 +239,14 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
     };
     const kc = await scheduleOn(X, caseOf, 24); const ks = kc == null ? await scheduleOn(X, (k) => caseOf(100 + k), 24, { siteFirst: true }) : null;
     assert.deepStrictEqual({ competitorFirst: kc, siteFirst: ks }, { competitorFirst: null, siteFirst: null }, `🔴 ${L}: an asserting schedule exists`);
+  });
+  await cell('RG-INTRO-28 index.js:865 createOrder\'s tombstone read vs another order\'s redemption reserve (rewards-reserve.js:34, converted)', async (L) => {
+    const tree = { deleted_uids: { u28: true }, restaurants: { x_pizza: { identity: IDENTITY } } };
+    const reserve = (db) => require('../rewards-reserve').reserveRedemption(db, { uid: 'u28', rid: 'x_pizza', orderId: 'o28b', cost: 100, canonical: {}, orderFingerprint: 'fp', configVersion: require('../rewards-redeem-config').REDEMPTION_CONFIG_VERSION, now: 1 });
+    await candidateSubscribes(L, tree, reserve, '/deleted_uids/u28');
+    const body = { restaurant_id: 'x_pizza', order_id: 'o28', payment_method: 'cash', items: [{ name: CARNIVORA.display.name, qty: 1, price: CARNIVORA.price, extras: [] }], items_text: `1x ${CARNIVORA.display.name}`, customer_name: 'Ana', customer_phone: '99551234', customer_email: 'a@example.com', order_type: 'pickup' };
+    const r = await race(tree, () => H.call(X.idx.createOrder, { headers: { authorization: 'Bearer rtdb-race-make-secret', 'x-firebase-id-token': tok('u28'), origin: 'https://sherpa.hn' }, body }), reserve, '/deleted_uids/u28', X);
+    clean(L, r, '/deleted_uids/u28');
   });
   // ── class P (preventive): no reachable assertion with the real competitor (§4.3) — the op guard + the §3.2 matrix carry them ──────
   await cell('RG-OP-4 delivery/delivery-wire.js:61 chargeContext reads the active attempt with once, never get', async (L) => {

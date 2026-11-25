@@ -41,6 +41,13 @@ function install() {
 }
 const INTERNALS = install();
 
+// NO NETWORK, EVER: the harness drives REAL handlers (index.js), some of which call out (PixelPay's hosted create uses fetch). Any outbound
+// call from a process that loaded the harness fails closed here — a handler sees a transport failure, exactly its own error path.
+const NET = [];
+const refuse = (what) => { NET.push(what); return Promise.reject(Object.assign(new Error(`rtdb-race-harness: network disabled (${what})`), { code: 'ENETUNREACH' })); };
+globalThis.fetch = (url) => refuse(`fetch ${String(url && url.url ? url.url : url).replace(/\?.*$/, '')}`);
+for (const mod of ['http', 'https']) { const m = require(mod); m.request = (...a) => { const r = new (require('events'))(); process.nextTick(() => r.emit('error', Object.assign(new Error(`rtdb-race-harness: network disabled (${mod})`), { code: 'ENETUNREACH' }))); r.end = () => r; r.write = () => true; r.setTimeout = () => r; r.destroy = () => r; NET.push(`${mod}.request`); return r; }; m.get = m.request; }
+
 // one macrotask turn: the SDK's own connect timer (setTimeout 0 in scheduleConnect_) fires, then queued sends drain — no sleeps
 const flush = () => new Promise((res) => setTimeout(() => setImmediate(res), 0));
 let seq = 0;
@@ -108,9 +115,19 @@ function store(tree = {}) {
 // index.js on the harness: the DEFAULT app is this harness's (lib/admin.js — index.js's only initializeApp — is pre-cached as a no-op),
 // so every inline getDatabase() read in a REAL exported handler runs on the controlled wire. Auth runs in the Admin SDK's emulator mode
 // (unsigned test ID tokens, idToken(); verifyIdToken decodes them on this app only); nothing is ever dialled. Loaded once per process: cells use distinct keys.
+// firestore: a catalog/firestore-fake instance (makeDb()) that getFirestore() returns for index.js and every module it loads — the money
+// handlers' catalog / pricing / gate steps run on it, seeded by the REAL writers (publishVersion …). FieldValue / Timestamp stay real.
 let INDEX = null;
-function indexApp() {
-  if (INDEX) return INDEX;
+function indexApp({ firestore = null } = {}) {
+  if (INDEX) { if (firestore && INDEX.firestore !== firestore) throw new Error('rtdb-race-harness: indexApp() already loaded with another Firestore'); return INDEX; }
+  if (firestore) {
+    const fsFile = require.resolve('firebase-admin/firestore');
+    if (require.cache[fsFile] && require.cache[fsFile].__rtdbRace !== true && require.cache[require.resolve('../index.js')]) throw new Error('rtdb-race-harness: index.js already loaded');
+    const real = require('firebase-admin/firestore');
+    const fm = new Module(fsFile, module); fm.filename = fsFile; fm.loaded = true; fm.__rtdbRace = true;
+    fm.exports = { ...real, getFirestore: () => firestore };
+    require.cache[fsFile] = fm;
+  }
   process.env.FIREBASE_DATABASE_EMULATOR_HOST = process.env.FIREBASE_DATABASE_EMULATOR_HOST || '127.0.0.1:9';
   process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || PROJECT;
   const { initializeApp } = require('firebase-admin/app');
@@ -129,7 +146,7 @@ function indexApp() {
     return { ...p, uid: p.sub };
   };
   const idx = require('../index.js');
-  INDEX = { ...wrap(app, getDatabase(app)), idx };
+  INDEX = { ...wrap(app, getDatabase(app)), idx, firestore };
   return INDEX;
 }
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -149,4 +166,4 @@ function call(handler, { method = 'POST', headers = {}, body = {} } = {}) {
   });
 }
 
-module.exports = { FILE, SHA256, INTERNALS, client, flush, store, indexApp, idToken, call };
+module.exports = { FILE, SHA256, INTERNALS, client, flush, store, indexApp, idToken, call, NET };
