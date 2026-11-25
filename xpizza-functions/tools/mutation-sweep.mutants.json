@@ -43842,6 +43842,23 @@
   ]
  },
  {
+  "id": "gitbound-01",
+  "slice": "gitbound",
+  "label": "capp-guards: a git child past its bound surfaces as a raw spawnSync ETIMEDOUT, not the named C7-TIMEOUT failure",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "catch (e) { if (e && e.code === 'ETIMEDOUT') throw new Error(`🔴 C7-TIMEOUT: git ${args.join(' ')}",
+  "to": "catch (e) { if (false) throw new Error(`🔴 C7-TIMEOUT: git ${args.join(' ')}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C7-TIMEOUT",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-TIMEOUT: a hung git child is not reported as one"
+  ]
+ },
+ {
   "id": "jwt1-01",
   "slice": "jwt1",
   "label": "jwtPayload: the header is no longer checked (a token whose header is not a JSON object is read)",

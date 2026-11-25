@@ -24,7 +24,7 @@
 // Run: node --test customer-app/capp-guards.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, existsSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -58,7 +58,19 @@ const ASSEMBLY_STEPS = {
   'b1a95926a59c50fd3a79e9b39f2dd5198d5e2602': ['customer-app/capp-s7a2.test.mjs', 'customer-app/fixtures/s7a2/directory.json', 'customer-app/fixtures/s7a2/gen-directory.mjs'],   // s7a2 alignment (the real pricing writer + view)
   'cfc688d868156e7b0c6e6af5039a2ea8d3da9c04': ['customer-app/capp-s7a2.test.mjs'],   // Codex #127 P2 (the counterfactual containment)
 };
-const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
+// every git child is bounded (asm14 slot 11-24: a hash-object child hung on its stdin pipe and stalled the sweep). A git that does not
+// finish in GIT_MS is SIGKILLed (git spawns no grandchild here, so the child is the whole group) and the cell FAILS, never stalls.
+const GIT_MS = 60_000;
+const gitRun = (args, opts = {}) => {
+  const ms = opts.timeout ?? GIT_MS;
+  try { return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26, killSignal: 'SIGKILL', ...opts, timeout: ms }); }
+  catch (e) { if (e && e.code === 'ETIMEDOUT') throw new Error(`🔴 C7-TIMEOUT: git ${args.join(' ')} did not finish in ${ms / 1000} s — failed, never stalled`); throw e; }
+};
+const isTimeout = (e) => /C7-TIMEOUT/.test(String(e && e.message));
+// a blob from a temp FILE, never a stdin pipe (the pipe is what hung); --no-filters hashes the bytes exactly as --stdin did
+const hashBody = (g, body) => { const f = join(tmpdir(), `capp-blob-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  writeFileSync(f, body); try { return g(['hash-object', '-w', '--no-filters', '--', f]); } finally { rmSync(f, { force: true }); } };
+const git = (...a) => gitRun(a);
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
 // byte identity, null-safe: a missing copy is a named failure, not an ENOENT before the named assertion (Codex r1 P3)
@@ -311,8 +323,8 @@ const c7ParseMergeTree = (out) => {
 };
 const c7MergeTree = (p1, p2) => {
   let out;
-  try { out = execFileSync('git', ['-c', 'merge.directoryRenames=conflict', 'merge-tree', '--write-tree', '-z', '--messages', p1, p2], { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26, stdio: ['ignore', 'pipe', 'pipe'] }); }
-  catch (e) { if (e.status !== 1 || typeof e.stdout !== 'string') throw new Error(`🔴 C7-UNMAPPABLE: git merge-tree failed (status ${e.status}) for ${p1} ${p2}`); out = e.stdout; }   // 1 = conflicts
+  try { out = gitRun(['-c', 'merge.directoryRenames=conflict', 'merge-tree', '--write-tree', '-z', '--messages', p1, p2], { stdio: ['ignore', 'pipe', 'pipe'] }); }
+  catch (e) { if (isTimeout(e)) throw e; if (e.status !== 1 || typeof e.stdout !== 'string') throw new Error(`🔴 C7-UNMAPPABLE: git merge-tree failed (status ${e.status}) for ${p1} ${p2}`); out = e.stdout; }   // 1 = conflicts
   return c7ParseMergeTree(out);
 };
 const c7Walk = (head) => git('rev-list', '--merges', `${BASE}..${head}`).trim().split('\n').filter(Boolean);
@@ -347,12 +359,12 @@ test(`no capp edit hidden in a merge resolution: every merge in ${BASE}..HEAD, j
 // is HEAD), the asm12 13–15 shape: an evil resolution (M1), git's own clean merge (M2), a conflict kept as one side (M3).
 const plantCommit = (parents, from, edits, msg) => {
   const idx = join(tmpdir(), `capp-c7-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.idx`), env = { ...process.env, GIT_INDEX_FILE: idx, GIT_AUTHOR_NAME: 'plant', GIT_AUTHOR_EMAIL: 'plant@invalid', GIT_COMMITTER_NAME: 'plant', GIT_COMMITTER_EMAIL: 'plant@invalid' };
-  const g = (args, input) => execFileSync('git', args, { cwd: ROOT, env, input, encoding: 'utf8' }).trim();
+  const g = (args) => gitRun(args, { env }).trim();
   try { g(['read-tree', from]);
     for (const [f, e] of Object.entries(edits)) {   // a string = the body (100644) · { body, mode } · null = deleted
       if (e === null) { g(['update-index', '--force-remove', f]); continue; }
       const { body, mode = '100644' } = typeof e === 'string' ? { body: e } : e;
-      g(['update-index', '--add', '--cacheinfo', `${mode},${g(['hash-object', '-w', '--stdin'], body)},${f}`]); }
+      g(['update-index', '--add', '--cacheinfo', `${mode},${hashBody(g, body)},${f}`]); }
     return g(['commit-tree', g(['write-tree']), ...parents.flatMap((p) => ['-p', p]), '-m', msg]); } finally { rmSync(idx, { force: true }); } };
 const C7_CSS = 'customer-app/capp.css', C7_MD = 'customer-app/c7-plant-md.txt', C7_BIN = 'customer-app/c7-plant.bin';
 const c7Plant = () => {
@@ -394,7 +406,7 @@ test('C7-SHALLOW: cell 7 refuses a shallow repository', () => {
 // branch is exercised and a directory-rename message is proven a hit
 test('C7-UNMAPPABLE: merge-tree output the parser cannot map fails; a directory-rename message is a hit', () => {
   const P = c7Plant(), [p1, p2] = git('log', '-1', '--format=%P', P.m4).trim().split(' ');
-  let real; try { real = execFileSync('git', ['merge-tree', '--write-tree', '-z', '--messages', p1, p2], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { real = e.stdout; }
+  let real; try { real = gitRun(['merge-tree', '--write-tree', '-z', '--messages', p1, p2], { stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { if (isTimeout(e)) throw e; real = e.stdout; }
   const add = (n, ps, type) => `${real}${n}\0${ps.map((p) => `${p}\0`).join('')}${type}\0text\n\0`;
   assert.ok(c7ParseMergeTree(real).hits.includes(C7_MD), "premise: git's real output parses and names the modify/delete path");
   assert.ok(c7ParseMergeTree(add(1, ['customer-app/moved.js'], 'Path updated due to directory rename')).hits.includes('customer-app/moved.js'), '🔴 C7-DIRMSG: a path relocated by a directory rename is not a hit');
@@ -417,8 +429,8 @@ test('C7-OCTOPUS: a merge of more than two parents fails cell 7 (never silently 
 // exempt re-pin and passes.
 test('capp-guards still bites after the 11-18 re-base: a planted capp commit after CAPP_TIP goes RED', () => {
   const plant = (f, extra) => { const idx = join(tmpdir(), `capp-plant-${process.pid}-${Date.now()}.idx`), env = { ...process.env, GIT_INDEX_FILE: idx, GIT_AUTHOR_NAME: 'plant', GIT_AUTHOR_EMAIL: 'plant@invalid', GIT_COMMITTER_NAME: 'plant', GIT_COMMITTER_EMAIL: 'plant@invalid' };
-    const g = (args, input) => execFileSync('git', args, { cwd: ROOT, env, input, encoding: 'utf8' }).trim();
-    try { g(['read-tree', 'HEAD']); const blob = g(['hash-object', '-w', '--stdin'], g(['show', `HEAD:${f}`]) + extra); g(['update-index', '--cacheinfo', `100644,${blob},${f}`]);
+    const g = (args) => gitRun(args, { env }).trim();
+    try { g(['read-tree', 'HEAD']); const blob = hashBody(g, gitRun(['show', `HEAD:${f}`], { env }) + extra); g(['update-index', '--cacheinfo', `100644,${blob},${f}`]);
       return g(['commit-tree', g(['write-tree']), '-p', 'HEAD', '-m', 'planted unreviewed capp commit']); } finally { rmSync(idx, { force: true }); } };
   assert.doesNotThrow(() => capRange('HEAD'), 'premise: the committed tip is in range');
   assert.throws(() => capRange(plant('customer-app/capp.css', '\n/* planted */\n')), /capp commit\(s\) after CAPP_TIP/, '🔴 GUARD-BITES: an unreviewed capp commit after the pin fails');
@@ -435,13 +447,13 @@ test('S2 SBS: the stand-in pay binding and the native-mode injection live ONLY i
   const standin = readFileSync(join(ROOT, 'review/capp-sbs/standin-paysdk.mjs'), 'utf8'), sbs = readFileSync(join(ROOT, 'review/capp-sbs/sbs.mjs'), 'utf8');
   assert.ok(standin.includes(MARK), '🔴 premise: the stand-in carries its marker (else this guard is vacuous)');
   assert.ok(sbs.includes(`'"mode":"native"'`), '🔴 premise: the native-mode injection is the harness\'s');
-  const code = execFileSync('git', ['ls-files', '-z'], { cwd: ROOT, encoding: 'utf8' }).split('\0')
+  const code = git('ls-files', '-z').split('\0')
     .filter((f) => f && !f.startsWith('review/') && /\.(m?js|cjs|html|json)$/.test(f) && f !== 'customer-app/capp-guards.test.mjs' && existsSync(join(ROOT, f)));
   assert.ok(code.length > 100 && code.includes('customer-app/capp-ui.js'), `🔴 premise: the scan reads the tree (${code.length} files)`);
   const leaks = code.filter((f) => { const s = readFileSync(join(ROOT, f), 'utf8'); return s.includes(MARK) || s.includes(HARNESS); });
   assert.deepEqual(leaks, [], `🔴 SBS-1: a production/test file carries the stand-in or names the harness:\n${leaks.join('\n')}`);
   const P = createRequire(import.meta.url)('../platform/native/package-capp.js');
-  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
+  const head = git('rev-parse', 'HEAD').trim();
   for (const target of P.TARGETS) {
     const B = P.build({ sha: head, target, env: 'production', flags: [...P.FLAGS] });
     const bad = [...B.files].filter(([, buf]) => { const s = Buffer.from(buf).toString('latin1'); return s.includes(MARK) || s.includes(HARNESS); }).map(([f]) => f);
@@ -544,3 +556,9 @@ test('Codex #197 (P1): a member\'s ID token is read from the SDK ONLY through th
     assert.ok(tokenReadViolations('capp-shell-ui.js', ui.replace(K, `${K} ${plant}`)).length > 0, `🔴 C197-CENSUS control: «${plant}» fails the guard`);
   assert.deepEqual(tokenReadViolations('capp-signup.js', 'async function g(o) { return o.google.getIdToken({}); }'), [], 'the Google sign-in credential is allowed by name');
 });
+// The bound itself, on a git child that can never finish: hash-object on a FIFO with no writer blocks in open() (no stdin, no grandchild).
+test('C7-TIMEOUT: a git child that never finishes fails the cell within its bound, never stalls', () => {
+  const fifo = join(tmpdir(), `capp-fifo-${process.pid}-${Date.now()}`); execFileSync('mkfifo', [fifo]);
+  try { const t0 = Date.now();
+    assert.throws(() => gitRun(['hash-object', '--no-filters', '--', fifo], { timeout: 1500 }), /C7-TIMEOUT: git hash-object/, '🔴 C7-TIMEOUT: a hung git child is not reported as one');
+    assert.ok(Date.now() - t0 < 10_000, `🔴 C7-TIMEOUT: the bound took ${Date.now() - t0} ms`); } finally { rmSync(fifo, { force: true }); } });
