@@ -66,6 +66,19 @@ const sentKinds = (c, from) => c.sent().slice(from).filter((m) => m.a === 'g' ||
     assert.ok(tReg !== null, `${L}: registered`); assert.deepStrictEqual(c.listens(), [], `${L}: clean`);
     console.log(`    RG-BURST-5 wait ${tReg - t0} ms (5 gets, harness turns)`); await c.close();
   });
+  await cell('RG-DISCONNECT: the connection drops with a gated get pending ⇒ the queued listener stays queued (no callback); after the SDK\'s own reconnect the get is re-sent and settles, the listener registers, bookkeeping is empty', async (L) => {
+    const c = H.client('dc'); const g = G.gatedGet(c.db.ref('orders/o1')); g.catch(() => {});
+    let registered = false; const l = G.afterGets(c.db.ref('orders/o1'), (r) => { registered = true; return r.once('value'); });
+    await H.flush(); assert.strictEqual(c.pending('g').length, 1, `${L}: premise, the get is on the wire`);
+    c.conn().onRealtimeDisconnect_(); await H.flush();
+    assert.strictEqual(registered, false, `${L}: queued during the outage`); assert.strictEqual(G.gateState().waiters, 1, L);
+    const t0 = Date.now(); while (!c.conn().connected_ && Date.now() - t0 < 8000) await new Promise((r) => setTimeout(r, 50));   // the SDK's own reconnect backoff
+    assert.ok(c.conn().connected_, `${L}: the SDK reconnected`);
+    await H.flush(); await c.serve(at); await Promise.all([g, l]);
+    assert.strictEqual(registered, true, `${L}: registered after the re-sent get settled`);
+    assert.deepStrictEqual([c.listens(), G.gateState().pending_gets, G.gateState().waiters], [[], 0, 0], `${L}: empty bookkeeping`);
+    await c.close();
+  });
   if (fails.length) { console.log(`FAIL(${fails.length}): ${fails.join(' | ')}`); process.exit(1); }
   console.log(`rtdb-gate: OK (${n})`);
   process.exit(0);

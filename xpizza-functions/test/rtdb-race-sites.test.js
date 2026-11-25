@@ -303,6 +303,25 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
     assert.strictEqual(r.early, false, `🔴 ${L}: the competitor registered while the raced get was in flight`);
     assert.deepStrictEqual({ residual: r.residual, asserted: r.asserted }, { residual: [], asserted: false }, `🔴 ${L}`);
   });
+  // RG-DOUBLE-TAP (r6 / r9, scoped per #399 P2-5): two concurrent identical hosted charges for ONE order through the real
+  // chargeOnlineOrder, the provider create stubbed to SUCCEED (in-process, counted; no network). ONE provider call, ONE attempt; the
+  // second answers per today's rules. The same cell on the pre-gate tree records today's result; the two must match.
+  await cell('RG-DOUBLE-TAP hosted: two concurrent identical charges ⇒ one provider create, one attempt, answers as today', async (L) => {
+    let created = 0;
+    H.stubFetch((u) => (/pixelpay\.dev\/api\/v2\/transaction\/hosted/.test(u) ? (created += 1, H.jsonResponse(200, { success: true, url: `https://pay.example/c/${created}` })) : null));
+    try {
+      const S = H.store({ deleted_uids: {}, restaurants: { x_pizza: { identity: IDENTITY } } });
+      const body = { ...orderBody('odt1', 'online'), customer_phone: '99557771' };
+      const tap = () => H.call(X.idx.chargeOnlineOrder, { headers: bearer('udt1'), body });
+      const a = tap(); const b = tap(); let done = 0; a.then(() => done++, () => done++); b.then(() => done++, () => done++);
+      for (let i = 0; i < 600 && done < 2; i++) { await H.flush(); await X.serve(S, { max: 400 }).catch(() => {}); if (done < 2) await new Promise((r) => setTimeout(r, 5)); }
+      const [ra, rb] = await Promise.all([a, b]);
+      const attempts = Object.keys(S.at('/payment_attempts') || {});
+      console.log(`    RG-DOUBLE-TAP answers: ${ra.status} ${JSON.stringify(ra.body).slice(0, 140)} / ${rb.status} ${JSON.stringify(rb.body).slice(0, 140)}; creates=${created}; attempts=${attempts.length}`);
+      assert.strictEqual(created, 1, `🔴 ${L}: provider creates`);
+      assert.strictEqual(attempts.length, 1, `🔴 ${L}: persisted attempts`);
+    } finally { H.stubFetch(null); }
+  });
   if (process.env.RG_SEARCH) {   // class-run aid: print the first asserting schedule per pair (not a cell)
     const tree4 = { orders: { o1: { order_type: 'pickup', payment_status: 'pending', active_attempt_id: 'a1' } }, payment_attempts: { a1: { hosted_state: 'created', hosted_expires_at: 9e12, hosted_checkout_url: 'u' } } };
     const cc = (db) => require('../delivery/delivery-wire').chargeContext(db, 'o1', { ctx: null }, { order_type: 'pickup' }, 1, Promise.resolve(null));

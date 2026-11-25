@@ -45,7 +45,16 @@ const INTERNALS = install();
 // call from a process that loaded the harness fails closed here — a handler sees a transport failure, exactly its own error path.
 const NET = [];
 const refuse = (what) => { NET.push(what); return Promise.reject(Object.assign(new Error(`rtdb-race-harness: network disabled (${what})`), { code: 'ENETUNREACH' })); };
-globalThis.fetch = (url) => refuse(`fetch ${String(url && url.url ? url.url : url).replace(/\?.*$/, '')}`);
+// a cell may install an in-process PROVIDER STUB (still no network): it answers the URLs it accepts, every call is counted in NET
+let FETCH_STUB = null;
+function stubFetch(handler) { FETCH_STUB = handler; }
+globalThis.fetch = (url, init) => {
+  const u = String(url && url.url ? url.url : url).replace(/\?.*$/, '');
+  if (FETCH_STUB) { const r = FETCH_STUB(u, init); if (r) { NET.push(`stub ${u}`); return Promise.resolve(r); } }
+  return refuse(`fetch ${u}`);
+};
+// a Response-like object for stubs
+const jsonResponse = (status, body) => ({ ok: status >= 200 && status < 300, status, text: async () => JSON.stringify(body), json: async () => body });
 for (const mod of ['http', 'https']) { const m = require(mod); m.request = (...a) => { const r = new (require('events'))(); process.nextTick(() => r.emit('error', Object.assign(new Error(`rtdb-race-harness: network disabled (${mod})`), { code: 'ENETUNREACH' }))); r.end = () => r; r.write = () => true; r.setTimeout = () => r; r.destroy = () => r; NET.push(`${mod}.request`); return r; }; m.get = m.request; }
 
 // one macrotask turn: the SDK's own connect timer (setTimeout 0 in scheduleConnect_) fires, then queued sends drain — no sleeps
@@ -166,4 +175,4 @@ function call(handler, { method = 'POST', headers = {}, body = {} } = {}) {
   });
 }
 
-module.exports = { FILE, SHA256, INTERNALS, client, flush, store, indexApp, idToken, call, NET };
+module.exports = { FILE, SHA256, INTERNALS, client, flush, store, indexApp, idToken, call, NET, stubFetch, jsonResponse };
