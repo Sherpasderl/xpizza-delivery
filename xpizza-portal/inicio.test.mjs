@@ -62,11 +62,13 @@ test('the date line, Honduras time, exact to the frame', () => {
   assert.equal(IL.dateLine(Date.UTC(2026, 10, 13, 5, 59)), 'Resumen de hoy · jueves 12 de noviembre', '05:59 UTC is still Thursday in Honduras');
 });
 test('the pause time: THE portal clock, the customer app\'s 12-hour «p. m.» form (advisor 11-13; the frame\'s «pm»)', () => {
-  assert.equal(clock12(hn(2026, 11, 12, 15, 10)), '3:10 p. m.', '🔴 the one clock');
-  assert.equal(clock12(hn(2026, 11, 12, 0, 5)), '12:05 a. m.');
-  assert.equal(clock12(hn(2026, 11, 12, 12, 0)), '12:00 p. m.');
-  assert.equal(clock12(hn(2026, 11, 12, 9, 7)), '9:07 a. m.');
-  assert.equal(IL.when(hn(2026, 11, 12, 15, 10)), 'desde las 3:10 p. m.', 'Inicio reads it');
+  // 16b (owner 11-25 via the advisor): the time and «a. m.» are ONE non-breaking unit (SBS f5@390: «… desde las 10:59» / «a. m.» orphaned)
+  assert.equal(clock12(hn(2026, 11, 12, 15, 10)), '3:10\u00a0p.\u00a0m.', '🔴 the one clock, one unit');
+  assert.equal(clock12(hn(2026, 11, 12, 0, 5)), '12:05\u00a0a.\u00a0m.');
+  assert.equal(clock12(hn(2026, 11, 12, 12, 0)), '12:00\u00a0p.\u00a0m.');
+  assert.equal(clock12(hn(2026, 11, 12, 9, 7)), '9:07\u00a0a.\u00a0m.');
+  for (let m = 0; m < 24 * 60; m += 7) assert.ok(!/\s/.test(clock12(hn(2026, 11, 12, 0, m)).replace(/\u00a0/g, '')), `🔴 16b: no breakable space at ${m} min`);
+  assert.equal(IL.when(hn(2026, 11, 12, 15, 10)), 'desde las 3:10\u00a0p.\u00a0m.', 'Inicio reads it');
 });
 test('«N pendientes» counts the rows drawn; one is singular', () => {
   assert.equal(IL.pendLabel(4), '4 pendientes');
@@ -83,7 +85,7 @@ test('«Para revisar» = a paused branch in scope (with since-when); «Reanudar�
   const since = hn(2026, 11, 12, 15, 10); const f = await realPending('false');   // the menu settled (a REAL save undone): pause rows only
   const bs = [branch('r_a', 'Centro', { control: PAUSED(since), has_pending: f }), branch('r_b', 'Los Próceres', { has_pending: f }), branch('r_c', 'El Trapiche', { control: PAUSED(null), caps: ['stats.read'] })];
   assert.deepEqual(IL.reviewRows(bs, null), [
-    { kind: 'pause', rid: 'r_a', text: 'Sucursal Centro está en pausa', when: 'desde las 3:10 p. m.', resume: true },
+    { kind: 'pause', rid: 'r_a', text: 'Sucursal Centro está en pausa', when: 'desde las 3:10\u00a0p.\u00a0m.', resume: true },
     { kind: 'pause', rid: 'r_c', text: 'Sucursal El Trapiche está en pausa', when: '', resume: false },
   ], '🔴 one row per paused branch; «Reanudar» only where the member may resume');
   assert.deepEqual(IL.reviewRows(bs, 'r_b'), [], 'the pill scopes the list');
@@ -326,8 +328,9 @@ test('a paused branch: «Sucursal Centro está en pausa desde las 3:10 pm» + «
   const p = await page([branch('r_a', 'Centro', { control: PAUSED(since), has_pending: await realPending('false') })], { pause: (b) => okJson({ ok: true, control: { state: 'open', paused_until: null, pause_reason: null, pause_since: null } }) });
   const row = p.view.querySelector('.in-row');
   assert.ok(row, '🔴 the pause row');
-  assert.equal(textOf(row.querySelector('.in-rt')), `Sucursal Centro está en pausa ${IL.when(since)}`);
-  assert.equal(IL.when(since), 'desde las 2:10 p. m.');
+  assert.equal(textOf(row.querySelector('.in-rt')), `Sucursal Centro está en pausa ${IL.when(since)}`.replace(/\u00a0/g, ' '));
+  assert.equal(row.querySelector('.in-when').textContent, IL.when(since), '🔴 16b: the raw DOM keeps «2:10\u00a0p.\u00a0m.» one unit');
+  assert.equal(IL.when(since), 'desde las 2:10\u00a0p.\u00a0m.');
   assert.equal(textOf(cls(p.view, 'in-cnt')[0]), '1 pendiente');
   btnText(p.view, 'Reanudar').click(); await settle(20);
   const sent = p.calls.filter((c) => c.fn === 'setBranchPause');

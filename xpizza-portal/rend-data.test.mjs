@@ -201,7 +201,7 @@ test('V1 words: freshness from the server (live ⇒ «Hoy en vivo · actualizado
   const { clock12 } = await import('./portal-time.js');
   assert.equal(RL.freshWords(old, { fetchedAt: t, nowMs: t + 60000 }), `Calculado hoy, ${clock12(t)}`, 'the roll-up\'s own stamp, THE portal clock');
   assert.equal(RL.freshWords(old, { fetchedAt: t, nowMs: t + 86400000 }), `Calculado ayer, ${clock12(t)}`);
-  assert.match(RL.freshWords(old, { fetchedAt: t, nowMs: t + 5 * 86400000 }), /^Calculado el \d{1,2} [a-z]{3}, \d{1,2}:\d{2} [ap]\. m\.$/, 'older: «el 9 nov»');
+  assert.match(RL.freshWords(old, { fetchedAt: t, nowMs: t + 5 * 86400000 }), /^Calculado el \d{1,2} [a-z]{3}, \d{1,2}:\d{2} [ap]\. m\.$/, 'older: «el 9 nov»');
   const r = RL.rendRangeFor('14d', TODAY);
   const live = await getSalesStats({ rid: 'r_a', ...r, granularity: 'day', compare: 'none', token });
   assert.equal(RL.freshWords(live, { fetchedAt: NOW - 10 * 60000, nowMs: NOW }), 'Hoy en vivo · actualizado hace 10 min', 'live ⇒ when THIS body arrived');
