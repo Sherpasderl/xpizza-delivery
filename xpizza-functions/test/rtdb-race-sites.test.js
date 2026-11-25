@@ -259,6 +259,30 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
     assert.deepStrictEqual([a.gate.pending_gets, a.gate.waiters], [0, 0], `${L}: gate bookkeeping empty`);
   });
 
+  // RG-DOUBLE-TAP SDK (scoped per #399 P2-5: a PERSISTED SDK attempt): two concurrent identical finishSdk for one order + attempt, the
+  // repo's fake PSP. ONE provider authorization; the second answers by today's replay / in-progress rules. The pre-gate tree must match.
+  await cell('RG-DOUBLE-TAP SDK: two concurrent identical SDK finishes ⇒ one provider authorization, answers as today', async (L) => {
+    const { makeAdapter } = require('../payments/sdk/psp-adapter'); const { makeFakePsp } = require('../payments/sdk/fake-adapter'); const DW = require('../delivery/delivery-wire');
+    const OID = 'odtsdk'; const ATT = 'att_dt_sdk_00000001';
+    const order = { order_id: OID, restaurant_id: 'x_pizza', status: 'pending_payment', payment_status: 'pending', payment_method: 'online', order_type: 'pickup', customer_uid: 'udt',
+      customer_name: 'Ana', customer_phone: '+50499990777', items_text: '1x Pizza', total: 100, total_cents: 10000, subtotal_cents: 8696, tax_cents: 1304, created_at: 1000 };
+    const S = H.store({ platform_config: { sdk_pay: { available: true, restaurants: { x_pizza: true } } } }); const c = H.client('dtsdk'); const fake = makeFakePsp({});
+    const deps = { db: c.db, psp: makeAdapter(fake.impl), clock: () => 1000, voidEligible: () => false, ppNamespace: 'sandbox', releaseResources: async () => {}, goLive: async () => {} };
+    const ctx = () => ({ orderId: OID, kind: 'member', uid: 'udt', guestPhoneHash: null, attemptId: ATT, card: { kind: 'new', sdk_token: 'tok_new', save: false, authentication_identifier: null, display: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 } },
+      replacesOrderId: null, pendingOrderRecord: { ...order }, fingerprint: 'fpdt', tipCents: 0, flags: { controlRefuseFresh: false, menuRefuseFresh: false, choiceRefuseFresh: false, extrasRefuseFresh: null, cartBlocked: [], refuseFresh: false, payerRefuseFresh: false },
+      nowTs: 1000, runGate: async () => ({ refuse: null, provenance: null }), answerRefusal: (r) => ({ status: 'REFUSAL', body: r }), deliveryResume: (ord) => DW.deliveryResumeRefusal(c.db, ord, DW.loadPricing(c.db)) });
+    const F = require('../payments/sdk/finish');
+    const sw = (p) => p.then((v) => v, (e) => ({ threw: e.message }));
+    const a = sw(F.finishSdk(deps, ctx())); const b = sw(F.finishSdk(deps, ctx())); let n2 = 0; a.then(() => n2++); b.then(() => n2++);
+    for (let i = 0; i < 2000 && n2 < 2; i++) { await H.flush(); await c.serve(S, { max: 400 }).catch(() => {}); if (n2 < 2) await new Promise((r) => setTimeout(r, 5)); }
+    const [ra, rb] = await Promise.all([a, b]);
+    const auths = fake.calls.filter((x) => /auth/i.test(x.action)).length;
+    console.log(`    RG-DOUBLE-TAP SDK answers: ${JSON.stringify(ra).slice(0, 120)} / ${JSON.stringify(rb).slice(0, 120)}; provider calls=${JSON.stringify(fake.calls.map((x) => x.action))}`);
+    assert.ok(!(ra && ra.threw && /listen\(\) called twice/.test(ra.threw)) && !(rb && rb.threw && /listen\(\) called twice/.test(rb.threw)), `🔴 ${L}: «listen() called twice»`);
+    assert.strictEqual(auths, 1, `🔴 ${L}: provider authorizations`);
+    await c.close();
+  });
+
   // ── index.js inline reads, through the REAL exported handlers on the harness default app (H.indexApp)
   // the catalog the money handlers price from: published into the Firestore fake by the REAL writer (publishVersion), as in production
   const FS = require('../catalog/firestore-fake').makeDb();
