@@ -862,7 +862,7 @@ createOrderApp.all('*', async (req, res) => {
     try {
       const dec = await getAuth().verifyIdToken(idTok);
       if (dec && dec.customer === true && dec.uid) {
-        const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).once('value');   // H10: a tombstoned account never re-accrues
+        const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();   // H10: a tombstoned account never re-accrues
         customer_uid = attributionUid(dec, tomb.exists());
       }
     } catch (_) { /* malformed/expired/foreign/tomb-read-failure → ignore, treat as guest */ }
@@ -1508,7 +1508,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   if (SDK_MODE) {   // D4 §A2 B1: exactly ONE credential kind (member ID token | guest ticket), validated HERE, no fail-open; app semantics
     const b1 = await require('./payments/sdk/intake').authorize(req, {
       db: getDatabase(), clock: () => Date.now(), deadlineMs: 1500, attributionUid,
-      verifyIdToken: (t) => getAuth().verifyIdToken(t), isTombstoned: async (uid) => (await require('./lib/rtdb-once').onceWithin(getDatabase().ref('deleted_uids/' + uid), 1500)).exists(),
+      verifyIdToken: (t) => getAuth().verifyIdToken(t), isTombstoned: async (uid) => (await getDatabase().ref('deleted_uids/' + uid).get()).exists(),
       normalizePhone: require('./whatsapp').normalizePhone, phoneHash: (d) => require('./otp-lib').phoneHash(d), cartFpFromBody: require('./checkout-guest-lib').cartFpFromBody,
     });
     if (b1.refuse) return res.status(b1.refuse.status).json(b1.refuse.body);
@@ -1621,7 +1621,7 @@ chargeOnlineApp.all('*', async (req, res) => {
         (async () => {
           const dec = await getAuth().verifyIdToken(idTok);
           if (dec && dec.customer === true && dec.uid) {
-            const tomb = await require('./lib/rtdb-once').onceWithin(getDatabase().ref('deleted_uids/' + dec.uid), 1500);
+            const tomb = await getDatabase().ref('deleted_uids/' + dec.uid).get();
             return attributionUid(dec, tomb.exists());
           }
           return null;
@@ -2129,7 +2129,7 @@ chargeOnlineApp.all('*', async (req, res) => {
       console.error('chargeOnlineOrder: PixelPay config error', e.message);
       return res.status(500).json({ error: 'Payment not configured', detail: e.message });
     }
-    returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => db.ref(`restaurants/${restaurantId}/identity/brand_id`).once('value').then((s) => s.val()) });
+    returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => db.ref(`restaurants/${restaurantId}/identity/brand_id`).get().then((s) => s.val()) });
     if (returnBase.error) {
       console.error(`chargeOnlineOrder: ${returnBase.error} for ${orderId} (${restaurantId})`);
       return res.status(500).json({ error: 'Payment not configured', detail: 'return URL not configured for restaurant' });
@@ -2788,7 +2788,7 @@ exports.claimOrder = onRequest(
     } catch (_) { return res.status(401).json({ error: 'unauthorized' }); }
     const db = getDatabase();
     // H10 durability: a tombstoned (deleted) uid never binds/earns.
-    if ((await db.ref('deleted_uids/' + uid).once('value')).exists()) return res.status(403).json({ error: 'forbidden' });
+    if ((await db.ref('deleted_uids/' + uid).get()).exists()) return res.status(403).json({ error: 'forbidden' });
     const orderId = String((req.body && req.body.order_id) || '').trim();
     const token = String((req.body && req.body.token) || '').trim();
     // Rate-limit: per-UID ALWAYS (guards the tokenless order_id-enumeration path); per-TOKEN when presented.
@@ -7312,7 +7312,7 @@ exports.verifyOtp = onRequest(
       // login on the platform path converges on the winner's uid, and the `if (!uid)` set below never fires on a live entry
       const lcUid = await SE.claimPhoneUid(db, pHash, () => 'u_' + require('crypto').randomBytes(12).toString('hex'));
       /* lifecycle:end login-claim */
-      let uid = (await idxRef.once('value')).val();
+      let uid = (await idxRef.get()).val();
       if (!uid) { uid = 'u_' + require('crypto').randomBytes(12).toString('hex'); await idxRef.set(uid); }
       /* lifecycle:begin login-uid */
       // security r2 (Codex P1-a/P1-b): THE lifecycle gate — a profile a sweep claimed, or a tombstoned uid with no profile, is never
@@ -7322,7 +7322,7 @@ exports.verifyOtp = onRequest(
       /* lifecycle:end login-uid */
       const now2 = Date.now();
       const profRef = db.ref('user_profiles/' + uid);
-      const prof = (await profRef.once('value')).val();
+      const prof = (await profRef.get()).val();
       // phone_hash is stored (server-only write) so deleteAccount/sweep can find /phone_index in O(1).
       if (!prof) await profRef.set({ phone: OTP.normalizePhone(phone), phone_hash: pHash, created_at: now2, last_login: now2 });
       else await profRef.child('last_login').set(now2);
@@ -7460,7 +7460,7 @@ exports.quoteRedemption = onRequest(
         try {
           const dec = await getAuth().verifyIdToken(idTok);
           if (dec && dec.customer === true && dec.uid) {
-            const tomb = await db.ref('deleted_uids/' + dec.uid).once('value');
+            const tomb = await db.ref('deleted_uids/' + dec.uid).get();
             customerUid = attributionUid(dec, tomb.exists());
           }
         } catch (_) { customerUid = null; }   // malformed/expired/foreign/tomb-read-failure → guest
@@ -7533,7 +7533,7 @@ exports.pruneInactiveAccounts = onSchedule(
   { schedule: 'every 24 hours', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
   async () => {
     const db = getDatabase();
-    const snap = await db.ref('user_profiles').once('value');
+    const snap = await db.ref('user_profiles').get();
     /* signup:begin prune-residual */
     if (!snap.exists()) {   // codex build r1 P2-10: the residual cleanup runs even when no profiles remain
       const resid = await SE.pruneResidual(db);

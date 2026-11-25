@@ -226,7 +226,7 @@ function race(promise, ms, label) {
 // Bounded read. Throws `cursor_read_timeout` past the deadline.
 async function readCursor(ref, { ms = CURSOR_OP_DEADLINE_MS } = {}) {
   requireGated(ref, 'readCursor');
-  const snap = await race(require('../lib/rtdb-once').onceWithin(ref, ms), ms, 'cursor_read');
+  const snap = await race(ref.get(), ms, 'cursor_read');
   return normCursor(snap && typeof snap.val === 'function' ? snap.val() : null);
 }
 // Commits `next` only if the stored cursor is EXACTLY `observed` (normalized). A slower run's partial checkpoint can

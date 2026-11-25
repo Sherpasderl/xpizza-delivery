@@ -14,7 +14,7 @@
 const { computeEarn, ledgerEntry, REWARDS_CONFIG } = require('./rewards-core');
 
 async function isDeleted(db, uid) {
-  return (await db.ref(`deleted_uids/${uid}`).once('value')).val() != null;   // user-initiated deletion tombstone
+  return (await db.ref(`deleted_uids/${uid}`).get()).val() != null;   // user-initiated deletion tombstone
 }
 
 // Atomic CREDIT (positive delta: earn / welcome) on the per-brand node, idempotent on `ledgerId`.

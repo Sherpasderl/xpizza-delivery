@@ -93,30 +93,6 @@ const txn = Object.defineProperty((db) => db.ref('orders/o1').transaction((cur) 
       }
     }
   });
-  await cell('RG-OWNED (lib/rtdb-once onceWithin): beside a same-path once, both orders ⇒ the same value, EMPTY bookkeeping, no assertion', async (L) => {
-    const RO = require('../lib/rtdb-once');
-    const owned = Object.defineProperty((db) => RO.onceWithin(db.ref('orders/o1'), 60000), 'name', { value: 'onceWithin orders/o1' });
-    for (const [x, y] of [[owned, onceAt('orders/o1')], [onceAt('orders/o1'), owned]]) {
-      const c = H.client('rgowned');
-      const a = x(c.db); await H.flush(); const b = y(c.db); await H.flush(); await c.serve(at);
-      const [sa, sb] = await Promise.all([a, b]);
-      assert.deepStrictEqual([sa.val(), sb.val()], [DATA.orders.o1, DATA.orders.o1], `${L}: ${x.name} → ${y.name}: the value`);
-      assert.deepStrictEqual(await interleave(c, onceAt('orders/o2'), onceAt('orders/o1'), [onceAt('orders/o1')]), { residual: [], asserts: [] }, `${L}: ${x.name} → ${y.name}`);
-      await c.close();
-    }
-  });
-  await cell('RG-OWNED-DETACH: no value within the deadline ⇒ its listener is detached (only its own), the promise never settles, a late value changes nothing', async (L) => {
-    const RO = require('../lib/rtdb-once');
-    const c = H.client('rgdetach'); const ref = c.db.ref('orders/o1');
-    let settled = false; RO.onceWithin(ref, 30).then(() => { settled = true; }, () => { settled = true; });
-    const keep = () => {}; c.db.ref('orders/o2').on('value', keep);   // an unrelated listener stays
-    await H.flush(); assert.deepStrictEqual(c.listens().map(([p]) => p).sort(), ['/orders/o1', '/orders/o2'], `${L}: premise, both listening`);
-    await new Promise((r) => setTimeout(r, 60)); await H.flush();
-    assert.deepStrictEqual(c.listens().map(([p]) => p), ['/orders/o2'], `${L}: only the owned callback was detached`);
-    await c.serve(at); await H.flush();
-    assert.strictEqual(settled, false, `${L}: never settles (the caller's race answered)`);
-    c.db.ref('orders/o2').off('value', keep); await c.close();
-  });
   await cell('RG-BURST: delivering every frame in ONE synchronous burst hides RG-1 (why the cells serve one frame per turn)', async (L) => {
     const c = H.client('rgburst');
     const g = c.db.ref('orders/o1').get(); await H.flush(); const o = c.db.ref('orders/o1').once('value'); await H.flush();

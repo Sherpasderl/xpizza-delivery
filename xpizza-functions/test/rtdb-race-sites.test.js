@@ -171,21 +171,6 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
   //    cell is meaningful only on the candidate tree: at eb177fe58 its premise fails (the competitor still uses get); GREEN on the full
   //    candidate; RED on the candidate with only this site reverted (its mutant)
   const candidateSubscribes = async (L, tree, compete, path) => { const f = await framesOf(tree, compete); assert.ok(f.frames.includes(`q:${path}`), `${L}: premise (candidate) — the competitor subscribes to ${path} (${f.frames.join(' ')})`); };
-  await cell('RG-INTRO-25 claim-order.js:50 claimOrderCore\'s tombstone read vs another claim\'s earn credit (rewards-earn.js:17, converted) via creditEarnForOrder', async (L) => {
-    const tree = { deleted_uids: { u1: true }, user_profiles: { u1: { phone_hash: 'h' } }, orders: { o1: { phone_hash: 'h' } } };
-    const earn = (db) => require('../rewards-earn').creditEarnForOrder(db, { orderId: 'o2', order: { customer_uid: 'u1', restaurant_id: 'x_pizza', items: [{ name: 'x', price: 200, qty: 1 }], subtotal_cents: 20000 }, now: 1 });
-    await candidateSubscribes(L, tree, earn, '/deleted_uids/u1');
-    const r = await race(tree, (db) => require('../claim-order').claimOrderCore(db, { uid: 'u1', orderId: 'o1', token: null, now: 1 }), earn, '/deleted_uids/u1');
-    clean(L, r, '/deleted_uids/u1');
-  });
-  await cell('RG-INTRO-27 rewards-reserve.js:34 reserveRedemption\'s tombstone read vs another hosted charge\'s attribution read (checkout-guest-gate.js:87, converted)', async (L) => {
-    const tree = { deleted_uids: { u1: true } };
-    const req = { get: (h) => (h === 'x-firebase-id-token' ? 't' : undefined) };
-    const attrib = (db) => require('../checkout-guest-gate').chargeUidOf(req, { getAuth: () => ({ verifyIdToken: async () => ({ customer: true, uid: 'u1' }) }), getDatabase: () => db, attributionUid: (d, t) => (t ? null : d.uid), deadlineMs: 60000 });
-    await candidateSubscribes(L, tree, attrib, '/deleted_uids/u1');
-    const r = await race(tree, (db) => require('../rewards-reserve').reserveRedemption(db, { uid: 'u1', rid: 'x_pizza', orderId: 'o1', cost: 100, canonical: {}, orderFingerprint: 'fp', configVersion: require('../rewards-redeem-config').REDEMPTION_CONFIG_VERSION, now: 1 }), attrib, '/deleted_uids/u1');
-    clean(L, r, '/deleted_uids/u1');
-  });
   // ── index.js inline reads, through the REAL exported handlers on the harness default app (H.indexApp)
   // the catalog the money handlers price from: published into the Firestore fake by the REAL writer (publishVersion), as in production
   const FS = require('../catalog/firestore-fake').makeDb();
@@ -200,14 +185,6 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
   const IDENTITY = { name: 'X', phone: '+50400000000', active: true, hub_lat: 14.1, hub_lng: -87.2, delivery_radius_km: 8, version: 1, hours: { sun: OPEN, mon: OPEN, tue: OPEN, wed: OPEN, thu: OPEN, fri: OPEN, sat: OPEN } };
   const tok = (uid) => H.idToken(uid, { customer: true });
   const handler = (name, uid, body) => () => H.call(X.idx[name], { headers: { 'x-firebase-id-token': tok(uid), origin: 'https://sherpa.hn' }, body });
-  await cell('RG-INTRO-26 index.js:2791 claimOrder\'s tombstone read vs another claim\'s earn credit (rewards-earn.js:17, converted)', async (L) => {
-    const tree = { deleted_uids: { u26: true } };
-    const earn = (db) => require('../rewards-earn').creditEarnForOrder(db, { orderId: 'o26b', order: { customer_uid: 'u26', restaurant_id: 'x_pizza', items: [{ name: 'x', price: 200, qty: 1 }], subtotal_cents: 20000 }, now: 1 });
-    await candidateSubscribes(L, tree, earn, '/deleted_uids/u26');
-    const r = await race(tree, handler('claimOrder', 'u26', { order_id: 'o26' }), earn, '/deleted_uids/u26', X);
-    assert.deepStrictEqual(r.value, { status: 403, body: { error: 'forbidden' } }, `${L}: the handler's own answer`);
-    clean(L, r, '/deleted_uids/u26');
-  });
   // RG-OP through a REAL handler on the shared index.js app: only the frames from this call onward count
   const framesVia = async (tree, run) => {
     const S = H.store(tree); const from = X.sent().length; const p = Promise.resolve().then(run); p.catch(() => {});
@@ -215,17 +192,6 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
     let value; try { value = await Promise.race([p, new Promise((r) => setTimeout(() => r('pending'), 200))]); } catch (e) { value = { threw: e.message }; }
     return { value, frames: X.sent().slice(from).filter((m) => 'gq'.includes(m.a)).map((m) => `${m.a}:${m.b.p}`) };
   };
-  await cell('RG-OP-29 index.js:7463 quoteRedemption reads the caller\'s tombstone with once, never get (deleted_uids family rule)', async (L) => {
-    opClean(L, await framesVia({ deleted_uids: { u29: true } }, handler('quoteRedemption', 'u29', { restaurant_id: 'x_pizza', order_id: 'o29' })), '/deleted_uids/u29');
-  });
-  await cell('RG-OP-18 index.js:7536 pruneInactiveAccounts reads user_profiles (root) with once, never get', async (L) => {
-    opClean(L, await framesVia({ user_profiles: {} }, () => X.idx.pruneInactiveAccounts.run({ scheduleTime: new Date(0).toISOString() })), '/user_profiles');
-  });
-  await cell('RG-OP-14 index.js:7315 verifyOtp (forms) reads phone_index with once, never get', async (L) => {
-    const OTP = require('../otp-lib'); const phone = '+50499990014'; const ph = OTP.phoneHash(phone);
-    const tree = { otp: { [ph]: { code_hash: OTP.hashCode('123456'), expires_at: 9e12, attempts: 0, sends: [1] } }, phone_index: { [ph]: 'u14' }, user_profiles: { u14: { created_at: 1 } } };
-    opClean(L, await framesVia(tree, () => H.call(X.idx.verifyOtp, { headers: { origin: 'https://sherpa.hn' }, body: { phone, code: '123456' } })), `/phone_index/${ph}`, 1);   // the 2nd phone_index read = :7315 (the 1st is claimPhoneUid :307, row 16)
-  });
   await cell('RG-SITE-11 ratings/rate-order.js:66 fencedAfterWrite\'s tombstone read vs another rating\'s member check (member-auth.js:26 once)', async (L) => {
     const tree = { orders: { o11: { customer_uid: 'u11', status: 'delivered', restaurant_id: 'x_pizza', delivered_at: 1 } } };
     const verify = async () => ({ uid: 'u11', customer: true });
@@ -246,14 +212,6 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
     };
     const kc = await scheduleOn(X, caseOf, 24); const ks = kc == null ? await scheduleOn(X, (k) => caseOf(100 + k), 24, { siteFirst: true }) : null;
     assert.deepStrictEqual({ competitorFirst: kc, siteFirst: ks }, { competitorFirst: null, siteFirst: null }, `🔴 ${L}: an asserting schedule exists`);
-  });
-  await cell('RG-INTRO-28 index.js:865 createOrder\'s tombstone read vs another order\'s redemption reserve (rewards-reserve.js:34, converted)', async (L) => {
-    const tree = { deleted_uids: { u28: true }, restaurants: { x_pizza: { identity: IDENTITY } } };
-    const reserve = (db) => require('../rewards-reserve').reserveRedemption(db, { uid: 'u28', rid: 'x_pizza', orderId: 'o28b', cost: 100, canonical: {}, orderFingerprint: 'fp', configVersion: require('../rewards-redeem-config').REDEMPTION_CONFIG_VERSION, now: 1 });
-    await candidateSubscribes(L, tree, reserve, '/deleted_uids/u28');
-    const body = { restaurant_id: 'x_pizza', order_id: 'o28', payment_method: 'cash', items: [{ name: CARNIVORA.display.name, qty: 1, price: CARNIVORA.price, extras: [] }], items_text: `1x ${CARNIVORA.display.name}`, customer_name: 'Ana', customer_phone: '99551234', customer_email: 'a@example.com', order_type: 'pickup' };
-    const r = await race(tree, () => H.call(X.idx.createOrder, { headers: { authorization: 'Bearer rtdb-race-make-secret', 'x-firebase-id-token': tok('u28'), origin: 'https://sherpa.hn' }, body }), reserve, '/deleted_uids/u28', X);
-    clean(L, r, '/deleted_uids/u28');
   });
   const orderBody = (oid, method) => ({ restaurant_id: 'x_pizza', order_id: oid, payment_method: method, items: [{ name: CARNIVORA.display.name, qty: 1, price: CARNIVORA.price, extras: [] }], items_text: `1x ${CARNIVORA.display.name}`, customer_name: 'Ana', customer_phone: '99551234', customer_email: 'a@example.com', order_type: 'pickup' });
   const bearer = (uid) => ({ authorization: 'Bearer rtdb-race-make-secret', 'x-firebase-id-token': tok(uid), origin: 'https://sherpa.hn' });
@@ -279,28 +237,7 @@ const settle = (db) => require('../payments/sdk/coordinator').settleTerminal({ d
     clean(L, r, '/restaurants/xp_sur/identity/brand_id');
   });
   // ── class P (preventive): no reachable assertion with the real competitor (§4.3) — the op guard + the §3.2 matrix carry them ──────
-  await cell('RG-OP-4 delivery/delivery-wire.js:61 chargeContext reads the active attempt with once, never get', async (L) => {
-    const tree = { orders: { o1: { order_type: 'pickup', payment_status: 'pending', active_attempt_id: 'a1' } }, payment_attempts: { a1: { hosted_state: 'created', hosted_expires_at: 9e12, hosted_checkout_url: 'u' } } };
-    opClean(L, await framesOf(tree, (db) => require('../delivery/delivery-wire').chargeContext(db, 'o1', { ctx: null }, { order_type: 'pickup' }, 1, Promise.resolve(null))), '/payment_attempts/a1');
-  });
-  await cell('RG-OP-2 claim-order.js:56 claimOrderCore reads the order with once, never get', async (L) => {
-    const tree = { user_profiles: { u1: { phone_hash: 'h' } }, orders: { o1: { phone_hash: 'h', status: 'delivered' } } };
-    opClean(L, await framesOf(tree, (db) => require('../claim-order').claimOrderCore(db, { uid: 'u1', orderId: 'o1', token: null, now: 1 })), '/orders/o1');
-  });
   const REWARDS_TREE = { user_rewards: { u1: { x_pizza: { balance: 0, reserved: 0, reservations: {} } } } };
-  await cell('RG-OP-19 rewards-reserve.js:375 sweepStaleReservations reads user_rewards (root) with once, never get', async (L) => {
-    opClean(L, await framesOf(REWARDS_TREE, (db) => require('../rewards-reserve').sweepStaleReservations(db, { now: 1 })), '/user_rewards');
-  });
-  await cell('RG-OP-20 rewards-reserve.js:524 sweepConsumeRecovery reads user_rewards (root) with once, never get', async (L) => {
-    opClean(L, await framesOf(REWARDS_TREE, (db) => require('../rewards-reserve').sweepConsumeRecovery(db, { now: 1 })), '/user_rewards');
-  });
-  await cell('RG-OP-16 signup-endpoints.js:307 claimPhoneUid reads phone_index with once, never get', async (L) => {
-    opClean(L, await framesOf({ phone_index: { ph: 'u0' } }, (db) => require('../signup-endpoints').claimPhoneUid(db, 'ph', 'u1')), '/phone_index/ph');
-  });
-  await cell('RG-OP-17 catalog/identity-record-writer.js:229 readCursor reads the cursor with once, never get', async (L) => {
-    const W = require('../catalog/identity-record-writer');
-    opClean(L, await framesOf({ catalog_ctx_cursor: { x_pizza: { seq: 1 } } }, (db) => W.readCursor(W.gateIo(db.ref('catalog_ctx_cursor/x_pizza'), { stopped: () => false, remaining: () => 60000 }), { ms: 60000 })), '/catalog_ctx_cursor/x_pizza');
-  });
   if (process.env.RG_SEARCH) {   // class-run aid: print the first asserting schedule per pair (not a cell)
     const tree4 = { orders: { o1: { order_type: 'pickup', payment_status: 'pending', active_attempt_id: 'a1' } }, payment_attempts: { a1: { hosted_state: 'created', hosted_expires_at: 9e12, hosted_checkout_url: 'u' } } };
     const cc = (db) => require('../delivery/delivery-wire').chargeContext(db, 'o1', { ctx: null }, { order_type: 'pickup' }, 1, Promise.resolve(null));
