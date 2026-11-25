@@ -73,6 +73,15 @@ const rowsOf = (out) => Object.fromEntries(out.body.branches.map((b) => [b.rid, 
     assert.strictEqual(RL.hasPending(r.body.diff, {}), false, `${L}: premise — the review draws nothing`);
     assert.strictEqual(await PS.readHasPending(w.fs, 'la_musa'), false, L);
   });
+  await cell('PS-STRUCTURE-ONLY: a change the review draws ONLY as an «Estructura» row (the extras groups reordered: no added / removed / changed line) ⇒ true', async (L) => {
+    const w = H.world('la_musa');
+    const r = await quiet(() => w.save((d) => { const ec = d.structure.extra_categories; assert.ok(Array.isArray(ec) && ec.length >= 2, `${L}: premise — two extras groups`); d.structure.extra_categories = [...ec].reverse(); }));
+    assert.strictEqual(r.status, 200, `${L}: ${JSON.stringify(r.body).slice(0, 200)}`);
+    const raw = ['added', 'removed', 'renamed', 'changed', 'attachments', 'extras', 'choices'].reduce((n, k) => n + (Array.isArray(r.body.diff[k]) ? r.body.diff[k].length : 0), 0);
+    assert.strictEqual(raw, 0, `${L}: premise — no line array carries it (${Object.keys(r.body.diff).join(',')})`);
+    assert.ok(r.body.diff.structure, `${L}: premise — the structure facet`);
+    assert.strictEqual(await PS.readHasPending(w.fs, 'la_musa'), true, L);
+  });
   await cell('PS-STALE-SOURCE: the draft written by anything else after the save ⇒ null', async (L) => {
     const w = H.world('la_musa');
     await quiet(() => w.save((d) => reprice(d, 2)));
