@@ -2,23 +2,39 @@
 // PLATFORM F1 — the owner brands CLI's logic over an injected RTDB handle (tools/brands-admin.js adds only the project guard,
 // the Admin app and argv). DRY RUN unless `apply`: a mutation command writes ONE path, and only with apply. Exit codes:
 // 0 ok / dry run / no-op, 1 refusal or membership findings, 2 usage.
-const { validateBrand, checkMembership } = require('./brand-model');
+const { validateBrand, checkMembership, checkResolution } = require('./brand-model');
 const S = require('./brand-store');
+
+// Never fail open: absent (null) is an empty /brands; any other non-plain-object root (a scalar, or an array — RTDB returns a
+// 0..n-keyed map as one) is itself a finding. ONE reader for status and resolution.
+async function readBrandsRoot(rtdb) {
+  const root = await S.readNode(rtdb, 'brands');
+  const rootOk = root === null || (typeof root === 'object' && !Array.isArray(root));
+  return { brands: rootOk && root !== null ? root : {}, findings: rootOk ? [] : [{ code: 'brands_root_invalid', type: Array.isArray(root) ? 'array' : typeof root }] };
+}
 
 async function runBrandsAdmin({ rtdb, op, id, apply, nowMs, log }) {
   if (op === 'status') {
-    // Never fail open: absent (null) is an empty /brands; any other non-plain-object root (a scalar, or an array — RTDB returns a
-    // 0..n-keyed map as one) is itself a finding. An invalid brand inside a valid root is checkMembership's brand_invalid finding.
-    const root = await S.readNode(rtdb, 'brands');
-    const rootOk = root === null || (typeof root === 'object' && !Array.isArray(root));
-    const brands = rootOk && root !== null ? root : {};
-    const findings = rootOk ? [] : [{ code: 'brands_root_invalid', type: Array.isArray(root) ? 'array' : typeof root }];
+    // An invalid brand inside a valid root is checkMembership's brand_invalid finding.
+    const { brands, findings } = await readBrandsRoot(rtdb);
     findings.push(...checkMembership(brands, await S.readIdentities(rtdb)));
     const summary = Object.fromEntries(Object.keys(brands).sort().map((b) => {
       const st = brands[b] && brands[b].activation && brands[b].activation.state;
       return [b, { state: st === undefined ? null : st, valid: validateBrand(b, brands[b]).ok }];
     }));
     log(JSON.stringify({ brands: summary, findings }, null, 2));
+    return findings.length ? 1 : 0;
+  }
+  if (op === 'resolution') {
+    // ML r4 §1 E2 rollout gate (read-only; run before any multi-location slice deploys and again before A1): every restaurant
+    // resolves to a brand, each legacy founder to itself. Prints rids / brand ids only — no identity values.
+    const { brands, findings } = await readBrandsRoot(rtdb);
+    const { resolution, findings: unresolved } = checkResolution(brands, await S.readIdentities(rtdb));
+    findings.push(...unresolved);
+    // legacy_self = resolves to ITSELF and that brand record is LEGACY (Codex #383 P2: a non-legacy brand named after its rid also
+    // resolves to itself through an explicit brand_id, and it is not a founder)
+    const isLegacy = (r) => { const b = brands[r]; return !!(b && b.activation && b.activation.state === 'legacy'); };
+    log(JSON.stringify({ resolution, legacy_self: Object.keys(resolution).filter((r) => resolution[r] === r && isLegacy(r)), findings }, null, 2));
     return findings.length ? 1 : 0;
   }
   if (op === 'seed-legacy' && id) {
@@ -45,7 +61,7 @@ async function runBrandsAdmin({ rtdb, op, id, apply, nowMs, log }) {
     log(`brands-admin: published and read back${(await S.clearProjectionStale(rtdb, id, observedAlert)) ? '; projection_stale alert cleared' : ''}`);
     return 0;
   }
-  log('usage: brands-admin.js --project <id> (status | seed-legacy <rid> | publish <brandId>) [--apply]');
+  log('usage: brands-admin.js --project <id> (status | resolution | seed-legacy <rid> | publish <brandId>) [--apply]');
   return 2;
 }
 

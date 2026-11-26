@@ -129,4 +129,16 @@ function checkMembership(brands, identities) {
   return out.sort((x, y) => (key(x) < key(y) ? -1 : key(x) > key(y) ? 1 : 0));
 }
 
-module.exports = { LOCATION_STATES, UNKNOWN, ZONE_MAX_KM, isBrandId, validateBrand, validateZone, validateBranchIdentity, brandIdOf, checkMembership };
+// ML r4 §1 E2 rollout gate: every restaurant identity must resolve to a brand through brandIdOf (a legacy founder to ITSELF, a branch
+// to its brand_id). 'unknown' is a finding: G1 would refuse that restaurant's intake. Pure; rids sorted, so the output is stable.
+function checkResolution(brands, identities) {
+  const I = isObj(identities) ? identities : {};
+  const resolution = {}; const findings = [];
+  for (const rid of Object.keys(I).sort()) {
+    resolution[rid] = brandIdOf(rid, I[rid], brands);
+    if (resolution[rid] === UNKNOWN) findings.push({ code: 'unresolved', rid });
+  }
+  return { resolution, findings };
+}
+
+module.exports = { LOCATION_STATES, UNKNOWN, ZONE_MAX_KM, isBrandId, validateBrand, validateZone, validateBranchIdentity, brandIdOf, checkMembership, checkResolution };

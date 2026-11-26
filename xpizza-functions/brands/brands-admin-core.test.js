@@ -77,5 +77,65 @@ const run = async (db, op, id, apply) => { const lines = []; const code = await 
   assert.strictEqual(writes(db), 0, 'refusals and usage errors write nothing');
   ok('refusals → exit 1, usage → exit 2, zero writes');
 
+  // ML r4 §1 E2 rollout gate — `resolution`: every restaurant identity resolves through brandIdOf; 'unknown' is a finding (G1 would
+  // refuse that restaurant's intake). The legacy founders are DATA seeded through the REAL writer (seed-legacy), never a literal.
+  const twoLegacy = () => ({ restaurants: { leg_a: { identity: ident() }, leg_b: { identity: ident({ name: 'Leg B' }) }, tb_centro: { identity: branch() } }, brands: { tb_brand: TB } });
+  db = fakeRtdb(twoLegacy());
+  r = await run(db, 'resolution', undefined, true);
+  assert.strictEqual(r.code, 1, `unseeded legacy restaurants → exit 1\n${r.out}`);
+  assert.deepStrictEqual(JSON.parse(r.out).findings, [{ code: 'unresolved', rid: 'leg_a' }, { code: 'unresolved', rid: 'leg_b' }], 'each unseeded restaurant is named');
+  assert.strictEqual(JSON.parse(r.out).resolution.tb_centro, 'tb_brand', 'a branch resolves to its brand_id');
+  for (const rid of ['leg_a', 'leg_b']) assert.strictEqual((await run(db, 'seed-legacy', rid, true)).code, 0, `the real writer seeds ${rid}`);
+  const seeded = writes(db);
+  r = await run(db, 'resolution', undefined, true);
+  assert.strictEqual(r.code, 0, `seeded → exit 0\n${r.out}`);
+  assert.deepStrictEqual(JSON.parse(r.out), { resolution: { leg_a: 'leg_a', leg_b: 'leg_b', tb_centro: 'tb_brand' }, legacy_self: ['leg_a', 'leg_b'], findings: [] });
+  assert.strictEqual(writes(db), seeded, 'resolution never writes (even with --apply)');
+  assert.doesNotMatch(r.out, /hub_lat|phone|whatsapp|Leg B/, 'names / ids only: no identity values printed');
+  ok('resolution: unseeded legacy restaurants → «unresolved», exit 1; after the REAL seed-legacy → each resolves to ITSELF, exit 0; never writes; ids only');
+
+  db = fakeRtdb(twoLegacy());
+  for (const rid of ['leg_a', 'leg_b']) await run(db, 'seed-legacy', rid, true);
+  db.data.restaurants.leg_a.identity.brand_id = 'leg_a';
+  r = await run(db, 'resolution', undefined, false);
+  assert.strictEqual(r.code, 0, r.out); assert.strictEqual(JSON.parse(r.out).resolution.leg_a, 'leg_a');
+  ok('resolution: identity.brand_id === its own rid on a legacy brand → still itself');
+
+  db = fakeRtdb(twoLegacy());
+  for (const rid of ['leg_a', 'leg_b']) await run(db, 'seed-legacy', rid, true);
+  db.data.brands.leg_a.activation.state = 'off';   // a founder flipped out of legacy with no brand_id on its identity
+  r = await run(db, 'resolution', undefined, false);
+  assert.strictEqual(r.code, 1, `NOT-LEGACY: exit 1\n${r.out}`);
+  assert.deepStrictEqual(JSON.parse(r.out).findings, [{ code: 'unresolved', rid: 'leg_a' }], 'NOT-LEGACY: a non-legacy record without brand_id does not resolve to itself');
+  ok('resolution: a founder whose record is no longer legacy → unresolved');
+
+  db = fakeRtdb(twoLegacy());
+  for (const rid of ['leg_a', 'leg_b']) await run(db, 'seed-legacy', rid, true);
+  db.data.brands.leg_a.name = ' Leg';   // legacy, but invalid (padded name)
+  r = await run(db, 'resolution', undefined, false);
+  assert.strictEqual(r.code, 1, `INVALID: exit 1\n${r.out}`);
+  assert.deepStrictEqual(JSON.parse(r.out).findings, [{ code: 'unresolved', rid: 'leg_a' }], 'INVALID: an invalid legacy record does not resolve');
+  ok('resolution: an invalid legacy record → unresolved');
+
+  // Codex #383 P2: a NON-legacy brand whose id equals its member rid (identity.brand_id === rid) resolves to itself through brandIdOf,
+  // but it is not a legacy founder — legacy_self requires the brand record's activation.state === 'legacy' too
+  db = fakeRtdb(twoLegacy());
+  for (const rid of ['leg_a', 'leg_b']) await run(db, 'seed-legacy', rid, true);
+  db.data.restaurants.tb_self = { identity: branch({ brand_id: 'tb_self' }) };
+  db.data.brands.tb_self = { name: 'Self', active: true, locations: { tb_self: 'member' }, activation: { state: 'off', since: 3 } };
+  r = await run(db, 'resolution', undefined, false);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.strictEqual(JSON.parse(r.out).resolution.tb_self, 'tb_self', 'an explicit self brand_id resolves to itself');
+  assert.deepStrictEqual(JSON.parse(r.out).legacy_self, ['leg_a', 'leg_b'], 'SELF-NOT-LEGACY: an off brand with brand_id === rid is not legacy_self');
+  ok('resolution: an off brand whose id is its own rid resolves to itself but is NOT legacy_self');
+
+  for (const [label, root] of [['42', 42], ['a numeric-key array', [TB]]]) {
+    db = fakeRtdb({ restaurants: twoLegacy().restaurants, brands: root });
+    r = await run(db, 'resolution', undefined, false);
+    assert.strictEqual(r.code, 1, `/brands = ${label} → exit 1`);
+    assert.ok(JSON.parse(r.out).findings.some((f) => f.code === 'brands_root_invalid'), `/brands = ${label} → brands_root_invalid`);
+  }
+  ok('resolution: a malformed /brands root → brands_root_invalid, exit 1 (never fails open)');
+
   console.log(`brands-admin-core: OK (${n})`);
 })().catch((e) => { console.error('brands-admin-core FAILED:', e); process.exit(1); });
