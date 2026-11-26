@@ -7,7 +7,10 @@
 //   DLV-NEWORDER / DLV-FLUSH / DLV-STUCK  each trigger pushes to the current dispatcher ONLY
 //   DLV-REVOKED       the revoked dispatcher receives nothing, and its subscription (like the merchant's / driver's) is pruned
 //   DLV-FAIL-CLOSED   an unreadable membership: no push, and the subscription is kept
-//   DLV-LOGS          no fan-out / send / revocation log line carries a uid or an order id
+//   DLV-REJECTED-SEND           a non-terminal send failure logs its line (asserted to EXECUTE): status + category only
+//   DLV-REJECTED-LIST-READ-*    the staff_push list read rejects (its error message carries ids): each trigger's catch line EXECUTES
+//                               (notifyStaffOnNewOrder / flushStaffPushQueue / sweepStuckOrders), with no id and no message
+//   DLV-LOGS          no captured staff-push log line (fan-out, send, revocation, the three trigger catches) carries a uid or an order id
 // Run: node staff-push-delivery.test.js
 for (const k of ['FUNCTION_TARGET', 'FIREBASE_DATABASE_EMULATOR_HOST', 'FIRESTORE_EMULATOR_HOST', 'FIREBASE_EMULATOR_HUB', 'FIREBASE_AUTH_EMULATOR_HOST', 'FIREBASE_STORAGE_EMULATOR_HOST', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY']) delete process.env[k];
 const assert = require('assert');
@@ -17,7 +20,8 @@ const { makeHonestDb } = require('./_honest-rtdb-model');
 // the send seam: index.js's `webpush` IS this module object
 const sends = [];
 const webpush = require('web-push');
-webpush.sendNotification = async (sub) => { sends.push(sub.endpoint); return { statusCode: 201 }; };
+let SEND_FAIL = null;   // a cell sets an error the send seam rejects with
+webpush.sendNotification = async (sub) => { sends.push(sub.endpoint); if (SEND_FAIL) throw SEND_FAIL; return { statusCode: 201 }; };
 let DB = null;
 const dbMod = require('firebase-admin/database');
 dbMod.getDatabase = () => DB;   // BEFORE index.js destructures it
@@ -75,9 +79,33 @@ async function run(fn) { sends.length = 0; const c = capture(); try { await fn()
     assert.deepStrictEqual(got, [EP(UIDS.disp)], `🔴 ${L}: ${JSON.stringify(got)}`);
     assert.deepStrictEqual(await read(`staff_push/${UIDS.revoked}`), SUB(UIDS.revoked), `🔴 ${L}: an unknown is never deleted`);
   });
+  const live = { status: 'new', payment_method: 'cash', restaurant_id: 'x_pizza', customer_name: 'Ana', created_at: Date.now() };
+  const lines = (from) => ALL_LOGS.slice(from);
+  await cell('DLV-REJECTED-SEND: a non-terminal send failure logs its line — status + category only', async (L) => {
+    DB = makeHonestDb(world()); SEND_FAIL = Object.assign(new Error(`push failed for ${UIDS.disp} ${OID}`), { statusCode: 500 }); const from = ALL_LOGS.length;
+    try { await run(() => idx.notifyStaffOnNewOrder.run({ data: { before: snap(null), after: snap(live) }, params: { orderId: OID } })); } finally { SEND_FAIL = null; }
+    assert.ok(lines(from).includes('sendStaffPush: failed status=500 (neworder)'), `🔴 ${L}: the failed-send line executed, redacted (${JSON.stringify(lines(from))})`);
+  });
+  const listReadFails = (extra = {}) => makeHonestDb(world(extra), { beforeRead: async (p) => { if (p === 'staff_push') throw Object.assign(new Error(`read failed at /staff_push for ${UIDS.disp} order ${OID}`), { code: 'unavailable' }); } });
+  await cell('DLV-REJECTED-LIST-READ-NEW: notifyStaffOnNewOrder\'s catch line executes, with no id and no message', async (L) => {
+    DB = listReadFails(); const from = ALL_LOGS.length;
+    await run(() => idx.notifyStaffOnNewOrder.run({ data: { before: snap(null), after: snap(live) }, params: { orderId: OID } }));
+    assert.ok(lines(from).includes('notifyStaffOnNewOrder: fanout failed unavailable'), `🔴 ${L}: ${JSON.stringify(lines(from))}`);
+  });
+  await cell('DLV-REJECTED-LIST-READ-FLUSH: flushStaffPushQueue\'s catch line executes, with no message', async (L) => {
+    DB = listReadFails({ staff_push_state: { last_sent_at: 1, pending: { x_pizza: 1, la_musa: 0, ids: ['a'] } } }); const from = ALL_LOGS.length;
+    await run(() => idx.flushStaffPushQueue.run({}));
+    assert.ok(lines(from).includes('flushStaffPushQueue: fanout failed unavailable'), `🔴 ${L}: ${JSON.stringify(lines(from))}`);
+  });
+  await cell('DLV-REJECTED-LIST-READ-STUCK: sweepStuckOrders\'s catch line executes, with no id and no message', async (L) => {
+    DB = listReadFails({ orders: { [OID]: { status: 'ready', order_type: 'delivery', restaurant_id: 'x_pizza', customer_name: 'Ana', created_at: Date.now() - 3600000 } } }); const from = ALL_LOGS.length;
+    await run(() => idx.sweepStuckOrders.run({}));
+    assert.ok(lines(from).includes('sweepStuckOrders: fanout failed unavailable'), `🔴 ${L}: ${JSON.stringify(lines(from))}`);
+  });
   await cell('DLV-LOGS: no fan-out / send / revocation log line carries a uid or an order id', async (L) => {
-    const lines = ALL_LOGS.filter((l) => /fanoutStaffPush|sendStaffPush|staff_push_revoked/.test(l));
+    const lines = ALL_LOGS.filter((l) => /fanoutStaffPush|sendStaffPush|staff_push_revoked|notifyStaffOnNewOrder|flushStaffPushQueue|sweepStuckOrders/.test(l));
     assert.ok(lines.some((l) => /fanoutStaffPush: 1\/1 sent \(neworder\)/.test(l)) && lines.some((l) => /fanoutStaffPush: 1\/1 sent \(stuck\)/.test(l)), `${L}: premise, the fan-out logged (${JSON.stringify(lines)})`);
+    assert.ok(lines.length >= 8, `${L}: premise, every staff-push line family was captured (${lines.length})`);
     const leak = lines.filter((l) => Object.values(UIDS).some((u) => l.includes(u)) || l.includes(OID));
     assert.deepStrictEqual(leak, [], `🔴 ${L}`);
   });

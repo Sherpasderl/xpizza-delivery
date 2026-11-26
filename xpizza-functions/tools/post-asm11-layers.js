@@ -161,6 +161,27 @@ const INNER = Object.freeze([
   "was": "\n  console.log(`fanoutStaffPush: ${sent}/${settled.length} sent (${payload.tag})`);\n"
  },
  {
+  "layer": "staff-push-s2",
+  "label": "index.js notifyStaffOnNewOrder — S2 / Codex #415: the fan-out-failure log carries no order id",
+  "file": "index.js",
+  "now": "\n      catch (e) { console.error('notifyStaffOnNewOrder: fanout failed', (e && (e.code || e.name)) || 'error'); }   // S2 / Codex #415: no order id, no message (a read error can carry a path)\n",
+  "was": "\n      catch (e) { console.error(`notifyStaffOnNewOrder: fanout failed for ${orderId}`, e.message); }\n"
+ },
+ {
+  "layer": "staff-push-s2",
+  "label": "index.js flushStaffPushQueue — S2 / Codex #415: the fan-out-failure log carries no message",
+  "file": "index.js",
+  "now": "\n      catch (e) { console.error('flushStaffPushQueue: fanout failed', (e && (e.code || e.name)) || 'error'); }   // S2 / Codex #415: no message (a read error can carry a path)\n",
+  "was": "\n      catch (e) { console.error('flushStaffPushQueue: fanout failed', e.message); }\n"
+ },
+ {
+  "layer": "staff-push-s2",
+  "label": "index.js sweepStuckOrders — S2 / Codex #415: the fan-out-failure log carries no order id",
+  "file": "index.js",
+  "now": "\n        } catch (e) { console.error('sweepStuckOrders: fanout failed', (e && (e.code || e.name)) || 'error'); }   // S2 / Codex #415: no order id, no message\n",
+  "was": "\n        } catch (e) { console.error(`sweepStuckOrders: fanout failed for ${orderId}`, e.message); }\n"
+ },
+ {
   "layer": "rtdb-gate",
   "label": "index.js:7325 — the RTDB in-flight-get gate wrap (PLAN-rtdb-get-once-race r9, lib/rtdb-gate)",
   "file": "index.js",

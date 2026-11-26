@@ -4039,7 +4039,7 @@ exports.notifyStaffOnNewOrder = onValueWritten(
 
     if (decision === 'immediate') {
       try { await fanoutStaffPush(db, { ...formatNewOrder(after), tag: 'neworder', data: { orderId } }); }
-      catch (e) { console.error(`notifyStaffOnNewOrder: fanout failed for ${orderId}`, e.message); }
+      catch (e) { console.error('notifyStaffOnNewOrder: fanout failed', (e && (e.code || e.name)) || 'error'); }   // S2 / Codex #415: no order id, no message (a read error can carry a path)
     }
     // buffered → flushStaffPushQueue sends the single grouped ping once the window elapses
   }
@@ -4071,7 +4071,7 @@ exports.flushStaffPushQueue = onSchedule(
       // The buffer is already cleared (atomic txn above); the fan-out never rejects, but wrap anyway so
       // a surprise throw can't crash the scheduled invocation.
       try { await fanoutStaffPush(db, { ...formatGrouped(toSend), tag: 'neworder', data: {} }); }
-      catch (e) { console.error('flushStaffPushQueue: fanout failed', e.message); }
+      catch (e) { console.error('flushStaffPushQueue: fanout failed', (e && (e.code || e.name)) || 'error'); }   // S2 / Codex #415: no message (a read error can carry a path)
     }
   }
 );
@@ -4115,7 +4115,7 @@ exports.sweepStuckOrders = onSchedule(
         await db.ref(`staff_push_alerted/${orderId}`).set(true);
         try {
           await fanoutStaffPush(db, { ...formatStuck(order, result), tag: `stuck:${orderId}`, data: { orderId } });
-        } catch (e) { console.error(`sweepStuckOrders: fanout failed for ${orderId}`, e.message); }
+        } catch (e) { console.error('sweepStuckOrders: fanout failed', (e && (e.code || e.name)) || 'error'); }   // S2 / Codex #415: no order id, no message
       } else if (action === 'clear') {
         await db.ref(`staff_push_alerted/${orderId}`).remove();   // recovered/terminal → drop the marker
       }
