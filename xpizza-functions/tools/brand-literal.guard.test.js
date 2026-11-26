@@ -23,6 +23,27 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   assert.deepStrictEqual(preds("function zzS(b) { return b.rid !== ''; }"), [], '🔴 false positive: a rid PRESENCE check (the empty string names no restaurant) is not a predicate');
   assert.deepStrictEqual(preds("function zzT(rid) { return rid === 'brand_c'; }"), ['brand_c'], '🔴 the scanner lost the named-literal predicate');
   ok('P a rid presence check (`!== \'\'`) adds no predicate; a named literal still does');
+  // a const alias shadowed by a second binding of ANY pattern is ambiguous, never resolved (Codex #425); the control resolves
+  assert.deepStrictEqual(preds("const zzV0R = 'brand_s'; function zzV0(rid) { return rid === zzV0R; }"), ['brand_s'], '🔴 the scanner lost the const-alias predicate');
+  // names that exist on Object.prototype are ordinary names (Codex #426): resolved once, ambiguous when bound twice
+  for (const nm of ['constructor', '__proto__', 'toString']) {
+    assert.deepStrictEqual(preds(`const ${nm} = 'brand_ab'; function zzW(rid) { return rid === ${nm}; }`), ['brand_ab'], `🔴 a const alias named «${nm}» (an Object.prototype name) was not resolved`);
+    assert.deepStrictEqual(preds(`const ${nm} = 'brand_ab'; function zzW(rid, ${nm}) { return rid === ${nm}; }`), [], `🔴 false positive: «${nm}» bound twice was resolved`);
+  }
+  ok('P const aliases named constructor / __proto__ / toString resolve once and are ambiguous when bound twice');
+  for (const [label, src] of [
+    ['a destructured param', "const zzV1R = 'brand_t'; function zzV1(rid, { zzV1R }) { return rid === zzV1R; }"],
+    ['a param default', "const zzV2R = 'brand_u'; function zzV2(rid, zzV2R = '') { return rid === zzV2R; }"],
+    ['a rest param', "const zzV3R = ['brand_v']; function zzV3(rid, ...zzV3R) { return zzV3R.includes(rid); }"],
+    ['an array-destructured const', "const zzV4R = 'brand_w'; function zzV4(rid, a) { const [zzV4R] = a; return rid === zzV4R; }"],
+    ['a catch binding', "const zzV5R = 'brand_x'; function zzV5(rid) { try { return 0; } catch (zzV5R) { return rid === zzV5R; } }"],
+    ['a named function expression', "const zzV6R = 'brand_y'; const zzV6 = function zzV6R(rid) { return rid === zzV6R; };"],
+    ['a destructured default + object rest', "const zzV7R = new Set(['brand_z']); function zzV7(rid, { a = 1, ...zzV7R }) { return zzV7R.has(rid); }"],
+    ['a nested object/array pattern', "const zzV8R = { brand_aa: 1 }; function zzV8(rid, { p: [{ zzV8R }] }) { return zzV8R[rid]; }"],
+  ]) {
+    assert.deepStrictEqual(preds(src), [], `🔴 false positive: a const alias shadowed by ${label} was resolved`);
+    ok(`P a const alias shadowed by ${label} is ambiguous → no predicate`);
+  }
 }
 
 const rows = G.collect();
@@ -81,6 +102,16 @@ const CELLS = [
   ['ARBITRARY future rid !== on a member', JS, "function zzM(o) { return o.restaurant_id !== 'brand_d'; }", 'rid-predicate'],
   ['ARBITRARY future rid switch', JS, "function zzN(rid) { switch (rid) { case 'brand_e': return 1; } return 0; }", 'rid-predicate'],
   ['ARBITRARY future rid [list].includes', JS, "function zzO(rid) { return ['brand_f', 'brand_g'].includes(rid); }", 'rid-predicate'],
+  // r9 B0 (#334-13): constant operands, aliases, and literal-set membership — a third restaurant through each form
+  ['3rd rid, === a constant concatenation', JS, "function zzT1(rid) { return rid === 'brand_' + 'i'; }", 'rid-predicate'],
+  ['3rd rid, === a same-file const alias', JS, "const zzT2R = 'brand_j'; function zzT2(rid) { return rid === zzT2R; }", 'rid-predicate'],
+  ['3rd rid, switch on an aliased template', JS, "const zzT3R = `brand_${'k'}`; function zzT3(rid) { switch (rid) { case zzT3R: return 1; } return 0; }", 'rid-predicate'],
+  ['3rd rid, new Set([..]).has(rid)', JS, "function zzT4(rid) { return new Set(['brand_l']).has(rid); }", 'rid-predicate'],
+  ['3rd rid, an aliased Set .has(rid)', JS, "const zzT5S = new Set(['brand_m']); function zzT5(o) { return zzT5S.has(o.restaurant_id); }", 'rid-predicate'],
+  ['3rd rid, an aliased array .includes(rid)', JS, "const zzT6L = ['brand_n']; function zzT6(rid) { return zzT6L.includes(rid); }", 'rid-predicate'],
+  ['3rd rid, an object-key lookup ({..})[rid]', JS, "function zzT7(rid) { return ({ brand_o: true })[rid]; }", 'rid-predicate'],
+  ['3rd rid, an aliased map lookup MAP[rid]', JS, "const zzT8M = { brand_p: 1 }; function zzT8(rid) { return zzT8M[rid]; }", 'rid-predicate'],
+  ['3rd rid, rid in MAP', JS, "const zzT9M = { brand_q: 1 }; function zzT9(rid) { return rid in zzT9M; }", 'rid-predicate'],
   ['HTML text with an entity', HTML, '<p>La&#32;Musa</p>', 'name', 'body'],
   ['inline <script> concatenation', HTML, "<script>var zzP = 'la_m' + 'usa';</script>", 'rid', 'body'],
   ['inline on* handler predicate', HTML, `<button onclick="if (rid === 'brand_h') go()">x</button>`, 'rid-predicate', 'body'],
@@ -105,7 +136,11 @@ for (const [label, file, add, kind, where] of CELLS) {
 for (const [label, file, add] of [
   ['a comment is never a token', JS, '// x_pizza La Musa lamusakitchendisplay.netlify.app'],
   ['a platform infra name (the Firebase project id), scoped by exact string', JS, "const zzQ = 'us-central1-xpizza-delivery';"],
-  ['a rid compared with a VARIABLE (data-driven) is not a predicate', JS, 'function zzR(rid, cfg) { return rid === cfg.rid; }'],]) {
+  ['a rid compared with a VARIABLE (data-driven) is not a predicate', JS, 'function zzR(rid, cfg) { return rid === cfg.rid; }'],
+  ['a lookup in a DATA map (a parameter) is not a predicate', JS, 'function zzU1(rid, cfg) { return cfg.byRid[rid] || (rid in cfg.byRid); }'],
+  ['a `let` (reassignable) is not a constant alias', JS, "let zzU2R = 'brand_r'; function zzU2(rid) { return rid === zzU2R; }"],
+  ['a name declared twice is not resolved as an alias', JS, "const zzU3R = 'brand_s'; function zzU3(rid, zzU3R) { return rid === zzU3R; }"],
+]) {
   const added = planted(file, add);
   assert.deepStrictEqual(added.map((a) => a.kind + ':' + a.snippet), [], `🔴 false positive: ${label}`);
   ok(`N ${label} → no new occurrence`);

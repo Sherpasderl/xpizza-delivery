@@ -17,6 +17,34 @@
    "count": 2
   },
   {
+   "file": "customer-app/capp-pay-sdk.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "amex",
+   "count": 1
+  },
+  {
+   "file": "customer-app/capp-pay-sdk.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "mastercard",
+   "count": 1
+  },
+  {
+   "file": "customer-app/capp-pay-sdk.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "other",
+   "count": 1
+  },
+  {
+   "file": "customer-app/capp-pay-sdk.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "visa",
+   "count": 1
+  },
+  {
    "file": "customer-app/capp-shell-ui.js",
    "kind": "rid-predicate",
    "brand": "*",
@@ -525,7 +553,14 @@
    "kind": "rid-predicate",
    "brand": "*",
    "snippet": "la_musa",
-   "count": 1
+   "count": 4
+  },
+  {
+   "file": "xpizza-dispatch-mobile/index.html",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 3
   },
   {
    "file": "xpizza-dispatch-mobile/manifest.json",
@@ -797,8 +832,15 @@
    "file": "xpizza-driver/stacking-helpers.js",
    "kind": "rid-predicate",
    "brand": "*",
-   "snippet": "x_pizza",
+   "snippet": "la_musa",
    "count": 1
+  },
+  {
+   "file": "xpizza-driver/stacking-helpers.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 2
   },
   {
    "file": "xpizza-driver/sw.js",
@@ -1025,6 +1067,20 @@
    "count": 1
   },
   {
+   "file": "xpizza-functions/catalog/exposure-source.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/catalog/exposure-source.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 2
+  },
+  {
    "file": "xpizza-functions/catalog/fallback-groups.generated.js",
    "kind": "rid",
    "brand": "la_musa",
@@ -1057,6 +1113,13 @@
    "kind": "rid-predicate",
    "brand": "*",
    "snippet": "la_musa",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/catalog/form-menu-source.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
    "count": 2
   },
   {
@@ -1501,6 +1564,13 @@
    "count": 1
   },
   {
+   "file": "xpizza-functions/factura/eligibility.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
    "file": "xpizza-functions/factura/pricing.js",
    "kind": "name",
    "brand": "x_pizza",
@@ -1527,6 +1597,20 @@
    "brand": "x_pizza",
    "snippet": "x_pizza",
    "count": 3
+  },
+  {
+   "file": "xpizza-functions/generate-form-bundle.mjs",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 4
+  },
+  {
+   "file": "xpizza-functions/generate-form-bundle.mjs",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 4
   },
   {
    "file": "xpizza-functions/index.js",
@@ -1596,14 +1680,14 @@
    "kind": "rid-predicate",
    "brand": "*",
    "snippet": "la_musa",
-   "count": 1
+   "count": 3
   },
   {
    "file": "xpizza-functions/index.js",
    "kind": "rid-predicate",
    "brand": "*",
    "snippet": "x_pizza",
-   "count": 1
+   "count": 3
   },
   {
    "file": "xpizza-functions/lib/emulator-endpoint.js",
@@ -1665,6 +1749,20 @@
    "file": "xpizza-functions/menu-extract.mjs",
    "kind": "rid",
    "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/menu-extract.mjs",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/menu-extract.mjs",
+   "kind": "rid-predicate",
+   "brand": "*",
    "snippet": "x_pizza",
    "count": 1
   },
@@ -1736,14 +1834,14 @@
    "kind": "rid-predicate",
    "brand": "*",
    "snippet": "la_musa",
-   "count": 3
+   "count": 5
   },
   {
    "file": "xpizza-functions/menu-pricing.js",
    "kind": "rid-predicate",
    "brand": "*",
    "snippet": "x_pizza",
-   "count": 1
+   "count": 3
   },
   {
    "file": "xpizza-functions/merchant/merchant-scope.js",
@@ -1833,6 +1931,20 @@
    "file": "xpizza-functions/platform-config/legacy-seed.js",
    "kind": "rid",
    "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/platform-config/legacy-seed.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/platform-config/legacy-seed.js",
+   "kind": "rid-predicate",
+   "brand": "*",
    "snippet": "x_pizza",
    "count": 2
   },
@@ -2078,8 +2190,15 @@
    "file": "xpizza-functions/ready-time-predict.js",
    "kind": "rid-predicate",
    "brand": "*",
-   "snippet": "x_pizza",
+   "snippet": "la_musa",
    "count": 1
+  },
+  {
+   "file": "xpizza-functions/ready-time-predict.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 2
   },
   {
    "file": "xpizza-functions/ready-time-quality.js",
@@ -2136,6 +2255,20 @@
    "brand": "x_pizza",
    "snippet": "x_pizza",
    "count": 1
+  },
+  {
+   "file": "xpizza-functions/rewards-core.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/rewards-core.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 2
   },
   {
    "file": "xpizza-functions/rewards-earn.js",
@@ -2381,6 +2514,13 @@
    "brand": "x_pizza",
    "snippet": "xpizza_instance",
    "count": 3
+  },
+  {
+   "file": "xpizza-functions/signup-core.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "_platform",
+   "count": 2
   },
   {
    "file": "xpizza-functions/staff-push.js",
@@ -3107,8 +3247,15 @@
    "file": "xpizza-functions/tools/migrations/gen-menu-structure-2026-10-26.js",
    "kind": "rid-predicate",
    "brand": "*",
-   "snippet": "x_pizza",
+   "snippet": "la_musa",
    "count": 1
+  },
+  {
+   "file": "xpizza-functions/tools/migrations/gen-menu-structure-2026-10-26.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 2
   },
   {
    "file": "xpizza-functions/tools/mktprice-module-inverse.js",
@@ -3377,6 +3524,20 @@
    "count": 4
   },
   {
+   "file": "xpizza-functions/tools/seed-catalog.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 3
+  },
+  {
+   "file": "xpizza-functions/tools/seed-catalog.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
+   "count": 3
+  },
+  {
    "file": "xpizza-functions/tools/seed-source-store.js",
    "kind": "rid",
    "brand": "la_musa",
@@ -3415,6 +3576,20 @@
    "file": "xpizza-functions/tools/splice-form-bundle.js",
    "kind": "rid",
    "brand": "x_pizza",
+   "snippet": "x_pizza",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/tools/splice-form-bundle.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/tools/splice-form-bundle.js",
+   "kind": "rid-predicate",
+   "brand": "*",
    "snippet": "x_pizza",
    "count": 2
   },
@@ -3500,6 +3675,13 @@
    "kind": "rid-predicate",
    "brand": "*",
    "snippet": "la_musa",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/whatsapp_inbound.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "x_pizza",
    "count": 1
   },
   {
@@ -3556,14 +3738,14 @@
    "kind": "rid-predicate",
    "brand": "*",
    "snippet": "la_musa",
-   "count": 2
+   "count": 4
   },
   {
    "file": "xpizza-functions/whatsapp.js",
    "kind": "rid-predicate",
    "brand": "*",
    "snippet": "x_pizza",
-   "count": 2
+   "count": 4
   },
   {
    "file": "xpizza-handheld/fonts/SHA256SUMS",
@@ -3916,11 +4098,25 @@
    "count": 2
   },
   {
+   "file": "xpizza-portal/inicio.js",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "all",
+   "count": 5
+  },
+  {
    "file": "xpizza-portal/marketing-harness.mjs",
    "kind": "rid-predicate",
    "brand": "*",
    "snippet": "tb_centro",
-   "count": 1
+   "count": 3
+  },
+  {
+   "file": "xpizza-portal/marketing-harness.mjs",
+   "kind": "rid-predicate",
+   "brand": "*",
+   "snippet": "tb_sur",
+   "count": 2
   },
   {
    "file": "xpizza-portal/marketing.js",
@@ -4060,7 +4256,7 @@
    "kind": "rid-predicate",
    "brand": "*",
    "snippet": "la_musa",
-   "count": 1
+   "count": 2
   }
  ]
 }
