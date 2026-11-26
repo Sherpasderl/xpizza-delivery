@@ -171,7 +171,7 @@ const INNER = Object.freeze([
   "layer": "staff-push-b3",
   "label": "index.js:4027 — B3: the staff push counts + labels every restaurant from data (PLAN-brand-agnostic-convergence r9, audit G4); this swap also carries the adjacent S2 / Codex #415 redacted catch",
   "file": "index.js",
-  "now": "\n      s = s || { last_sent_at: 0, pending: { ids: [] } };\n      if (!s.pending) s.pending = { ids: [] };   // B3: { by_rid: { <rid>: n }, ids } — any restaurant\n",
+  "now": "\n      s = s || { last_sent_at: 0, pending: { ids: [] } };\n      if (!s.pending) s.pending = { ids: [] };   // B3: FLAT { <rid>: n, ids } — any restaurant, today's shape\n",
   "was": "\n      s = s || { last_sent_at: 0, pending: { x_pizza: 0, la_musa: 0, ids: [] } };\n      if (!s.pending) s.pending = { x_pizza: 0, la_musa: 0, ids: [] };\n"
  },
  {

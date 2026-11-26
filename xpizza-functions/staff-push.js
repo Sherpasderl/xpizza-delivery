@@ -17,19 +17,18 @@ const { brandText } = require('./pickup-label');
 const NEUTRAL_LABEL = 'Restaurante';
 const RID_RE = /^[a-z0-9_]{1,40}$/;
 const pushRidOf = (order) => (order && typeof order.restaurant_id === 'string' && RID_RE.test(order.restaurant_id) ? order.restaurant_id : 'unknown');
-// the pending buffer = { by_rid: { <rid>: n }, ids: [...] }. A LEGACY buffer (before B3: { <rid>: n, …, ids }) reads the same way —
-// every numeric top-level key is a restaurant's count.
+// the pending buffer is FLAT — { <rid>: n, …, ids: [...] } — exactly the shape written before B3 (Codex #421 ruling, 6c): every numeric
+// top-level key is a restaurant's count, so an older flusher still reads the founders' counts during a mixed-version deploy.
 function pendingCounts(p) {
   const out = {};
   if (!p || typeof p !== 'object') return out;
   const add = (k, v) => { if (Number.isSafeInteger(v) && v > 0 && RID_RE.test(k)) out[k] = (out[k] || 0) + v; };
-  for (const [k, v] of Object.entries(p.by_rid || {})) add(k, v);
-  for (const [k, v] of Object.entries(p)) if (k !== 'by_rid' && k !== 'ids') add(k, v);
+  for (const [k, v] of Object.entries(p)) if (k !== 'ids') add(k, v);
   return out;
 }
 function addPending(p, rid, orderId) {
   const by = pendingCounts(p); by[rid] = (by[rid] || 0) + 1;
-  return { by_rid: by, ids: [...((p && Array.isArray(p.ids)) ? p.ids : []), orderId] };
+  return { ...by, ids: [...((p && Array.isArray(p.ids)) ? p.ids : []), orderId] };
 }
 // { rid → label } from identity: display_name → name → NEUTRAL_LABEL (a read failure or an unshowable text never fails the push)
 async function staffLabels(db, rids) {
@@ -61,9 +60,7 @@ function coalesceDecision({ lastSentAt, now, windowMs }) {
 }
 
 /**
- * Single new-order notification: `🔔 Nuevo pedido` / `<brand> #<n> · <customer>`.
- * The 🔔 lives only in OS notification text (matches the desktop alert language) —
- * never in the PWA's own UI. `#<n>` (display_number) and the customer degrade
+ * Single new-order notification: `Nuevo pedido` / `<label> · #<n> · <customer>` (no emoji: rule 8, Codex #421). `#<n>` (display_number) and the customer degrade
  * gracefully: display_number may not be stamped yet when this fires (the stamp
  * trigger runs on the same transition, concurrently), so it's omitted if absent.
  */
@@ -71,19 +68,19 @@ function formatNewOrder(order, label) {
   const n = (order && Number.isFinite(order.display_number)) ? `#${order.display_number}` : null;
   const who = ((order && order.customer_name) || '').trim() || null;
   const body = [label || NEUTRAL_LABEL, n, who].filter(Boolean).join(' · ');
-  return { title: '🔔 Nuevo pedido', body };
+  return { title: 'Nuevo pedido', body };   // no emoji (rule 8, Codex #421)
 }
 
 /**
- * Grouped coalesced notification from the pending buffer (B3: { by_rid, ids }, or a legacy one) and the { rid → label } map:
- * `🔔 N pedidos nuevos` / `2 Casa A · 1 Casa B` — most orders first, then by label.
+ * Grouped coalesced notification from the FLAT pending buffer ({ <rid>: n, ids }) and the { rid → label } map:
+ * `N pedidos nuevos` / `2 Casa A · 1 Casa B` — most orders first, then by label (no emoji: rule 8, Codex #421).
  */
 function formatGrouped(pending, labels = {}) {
   const by = pendingCounts(pending);
   const rows = Object.entries(by).map(([rid, k]) => ({ k, label: labels[rid] || NEUTRAL_LABEL })).sort((a, b) => b.k - a.k || a.label.localeCompare(b.label));
   const total = rows.reduce((t, r) => t + r.k, 0);
   const noun = total === 1 ? 'pedido nuevo' : 'pedidos nuevos';
-  return { title: `🔔 ${total} ${noun}`, body: rows.map((r) => `${r.k} ${r.label}`).join(' · ') };
+  return { title: `${total} ${noun}`, body: rows.map((r) => `${r.k} ${r.label}`).join(' · ') };
 }
 
 /**

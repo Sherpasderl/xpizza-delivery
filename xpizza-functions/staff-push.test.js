@@ -32,7 +32,7 @@ test('grouped body breaks down by restaurant label, plural noun (a legacy buffer
   assert.match(g.body, /1 La Musa/);
 });
 test('grouped single → singular noun, only the present restaurant', () => {
-  const g = formatGrouped({ by_rid: { la_musa: 1 }, ids: ['a'] }, LABELS);
+  const g = formatGrouped({ la_musa: 1, ids: ['a'] }, LABELS);
   assert.match(g.title, /\b1 pedido nuevo\b/);
   assert.equal(/X\. Pizza/.test(g.body), false);
   assert.match(g.body, /1 La Musa/);

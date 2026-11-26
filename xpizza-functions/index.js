@@ -4025,7 +4025,7 @@ exports.notifyStaffOnNewOrder = onValueWritten(
     const tx = await db.ref('staff_push_state').transaction((s) => {
       decision = null;
       s = s || { last_sent_at: 0, pending: { ids: [] } };
-      if (!s.pending) s.pending = { ids: [] };   // B3: { by_rid: { <rid>: n }, ids } — any restaurant
+      if (!s.pending) s.pending = { ids: [] };   // B3: FLAT { <rid>: n, ids } — any restaurant, today's shape
       decision = coalesceDecision({ lastSentAt: s.last_sent_at || 0, now, windowMs: WINDOW });
       if (decision === 'immediate') {
         s.last_sent_at = now;                                      // open a fresh window

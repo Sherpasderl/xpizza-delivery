@@ -22,7 +22,7 @@ async function cell(label, fn) { try { await fn(label); console.log(`  ✓ ${++n
   await cell('B3-COUNTS-ANY-RID: a third restaurant is counted under its own id', async (L) => {
     let p = SP.addPending(null, 'x_pizza', 'o1'); p = SP.addPending(p, 'tb_third', 'o2'); p = SP.addPending(p, 'tb_third', 'o3');
     assert.deepStrictEqual(SP.pendingCounts(p), { x_pizza: 1, tb_third: 2 }, `🔴 ${L}`);
-    assert.deepStrictEqual(p.ids, ['o1', 'o2', 'o3'], `${L}: ids kept in order`);
+    assert.deepStrictEqual(p, { x_pizza: 1, tb_third: 2, ids: ['o1', 'o2', 'o3'] }, `🔴 ${L}: the FLAT shape (today's), ids kept in order`);
   });
   await cell('B3-LEGACY-BUFFER: a pre-B3 buffer is read with the same counts (and grows correctly)', async (L) => {
     const legacy = { x_pizza: 2, la_musa: 1, ids: ['a', 'b', 'c'] };
@@ -32,12 +32,12 @@ async function cell(label, fn) { try { await fn(label); console.log(`  ✓ ${++n
   await cell('B3-GROUPED-LABELS: each restaurant by ITS label, a third one included, most orders first', async (L) => {
     let p = null; for (const [rid, k] of [['x_pizza', 1], ['tb_third', 2], ['la_musa', 1]]) for (let i = 0; i < k; i++) p = SP.addPending(p, rid, `${rid}${i}`);
     const g = SP.formatGrouped(p, { x_pizza: 'X. Pizza', la_musa: 'La Musa', tb_third: 'Tercera Casa' });
-    assert.deepStrictEqual(g, { title: '🔔 4 pedidos nuevos', body: '2 Tercera Casa · 1 La Musa · 1 X. Pizza' }, `🔴 ${L}: ${JSON.stringify(g)}`);
-    assert.deepStrictEqual(SP.formatGrouped({ by_rid: { tb_third: 1 }, ids: ['z'] }, {}), { title: '🔔 1 pedido nuevo', body: '1 Restaurante' }, `🔴 ${L}: no label ⇒ neutral`);
+    assert.deepStrictEqual(g, { title: '4 pedidos nuevos', body: '2 Tercera Casa · 1 La Musa · 1 X. Pizza' }, `🔴 ${L}: ${JSON.stringify(g)}`);
+    assert.deepStrictEqual(SP.formatGrouped({ tb_third: 1, ids: ['z'] }, {}), { title: '1 pedido nuevo', body: '1 Restaurante' }, `🔴 ${L}: no label ⇒ neutral`);
   });
   await cell('B3-NEWORDER-LABEL: the single push uses the given label', async (L) => {
     const r = SP.formatNewOrder({ restaurant_id: 'tb_third', display_number: 12, customer_name: 'Ana' }, 'Tercera Casa');
-    assert.deepStrictEqual(r, { title: '🔔 Nuevo pedido', body: 'Tercera Casa · #12 · Ana' }, `🔴 ${L}: ${JSON.stringify(r)}`);
+    assert.deepStrictEqual(r, { title: 'Nuevo pedido', body: 'Tercera Casa · #12 · Ana' }, `🔴 ${L}: ${JSON.stringify(r)}`);
   });
   await cell('B3-LABEL-SOURCE: identity display_name → name → «Restaurante»; never another restaurant\'s name', async (L) => {
     const db = makeHonestDb({ restaurants: {
