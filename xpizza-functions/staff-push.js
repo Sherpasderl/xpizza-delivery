@@ -10,10 +10,40 @@
  * purely additive, parallel lane.
  */
 
-const BRAND_LABEL = { x_pizza: 'X. Pizza', la_musa: 'La Musa' };
-
-function brandLabel(restaurantId) {
-  return BRAND_LABEL[restaurantId === 'la_musa' ? 'la_musa' : 'x_pizza'];
+// B3 (PLAN-brand-agnostic-convergence r9, audit G4): every restaurant is counted and labelled FROM DATA — no restaurant id or name here.
+// The label is the restaurant's identity display_name, else its name, else a neutral word: an unknown / unreadable identity never
+// borrows another restaurant's name.
+const { brandText } = require('./pickup-label');
+const NEUTRAL_LABEL = 'Restaurante';
+const RID_RE = /^[a-z0-9_]{1,40}$/;
+const pushRidOf = (order) => (order && typeof order.restaurant_id === 'string' && RID_RE.test(order.restaurant_id) ? order.restaurant_id : 'unknown');
+// the pending buffer is FLAT — { <rid>: n, …, ids: [...] } — exactly the shape written before B3 (Codex #421 ruling, 6c): every numeric
+// top-level key is a restaurant's count, so an older flusher still reads the founders' counts during a mixed-version deploy.
+function pendingCounts(p) {
+  const out = {};
+  if (!p || typeof p !== 'object') return out;
+  const add = (k, v) => { if (Number.isSafeInteger(v) && v > 0 && RID_RE.test(k)) out[k] = (out[k] || 0) + v; };
+  for (const [k, v] of Object.entries(p)) if (k !== 'ids') add(k, v);
+  return out;
+}
+function addPending(p, rid, orderId) {
+  const by = pendingCounts(p); by[rid] = (by[rid] || 0) + 1;
+  return { ...by, ids: [...((p && Array.isArray(p.ids)) ? p.ids : []), orderId] };
+}
+// { rid → label } from identity: display_name → name → NEUTRAL_LABEL (a read failure or an unshowable text never fails the push)
+async function staffLabels(db, rids) {
+  const out = {};
+  await Promise.all([...new Set(rids)].map(async (rid) => {
+    let label = null;
+    if (RID_RE.test(rid)) {
+      try {   // the two LEAVES only (never the whole identity: hours etc. are not this lane's to read)
+        const [dn, nm] = await Promise.all(['display_name', 'name'].map((k) => db.ref(`restaurants/${rid}/identity/${k}`).once('value').then((x) => x.val())));
+        label = brandText(dn) || brandText(nm);
+      } catch (_) { label = null; }
+    }
+    out[rid] = label || NEUTRAL_LABEL;
+  }));
+  return out;
 }
 
 /**
@@ -30,32 +60,27 @@ function coalesceDecision({ lastSentAt, now, windowMs }) {
 }
 
 /**
- * Single new-order notification: `🔔 Nuevo pedido` / `<brand> #<n> · <customer>`.
- * The 🔔 lives only in OS notification text (matches the desktop alert language) —
- * never in the PWA's own UI. `#<n>` (display_number) and the customer degrade
+ * Single new-order notification: `Nuevo pedido` / `<label> · #<n> · <customer>` (no emoji: rule 8, Codex #421). `#<n>` (display_number) and the customer degrade
  * gracefully: display_number may not be stamped yet when this fires (the stamp
  * trigger runs on the same transition, concurrently), so it's omitted if absent.
  */
-function formatNewOrder(order) {
+function formatNewOrder(order, label) {
   const n = (order && Number.isFinite(order.display_number)) ? `#${order.display_number}` : null;
   const who = ((order && order.customer_name) || '').trim() || null;
-  const body = [brandLabel(order && order.restaurant_id), n, who].filter(Boolean).join(' · ');
-  return { title: '🔔 Nuevo pedido', body };
+  const body = [label || NEUTRAL_LABEL, n, who].filter(Boolean).join(' · ');
+  return { title: 'Nuevo pedido', body };   // no emoji (rule 8, Codex #421)
 }
 
 /**
- * Grouped coalesced notification from the pending buffer
- * `{ x_pizza, la_musa, ids }`: `🔔 N pedidos nuevos` / `2 X. Pizza · 1 La Musa`.
+ * Grouped coalesced notification from the FLAT pending buffer ({ <rid>: n, ids }) and the { rid → label } map:
+ * `N pedidos nuevos` / `2 Casa A · 1 Casa B` — most orders first, then by label (no emoji: rule 8, Codex #421).
  */
-function formatGrouped(pending) {
-  const x = (pending && pending.x_pizza) || 0;
-  const m = (pending && pending.la_musa) || 0;
-  const total = x + m;
-  const parts = [];
-  if (x) parts.push(`${x} X. Pizza`);
-  if (m) parts.push(`${m} La Musa`);
+function formatGrouped(pending, labels = {}) {
+  const by = pendingCounts(pending);
+  const rows = Object.entries(by).map(([rid, k]) => ({ k, label: labels[rid] || NEUTRAL_LABEL })).sort((a, b) => b.k - a.k || a.label.localeCompare(b.label));
+  const total = rows.reduce((t, r) => t + r.k, 0);
   const noun = total === 1 ? 'pedido nuevo' : 'pedidos nuevos';
-  return { title: `🔔 ${total} ${noun}`, body: parts.join(' · ') };
+  return { title: `${total} ${noun}`, body: rows.map((r) => `${r.k} ${r.label}`).join(' · ') };
 }
 
 /**
@@ -158,19 +183,53 @@ function stuckDedupe(prevAlerted, stuckNow) {
 }
 
 /**
- * Stuck notification text. `⚠️ Pedido #<n>` / `Lleva <m> min sin repartidor` (unassigned) or
+ * Stuck notification text. `Pedido #<n>` / `Lleva <m> min sin repartidor` (unassigned) or
  * `… sin salir` (aging). "sin salir" — not "sin completar" — because the aging alert now only fires
- * for orders that have NOT left yet; one already out for delivery no longer alerts at all. ⚠️ lives
- * only in OS notification text (matches the desktop alert language), never in the PWA's own UI.
+ * for orders that have NOT left yet; one already out for delivery no longer alerts at all. No emoji
+ * (rule 8; Codex #421 / advisor 11-26).
  * #<n> omitted if display_number isn't stamped.
  */
 function formatStuck(order, result) {
   const n = (order && Number.isFinite(order.display_number)) ? ` #${order.display_number}` : '';
   const tail = result.kind === 'unassigned' ? 'sin repartidor' : 'sin salir';
-  return { title: `⚠️ Pedido${n}`, body: `Lleva ${result.minutes} min ${tail}` };
+  return { title: `Pedido${n}`, body: `Lleva ${result.minutes} min ${tail}` };
+}
+
+/**
+ * S2 (PLAN-brand-agnostic-convergence r9 §3-S, #334-4; Codex #414): the fan-out RECIPIENTS = the subscribed uids that are CURRENT
+ * dispatchers at send time — `dispatchers/{uid}` exists, the predicate of index.js authorizeDispatcherActionWithUid and of the
+ * dispatchers rules. A staff push carries a customer's name, so:
+ *   yes      (exists)          → a recipient
+ *   no       (confirmed absent) → not a recipient, and its staff_push/{uid} is PRUNED (revocation) — compare-and-delete on the exact
+ *                                 record the fan-out read, so a concurrent replacement / re-subscribe (any change) is kept
+ *   unknown  (the read failed)  → not a recipient, never deleted (fail closed both ways)
+ * `subs` is the staff_push map the fan-out read. Logs carry a fixed category and counts only (no uid, no order id).
+ */
+async function staffRecipients(db, subs) {
+  const uids = Object.keys(subs || {});
+  const m = await Promise.all(uids.map((uid) => db.ref(`dispatchers/${uid}`).once('value').then((sn) => (sn.exists() ? 'yes' : 'no'), () => 'unknown')));
+  const absent = uids.filter((_, i) => m[i] === 'no');
+  if (absent.length) {
+    const r = await Promise.allSettled(absent.map((uid) => db.ref(`staff_push/${uid}`).transaction(staffPushRevokeUpdater(subs[uid]))));
+    const pruned = r.filter((x) => x.status === 'fulfilled' && x.value && x.value.committed).length;
+    try { console.log('staff_push_revoked', JSON.stringify({ confirmed_absent: absent.length, pruned })); } catch (_) { /* logging never blocks the fan-out */ }
+  }
+  return uids.filter((_, i) => m[i] === 'yes');
+}
+
+// Compare-and-delete for a CONFIRMED non-dispatcher: delete only while the node still holds exactly the record the fan-out read.
+// RTDB runs the updater first on the local cache (null for an uncached node): returning null there lets the transaction proceed to the
+// server value, where the comparison decides (the staffPushCleanupUpdater pattern); any difference aborts and keeps the record.
+function staffPushRevokeUpdater(readRecord) {
+  const want = JSON.stringify(readRecord === undefined ? null : readRecord);
+  return (cur) => {
+    if (cur == null) return null;
+    return JSON.stringify(cur) === want ? null : undefined;
+  };
 }
 
 module.exports = {
-  coalesceDecision, formatNewOrder, formatGrouped, brandLabel, pushWithCleanup, staffPushCleanupUpdater,
-  isStuck, stuckDedupe, formatStuck,
+  coalesceDecision, formatNewOrder, formatGrouped, pushWithCleanup, staffPushCleanupUpdater,
+  pushRidOf, pendingCounts, addPending, staffLabels, NEUTRAL_LABEL,
+  isStuck, stuckDedupe, formatStuck, staffRecipients, staffPushRevokeUpdater,
 };

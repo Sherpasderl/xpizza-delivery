@@ -173,6 +173,8 @@ const D = {
   // tests that never contact a database (fakes / stubs / text), each verified
   [F('rtdb-init.test.js')]: 'unit: proven loopback-only, off-band (emulator-endpoint.test cell 8)',
   // INTL codex r1 #2 — the real requestOtp in-process over a STUBBED getDatabase (every read hangs; the first reservation throws), no send reached
+  [F('test/_prior-staff-push-run.js')]: 'unit helper (B3 mixed-version cell): runs ONE prior-release staff-push trigger over getDatabase stubbed to the honest RTDB model seeded from a JSON world; web-push sendNotification stubbed — no network, no credential',
+  [F('staff-push-delivery.test.js')]: 'unit: drives the real staff-push triggers over getDatabase stubbed to the honest RTDB model; web-push sendNotification stubbed (captures endpoints, no send) — no network, no credential',
   [F('intl-otp-endpoint.test.js')]: 'unit: drives the real requestOtp over a stubbed getDatabase (reads hang, the first reservation throws; no send) — no network, no credential',
   [F('stats/stats-volume.test.js')]: 'unit: a named app over catalog/firestore-fake — no network',
   [F('stats/stats-job.test.js')]: 'unit: initializeApp appears in a source string under test', [F('catalog/project-guard.test.js')]: 'unit: drives require-project refusals (no data I/O)',

@@ -76,12 +76,16 @@ for (const f of L.INNER_FILES) {
   const disk = diskOf(f); fs.writeFileSync(path.join(d, 'was'), L.stripInner(f, disk)); fs.writeFileSync(path.join(d, 'now'), disk);
   const r = require('child_process').spawnSync('git', ['diff', '--no-index', '-U0', path.join(d, 'was'), path.join(d, 'now')], { encoding: 'utf8', maxBuffer: 1 << 27 });
   fs.rmSync(d, { recursive: true, force: true });
-  const got = []; let cur = null;
+  // each hunk = ONE swap: its lines framed '\n' + lines.join('\n') + '\n' (a single line: '\n<line>\n'; B3: adjacent lines form one
+  // multi-line swap); a hunk must have both sides (no pure insertion / deletion)
+  const raw = []; let cur = null;
   for (const l of r.stdout.split('\n')) {
-    if (l.startsWith('@@')) { cur = { now: '', was: '' }; got.push(cur); }
-    else if (cur && l.startsWith('+') && !l.startsWith('+++')) cur.now += `\n${l.slice(1)}\n`;
-    else if (cur && l.startsWith('-') && !l.startsWith('---')) cur.was += `\n${l.slice(1)}\n`;
+    if (l.startsWith('@@')) { cur = { now: [], was: [] }; raw.push(cur); }
+    else if (cur && l.startsWith('+') && !l.startsWith('+++')) cur.now.push(l.slice(1));
+    else if (cur && l.startsWith('-') && !l.startsWith('---')) cur.was.push(l.slice(1));
   }
+  assert.ok(raw.every((h) => h.now.length && h.was.length), `🔴 POST-ASM11 INNER: ${f} has a pure insertion / deletion hunk (an INNER swap needs both sides)`);
+  const got = raw.map((h) => ({ now: `\n${h.now.join('\n')}\n`, was: `\n${h.was.join('\n')}\n` }));
   assert.deepStrictEqual(L.INNER.filter((h) => h.file === f).map((h) => ({ now: h.now, was: h.was })), got, `🔴 POST-ASM11 INNER: ${f}'s swaps are exactly the diff of disk vs (disk − INNER), one line each, in diff order`);
 }
 const innerLayers = [...new Set(L.INNER.map((h) => h.layer))];

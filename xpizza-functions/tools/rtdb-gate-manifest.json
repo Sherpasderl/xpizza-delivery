@@ -1037,6 +1037,10 @@
    "count": 1,
    "disposition": "SAFE: no shared deployed function with a gated get on its path or an ancestor (r9/listener-classification.md)"
   },
+  "staff-push.js|staffLabels|once|restaurants/{}/identity/{}": {
+   "count": 1,
+   "disposition": "SAFE: no shared deployed function with a gated get on its path or an ancestor (r9/listener-classification.md)"
+  },
   "stats/stats-api.js|ordersCsv|once|": {
    "count": 1,
    "disposition": "ANCESTOR: an ancestor listener is clean (RG-ANC)"
@@ -2205,6 +2209,10 @@
   ],
   "signup-platform.js|redeemSignupGrant": [
    "signup-platform.js|redeemSignupGrant"
+  ],
+  "staff-push.js|staffLabels": [
+   "index.js|exports.flushStaffPushQueue > staff-push.js|staffLabels",
+   "index.js|exports.notifyStaffOnNewOrder > staff-push.js|staffLabels"
   ],
   "stats/stats-api.js|ordersCsv": [
    "access/membership-admin-core.js|runMembershipAdmin > access/membership-admin-core.js|compareCutover > access/membership-admin-core.js|operationResults > stats/stats-api.js|getSalesStatsCore > stats/stats-api.js|ordersCsv",

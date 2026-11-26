@@ -4429,8 +4429,7 @@
       "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/single-order-view.js#xpizza-driver": 4,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 12,
-      "xpizza-functions/staff-push.js#functions": 3
+      "xpizza-driver/stacked-view.js#xpizza-driver": 12
      }
     },
     {
@@ -4726,8 +4725,7 @@
       "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/single-order-view.js#xpizza-driver": 4,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 12,
-      "xpizza-functions/staff-push.js#functions": 3
+      "xpizza-driver/stacked-view.js#xpizza-driver": 12
      }
     },
     {
@@ -5023,8 +5021,7 @@
       "xpizza-driver/capture-earnings.mjs#xpizza-driver": 1,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 6,
       "xpizza-driver/single-order-view.js#xpizza-driver": 4,
-      "xpizza-driver/stacked-view.js#xpizza-driver": 12,
-      "xpizza-functions/staff-push.js#functions": 3
+      "xpizza-driver/stacked-view.js#xpizza-driver": 12
      }
     },
     {
@@ -9640,10 +9637,10 @@
    "authority": "scenario definition: the grouped staff push is the SCHEDULED queue flush (flushStaffPushQueue, onSchedule) — formatGrouped / its fan-out run only inside it",
    "whyFalseExcludes": "the complete invocation log shows no flushStaffPushQueue run → none of it runs",
    "bind": {
-    "site": "try { await fanoutStaffPush(db, { ...formatGrouped(toSend), tag: 'neworder', data: {} }); }",
-    "siteSha": "102a8fff9f047a14df1aea5fd6ccefafd7cc4f7287651d37321623e9ec7579c2",
+    "site": "try { await fanoutStaffPush(db, { ...formatGrouped(toSend, await require('./staff-push').staffLabels(db, Object.keys(require('./staff-push').pendingCounts(toSend)))), tag: 'neworder', data: {} }); }   // B3: labels from identity",
+    "siteSha": "74b29aede9340f88e056318e2e4e65dad5e868fe7193a51b9be228fd894ed766",
     "scope": "xpizza-functions/index.js#flushStaffPushQueue",
-    "scopeSha": "65fcc604f76f87d35a20a77d283fb0924917e2abcb02def1cb9b3fee9e260a0f"
+    "scopeSha": "142c1eb6a4b65613b7bba9a5466512736f4d39c870fc1481bc0fb2755d5fb45c"
    },
    "guards": [
     {
@@ -9697,7 +9694,7 @@
     "site": "await fanoutStaffPush(db, { ...formatStuck(order, result), tag: `stuck:${orderId}`, data: { orderId } });",
     "siteSha": "e6465b2c76f41d4192520d361551391a2f3319842e1aac7916e7a95ac5a41249",
     "scope": "xpizza-functions/index.js#sweepStuckOrders",
-    "scopeSha": "16cb5dee702fd337b0f936d9f9bf5f21bc519b03d08a8e4f20763bec2dfb51cd"
+    "scopeSha": "2e1df99f237c008913f9134831b428986264dda534e90e25868ccdbe9473fadd"
    },
    "guards": [
     {
@@ -10896,10 +10893,10 @@
    "authority": "scenario definition: the grouped staff push is the SCHEDULED queue flush (flushStaffPushQueue, onSchedule) — formatGrouped / its fan-out run only inside it",
    "whyFalseExcludes": "the complete invocation log shows no flushStaffPushQueue run → none of it runs",
    "bind": {
-    "site": "try { await fanoutStaffPush(db, { ...formatGrouped(toSend), tag: 'neworder', data: {} }); }",
-    "siteSha": "102a8fff9f047a14df1aea5fd6ccefafd7cc4f7287651d37321623e9ec7579c2",
+    "site": "try { await fanoutStaffPush(db, { ...formatGrouped(toSend, await require('./staff-push').staffLabels(db, Object.keys(require('./staff-push').pendingCounts(toSend)))), tag: 'neworder', data: {} }); }   // B3: labels from identity",
+    "siteSha": "74b29aede9340f88e056318e2e4e65dad5e868fe7193a51b9be228fd894ed766",
     "scope": "xpizza-functions/index.js#flushStaffPushQueue",
-    "scopeSha": "65fcc604f76f87d35a20a77d283fb0924917e2abcb02def1cb9b3fee9e260a0f"
+    "scopeSha": "142c1eb6a4b65613b7bba9a5466512736f4d39c870fc1481bc0fb2755d5fb45c"
    },
    "guards": [
     {
@@ -10953,7 +10950,7 @@
     "site": "await fanoutStaffPush(db, { ...formatStuck(order, result), tag: `stuck:${orderId}`, data: { orderId } });",
     "siteSha": "e6465b2c76f41d4192520d361551391a2f3319842e1aac7916e7a95ac5a41249",
     "scope": "xpizza-functions/index.js#sweepStuckOrders",
-    "scopeSha": "16cb5dee702fd337b0f936d9f9bf5f21bc519b03d08a8e4f20763bec2dfb51cd"
+    "scopeSha": "2e1df99f237c008913f9134831b428986264dda534e90e25868ccdbe9473fadd"
    },
    "guards": [
     {
@@ -11021,7 +11018,7 @@
     "site": "const result = isStuck(order, deliveryTask, now, thresholds);",
     "siteSha": "f6d8218d4480062d2a58f64f1fc06cb934b9822b602893eff9aa6eabb1d12976",
     "scope": "xpizza-functions/index.js#sweepStuckOrders",
-    "scopeSha": "16cb5dee702fd337b0f936d9f9bf5f21bc519b03d08a8e4f20763bec2dfb51cd"
+    "scopeSha": "2e1df99f237c008913f9134831b428986264dda534e90e25868ccdbe9473fadd"
    },
    "guards": [
     {
