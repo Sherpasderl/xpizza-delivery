@@ -3313,6 +3313,12 @@
   },
   "xpizza-dispatch/xpizza-delivery.js#cancelOrderRemote@xpizza-dispatch/index.html<script@0>#onConfirm": {
    "status": "pending"
+  },
+  "xpizza-functions/staff-push.js#pushRidOf@xpizza-functions/index.js#notifyStaffOnNewOrder": {
+   "status": "pending"
+  },
+  "xpizza-functions/staff-push.js#staffRecipients>anon@self": {
+   "status": "pending"
   }
  }
 }

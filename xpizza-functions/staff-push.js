@@ -36,9 +36,9 @@ async function staffLabels(db, rids) {
   await Promise.all([...new Set(rids)].map(async (rid) => {
     let label = null;
     if (RID_RE.test(rid)) {
-      try {
-        const id = (await db.ref(`restaurants/${rid}/identity`).once('value')).val() || {};
-        label = brandText(id.display_name) || brandText(id.name);
+      try {   // the two LEAVES only (never the whole identity: hours etc. are not this lane's to read)
+        const [dn, nm] = await Promise.all(['display_name', 'name'].map((k) => db.ref(`restaurants/${rid}/identity/${k}`).once('value').then((x) => x.val())));
+        label = brandText(dn) || brandText(nm);
       } catch (_) { label = null; }
     }
     out[rid] = label || NEUTRAL_LABEL;

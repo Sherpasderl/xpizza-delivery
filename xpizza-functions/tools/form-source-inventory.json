@@ -9148,7 +9148,9 @@
   },
   "staff-push.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/staff-push-b3.test.js"
+   ]
   },
   "stats/stats-api.js": {
    "pins": [],
