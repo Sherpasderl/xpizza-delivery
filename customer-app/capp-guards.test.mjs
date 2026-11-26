@@ -42,11 +42,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Both are FULL commit ids, never a prefix (Codex #288: an 8-char prefix can name two commits or be shadowed by a ref).
 // BASE → eb177fe58 (asm14 rebase, advisor 11-24): asm13 FINAL (ALL GREEN) is eb177fe58 (fd205309a + the cell-23 peel 26bc641f3 + its
 // inventory regen); the lane is rebased onto it (no file overlap) and pins its range from that new cut point, same shape.
-// CAPP_TIP → 02792c1e8: the rebase re-pin also moved JWT_PRE in capp-api.test.mjs, so it is itself a capp commit after the pin.
-// CAPP_TIP → eec311599: the C-3 Codex #408 fix commit (feat/capp-c3-card-removal), a capp commit after the pin.
-// CAPP_TIP → 2b01635fe: the C-7 Codex #427–#429 fix commit (feat/capp-c7-multitab), a capp commit after the pin.
+// CAPP_TIP → 685cfd5c9: the C-3 + C-7 stack merge (feat/capp-c1-account-delete, the asm14 capp member), a capp commit after the pin.
 const BASE = 'eb177fe58002bde86dfa29247229284ecf449eca';
-const CAPP_TIP = '2b01635fed8ab26fca0ac564e382f5216b933cd6';
+const CAPP_TIP = '685cfd5c9c611ed15d95f63214d9fd31030f9123';
 // ASSEMBLY STEPS (asm11 step 4, advisor 11-17): a capp commit made ON THE TRAIN line, before the lane's merge — it can't be the pin (a pin on
 // the train line pulls the train into the lane range). Each is listed by full sha with its EXACT file set: excused from the «after the pin» walk
 // only while that set is unchanged, and only while it is in HEAD's history (a step that left the tree is a stale entry). None touches a live
@@ -281,6 +279,10 @@ const MERGE_ALLOW = {
   // none above BASE eb177fe58 (asm14 rebase re-pin; was fd205309a, and fd205309a..eb177fe58 holds no merge; advisor ruling (A) 11-24, the asm11 «pruned to above BASE» precedent): the 17 entries re-derived
   // in f995943d2, rebased as 44b3f867d (rider 6fe745ff ×2, dish-stats 0895a17c ×6, asm12 aa5cde11 / 45f1aebb / 520614c6 ×2 / 6dccdf27, asm13 5a9d5538 ×3, r3
   // d13a0bb7) all sit below the lane's cut point now; their proofs stay in that commit's message
+  // the C-3 + C-7 stack merge (advisor 11-26: C-7 3db3dc022 + C-3 08f7b2225, both cut from asm14): four shared files, three in scope here
+  '685cfd5c9c611ed15d95f63214d9fd31030f9123 customer-app/capp-shell-ui.js': "C-3 + C-7 stack: destroy() = C-7's line (bfcache pageshow/pagehide removal) with C-3's `unguardCard();` after `dead = true;` — 1 line from no parent, both parents' calls, 0 dropped",
+  '685cfd5c9c611ed15d95f63214d9fd31030f9123 customer-app/capp-s7a2.test.mjs': "C-3 + C-7 stack: C-7's cells (C2-RE … G5-RESTART) then C-3's «Tarjetas guardadas» cells (… C3-34) — both parents' lines, 0 from no parent",
+  '685cfd5c9c611ed15d95f63214d9fd31030f9123 customer-app/capp-guards.test.mjs': "C-3 + C-7 stack: the CAPP_TIP pin conflict kept parent 1's pin (2b01635fe) + both parents' history lines — 0 from no parent; re-pinned to the merge after",
 };
 // The walk + the criterion (PLAN-capp-guards-cell7 r0, advisor 11-23; Codex #288). The walk is EVERY merge reachable from the head and
 // not from BASE: the lane-line + after-the-pin walk never saw a train merge made BEFORE the lane came in (asm12 13–15). A shallow repository
