@@ -590,5 +590,41 @@
  "css .rcard .heart | color #0D1424": {
   "disposition": "v6-parity",
   "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B) — the same chip on a «Para vos» card (C-1b heart, D-3 r3 9.4 .rcard .heart)"
+ },
+ "css .primary.danger | color #FFFFFF": {
+  "disposition": "theme-pair",
+  "why": "C-3 / C-1's destructive pill (MOCKUP-capp-account-delete + MOCKUP-capp-card-removal v2, owner-approved 11-24): white text on the --err red; dark = ink on the pink --err (the three-form dark rule)"
+ },
+ "css .app.dark .primary.danger,:root[data-theme=\"dark\"] .app .primary.danger | color #0A0F1C": {
+  "disposition": "theme-pair",
+  "why": "C-3 / C-1's destructive pill (MOCKUP-capp-account-delete + MOCKUP-capp-card-removal v2, owner-approved 11-24): dark: ink on the pink --err, in the three forms"
+ },
+ "css @media (prefers-color-scheme: dark) :root:not([data-theme=\"light\"]) .app .primary.danger | color #0A0F1C": {
+  "disposition": "theme-pair",
+  "why": "C-3 / C-1's destructive pill (MOCKUP-capp-account-delete + MOCKUP-capp-card-removal v2, owner-approved 11-24): dark: ink on the pink --err, in the three forms"
+ },
+ "css .primary .ring | border-color rgba(255,255,255,.35)": {
+  "disposition": "theme-pair",
+  "why": "C-3 / C-1's destructive pill (MOCKUP-capp-account-delete + MOCKUP-capp-card-removal v2, owner-approved 11-24): the in-pill ring track, white over the red pill; dark = ink over the pink pill"
+ },
+ "css .primary .ring | border-top-color #FFFFFF": {
+  "disposition": "theme-pair",
+  "why": "C-3 / C-1's destructive pill (MOCKUP-capp-account-delete + MOCKUP-capp-card-removal v2, owner-approved 11-24): the in-pill ring head, white over the red pill; dark = ink over the pink pill"
+ },
+ "css .app.dark .primary .ring,:root[data-theme=\"dark\"] .app .primary .ring | border-color rgba(10,15,28,.3)": {
+  "disposition": "theme-pair",
+  "why": "C-3 / C-1's destructive pill (MOCKUP-capp-account-delete + MOCKUP-capp-card-removal v2, owner-approved 11-24): dark: the in-pill ring track in ink, in the three forms"
+ },
+ "css .app.dark .primary .ring,:root[data-theme=\"dark\"] .app .primary .ring | border-top-color #0A0F1C": {
+  "disposition": "theme-pair",
+  "why": "C-3 / C-1's destructive pill (MOCKUP-capp-account-delete + MOCKUP-capp-card-removal v2, owner-approved 11-24): dark: the in-pill ring head in ink, in the three forms"
+ },
+ "css @media (prefers-color-scheme: dark) :root:not([data-theme=\"light\"]) .app .primary .ring | border-color rgba(10,15,28,.3)": {
+  "disposition": "theme-pair",
+  "why": "C-3 / C-1's destructive pill (MOCKUP-capp-account-delete + MOCKUP-capp-card-removal v2, owner-approved 11-24): dark: the in-pill ring track in ink, in the three forms"
+ },
+ "css @media (prefers-color-scheme: dark) :root:not([data-theme=\"light\"]) .app .primary .ring | border-top-color #0A0F1C": {
+  "disposition": "theme-pair",
+  "why": "C-3 / C-1's destructive pill (MOCKUP-capp-account-delete + MOCKUP-capp-card-removal v2, owner-approved 11-24): dark: the in-pill ring head in ink, in the three forms"
  }
 }

@@ -42,6 +42,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Both are FULL commit ids, never a prefix (Codex #288: an 8-char prefix can name two commits or be shadowed by a ref).
 // BASE → eb177fe58 (asm14 rebase, advisor 11-24): asm13 FINAL (ALL GREEN) is eb177fe58 (fd205309a + the cell-23 peel 26bc641f3 + its
 // inventory regen); the lane is rebased onto it (no file overlap) and pins its range from that new cut point, same shape.
+// CAPP_TIP → 02792c1e8: the rebase re-pin also moved JWT_PRE in capp-api.test.mjs, so it is itself a capp commit after the pin.
+// CAPP_TIP → eec311599: the C-3 Codex #408 fix commit (feat/capp-c3-card-removal), a capp commit after the pin.
 // CAPP_TIP → 2b01635fe: the C-7 Codex #427–#429 fix commit (feat/capp-c7-multitab), a capp commit after the pin.
 const BASE = 'eb177fe58002bde86dfa29247229284ecf449eca';
 const CAPP_TIP = '2b01635fed8ab26fca0ac564e382f5216b933cd6';
@@ -443,7 +445,7 @@ test('S2 SBS: the stand-in pay binding and the native-mode injection live ONLY i
   const P = createRequire(import.meta.url)('../platform/native/package-capp.js');
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
   for (const target of P.TARGETS) {
-    const B = P.build({ sha: head, target, env: 'production', flags: [...P.FLAGS] });
+    const B = P.build({ sha: head, target, env: 'production', flags: P.FLAGS.filter((f) => f !== 'cards' || P.CARDS_GATE) });   // cards: refused while its gate is closed (C-3)
     const bad = [...B.files].filter(([, buf]) => { const s = Buffer.from(buf).toString('latin1'); return s.includes(MARK) || s.includes(HARNESS); }).map(([f]) => f);
     assert.deepEqual(bad, [], `🔴 SBS-2: the packaged ${target} bundle carries the stand-in / the harness: ${bad.join(', ')}`);
     const rt = {}; new Function('self', B.files.get('capp-runtime.js').toString('utf8'))(rt);
@@ -543,4 +545,13 @@ test('Codex #197 (P1): a member\'s ID token is read from the SDK ONLY through th
   for (const plant of ['fbAuth.idToken();', 'fbAuth.idTokenOwned();', "fbAuth['idTokenOwned']();", 'fbAuth?.idToken?.();', 'fbAuth.idToken.call(fbAuth);', 'const f = fbAuth.idTokenOwned; f();', 'const { idTokenOwned } = fbAuth;', 'const { idToken } = fbAuth; idToken();', 'S.member.getIdTokenOwned();'])
     assert.ok(tokenReadViolations('capp-shell-ui.js', ui.replace(K, `${K} ${plant}`)).length > 0, `🔴 C197-CENSUS control: «${plant}» fails the guard`);
   assert.deepEqual(tokenReadViolations('capp-signup.js', 'async function g(o) { return o.google.getIdToken({}); }'), [], 'the Google sign-in credential is allowed by name');
+});
+// C3-34 (PLAN-capp-C3-card-removal-r2 §3.9, ✓370-7 / ✓374-1): C-3's CSS stays in its own scope — no UNSCOPED `.empty span` rule (the
+// search / filter / cart empty states keep theirs), and `.cards` stays the «La casa recomienda» carousel's: no new rule names it
+test('C3-34: capp.css has no unscoped `.empty span` rule and no rule on `.cards` beyond the carousel\'s own two', () => {
+  const css = readFileSync(join(ROOT, 'customer-app/capp.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const sels = [...css.matchAll(/([^{}]+)\{/g)].flatMap((m) => m[1].split(',')).map((s) => s.trim().replace(/\s+/g, ' ')).filter((s) => s && !s.startsWith('@'));
+  assert.ok(sels.includes('.urow .act') && sels.length > 200, 'premise: the scan reads capp.css\'s selectors');
+  assert.deepEqual(sels.filter((s) => /(^|[\s>+~])\.empty span$/.test(s) && !/\S\s+\.empty/.test(s)), [], '🔴 C3-34: an unscoped `.empty span` rule restyles every empty state');
+  assert.deepEqual(sels.filter((s) => /\.cards(?![\w-])/.test(s)), ['.cards', '.cards::-webkit-scrollbar'], '🔴 C3-34: a new rule on `.cards` (the carousel\'s class)');
 });

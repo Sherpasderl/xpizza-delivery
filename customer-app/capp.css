@@ -1001,6 +1001,27 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .urow[aria-expanded="true"] svg.chev{transform:rotate(180deg)}
 .urow .lg{width:36px;height:36px;border-radius:50%;background:#fff;box-shadow:0 0 0 1px var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none}
 .urow .lg img{width:24px;height:auto}.urow .lg.wide img{width:30px}.urow .lg.txt{font:700 13px var(--fig);color:#1B2A24}
+/* C-3 «Tarjetas guardadas» (MOCKUP-capp-card-removal v2, owner-approved 11-24): the list in the step's 16 px gutter — .saved-cards, never
+   .cards (the «La casa recomienda» carousel's); an expired card dims like the pay row, «Quitar» stays live; the empty line scoped to the step */
+.saved-cards{padding:4px 16px 0}
+.urow.dim .bb{opacity:.6}
+.urow.dim .t b{color:var(--mute)}
+.cards-step .empty span{text-wrap:pretty;max-width:34ch}
+/* the destructive pill + its in-pill ring + the sheet's inline error (APPROVED in MOCKUP-capp-account-delete 11-24; shared with C-1 —
+   the second of C-1 / C-3 to merge de-duplicates) */
+.primary.danger{background:var(--err);color:#FFFFFF}
+.app.dark .primary.danger,:root[data-theme="dark"] .app .primary.danger{color:#0A0F1C}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app .primary.danger{color:#0A0F1C}}
+.primary.danger[disabled]{background:var(--surf);color:var(--mute)}
+.primary .ring{width:18px;height:18px;border-width:2px;border-color:rgba(255,255,255,.35);border-top-color:#FFFFFF}
+.app.dark .primary .ring,:root[data-theme="dark"] .app .primary .ring{border-color:rgba(10,15,28,.3);border-top-color:#0A0F1C}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .app .primary .ring{border-color:rgba(10,15,28,.3);border-top-color:#0A0F1C}}
+.primary.busy{opacity:.92}
+/* 4a: the busy sheet's «Cancelar» dims as the mockup's .btn2[disabled] — scoped to the card sheet, so the shared error sheets' disabled
+   .btn2 (capp-ui) keep their approved look */
+.errsheet.cardrm .btn2[disabled]{opacity:.45;cursor:default}
+.errsheet .err{font-size:14px;line-height:1.4;align-items:center;margin-top:2px}
+.errsheet .err svg.i{width:18px;height:18px}
 .osum.flat{border:0;border-radius:0;padding:0}
 .osum.flat .sumbody{display:flex;flex-direction:column;border-bottom:1px solid var(--line);padding-bottom:4px}
 .osum.flat .osline:last-of-type{border-bottom:0}

@@ -868,6 +868,7 @@
         if (S.tab === 'order' && S.order) return CappRoutes.format({ name: 'store', rid: S.order.rid, step: 'pago' });
         if (S.tab === 'receipt') return CappRoutes.format({ name: 'orders' });   // a past order's receipt is a step of «Pedidos» (no URL of its own)
         if (S.tab === 'addresses') return CappRoutes.format({ name: 'account' });   // C-DIR-1: «Direcciones» is a step of «Cuenta» (no URL of its own)
+        if (S.tab === 'cards') return CappRoutes.format({ name: 'account' });   // C-3: «Tarjetas guardadas» is a step of «Cuenta» (no URL of its own)
         if (S.tab === 'notifs') return CappRoutes.format({ name: 'account' });   // «Notificaciones» is a step of Cuenta (no URL of its own)
         return CappRoutes.format({ name: S.tab === 'search' ? 'search' : S.tab === 'account' ? 'account' : S.tab === 'orders' ? 'orders' : 'home' });
       } catch (_) { return null; }   // an id outside the ONE domain is never written: the URL stays as it is
@@ -884,7 +885,7 @@
       if (S.tab === 'order' && S.order) return CappHome.titleOf({ screen: 'order', status: S.order.status });
       if (S.tab === 'orders' || S.tab === 'receipt') return CappHome.titleOf({ screen: 'orders' });
       if (S.tab === 'search') return CappHome.titleOf({ screen: 'search', q: S.q || '' });
-      if (S.tab === 'account' || S.tab === 'addresses') return CappHome.titleOf({ screen: 'account' });
+      if (S.tab === 'account' || S.tab === 'addresses' || S.tab === 'cards') return CappHome.titleOf({ screen: 'account' });
       if (S.tab === 'notifs') return CappHome.titleOf({ screen: 'notifs' });
       return CappHome.titleOf({ screen: 'home', platform });
     }
@@ -967,6 +968,7 @@
         if (entry.name !== 'addresses' && S.addrErr === 'dir') S.addrErr = null;   // r3: the sand line leaves with its list   // the customer went elsewhere: a held tap / «Volver a pedir» is void (Codex VP r2 #3)
         if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
         if (entry.name === 'addresses') { if (!(S.member && S.book)) { T.setTimeout(() => nav.tab({ name: 'account' }), 0); return; } S.tab = 'addresses'; dirShown = CappHome.bookOrder(S.book.addresses, S.book.sel); renderNow(); return; }   // C-DIR-1: frozen per open, in use first
+        if (entry.name === 'cards') { if (!cardsOn()) { T.setTimeout(() => nav.tab({ name: 'account' }), 0); return; } S.tab = 'cards'; cardsLoad(false); renderNow(); return; }   // C-3: one read per open
         if (entry.name === 'receipt') { if (!openReceipt(entry.oid)) { T.setTimeout(() => nav.tab({ name: 'orders' }), 0); return; } S.tab = 'receipt'; renderNow(); return; }
         if (entry.name === 'notifs') { if (!notifsOk()) { T.setTimeout(() => nav.back(), 0); return; } S.tab = 'notifs'; if (pushUi()) pushRefresh(); renderNow(); return; }
         if (entry.name === 'orders') { S.tab = 'orders'; loadOrders(); resumeOrder(); dir.visit(); renderNow(); return; }
@@ -1096,14 +1098,14 @@
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
       return { ...updateVm(), desk: !!(view && view.desk()), featPage: S.featPage || 0, pvPage: S.pvPage || 0, legal: legalVm(), legalPending: legalPending(), memberInitial: memberInitial(), signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
-        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, locNow()), addr: addrVm(), dir: dirVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), paraVos: S.tab === 'home' && !S.heldErr ? paraVosOf(rows) : [], q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm(), notifRow: { title: cappPush().COPY.screenTitle, sub: cappPush().rowSub(notifsVm()) } } : {}) };
+        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, locNow()), addr: addrVm(), dir: dirVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), paraVos: S.tab === 'home' && !S.heldErr ? paraVosOf(rows) : [], q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm(), cardsRow: cardsOn(), notifRow: { title: cappPush().COPY.screenTitle, sub: cappPush().rowSub(notifsVm()) } } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
     function saveScreen() {
       const sc = app.querySelector('.scroller, .results'), rows = {};
       for (const r of app.querySelectorAll('.hsec')) { const h = r.querySelector('.hrow'); if (h) rows[r.getAttribute('aria-label')] = h.scrollLeft; }
       const a = doc.activeElement;
-      return { top: sc ? sc.scrollTop : 0, rows, q: S.q, focus: a && app.contains(a) ? (a.id ? `#${a.id}` : a.dataset && a.dataset.act ? `[data-act="${a.dataset.act}"]${a.dataset.rid ? `[data-rid="${a.dataset.rid}"]` : ''}${a.dataset.val !== undefined ? `[data-val="${a.dataset.val}"]` : ''}` : null) : null,
+      return { top: sc ? sc.scrollTop : 0, rows, q: S.q, focus: a && app.contains(a) ? (a.id ? `#${a.id}` : a.dataset && a.dataset.act ? `[data-act="${a.dataset.act}"]${a.dataset.rid ? `[data-rid="${a.dataset.rid}"]` : ''}${a.dataset.card ? `[data-card="${CSS_ESC(a.dataset.card)}"]` : ''}${a.dataset.val !== undefined ? `[data-val="${a.dataset.val}"]` : ''}` : null) : null,
         caret: a && a.id === 'gq' ? [a.selectionStart, a.selectionEnd] : null };
     }
     function restoreScreen(s) {
@@ -1122,7 +1124,7 @@
       const v = vm();
       const layer = $('layer'), toastEl = $('toast');
       const scr = app.querySelector(':scope > .screen');
-      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'receipt' && S.receipt ? receiptScreenHtml(v) : S.tab === 'addresses' && S.book ? CappHome.addressesHtml({ ...v, tab: 'account', dir: { rows: dirShown || [], sel: savedSelId(), ...pickVm('dir') } }) : S.tab === 'notifs' && notifsOk() ? CappHome.shellWrap(v, cappPush().screenHtml(notifsVm())) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
+      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'receipt' && S.receipt ? receiptScreenHtml(v) : S.tab === 'cards' && S.cards ? CappHome.shellWrap({ ...v, tab: 'account' }, cardMod('CappPayCheckout', './capp-pay-checkout.js').cardsStepHtml(cardsStepVm())) : S.tab === 'addresses' && S.book ? CappHome.addressesHtml({ ...v, tab: 'account', dir: { rows: dirShown || [], sel: savedSelId(), ...pickVm('dir') } }) : S.tab === 'notifs' && notifsOk() ? CappHome.shellWrap(v, cappPush().screenHtml(notifsVm())) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
@@ -1587,8 +1589,96 @@
       const ui = S.store && S.store.ui;
       if (ui && typeof ui.addrSettled === 'function') { try { ui.addrSettled(settled === true ? seedNow() : settled === false ? false : undefined, settled === false && adopted ? savedSeed() : undefined); } catch (_) {} }
     }
+    // ── C-3 «Tarjetas guardadas» (PLAN-capp-C3-card-removal-r2 §3; MOCKUP-capp-card-removal v2, owner-approved 11-24): a step of Cuenta —
+    // the member's saved cards (ONE GET per open) and the confirm sheet (ONE POST per tap burst). Memory only: no card data is ever stored.
+    // Every await re-checks the identity and the generation — and, for the remove, the sheet's sequence — BEFORE the request and AFTER the
+    // answer: a token wait or an answer that outlives its member sends / applies nothing. Dark until runtime.cards (package-capp CARDS_GATE)
+    const cardMod = (n, f) => pick(o, n, f);
+    const cardsEp = () => { const e = runtime.cards && runtime.cards.endpoints; return e && typeof e.listCards === 'string' && typeof e.removeCard === 'string' ? e : null; };
+    const cardsOn = () => !!(SU && S.member && cardsEp() && payFetchFn());
+    let cardsGen = 0, cardGuard = null;
+    const cardsCurrent = (gen, uid) => !dead && !leaving && gen === cardsGen && !!S.member && S.member.uid === uid;
+    const unguardCard = () => { const u = cardGuard; cardGuard = null; if (u) u(); };
+    const cardsPaint = () => { if (!dead && S.tab === 'cards') renderNow(); };
+    const cardsStepVm = () => ({ rows: S.cards.rows, load: S.cards.load, inert: !!(S.cardRm && S.cardRm.busy) });
+    // silent: the quiet re-read after a removal — the list stays as it is while it runs, and a failed one keeps the pruned list
+    function cardsLoad(silent) {
+      if (!cardsOn()) return;
+      const gen = ++cardsGen, uid = S.member.uid;
+      if (!silent || !S.cards || S.cards.who !== uid) S.cards = { who: uid, load: 'pending', rows: [], tails: {} };
+      (async () => {
+        const tok = await ownedToken(uid);
+        if (!cardsCurrent(gen, uid)) return;   // a token that outlived its member: no request
+        const list = tok ? await cardMod('CappApi', './capp-api.js').cardsRead(payFetchFn(), cardsEp().listCards, { Authorization: `Bearer ${tok}` }, { timers: T }) : null;
+        if (!cardsCurrent(gen, uid)) return;   // a late answer of a gone member: dropped
+        if (!list) { if (S.cards.load) { S.cards.load = 'failed'; cardsPaint(); } return; }
+        const tails = {};
+        for (const c of list.cards) if (c && typeof c.card_id === 'string' && typeof c.last4 === 'string') tails[c.card_id] = c.last4;
+        const held = silent && cardsFocusHeld();
+        S.cards = { who: uid, load: null, rows: cardMod('CappPayCard', './capp-pay-card.js').cardsVm(list).rows, tails };
+        cardsPaint();
+        if (held) focusCardsTarget();
+        if (silent) S.cardsFocus = null;
+      })();
+    }
+    // the focus after a removal (✓374-2): a LOGICAL target — the card after the removed one, else the one before, else «Volver» —
+    // resolved against the list as it stands after EACH render (the prune's, then the re-read's while focus has not moved)
+    function focusCardsTarget() {
+      const f = S.cardsFocus; if (!f || dead) return;
+      const has = (id) => !!id && !!S.cards && S.cards.rows.some((c) => c.card_id === id);
+      f.sel = has(f.after) ? `[data-act="card-rm"][data-card="${CSS_ESC(f.after)}"]` : has(f.before) ? `[data-act="card-rm"][data-card="${CSS_ESC(f.before)}"]` : '[data-act="cards-back"]';
+      const el = app.querySelector(f.sel); if (el && typeof el.focus === 'function') el.focus();
+    }
+    const cardsFocusHeld = () => {
+      const f = S.cardsFocus, ae = doc.activeElement, step = app.querySelector('.cards-step');
+      return !!f && !!step && (!ae || ae === doc.body || (step.contains(ae) && !!f.sel && ae.matches(f.sel)));
+    };
+    function cardRmOpen(id) {
+      if (S.layer || !S.cards || S.cards.load || !S.cards.rows.some((c) => c.card_id === id)) return;
+      S.cardRm = { id, busy: false, err: false };
+      openLayer('cardrm');
+      layerOpener = { ...(layerOpener || {}), fb: '[data-act="cards-back"]' };   // the opener gone ⇒ «Volver»
+      unguardCard();
+      cardGuard = nav.guardBack(() => { if (!S.cardRm) return 'none'; if (S.cardRm.busy) return 'blocked'; cardRmClose(); return 'closed'; });   // the ONE Back seam
+      focusCardHeading();   // Codex #408 P2: focus moves INTO the dialog (the opener is captured by openLayer first)
+    }
+    function cardRmClose(restore = true) {
+      if (S.cardRm && S.cardRm.busy) return;   // every exit is inert while the call is in flight (frame 4a)
+      S.cardRm = null; unguardCard();
+      if (S.layer === 'cardrm') closeLayer(restore);
+    }
+    const focusCardHeading = () => { const h = $('cardrm-h'); if (h && typeof h.focus === 'function') h.focus(); };
+    async function cardRmConfirm() {
+      const r = S.cardRm; if (!r || r.busy || !cardsOn()) return;   // the synchronous latch: ONE POST per tap burst — the state-level guard (the 4a disabled pill also blocks a second tap; this one does not depend on the markup)
+      const id = r.id, gen = cardsGen, uid = S.member.uid;
+      const live = () => cardsCurrent(gen, uid) && S.cardRm === r;   // the same member, generation and sheet (a closed / torn-down sheet is another object)
+      r.busy = true; r.err = false; renderLayer(); cardsPaint(); focusCardHeading();   // 4a
+      const tok = await ownedToken(uid);   // bounded (12 s)
+      if (!live()) return;   // the member, the generation or the sheet moved while waiting: NO request
+      const out = tok ? await cardMod('CappApi', './capp-api.js').cardRemove(payFetchFn(), cardsEp().removeCard, { Authorization: `Bearer ${tok}` }, id, { timers: T }) : 'failed';
+      if (!live()) return;   // a late answer: ignored (no toast, no prune)
+      if (out === 'failed') { r.busy = false; r.err = true; renderLayer(); cardsPaint(); focusCardHeading(); return; }   // frame 6 — no automatic retry
+      // 'removed' or 'gone' (404: already gone / never this member's): the row leaves, one toast, a quiet re-read
+      const rows = S.cards.rows, i = rows.findIndex((c) => c.card_id === id), tails = { ...S.cards.tails }; delete tails[id];
+      S.cardsFocus = { after: i >= 0 && rows[i + 1] ? rows[i + 1].card_id : null, before: i > 0 ? rows[i - 1].card_id : null, sel: null };
+      S.cards = { ...S.cards, rows: rows.filter((c) => c.card_id !== id), tails };
+      S.cardRm = null; unguardCard(); layerOpener = null;
+      if (S.layer === 'cardrm') closeLayer(false);
+      cardsPaint(); focusCardsTarget();
+      toast('Tarjeta quitada.');
+      cardsLoad(true);
+    }
+    // a new identity (sign-out, a switch): nothing of the previous member's cards survives — no wait sends, no answer lands
+    function cardsIdentity() {
+      cardsGen++; S.cards = null; S.cardsFocus = null;
+      S.cardRm = null;
+      unguardCard();
+      if (S.layer === 'cardrm') closeLayer(false);
+      if (S.tab === 'cards') nav.tab({ name: 'account' });
+    }
     function identityChanged() {
       bookIdentity();   // C-DIR-1: the previous member's book leaves the device and every surface
+      cardsIdentity();   // C-3
       if (S.tab === 'addresses' && !(S.member && S.book)) nav.tab({ name: 'account' });
       favIdentity();
       ordersGen++; S.ordersRead = null;   // any in-flight history read is void; nothing of the previous identity is shown
@@ -2123,7 +2213,7 @@
     function renderLayer() {
       const L = $('layer'); if (!L) return;
       pinGen++; pinMap = null;   // any open pin map is obsolete
-      L.innerHTML = S.layer === 'payadj' ? paySheetHtml() : S.layer === 'help' && S.help ? CappOrder.helpSheetHtml(S.help) : S.layer === 'rate' && S.rate ? CappRate.sheetHtml(rateVm()) : S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml(addrSheetVm()) : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
+      L.innerHTML = S.layer === 'payadj' ? paySheetHtml() : S.layer === 'help' && S.help ? CappOrder.helpSheetHtml(S.help) : S.layer === 'rate' && S.rate ? CappRate.sheetHtml(rateVm()) : S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'cardrm' && S.cardRm && S.cards ? cardMod('CappPayCheckout', './capp-pay-checkout.js').cardRemoveSheetHtml({ last4: S.cards.tails[S.cardRm.id], busy: S.cardRm.busy, err: S.cardRm.err }) : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml(addrSheetVm()) : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
       if (S.layer !== 'pin') return;
       const firstHub = dir.view().rows.map((r) => r.entry).find((e) => Number.isFinite(e.hub_lat) && Number.isFinite(e.hub_lng));
       pinDraft = locNow() ? { lat: locNow().lat, lng: locNow().lng } : null;   // the editor's VIEW starts on the city when there is no location — never a pin
@@ -2145,7 +2235,7 @@
     }
     // C-5 r2 (Codex C-5 r1): the help and rating sheets are CONTAINED modals — the screen behind is inert while one is open, Tab stays
     // inside (onKey), and every close path gives focus back to the control that opened it (the opener, refound in the current DOM)
-    const MODAL = new Set(['help', 'rate', 'payadj']);
+    const MODAL = new Set(['help', 'rate', 'payadj', 'cardrm']);
     let layerOpener = null, lastTap = null;   // lastTap: the control a click came from (a click does not always focus it — Safari)
     function containLayer() {
       const scr = app.querySelector(':scope > .screen'); if (!scr) return;
@@ -2153,12 +2243,12 @@
     }
     function restoreOpener() {
       const op = layerOpener; layerOpener = null; if (!op || dead) return;
-      const el = app.querySelector(`[data-act="${op.act}"]${op.oid ? `[data-oid="${CSS_ESC(op.oid)}"]` : ''}`);
+      const el = (op.act ? app.querySelector(`[data-act="${op.act}"]${op.oid ? `[data-oid="${CSS_ESC(op.oid)}"]` : ''}${op.card ? `[data-card="${CSS_ESC(op.card)}"]` : ''}`) : null) || (op.fb ? app.querySelector(op.fb) : null);   // C-3: the card's own control, else its fallback
       if (el && typeof el.focus === 'function') el.focus();
     }
     function openLayer(k) {
       if (k === 'addr') dirShown = S.member && S.book ? CappHome.bookOrder(S.book.addresses, S.book.sel) : null;   // C-DIR-1: the sheet's rows are frozen per open (rule 7), in use first
-      if (MODAL.has(k) && !MODAL.has(S.layer)) { const ae = doc.activeElement; layerOpener = (ae && ae.dataset && ae.dataset.act ? { act: ae.dataset.act, oid: ae.dataset.oid || null } : null) || lastTap; }
+      if (MODAL.has(k) && !MODAL.has(S.layer)) { const ae = doc.activeElement; layerOpener = (ae && ae.dataset && ae.dataset.act ? { act: ae.dataset.act, oid: ae.dataset.oid || null, card: ae.dataset.card || null } : null) || lastTap; }
       S.layer = k; renderLayer(); containLayer();
     }
     function closeLayer(restore = true) { const was = S.layer; S.layer = null; if (was === 'addr' && S.addrErr === 'inicio') S.addrErr = null; renderLayer(); containLayer(); if (restore && MODAL.has(was)) restoreOpener(); if (was !== 'payadj') reconcilePay(); }
@@ -2173,7 +2263,7 @@
       if (!t || !app.contains(t) || t.disabled) return;
       if (S.store && !t.closest('.desknav')) return;   // a mounted store owns its page — except the shell's own top bar (C-6c)
       const a = t.dataset.act;
-      if (!t.closest('#layer')) lastTap = { act: a, oid: t.dataset.oid || null };   // C-5 r2: where a sheet's focus returns
+      if (!t.closest('#layer')) lastTap = { act: a, oid: t.dataset.oid || null, card: t.dataset.card || null };   // C-5 r2: where a sheet's focus returns
       if (a && a.startsWith('rate-') && rateAct(a, t)) return;   // C-2: the rating sheet and the Pedidos rows' entries
       if ((S.addrPick || gate === 'held') && ADDR_ACTS.has(a)) return;   // r3: ONE pick in flight — every address control waits for the server's answer
       if (a === 'addr' && S.store) { nav.tab({ name: 'home' }); if (!S.store && S.tab === 'home') openLayer('addr'); return; }   // the address is the shell's: Inicio, with its sheet up
@@ -2234,6 +2324,12 @@
       if (a === 'book-retry') return void bookRetry();
       if (a === 'addresses') return void nav.go({ name: 'addresses' });   // C-DIR-1: the member's «Direcciones» (v6 :2170)
       if (a === 'addresses-back') return void nav.back();
+      if (a === 'cards') return void nav.go({ name: 'cards' });   // C-3: «Tarjetas guardadas»
+      if (a === 'cards-back') return void nav.back();
+      if (a === 'cards-retry') { cardsLoad(false); return void cardsPaint(); }
+      if (a === 'card-rm') return void cardRmOpen(t.dataset.card);
+      if (a === 'card-rm-confirm') return void cardRmConfirm();
+      if (a === 'card-rm-cancel') return void cardRmClose();   // «Cancelar», the scrim, the grab — ignored while busy
       if (a === 'addr-use') return void selectAddr(t.dataset.id, S.layer === 'addr' ? 'inicio' : 'dir');   // v6 :2264 — r3: confirm-first
       if (a === 'loc-use') { if (!readJ('capp:loc_asked')) return openLayer('softask'); closeLayer(); return geolocate('Usando tu ubicación actual'); }
       if (a === 'loc-allow') { writeJ('capp:loc_asked', true); closeLayer(); return geolocate('Ubicación activada'); }
@@ -2261,11 +2357,11 @@
     // C-2 / C-5: Escape dismisses the rating sheet («Ahora no») and the help sheet
     const onKey = (ev) => {
       if (dead || !MODAL.has(S.layer)) return;
-      if (ev.key === 'Escape') { if (S.layer === 'payadj') { if (S.order && S.order.payAdj && S.order.payAdj.help) payAct('adj-ok'); return; } if (S.layer === 'rate' && S.rate) closeRate(); else { S.help = null; closeLayer(); } return; }
+      if (ev.key === 'Escape') { if (S.layer === 'cardrm') return void cardRmClose(); if (S.layer === 'payadj') { if (S.order && S.order.payAdj && S.order.payAdj.help) payAct('adj-ok'); return; } if (S.layer === 'rate' && S.rate) closeRate(); else { S.help = null; closeLayer(); } return; }
       if (ev.key !== 'Tab') return;   // C-5 r2: Tab cycles INSIDE the open sheet
       const L = $('layer'), f = L ? [...L.querySelectorAll('button:not([disabled]),textarea:not([disabled]),input:not([disabled]),a[href]')] : [];
-      if (!f.length) return;
-      const first = f[0], last = f[f.length - 1], ae = doc.activeElement, atStart = ae === first || (ae && (ae.id === 'help-h' || ae.id === 'rate-h'));
+      if (!f.length) { const h = L && L.querySelector('[tabindex="-1"]'); if (h) { ev.preventDefault(); h.focus(); } return; }   // C-3 4a: nothing enabled ⇒ the heading holds focus
+      const first = f[0], last = f[f.length - 1], ae = doc.activeElement, atStart = ae === first || (ae && (ae.id === 'help-h' || ae.id === 'rate-h' || ae.id === 'cardrm-h'));
       if (!L.contains(ae)) { ev.preventDefault(); first.focus(); }
       else if (ev.shiftKey && atStart) { ev.preventDefault(); last.focus(); }
       else if (!ev.shiftKey && ae === last) { ev.preventDefault(); first.focus(); }
@@ -2343,7 +2439,7 @@
       // §4c for the sign-in flow (G6): set the marker at sign-in; ONLY «Cerrar sesión y olvidar este teléfono» / deletion forgets it
       rememberAccount: (e164) => CappDeviceAccount.remember(storage, e164), forgetAccount: () => CappDeviceAccount.forget(storage),
       destroy() {
-        dead = true; if (bfcache) { win.removeEventListener('pageshow', onPageShow); win.removeEventListener('pagehide', onPageHide); } clearTokenTimers(); stopOrder(); if (typeof logoOff === 'function') logoOff(); if (typeof unTheme === 'function') { try { unTheme(); } catch (_) {} } unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (win && typeof win.removeEventListener === 'function') win.removeEventListener('storage', onStorage); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
+        dead = true; unguardCard(); if (bfcache) { win.removeEventListener('pageshow', onPageShow); win.removeEventListener('pagehide', onPageHide); } clearTokenTimers(); stopOrder(); if (typeof logoOff === 'function') logoOff(); if (typeof unTheme === 'function') { try { unTheme(); } catch (_) {} } unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (win && typeof win.removeEventListener === 'function') win.removeEventListener('storage', onStorage); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
         doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); doc.removeEventListener('visibilitychange', onVisible); if (app && typeof app.removeEventListener === 'function') app.removeEventListener('scroll', onRowScroll, true); nav.destroy();
       },
     };

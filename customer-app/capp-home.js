@@ -508,6 +508,9 @@
     if (t.screen === 'notifs') return S_('Notificaciones');
     return c ? `Sherpa — Pedí a domicilio en ${c}` : 'Sherpa — Pedí a domicilio';
   }
+  // C-3 «Tarjetas guardadas» (MOCKUP-capp-card-removal v2): the row's glyph is the chooser's own card icon — one source (read at paint:
+  // capp-pay-checkout.js loads after this file)
+  const payCheckout = () => (typeof self !== 'undefined' && self.CappPayCheckout) || (typeof require === 'function' ? require('./capp-pay-checkout.js') : null);
   function accountMemberHtml(vm) {
     const a = vm.acct || {};
     const hero = a.placeholder
@@ -518,6 +521,7 @@
       ${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos</span>${IC.chev}</button>` : ''}
       ${vm.dir ? `<button class="rowbtn" data-act="addresses">${IC.pin}<span class="t">Direcciones${!vm.dir.load && (vm.dir.labels || (vm.addr && vm.addr.line)) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */
         : `<button class="rowbtn" data-act="addr">${IC.pin}<span class="t">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}
+      ${vm.cardsRow ? `<button class="rowbtn" data-act="cards">${payCheckout().cardGlyph}<span class="t">Tarjetas guardadas</span>${IC.chev}</button>` : ''}
       ${vm.notifRow && vm.notifRow.title ? `<button class="rowbtn" data-act="sub-notifs">${IC.bell}<span class="t">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}
       ${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}
       ${vm.updateRow ? `<button class="rowbtn" data-act="app-update-row">${IC.update}<span class="t">Actualizar la app<span>${noOrphan(`Hay una versión nueva en ${esc(vm.updateRow)}`)}</span></span>${IC.chev}</button>` : ''}</div>

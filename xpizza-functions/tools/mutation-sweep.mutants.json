@@ -34918,8 +34918,8 @@
   "slice": "native",
   "label": "APP-TRAIN obligation reverted: the packager builds a capp bundle without guestCardOnly although 3a's capp-guest server is in the commit",
   "file": "../platform/native/package-capp.js",
-  "from": "    if (guestServer) throw new Error(",
-  "to": "    if (false) throw new Error(",
+  "from": "  if (!flags.includes('guestCardOnly') && inCommit(GUEST_SERVER)) throw new Error(",
+  "to": "  if (false) throw new Error(",
   "command": [
    "node",
    "../platform/native/package-capp.test.js"
@@ -39092,8 +39092,8 @@
   "slice": "capp-push",
   "label": "the Cuenta row placed before Direcciones",
   "file": "../customer-app/capp-home.js",
-  "from": "      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${!vm.dir.load && (vm.dir.labels || (vm.addr && vm.addr.line)) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}\n      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n",
-  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${!vm.dir.load && (vm.dir.labels || (vm.addr && vm.addr.line)) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}\n",
+  "from": "      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${!vm.dir.load && (vm.dir.labels || (vm.addr && vm.addr.line)) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}\n      ${vm.cardsRow ? `<button class=\"rowbtn\" data-act=\"cards\">${payCheckout().cardGlyph}<span class=\"t\">Tarjetas guardadas</span>${IC.chev}</button>` : ''}\n      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n",
+  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${!vm.dir.load && (vm.dir.labels || (vm.addr && vm.addr.line)) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}\n      ${vm.cardsRow ? `<button class=\"rowbtn\" data-act=\"cards\">${payCheckout().cardGlyph}<span class=\"t\">Tarjetas guardadas</span>${IC.chev}</button>` : ''}\n",
   "command": [
    "node",
    "--test",
@@ -44589,6 +44589,516 @@
   ],
   "kills_with": [
    "C3-SEAL-STALE: a pending admission landed in the tab that left"
+  ]
+ },
+ {
+  "id": "c3-m-404-is-error",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): a 404 from removeCard (already gone / never this member's) is read as a failure",
+  "file": "../customer-app/capp-api.js",
+  "from": "    if (r.status === 404) return 'gone';",
+  "to": "    if (r.status === 404) return 'failed';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-10",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-10: a 404 kept the sheet open"
+  ]
+ },
+ {
+  "id": "c3-m-read-no-timeout",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the list read loses its 12 s bound",
+  "file": "../customer-app/capp-api.js",
+  "from": "    const r = await cardsExchange(fetchFn, url, { method: 'GET', headers: { 'Content-Type': 'application/json', ...(headers || {}) } }, o);",
+  "to": "    const r = await cardsExchange(fetchFn, url, { method: 'GET', headers: { 'Content-Type': 'application/json', ...(headers || {}) } }, { ...o, timeoutMs: 86400000 });",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-06",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-06: 12 s: the read is not bounded"
+  ]
+ },
+ {
+  "id": "c3-m-rm-no-timeout",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the remove loses its 12 s bound (separate from the read's)",
+  "file": "../customer-app/capp-api.js",
+  "from": "body: JSON.stringify({ card_id: cardId }) }, o);",
+  "to": "body: JSON.stringify({ card_id: cardId }) }, { ...o, timeoutMs: 86400000 });",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-29",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-30: a held request is not frame 6 at 12 s"
+  ]
+ },
+ {
+  "id": "c3-m-listcards-accept",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): a non-array `cards` envelope is accepted as a list",
+  "file": "../customer-app/capp-api.js",
+  "from": "    const r = await cardsExchange(fetchFn, url, { method: 'GET', headers: { 'Content-Type': 'application/json', ...(headers || {}) } }, o);\n    return !r.network && r.status === 200 && r.json && Array.isArray(r.json.cards) ? r.json : null;",
+  "to": "    const r = await cardsExchange(fetchFn, url, { method: 'GET', headers: { 'Content-Type': 'application/json', ...(headers || {}) } }, o);\n    return !r.network && r.status === 200 && r.json && r.json.cards ? r.json : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-16a",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": [
+   "C3-16a: cardsRead accepted"
+  ]
+ },
+ {
+  "id": "c3-m-title-strip",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the sheet title is built by stripping the label (the «other» brand loses its dots)",
+  "file": "../customer-app/capp-pay-checkout.js",
+  "from": "¿Quitar la tarjeta ${esc(PC.cardLabel(null, v.last4))}?",
+  "to": "¿Quitar la tarjeta ${esc(PC.cardLabel('other', v.last4).replace(/^\\S+\\s/, ''))}?",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-07",
+   "../customer-app/capp-pay-checkout.test.mjs"
+  ],
+  "kills_with": [
+   "C3-07: the visa title tail"
+  ]
+ },
+ {
+  "id": "c3-m-expired-disabled",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): «Quitar» is disabled on an expired card",
+  "file": "../customer-app/capp-pay-checkout.js",
+  "from": "aria-label=\"${esc(`Quitar ${c.label}`)}\"${v.inert ? ' disabled' : ''}>Quitar</button>",
+  "to": "aria-label=\"${esc(`Quitar ${c.label}`)}\"${v.inert || c.expired ? ' disabled' : ''}>Quitar</button>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-03",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-04: «Quitar» on an expired card is disabled"
+  ]
+ },
+ {
+  "id": "c3-m-empty-on-fail",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): a failed read draws frame 5 (the empty state)",
+  "file": "../customer-app/capp-pay-checkout.js",
+  "from": "      : v.load === 'failed' ? '<div class=\"sandline act\"",
+  "to": "      : v.load === 'failed' && false ? '<div class=\"sandline act\"",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-06",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-06: network: a failed read shows frame 5"
+  ]
+ },
+ {
+  "id": "c3-m-carousel-class",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the list wrapper reuses `.cards` (the «La casa recomienda» carousel's class)",
+  "file": "../customer-app/capp.css",
+  "from": ".saved-cards{padding:4px 16px 0}",
+  "to": ".cards{padding:4px 16px 0}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-34",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C3-34: a new rule on `.cards`"
+  ]
+ },
+ {
+  "id": "c3-m-empty-unscoped",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the 34ch empty-line rule is unscoped (every empty state restyled)",
+  "file": "../customer-app/capp.css",
+  "from": ".cards-step .empty span{text-wrap:pretty;max-width:34ch}",
+  "to": ".empty span{text-wrap:pretty;max-width:34ch}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-34",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C3-34: an unscoped `.empty span` rule"
+  ]
+ },
+ {
+  "id": "c3-m-gate-open",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the CARDS_GATE refusal is dropped (--flags cards builds before S-2)",
+  "file": "../platform/native/package-capp.js",
+  "from": "  if (flags.includes('cards')) {",
+  "to": "  if (false) {",
+  "command": [
+   "node",
+   "../platform/native/package-capp.test.js"
+  ],
+  "kills_with": [
+   "C3-19: native: --flags cards built with CARDS_GATE null"
+  ]
+ },
+ {
+  "id": "c3-m-cards-via-sdkpay",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): runtime.cards is emitted under the sdkPay flag",
+  "file": "../customer-app/capp-boot.js",
+  "from": "...(f.cards === true && f.signup === true ? { cards:",
+  "to": "...((f.cards === true || f.sdkPay === true) && f.signup === true ? { cards:",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-17",
+   "../customer-app/capp-boot.test.mjs"
+  ],
+  "kills_with": [
+   "C3-17: runtime.cards emitted under sdkPay"
+  ]
+ },
+ {
+  "id": "c3-m-guard-order",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the Back guards are asked oldest first",
+  "file": "../customer-app/capp-shell-nav.js",
+  "from": "for (const g of [...guards].reverse())",
+  "to": "for (const g of [...guards])",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-35",
+   "../customer-app/capp-s7a1-shell.test.mjs"
+  ],
+  "kills_with": [
+   "C3-35: the guards are not asked most recent first"
+  ]
+ },
+ {
+  "id": "c3-m-guard-not-unregistered",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): unregister() leaves the guard in place",
+  "file": "../customer-app/capp-shell-nav.js",
+  "from": "      return () => { const i = guards.indexOf(g); if (i >= 0) guards.splice(i, 1); };",
+  "to": "      return () => {};",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-35",
+   "../customer-app/capp-s7a1-shell.test.mjs"
+  ],
+  "kills_with": [
+   "C3-35: unregister() does not restore today's Back"
+  ]
+ },
+ {
+  "id": "c3-m-row-ungated",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the Cuenta row shows without runtime.cards",
+  "file": "../customer-app/capp-home.js",
+  "from": "${vm.cardsRow ? `<button class=\"rowbtn\" data-act=\"cards\">",
+  "to": "${true ? `<button class=\"rowbtn\" data-act=\"cards\">",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-01",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-02: no cards: the row shows"
+  ]
+ },
+ {
+  "id": "c3-m-paint-read",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the cards are read when Cuenta paints",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "{ acct: acctVm(), cardsRow: cardsOn(), notifRow:",
+  "to": "{ acct: acctVm(), cardsRow: cardsOn() && (S.cards || cardsLoad(false), true), notifRow:",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-01",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-01: the Cuenta paint read the cards"
+  ]
+ },
+ {
+  "id": "c3-m-no-busy-latch",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): no synchronous latch: a tap burst confirms twice",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const r = S.cardRm; if (!r || r.busy || !cardsOn()) return;",
+  "to": "const r = S.cardRm; if (!r || !cardsOn()) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-07",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-08: a tap burst sent more than one POST"
+  ],
+  "equivalent": true,
+  "why": "EQUIVALENT under the real UI (probe 11-25, hand-planted on C3-07): the first tap re-renders the sheet synchronously (renderLayer) and swaps in a NEW pill with disabled=true — the old pill is detached (a click on it never bubbles to the delegate) and a click on the disabled one is not dispatched (jsdom and browsers alike): 1 POST without the latch. Only a pill forced back to disabled=false sends a 2nd POST (mutant 2, clean 1), a path no real tap has. The latch is KEPT (advisor ruling (a), 11-25) as the one state-level guard so the one-POST rule does not depend on the markup; C3-08 still asserts one POST."
+ },
+ {
+  "id": "c3-m-cancel-not-dimmed",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (MOCKUP-capp-card-removal v2 frame 4a): the busy sheet's «Cancelar» is disabled but not dimmed (SBS 11-25)",
+  "file": "../customer-app/capp.css",
+  "from": ".errsheet.cardrm .btn2[disabled]{opacity:.45;cursor:default}",
+  "to": ".errsheet.cardrm .btn2[disabled]{cursor:default}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-07",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-08: «Cancelar» is not dimmed while busy"
+  ]
+ },
+ {
+  "id": "c3-m-checkout-bounded",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (Codex #408 P2, rule 27): the checkout's listCards is moved onto cardsRead — a slow list after 12 s becomes «no saved cards»",
+  "file": "../customer-app/capp-api.js",
+  "from": "      const r = await sdkCall('GET', E.listCards, null, h);\n      return !r.network && r.status === 200 && r.json && Array.isArray(r.json.cards) ? r.json : null;",
+  "to": "      return cardsRead(sfetch, E.listCards, h);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-36",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "C3-36: a slow checkout list no longer lands"
+  ]
+ },
+ {
+  "id": "c3-m-open-no-focus",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (Codex #408 P2): opening the confirm sheet leaves focus on the background «Quitar»",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      focusCardHeading();   // Codex #408 P2: focus moves INTO the dialog",
+  "to": "      void 0;   // Codex #408 P2: focus moves INTO the dialog",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-26",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-26: keyboard focus stayed on the background «Quitar»"
+  ]
+ },
+ {
+  "id": "c3-m-css-unscoped-empty",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (Codex #408 P2, C3-34 baseline): the step's empty-line cap is unscoped and restyles every screen's empty state",
+  "file": "../customer-app/capp.css",
+  "from": ".cards-step .empty span{text-wrap:pretty;max-width:34ch}",
+  "to": ".empty span{text-wrap:pretty;max-width:34ch}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-34",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-34: another screen's empty state computes differently"
+  ]
+ },
+ {
+  "id": "c3-m-dark-route-opens",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (Codex #408 deviation #4): a navigation to the step with the gate closed opens it instead of bouncing to Cuenta",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (entry.name === 'cards') { if (!cardsOn()) {",
+  "to": "if (entry.name === 'cards') { if (false) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-01",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the dark route did not bounce to Cuenta"
+  ]
+ },
+ {
+  "id": "c3-m-cancel-while-busy",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the scrim / grab / «Cancelar» close a busy sheet",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (S.cardRm && S.cardRm.busy) return;   // every exit is inert",
+  "to": "      if (false) return;   // every exit is inert",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-23",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-25: the scrim / grab closed a busy sheet"
+  ]
+ },
+ {
+  "id": "c3-m-no-gen",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the post-answer check is skipped: a late answer of a gone identity is applied",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (!live()) return;   // a late answer: ignored",
+  "to": "      if (false) return;   // a late answer: ignored",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-14",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-14: the late answer was applied to the cleared list"
+  ]
+ },
+ {
+  "id": "c3-m-no-precheck",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the remove's pre-dispatch check is skipped: a POST after the identity ended",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (!live()) return;   // the member, the generation or the sheet moved while waiting: NO request",
+  "to": "      if (false) return;   // the member, the generation or the sheet moved while waiting: NO request",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-21",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "a POST went out after the identity ended"
+  ]
+ },
+ {
+  "id": "c3-m-no-precheck-read",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the read's pre-dispatch check is skipped: a GET after the identity ended",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        if (!cardsCurrent(gen, uid)) return;   // a token that outlived its member: no request",
+  "to": "        if (false) return;   // a token that outlived its member: no request",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-21",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "a GET went out after the identity ended"
+  ]
+ },
+ {
+  "id": "c3-m-persist",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the card rows are written to the device store",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        S.cards = { who: uid, load: null, rows: cardMod('CappPayCard', './capp-pay-card.js').cardsVm(list).rows, tails };",
+  "to": "        S.cards = { who: uid, load: null, rows: cardMod('CappPayCard', './capp-pay-card.js').cardsVm(list).rows, tails }; try { storage.setItem('capp:cards_cache', JSON.stringify(S.cards)); } catch (_) {}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-14",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-15: storage holds card data"
+  ]
+ },
+ {
+  "id": "c3-m-back-not-blocked",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the card guard lets a Back through while the remove is in flight",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (S.cardRm.busy) return 'blocked'; cardRmClose(); return 'closed';",
+  "to": "if (S.cardRm.busy) return 'none'; cardRmClose(); return 'closed';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-23",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "while busy was not refused"
+  ]
+ },
+ {
+  "id": "c3-m-focus-first-card",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the opener match drops data-card: Cancel focuses the FIRST card's «Quitar»",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "${op.card ? `[data-card=\"${CSS_ESC(op.card)}\"]` : ''}`) : null)",
+  "to": "`) : null)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-26",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-26: focus did not return to the second card's «Quitar»"
+  ]
+ },
+ {
+  "id": "c3-m-focus-lost-on-reread",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the focus target is not resolved again after the quiet re-read",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        if (held) focusCardsTarget();",
+  "to": "        if (false) focusCardsTarget();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-27",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-27: the next card gone ⇒ focus is not on the previous card"
+  ]
+ },
+ {
+  "id": "c3-m-auto-retry",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): a failed remove retries once on its own",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (out === 'failed') { r.busy = false; r.err = true;",
+  "to": "      if (out === 'failed' && !r.again) { r.again = true; r.busy = false; return void cardRmConfirm(); }\n      if (out === 'failed') { r.busy = false; r.err = true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-29",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-29: a failed remove was retried on its own"
   ]
  }
 ]

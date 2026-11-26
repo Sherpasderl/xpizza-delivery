@@ -191,3 +191,19 @@ test('SETTINGS-BOOT (Codex r1 P2-9, advisor ruling (a)): the shell\'s «Abrir Aj
   }
   await Promise.resolve();
 });
+
+// C-3 (PLAN-capp-C3-card-removal-r2 §3.3, ✓370-1): the saved-cards screen's OWN runtime field — ONE emission point, from the `cards` flag
+// WITH sign-in (members only), on both targets; independent of sdkPay (the website removes a card with the SDK checkout off)
+test('C3-17: runtime.cards — cards + signup ⇒ exactly { listCards, removeCard } on the functions host; cards alone ⇒ none; sdkPay alone ⇒ none; the sdkPay block unchanged', () => {
+  const want = { endpoints: { listCards: `${RT0.functions_base}/listCards`, removeCard: `${RT0.functions_base}/removeCard` } };
+  for (const mode of ['web', 'native']) {
+    const r = Boot.runtimeFor(RT({ mode, flags: { cards: true, signup: true } }), CappSignupApi);
+    assert.deepEqual(r.cards, want, `🔴 C3-17: ${mode}: cards + signup does not emit exactly the two card endpoints`);
+    assert.equal('sdkPay' in r, false, `${mode}: the cards flag never turns on the SDK checkout`);
+  }
+  assert.equal('cards' in Boot.runtimeFor(RT({ flags: { cards: true } }), CappSignupApi), false, '🔴 C3-17: cards without signup emitted runtime.cards (members only)');
+  assert.equal('cards' in Boot.runtimeFor(RT({ flags: { cards: 'true', signup: true } }), CappSignupApi), false, 'only a literal true flips it');
+  const pay = Boot.runtimeFor(RT({ flags: { sdkPay: true, signup: true } }), CappSignupApi);
+  assert.equal('cards' in pay, false, '🔴 C3-17: runtime.cards emitted under sdkPay');
+  assert.deepEqual(Object.keys(pay.sdkPay.endpoints), ['placeSdkOrder', 'placeSdkStatus', 'cancelSdkPending', 'listCards', 'removeCard', 'sdkPayStatus', 'recoverOrderAccess'], 'the sdkPay block is byte-identical (rule 27)');
+});

@@ -851,3 +851,65 @@ test('Codex r5 P2-b: the shared SDK authority (sdkHeaders) refuses a keyless gue
   await s.api.sdkStatus(id, { checkoutTicket: { ...tk, phone_key: GUEST_KEY } });
   assert.equal(s.srv.of('placeSdkStatus').length, 1, 'non-vacuity: the same ticket WITH its key is sent');
 });
+
+// ── C-3 saved cards (PLAN-capp-C3-card-removal-r2 §3.2): the module-level transport, ONE bound over the fetch AND the body read ──────
+const E3 = { ...E, removeCard: 'https://fn.test/removeCard' };
+const answer = (status, body) => async () => ({ status, ok: status >= 200 && status < 300, json: async () => (body instanceof Error ? Promise.reject(body) : body) });
+function cardsReal() {
+  const clock = { t: at(12) };
+  const real = realSdkServer({ clock, members: { [JWT]: 'u_ana', [JWT_B]: 'u_bea' } });
+  return { real, fetch: real.fetchFor(E3, async (url) => { throw new Error(`unscripted ${url}`); }), H: { Authorization: `Bearer ${JWT}` } };
+}
+test('C3-16a: cardsRead / createApi().listCards accept ONLY a 200 object whose cards is an array — anything else, and a hang (12 s), is null', async () => {
+  for (const [label, f] of [['{cards:{}}', answer(200, { cards: {} })], ['{cards:null}', answer(200, { cards: null })], ["{cards:'x'}", answer(200, { cards: 'x' })],
+    ['a non-object body', answer(200, 'cards')], ['non-JSON', answer(200, new SyntaxError('Unexpected token'))], ['200 without cards', answer(200, {})], ['an array body', answer(200, [])],
+    ['a 500', answer(500, { cards: [] })], ['a network error', async () => { throw new TypeError('Failed to fetch'); }]]) {
+    assert.equal(await A.cardsRead(f, E3.listCards, {}), null, `🔴 C3-16a: cardsRead accepted ${label}`);
+    const s = rig({ script: { listCards: [{ status: 0 }] } });
+    const api = A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E3, hours: OPEN_ALL, sdkCheckout: true }, fetch: f, storage: s.storage, now: () => s.clock.t, sleep: async () => {}, setInterval: () => 0, clearInterval: () => {}, member: () => ANA });
+    assert.equal(await api.listCards(), null, `🔴 C3-16a: createApi().listCards accepted ${label}`);
+  }
+  assert.deepEqual(await A.cardsRead(answer(200, { cards: [] }), E3.listCards, {}), { cards: [] }, 'a confirmed empty list is accepted');
+  const clk = createClock(0); let done = false, out = 'pending';
+  A.cardsRead(() => new Promise(() => {}), E3.listCards, {}, { timers: clk }).then((v) => { out = v; done = true; });
+  await clk.flush(11_999); assert.equal(done, false, 'premise: still waiting before the bound');
+  await clk.flush(1); assert.deepEqual([done, out], [true, null], '🔴 C3-16a: a hung read is not bounded at 12 s');
+  const c2 = createClock(0); let o2 = 'pending';
+  A.cardsRead(answer(200, new Promise(() => {})), E3.listCards, {}, { timers: c2 }).then((v) => { o2 = v; });
+  A.cardsRead(async () => ({ status: 200, ok: true, json: () => new Promise(() => {}) }), E3.listCards, {}, { timers: c2 }).then((v) => { o2 = v; });
+  await c2.flush(12_000); assert.equal(o2, null, '🔴 C3-16a: a hung BODY read is not bounded');
+});
+test('C3-33: cardRemove maps ONLY 200 {removed:true} to removed and 404 to gone — through the REAL handlers; everything else is failed', async () => {
+  const r = cardsReal(); const id = await r.real.saveCard('u_ana', { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 }, 'tok_c33');
+  assert.equal(await A.cardRemove(r.fetch, E3.removeCard, r.H, 'Z'.repeat(20)), 'gone', '🔴 C3-33: the real 404 (an id never this member\'s) is not «gone»');
+  assert.equal((await r.real.callHandler('removeCard', 'GET', r.H, { card_id: id })).status, 405, 'premise: the real wrapper answers 405 to a GET');
+  const viaGet = async (url, init) => r.fetch(url, { ...init, method: 'GET' });
+  assert.equal(await A.cardRemove(viaGet, E3.removeCard, r.H, id), 'failed', '🔴 C3-33: a 405 is not failed');
+  assert.equal(await A.cardRemove(r.fetch, E3.removeCard, { Authorization: 'Bearer nope' }, id), 'failed', '🔴 C3-33: a 401 is not failed');
+  for (const [label, f] of [['200 {}', answer(200, {})], ['200 {removed:false}', answer(200, { removed: false })], ['200 non-object', answer(200, 'ok')], ['200 non-JSON', answer(200, new SyntaxError('x'))],
+    ['500', answer(500, { error: 'internal' })], ['network', async () => { throw new TypeError('Failed to fetch'); }]])
+    assert.equal(await A.cardRemove(f, E3.removeCard, r.H, id), 'failed', `🔴 C3-33: ${label} is not failed`);
+  assert.ok(r.real.cardsNode && (await r.real.cardsNode('u_ana')).cards[id], 'premise: nothing above removed the card');
+  assert.equal(await A.cardRemove(r.fetch, E3.removeCard, r.H, id), 'removed', '🔴 C3-33: the real 200 {removed:true} is not «removed»');
+  const n = await r.real.cardsNode('u_ana');
+  assert.ok(!n.cards || !n.cards[id], 'the real node lost the card'); assert.equal(n.removed_ids[id], true, 'removed_ids');
+  assert.equal(await A.cardRemove(r.fetch, E3.removeCard, r.H, id), 'removed', 'a repeat is the owner\'s idempotent 200');
+  const sent = []; await A.cardRemove(async (u, init) => { sent.push(init); return r.fetch(u, init); }, E3.removeCard, r.H, 'Y'.repeat(20));
+  assert.deepEqual([sent[0].method, JSON.parse(sent[0].body)], ['POST', { card_id: 'Y'.repeat(20) }], 'one POST {card_id}');
+  const clk = createClock(0); let out = 'pending';
+  r.real.holdNext('removeCard'); A.cardRemove(r.fetch, E3.removeCard, r.H, 'X'.repeat(20), { timers: clk }).then((v) => { out = v; });
+  await clk.flush(12_000); assert.equal(out, 'failed', '🔴 C3-33: a held remove is not bounded at 12 s');
+  const c2 = createClock(0); let o2 = 'pending';
+  r.real.holdBody('removeCard'); A.cardRemove(r.fetch, E3.removeCard, r.H, 'X'.repeat(20), { timers: c2 }).then((v) => { o2 = v; });
+  await c2.flush(12_000); assert.equal(o2, 'failed', '🔴 C3-33: a held remove BODY is not bounded at 12 s');
+});
+// C3-13 (PLAN-capp-C3-card-removal-r2, Q4 «no checkout invalidation hook»): a checkout still holding a list that names a card removed in
+// Cuenta places it ⇒ the REAL intake refuses (409 saved_card_unavailable) ⇒ sdk_card_unavailable — nothing is authorized
+test('C3-13: a stale checkout list placing a card removed through the real removeCard ⇒ the real 409 ⇒ sdk_card_unavailable; zero authorizations', async () => {
+  const s = realRig();
+  const rm = await s.real.callHandler('removeCard', 'POST', { Authorization: `Bearer ${JWT}` }, { card_id: CARD20 });
+  assert.deepEqual([rm.status, rm.json], [200, { removed: true }], 'premise: the real handler removed the card');
+  const out = await s.api.placeSdk(args(SAVED20));
+  assert.equal(out.kind, 'sdk_card_unavailable', `🔴 C3-13: a removed saved card is not refused as unavailable (${JSON.stringify(out)})`);
+  assert.equal(s.real.authorizations(), 0, '🔴 C3-13: a removed saved card was authorized');
+});

@@ -37,8 +37,11 @@ const Stamp = require('../stamp-version');
 
 const ROOT = path.join(__dirname, '..', '..');
 const APP = 'customer-app';
-const FLAGS = ['signup', 'intlPhone', 'guestCardOnly', 'schedulingLive', 'ratings', 'sdkPay', 'push'];   // = the boot's flags (capp-boot.test FL-1)
+const FLAGS = ['signup', 'intlPhone', 'guestCardOnly', 'schedulingLive', 'ratings', 'sdkPay', 'push', 'cards'];   // = the boot's flags (capp-boot.test FL-1)
 const GUEST_SERVER = 'xpizza-functions/checkout-guest-gate.js';   // 3a's capp-guest gate (PLAN-guest-checkout-server)
+// C-3 (PLAN-capp-C3-card-removal-r2 §3.3): THE release gate of the saved-cards screen. null = closed: --flags cards is refused until the
+// advisor records S-2's merged provider drain AND its GL proof here, in ONE commit — then the owner packages with --flags cards (rule 21)
+const CARDS_GATE = null;   // { drain: '<S-2 drain path>', gl_proof: 'DEC nnnn' }
 const BOOT = ['capp-runtime.js', 'capp-boot.js'];
 const TARGETS = ['web', 'native'];
 const ENTRY = 'index.html';   // the packaged web shell.html (Capacitor's entry)
@@ -105,7 +108,7 @@ function shellFiles(shellHtml, readText) {
 }
 
 // `show(rel)` → Buffer reads a file AT the commit (default: git show); tests overlay edits on it, never on the repo
-function build({ sha, flags = [], root = ROOT, show, target = 'native', env } = {}) {
+function build({ sha, flags = [], root = ROOT, show, target = 'native', env, cardsGate = CARDS_GATE } = {}) {
   if (!TARGETS.includes(target)) throw new Error(`--target must be one of ${TARGETS.join(', ')}`);
   if (typeof env !== 'string' || !ID_RE.test(env)) throw new Error('--env is required (the deployment environment, e.g. production) — never guessed');
   if (typeof sha !== 'string' || !/^[0-9a-f]{7,40}$/.test(sha)) throw new Error('--sha must be a commit');
@@ -114,11 +117,18 @@ function build({ sha, flags = [], root = ROOT, show, target = 'native', env } = 
   const S = typeof show === 'function' ? show : (rel) => gitShow(full, rel, root), T = (rel) => S(rel).toString('utf8');
   // APP-TRAIN OBLIGATION (advisor ruling 2026-11-01): 3a's capp-guest server refuses every capp guest that is not card + email + a
   // verified ticket; a bundle that can serve capp guests WITHOUT the client's guestCardOnly rules must never be built (web or native)
-  if (!flags.includes('guestCardOnly')) {
-    let guestServer = true;   // presence only — silent (an absent path is the normal case; git's «fatal: path …» never reaches stderr)
-    if (typeof show === 'function') { try { S(GUEST_SERVER); } catch (_) { guestServer = false; } }
-    else { try { execFileSync('git', ['cat-file', '-e', `${full}:${GUEST_SERVER}`], { cwd: root, stdio: 'ignore' }); } catch (_) { guestServer = false; } }
-    if (guestServer) throw new Error(`the capp-guest server (${GUEST_SERVER}) is in this commit: --flags guestCardOnly is required (owner 10-27: guests are card only)`);
+  // presence at the commit only — silent (an absent path is the normal case; git's «fatal: path …» never reaches stderr)
+  const inCommit = (rel) => {
+    if (typeof show === 'function') { try { S(rel); return true; } catch (_) { return false; } }
+    try { execFileSync('git', ['cat-file', '-e', `${full}:${rel}`], { cwd: root, stdio: 'ignore' }); return true; } catch (_) { return false; }
+  };
+  if (!flags.includes('guestCardOnly') && inCommit(GUEST_SERVER)) throw new Error(`the capp-guest server (${GUEST_SERVER}) is in this commit: --flags guestCardOnly is required (owner 10-27: guests are card only)`);
+  // C-3: no saved-cards screen before S-2 deletes a removed card at the provider (its drain merged, its GL proof recorded)
+  if (flags.includes('cards')) {
+    const g = cardsGate;
+    if (!g || typeof g.drain !== 'string' || !g.drain || typeof g.gl_proof !== 'string' || !/^DEC \d+$/.test(g.gl_proof)) throw new Error('--flags cards is gated: S-2 (provider drain) + its GL proof are not recorded (CARDS_GATE)');
+    if (!inCommit(g.drain)) throw new Error(`--flags cards: S-2's drain (${g.drain}) is not in this commit`);
+    if (!flags.includes('signup')) throw new Error('--flags cards requires --flags signup (saved cards are members only)');
   }
   const sites = JSON.parse(T('platform/sites.json')), compat = JSON.parse(T('platform/compat.json'));
   const dep = sites.deployments.find((d) => d.app === 'orders' && d.context === 'platform');
@@ -250,4 +260,4 @@ if (require.main === module) {
     } else { const m = pack(opts); console.log(`package-capp: ${m.target} ${m.deployment} (${m.env}) build ${m.build} compat ${m.compat} sdk ${m.sdk} flags [${m.flags}] → ${opts.out} (${Object.keys(m.files).length} files)`); }
   } catch (e) { console.error(`package-capp: FAILED — ${e.message}`); process.exit(1); }
 }
-module.exports = { build, pack, verify, cspFor, cspMeta, photoOrigins, shellFiles, FLAGS, ENTRY, TARGETS };
+module.exports = { build, pack, verify, cspFor, cspMeta, photoOrigins, shellFiles, FLAGS, CARDS_GATE, ENTRY, TARGETS };
