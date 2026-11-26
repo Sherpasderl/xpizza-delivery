@@ -231,6 +231,26 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   if (present) assert.ok(/--flags\s+\S*\bguestCardOnly\b/.test(cmd), `🔴 the guest server is in this tree: the web release command must pass --flags …guestCardOnly (${cmd})`);
   ok(`APP-TRAIN obligation: with 3a's capp-guest server present, the packager REFUSES a web or native build without guestCardOnly (and builds with it); the web release command is checked against this tree (guest server ${present ? 'PRESENT' : 'absent'})`);
 }
+// C-3 (PLAN-capp-C3-card-removal-r2 §3.3, ✓370-1): THE release gate of the saved-cards screen — ONE refusal. While CARDS_GATE is null
+// (S-2's provider drain and its GL proof not yet recorded by the advisor) --flags cards is refused on BOTH targets; a recorded gate whose
+// drain file is absent from the packaged commit is refused; cards without signup is refused; a recorded gate + the drain present builds.
+{
+  const DRAIN = 'xpizza-functions/payments/sdk/c3-test-drain.js', GATE = { drain: DRAIN, gl_proof: 'DEC 9999' };
+  const withDrain = (rel) => (rel === DRAIN ? Buffer.from('// the S-2 drain is present\n') : show(rel));
+  const CARDS = [...BASE_FLAGS, 'signup', 'cards'];
+  assert.strictEqual(P.CARDS_GATE, null, 'premise: C-3 merges DARK — the gate is closed in this tree');
+  for (const t of [{ target: 'native', env: 'production' }, { target: 'web', env: 'production' }]) {
+    assert.throws(() => P.build({ sha: HEAD, ...t, flags: CARDS }), /--flags cards is gated: S-2 \(provider drain\) \+ its GL proof are not recorded \(CARDS_GATE\)/, `🔴 C3-19: ${t.target}: --flags cards built with CARDS_GATE null`);
+    assert.throws(() => P.build({ sha: HEAD, ...t, flags: CARDS, show: withDrain }), /CARDS_GATE/, `🔴 C3-19: ${t.target}: the drain file alone opened the gate`);
+    assert.throws(() => P.build({ sha: HEAD, ...t, flags: CARDS, cardsGate: GATE }), /S-2's drain \(xpizza-functions\/payments\/sdk\/c3-test-drain\.js\) is not in this commit/, `🔴 C3-19: ${t.target}: a recorded gate whose drain is absent built`);
+    assert.throws(() => P.build({ sha: HEAD, ...t, flags: [...BASE_FLAGS, 'cards'], cardsGate: GATE, show: withDrain }), /requires --flags signup/, `🔴 C3-19: ${t.target}: cards without signup built`);
+    const G = P.build({ sha: HEAD, ...t, flags: CARDS, cardsGate: GATE, show: withDrain });
+    const rt = {}; new Function('self', G.files.get('capp-runtime.js').toString('utf8'))(rt);
+    assert.ok(G.manifest.flags.includes('cards') && rt.CAPP_RUNTIME.flags.cards === true, `${t.target}: a recorded gate + the drain present builds, and the manifest lists cards`);
+  }
+  assert.ok(!/\bcards\b/.test((fs.readFileSync(path.join(ROOT, 'customer-app/netlify.toml'), 'utf8').match(/command\s*=\s*"([^"]*package-capp[^"]*)"/) || [])[1] || ''), 'the web release command does not ask for cards (the gate is closed)');
+  ok('C-3 release gate: --flags cards is refused while CARDS_GATE is null (web and native), with a gate whose drain is absent, and without signup; a recorded gate + the drain present builds');
+}
 // 8. F2 (advisor 11-08, LAUNCH GATE): every dish-photo host the public menu can serve is admitted by img-src, GENERATED — never
 //    hand-listed. The hosts come from the publishers' own rules: catalog/public-photos.js assetBaseFor (each brand's order site, from
 //    the manifest) and photos/ publicUrl (the public photos bucket). The SBS found the packaged CSP blocking every served photo.

@@ -120,9 +120,16 @@
     // one side's result for THESE ops, durable the moment it lands (Codex r2 P2: never held for the other side); a record leaves
     // only once both sides are done
     const mark = (ops, side) => write({ pending: pendingOf(read()).map((p) => (ops.has(p.op) ? { ...p, [side]: true } : p)).filter((p) => !(p.native === true && p.server === true)) });
+    // G5 (PLAN-capp-multitab-gate-r7 §4, ✓366-5): the PHONE's invalidation is the enforced boundary. `owed` { owner, at } is written
+    // BEFORE the live token moves to pending and leaves only when the phone's invalidation SUCCEEDS — durable, so an exit after a restart
+    // still waits for it. nativeDone() answers the phone's result of the latest settle without waiting on the server (best-effort)
+    let lastNative = null;
+    const owedRec = () => { const w = read().owed; return w && typeof w === 'object' ? w : null; };
+    const nativeDone = () => lastNative || Promise.resolve(!owedRec());
     async function forget() {
       const s0 = read();
       if (s0.token) {
+        write({ owed: { owner: typeof s0.owner === 'string' ? s0.owner : null, at: now() } });
         const op = opKey(s0.owner), pend = pendingOf(read());
         pend.push({ op, token: s0.token, owner: typeof s0.owner === 'string' ? s0.owner : null, native: false });
         write({ token: null, owner: null, server: null, pending: pend.slice(-PENDING_MAX), ...(s0.state === 'granted' ? { state: null } : {}) });
@@ -131,13 +138,16 @@
     }
     async function settle() {
       const pend = withOps();
-      if (!pend.length) return { ok: true, server: null };
+      if (!pend.length) { if (owedRec()) write({ owed: null }); lastNative = Promise.resolve(true); return { ok: true, server: null }; }   // nothing left on the phone: a stale owed record goes
       // the phone holds ONE token: invalidate it only while no newer live token exists (never kill the next opt-in's)
       const nOps = new Set(pend.filter((p) => p.native !== true).map((p) => p.op));
       const nativeP = !nOps.size ? Promise.resolve(true)
         : !on || read().token ? Promise.resolve(false)
         : Promise.resolve().then(() => plugin.unregister()).then(() => true, () => false);
-      nativeP.then((ok) => { if (ok && nOps.size) mark(nOps, 'native'); });
+      // Codex #427 #5: the debt is settled per op — the owed record leaves only when NO record's phone step is still owed (an older
+      // invalidation completing never clears a newer one's debt)
+      nativeP.then((ok) => { if (ok && nOps.size) mark(nOps, 'native'); if (ok && !pendingOf(read()).some((p) => p.native !== true)) write({ owed: null }); });
+      lastNative = nativeP.then((ok) => ok === true && !owedRec());
       const owed = pend.filter((p) => p.server !== true);
       const rs = await Promise.all([nativeP, ...owed.map((p) => (api && typeof api.unregister === 'function'
         ? Promise.resolve().then(() => api.unregister({ token: p.token }, { owner: p.owner })).then((r) => r, () => null) : Promise.resolve(null))
@@ -158,7 +168,7 @@
     const state = () => { const s = read(); return { state: s.state || 'never', snoozed_at: Number.isFinite(s.snoozed_at) ? s.snoozed_at : null, registered: !!s.token && s.server === true }; };
     // whose the live token is, and how many invalidations are still owed (the shell's auth hook and boot retry read these)
     const held = () => { const s = read(); return { owner: s.token && typeof s.owner === 'string' ? s.owner : null, live: !!s.token, pending: pendingOf(s).length }; };
-    return { available: () => on, shouldOffer, markOffered, snooze, enable, permission, forget, settle, held, onTap, state };
+    return { available: () => on, shouldOffer, markOffered, snooze, enable, permission, forget, settle, held, owed: owedRec, nativeDone, onTap, state };
   }
 
   // the push UI copy — OWNER-APPROVED (MOCKUP-capp-push r1 + the Q1–Q6 rulings, 11-14; the «Notificaciones» screen and the Cuenta row:

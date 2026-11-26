@@ -27476,7 +27476,7 @@
   "slice": "g6",
   "label": "closing mid-completion keeps the sign-in (a member without the Términos)",
   "file": "../customer-app/capp-signup.js",
-  "from": "      if (wasSignedIn && !finished && owed) { try { await auth.signOut(); } catch (_) {} }\n",
+  "from": "      if (wasSignedIn && !finished && owed) { try { await auth.signOutIf(minted); } catch (_) {} }   // C1: only the sheet's OWN sign-in, never a newer one\n",
   "to": "      if (false) {}\n",
   "command": [
    "node",
@@ -27491,9 +27491,9 @@
   "id": "g6-03",
   "slice": "g6",
   "label": "a custom-token mint for a closed sheet is kept",
-  "file": "../customer-app/capp-signup.js",
-  "from": "if (!live(g)) { if (uid) { try { await auth.signOut(); } catch (_) {} } return; }",
-  "to": "if (!live(g)) { return; }",
+  "file": "../customer-app/capp-auth-firebase.js",
+  "from": "          if (currentIs(auth, uid)) await authMod.signOut(auth);\n",
+  "to": "",
   "command": [
    "node",
    "--test",
@@ -27658,7 +27658,7 @@
   "slice": "g6",
   "label": "Codex G6 r2 #2: a restored uid is applied without its completion mark",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "        if (u && u.uid && completeUid() !== u.uid) { dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {})); schedule(); return; }\n",
+  "from": "        if (u && u.uid && completeUid() !== u.uid) { const x = u.uid; dropMember(); pushAuthExit().then((ok) => { if (ok !== false) return fbAuth.signOutIf(x).catch(() => {}); }); schedule(); return; }\n",
   "to": "",
   "command": [
    "node",
@@ -27726,8 +27726,8 @@
   "slice": "g6",
   "label": "Codex G6 r2 #2: the uid is marked before its sign-out is confirmed (a rejected sign-out admits it at the next restore)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "completeUid() !== u.uid) { dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {}));",
-  "to": "completeUid() !== u.uid) { dropMember(); markComplete(u.uid); pushAuthExit().then(() => fbAuth.signOut().catch(() => {}));",
+  "from": "completeUid() !== u.uid) { const x = u.uid; dropMember(); pushAuthExit()",
+  "to": "completeUid() !== u.uid) { const x = u.uid; dropMember(); markComplete(u.uid); pushAuthExit()",
   "command": [
    "node",
    "--test",
@@ -27759,8 +27759,8 @@
   "slice": "g6",
   "label": "Codex G6 r4: no finalization latch (a closed / finalized sheet can be finished again)",
   "file": "../customer-app/capp-signup.js",
-  "from": "    const finalized = () => !S.open || S.final;\n    async function close(why) {\n      if (!S.open) return;\n      const wasSignedIn = !!S.uid, finished = S.pane === 'done', owed = S.completion === 'needed';\n      S.final = true; S.open = false; S.gen++; tickStop(); render();\n      S.uid = null; S.completion = null; S.vphone = null;\n",
-  "to": "    const finalized = () => false;\n    async function close(why) {\n      if (!S.open) return;\n      const wasSignedIn = !!S.uid, finished = S.pane === 'done', owed = S.completion === 'needed';\n      S.final = true; S.open = false; S.gen++; tickStop(); render();\n",
+  "from": "    const finalized = () => !S.open || S.final;\n    async function close(why) {\n      if (!S.open) return;\n      const wasSignedIn = !!S.uid, minted = S.uid, finished = S.pane === 'done', owed = S.completion === 'needed';\n      S.final = true; S.open = false; S.gen++; tickStop(); render();\n      S.uid = null; S.completion = null; S.vphone = null;\n",
+  "to": "    const finalized = () => false;\n    async function close(why) {\n      if (!S.open) return;\n      const wasSignedIn = !!S.uid, minted = S.uid, finished = S.pane === 'done', owed = S.completion === 'needed';\n      S.final = true; S.open = false; S.gen++; tickStop(); render();\n",
   "command": [
    "node",
    "--test",
@@ -34918,8 +34918,8 @@
   "slice": "native",
   "label": "APP-TRAIN obligation reverted: the packager builds a capp bundle without guestCardOnly although 3a's capp-guest server is in the commit",
   "file": "../platform/native/package-capp.js",
-  "from": "    if (guestServer) throw new Error(",
-  "to": "    if (false) throw new Error(",
+  "from": "  if (!flags.includes('guestCardOnly') && inCommit(GUEST_SERVER)) throw new Error(",
+  "to": "  if (false) throw new Error(",
   "command": [
    "node",
    "../platform/native/package-capp.test.js"
@@ -39056,7 +39056,7 @@
   "slice": "capp-push",
   "label": "sign-out without forgetting the token",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "async () => { await pushAuthExit(); try { await fbAuth.signOut(); return true; }",
+  "from": "async () => { if ((await pushAuthExit()) === false) return false; try { await fbAuth.signOut(); return true; }",
   "to": "async () => { try { await fbAuth.signOut(); return true; }",
   "command": [
    "node",
@@ -39092,8 +39092,8 @@
   "slice": "capp-push",
   "label": "the Cuenta row placed before Direcciones",
   "file": "../customer-app/capp-home.js",
-  "from": "      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${!vm.dir.load && (vm.dir.labels || (vm.addr && vm.addr.line)) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}\n      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n",
-  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${!vm.dir.load && (vm.dir.labels || (vm.addr && vm.addr.line)) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}\n",
+  "from": "      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${!vm.dir.load && (vm.dir.labels || (vm.addr && vm.addr.line)) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}\n      ${vm.cardsRow ? `<button class=\"rowbtn\" data-act=\"cards\">${payCheckout().cardGlyph}<span class=\"t\">Tarjetas guardadas</span>${IC.chev}</button>` : ''}\n      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n",
+  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${noOrphan(esc(vm.notifRow.sub))}</span></span>${IC.chev}</button>` : ''}\n      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${!vm.dir.load && (vm.dir.labels || (vm.addr && vm.addr.line)) ? `<span>${noOrphan(esc(vm.dir.labels || vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${noOrphan(esc(vm.addr.line))}</span>` : ''}</span>${IC.chev}</button>`}\n      ${vm.cardsRow ? `<button class=\"rowbtn\" data-act=\"cards\">${payCheckout().cardGlyph}<span class=\"t\">Tarjetas guardadas</span>${IC.chev}</button>` : ''}\n",
   "command": [
    "node",
    "--test",
@@ -39164,8 +39164,8 @@
   "slice": "capp-push",
   "label": "Codex r1 P1-4: a COLD restored session without its completion mark is signed out without forgetting the token (r3: the admitted case is leave()'s)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {}));",
-  "to": "dropMember(); fbAuth.signOut().catch(() => {});",
+  "from": "dropMember(); pushAuthExit().then((ok) => { if (ok !== false) return fbAuth.signOutIf(x).catch(() => {}); });",
+  "to": "dropMember(); fbAuth.signOutIf(x).catch(() => {});",
   "command": [
    "node",
    "--test",
@@ -42906,8 +42906,8 @@
   "slice": "r3-rs",
   "label": "r3 (identity, 11-20): the offer's redeem reply landing after a leave still signs the new account in (the SDK flipped by a tab that left)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "if (r && r.ok && r.token && !leaving) uid = await fbAuth.signInWithCustomToken(r.token);",
-  "to": "if (r && r.ok && r.token) uid = await fbAuth.signInWithCustomToken(r.token);",
+  "from": "uid = await fbAuth.signInWithCustomToken(r.token, { live: liveOffer, before:",
+  "to": "uid = await fbAuth.signInWithCustomToken(r.token, { live: () => true, before:",
   "command": [
    "node",
    "--test",
@@ -44145,6 +44145,994 @@
   ],
   "kills_with": [
    "JWT-ONE-SINK: memberToken's tokenUsable is not the module's own validator (shadowed or re-bound)"
+  ]
+ },
+ {
+  "id": "c7mt-01",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C1: the transition queue bypassed (each SDK transition runs at once)",
+  "file": "../customer-app/capp-auth-firebase.js",
+  "from": "    const slot = (fn) => { const run = tail.then(fn); tail = run.then(() => {}, () => {}); return run; };",
+  "to": "    const slot = (fn) => Promise.resolve().then(fn);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C1",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "C1-QUEUE: Bob's sign-in reached the SDK while Ana's was still running"
+  ]
+ },
+ {
+  "id": "c7mt-02",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C1: signOutIf unscoped (signs out whoever the SDK holds)",
+  "file": "../customer-app/capp-auth-firebase.js",
+  "from": "if (!currentIs(auth, uid)) return false; await authMod.signOut(auth); return true;",
+  "to": "await authMod.signOut(auth); return true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C1",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "C1-SCOPED: signOutIf signed out another user"
+  ]
+ },
+ {
+  "id": "c7mt-03",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C1: an attempt closed before its turn still reaches the SDK",
+  "file": "../customer-app/capp-auth-firebase.js",
+  "from": "          if (!live()) return null;   // closed before its turn: no SDK call at all",
+  "to": "          if (false) return null;   // closed before its turn: no SDK call at all",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C1",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "C1-SKIP: an attempt closed before its turn reached the SDK"
+  ],
+  "equivalent": true,
+  "why": "EQUIVALENT for the sign-in property (advisor 11-26 ruling 1(a); probe 11-26, hand-planted on ^C1: 2/2 pass): capp-auth-firebase.js re-checks `if (!live()) return null;` right after `await ensure()`, before the SDK's signInWithCustomToken, so a closed attempt still never signs in. The first check only spares a dead attempt the SDK module load (harmless; no source change after light)."
+ },
+ {
+  "id": "c7mt-04",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C2: the writer-tag check removed from getItem (another identity's record reads back)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      return r && typeof r === 'object' && r.o === stamp && typeof r.v === 'string' ? r.v : null;",
+  "to": "      return r && typeof r === 'object' && typeof r.v === 'string' ? r.v : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C2-INTERLEAVE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C2-DROP: Ana's boot kept a record another identity wrote"
+  ]
+ },
+ {
+  "id": "c7mt-05",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C2: the tag written as the CURRENT device stamp instead of this mount's",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    const tagged = (v) => JSON.stringify({ o: myStamp, v: String(v) });",
+  "to": "    const tagged = (v) => JSON.stringify({ o: rawGet(OWNER_KEY), v: String(v) });",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C2-TAG-ONCE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C2-TAG-ONCE: the interleaved write was tagged as the newcomer's"
+  ]
+ },
+ {
+  "id": "c7mt-06",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C2: the adoption re-tags every record, another identity's included",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const v = untag(rawGet(k), 'guest'); if (v !== null) {",
+  "to": "const v = (() => { try { return JSON.parse(rawGet(k)).v; } catch (_) { return null; } })(); if (v !== null) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C2-ADOPT",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C2-ADOPT-FOREIGN: the adoption re-tagged another identity's record as hers"
+  ]
+ },
+ {
+  "id": "c7mt-07",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C3: the persisted check removed (every pageshow reloads)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    const onPageShow = (e) => { if (e && e.persisted === true) {",
+  "to": "    const onPageShow = (e) => { if (e) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-BFCACHE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-PERSISTED: a normal pageshow reloaded"
+  ]
+ },
+ {
+  "id": "c7mt-08",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C3: the pagehide seal removed (a frozen page keeps writing)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (!e || e.persisted !== true || dead) return;\n      gate = 'sealed';",
+  "to": "      if (!e || e.persisted !== true || dead) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-SEAL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-SEAL: the device store changed"
+  ]
+ },
+ {
+  "id": "c7mt-09",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C4: the pending-marker check removed from the follower rule",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        const inFlight = !!(u && u.uid && completeUid() !== u.uid && pendingFresh(u.uid));",
+  "to": "        const inFlight = false;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C4-FOLLOWER",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C4-FOLLOWER: tab A signed out the sign-in still in progress in tab B"
+  ]
+ },
+ {
+  "id": "c7mt-10",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C4: the marker written AFTER the SDK call",
+  "file": "../customer-app/capp-auth-firebase.js",
+  "from": "          if (typeof p.before === 'function') p.before();   // inside the slot, BEFORE the SDK call (C4's pending-sign-in marker)\n          const cred = await authMod.signInWithCustomToken(auth, token);",
+  "to": "          const cred = await authMod.signInWithCustomToken(auth, token);\n          if (typeof p.before === 'function') p.before();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C4-FOLLOWER",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C4-FOLLOWER: tab A signed out the sign-in still in progress in tab B"
+  ]
+ },
+ {
+  "id": "c7mt-11",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C4: the marker TTL ignored (an abandoned sign-in is kept forever)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const pendingLive = (x) => { const age = Number(nowMs()) - x.at; return age >= 0 && age < PENDING_MS; };",
+  "to": "const pendingLive = (x) => { const age = Number(nowMs()) - x.at; return age >= 0; };",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C4-CANCEL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C4-TTL: an abandoned (> 10 min) incomplete sign-in was kept"
+  ]
+ },
+ {
+  "id": "c7mt-13",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): G3: a redemption naming neither identity (or both) is sent",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "        if (member === guest) return { ok: false, reason: 'bad_request' };",
+  "to": "        if (false) return { ok: false, reason: 'bad_request' };",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G3-CLIENT",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "G3-NONE: a redemption naming neither (or both) was sent"
+  ]
+ },
+ {
+  "id": "c7mt-14",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): G5: the owed record is never written before the token moves",
+  "file": "../customer-app/capp-push.js",
+  "from": "        write({ owed: { owner: typeof s0.owner === 'string' ? s0.owner : null, at: now() } });\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G5",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "G5-ORDER: the owed record was not written BEFORE the token moved to pending"
+  ]
+ },
+ {
+  "id": "c7mt-15",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): G5: an exit does not check the owed record first",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (c.owed()) return pushForget();   // G5",
+  "to": "      if (false) return pushForget();   // G5",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G5-EXIT",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G5-RESTART: the exit did not wait for the phone's invalidation of the owed token before the SDK signed out"
+  ]
+ },
+ {
+  "id": "c7mt-16",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): G5: «Cerrar sesión» ignores a refused phone invalidation",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "async () => { if ((await pushAuthExit()) === false) return false; try { await fbAuth.signOut();",
+  "to": "async () => { await pushAuthExit(); try { await fbAuth.signOut();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G5-EXIT",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G5-REFUSE: the SDK signed out while the phone still holds her token"
+  ]
+ },
+ {
+  "id": "c7mt-17",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #2: the offer's own sign-in treated as a follower's (its callback drops the member, C1 undoes it)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        if (ownSignIn && u && u.uid === ownSignIn) { schedule(); return; }   // Codex #427 #2: so is this tab's own offer sign-in (never a follower's drop)\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^Pedido recibido · frame 7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PR-7-KEEP: the offer's own sign-in was undone"
+  ]
+ },
+ {
+  "id": "c7mt-18",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #1: the offer's slot never reads the device's CURRENT stamp (a delayed storage event lets a late grant land)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "myStamp === stamp0 && rawGet(OWNER_KEY) === stamp0\n",
+  "to": "myStamp === stamp0\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=OFFER-DELAYED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "OFFER-DELAYED: the late grant signed the new account in over Bob's device"
+  ]
+ },
+ {
+  "id": "c7mt-19",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #1: the offer's slot never reads the SDK's CURRENT user",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        && (fbAuth.current() === sdk0 || (!!ownSignIn && fbAuth.current() === ownSignIn));",
+  "to": "        ;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=OFFER-SDK",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "OFFER-SDK: the late grant signed in over the SDK's current user"
+  ]
+ },
+ {
+  "id": "c7mt-20",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #1: a stale tab whose sign-in was skipped opens the sign-in sheet",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (!uid && r && r.ok && r.token && !liveOffer()) return;   // a stale tab (another identity holds the device): nothing more here — its leave follows\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=OFFER-DELAYED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "OFFER-DELAYED: the stale tab opened the sign-in sheet"
+  ]
+ },
+ {
+  "id": "c7mt-21",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #6: a uid switch ignores an OWED invalidation (no live token left)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (c && c.available() && c.owed()) return pushForget(); ",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=G5-SWITCH",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G5-SWITCH: the switch did not retry the owed invalidation"
+  ]
+ },
+ {
+  "id": "c7mt-22",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #5: any successful phone invalidation clears the owed record (an older one clears a newer debt)",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (ok && !pendingOf(read()).some((p) => p.native !== true)) write({ owed: null });",
+  "to": "if (ok) write({ owed: null });",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=G5-OWED-SCOPE",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "G5-OWED-SCOPE: an older invalidation cleared the newer debt"
+  ]
+ },
+ {
+  "id": "c7mt-23",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #3 / #428 #1: every attempt written to ONE shared device record (a newer or interleaved attempt erases another)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        try { storage.setItem(PENDING_PRE + attempt, JSON.stringify({ uid, attempt, at: Number(nowMs()) })); } catch (_) {}",
+  "to": "        try { storage.setItem(PENDING_KEY, JSON.stringify({ uid, attempt, at: Number(nowMs()) })); } catch (_) {}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C4-(MULTI|INTERLEAVE)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C4-MULTI: a follower signed out Ana's unfinished sign-in"
+  ]
+ },
+ {
+  "id": "c7mt-24",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #4: the seal leaves an admission still waiting on its token valid",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      memberGen++;   // Codex #427 #4: every admission still waiting on its token is void — with or without a member yet\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C3-SEAL-ADMIT",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-SEAL-ADMIT: a pending admission landed in a sealed document"
+  ]
+ },
+ {
+  "id": "c7mt-25",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #4: the seal leaves the mounted store's availability polling running",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      try { if (availTimer !== null) { T.clearInterval(availTimer); availTimer = null; } availSeq++; } catch (_) {}   // the mounted store's availability polling too\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C3-SEAL-STORE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-SEAL-STORE: the mounted store kept polling availability after the seal"
+  ]
+ },
+ {
+  "id": "c7mt-26",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #428 #2: a sealed document still admits a NEW member (a late first auth callback after the seal)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (gate === 'sealed') return;\n      const gen = ++memberGen",
+  "to": "      const gen = ++memberGen",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C3-SEAL-LATE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-SEAL-LATE: a callback delivered after the seal admitted a member into the sealed document"
+  ]
+ },
+ {
+  "id": "c7mt-28",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #428 #3: no re-check after the slot resolved (a landed sign-in stays over the new owner's device)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (typeof uid === 'string' && uid && rawGet(OWNER_KEY) !== stamp0) { fbAuth.signOutIf(uid).catch(() => {}); pendingDone(uid); uid = null; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=OFFER-AFTER-SLOT",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "OFFER-AFTER-SLOT: the stale tab's landed sign-in stays on the browser over Bob's device"
+  ]
+ },
+ {
+  "id": "c7mt-29",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #428 #3: signedIn() keeps going after its completion write sealed the tab",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      markComplete(d.uid); if (dead || leaving || gate === 'sealed') return;   // Codex #428 #3: its completion write found the device another's (stale ⇒ leaving): stop here\n",
+  "to": "      markComplete(d.uid);\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SIGNEDIN-ABORT",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "SIGNEDIN-ABORT: signedIn() kept going after its completion write sealed the tab"
+  ]
+ },
+ {
+  "id": "c7mt-30",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #429: staleLeave() seals without voiding an admission still waiting on its token",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      memberGen++;   // Codex #429: EVERY seal voids pending admissions (with or without a member yet) — the premise of applyMember's ONE post-token check\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C3-SEAL-STALE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-SEAL-STALE: a pending admission landed in the tab that left"
+  ]
+ },
+ {
+  "id": "c3-m-404-is-error",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): a 404 from removeCard (already gone / never this member's) is read as a failure",
+  "file": "../customer-app/capp-api.js",
+  "from": "    if (r.status === 404) return 'gone';",
+  "to": "    if (r.status === 404) return 'failed';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-10",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-10: a 404 kept the sheet open"
+  ]
+ },
+ {
+  "id": "c3-m-read-no-timeout",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the list read loses its 12 s bound",
+  "file": "../customer-app/capp-api.js",
+  "from": "    const r = await cardsExchange(fetchFn, url, { method: 'GET', headers: { 'Content-Type': 'application/json', ...(headers || {}) } }, o);",
+  "to": "    const r = await cardsExchange(fetchFn, url, { method: 'GET', headers: { 'Content-Type': 'application/json', ...(headers || {}) } }, { ...o, timeoutMs: 86400000 });",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-06",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-06: 12 s: the read is not bounded"
+  ]
+ },
+ {
+  "id": "c3-m-rm-no-timeout",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the remove loses its 12 s bound (separate from the read's)",
+  "file": "../customer-app/capp-api.js",
+  "from": "body: JSON.stringify({ card_id: cardId }) }, o);",
+  "to": "body: JSON.stringify({ card_id: cardId }) }, { ...o, timeoutMs: 86400000 });",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-29",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-30: a held request is not frame 6 at 12 s"
+  ]
+ },
+ {
+  "id": "c3-m-listcards-accept",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): a non-array `cards` envelope is accepted as a list",
+  "file": "../customer-app/capp-api.js",
+  "from": "    const r = await cardsExchange(fetchFn, url, { method: 'GET', headers: { 'Content-Type': 'application/json', ...(headers || {}) } }, o);\n    return !r.network && r.status === 200 && r.json && Array.isArray(r.json.cards) ? r.json : null;",
+  "to": "    const r = await cardsExchange(fetchFn, url, { method: 'GET', headers: { 'Content-Type': 'application/json', ...(headers || {}) } }, o);\n    return !r.network && r.status === 200 && r.json && r.json.cards ? r.json : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-16a",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": [
+   "C3-16a: cardsRead accepted"
+  ]
+ },
+ {
+  "id": "c3-m-title-strip",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the sheet title is built by stripping the label (the «other» brand loses its dots)",
+  "file": "../customer-app/capp-pay-checkout.js",
+  "from": "¿Quitar la tarjeta ${esc(PC.cardLabel(null, v.last4))}?",
+  "to": "¿Quitar la tarjeta ${esc(PC.cardLabel('other', v.last4).replace(/^\\S+\\s/, ''))}?",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-07",
+   "../customer-app/capp-pay-checkout.test.mjs"
+  ],
+  "kills_with": [
+   "C3-07: the visa title tail"
+  ]
+ },
+ {
+  "id": "c3-m-expired-disabled",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): «Quitar» is disabled on an expired card",
+  "file": "../customer-app/capp-pay-checkout.js",
+  "from": "aria-label=\"${esc(`Quitar ${c.label}`)}\"${v.inert ? ' disabled' : ''}>Quitar</button>",
+  "to": "aria-label=\"${esc(`Quitar ${c.label}`)}\"${v.inert || c.expired ? ' disabled' : ''}>Quitar</button>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-03",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-04: «Quitar» on an expired card is disabled"
+  ]
+ },
+ {
+  "id": "c3-m-empty-on-fail",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): a failed read draws frame 5 (the empty state)",
+  "file": "../customer-app/capp-pay-checkout.js",
+  "from": "      : v.load === 'failed' ? '<div class=\"sandline act\"",
+  "to": "      : v.load === 'failed' && false ? '<div class=\"sandline act\"",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-06",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-06: network: a failed read shows frame 5"
+  ]
+ },
+ {
+  "id": "c3-m-carousel-class",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the list wrapper reuses `.cards` (the «La casa recomienda» carousel's class)",
+  "file": "../customer-app/capp.css",
+  "from": ".saved-cards{padding:4px 16px 0}",
+  "to": ".cards{padding:4px 16px 0}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-34",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C3-34: a new rule on `.cards`"
+  ]
+ },
+ {
+  "id": "c3-m-empty-unscoped",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the 34ch empty-line rule is unscoped (every empty state restyled)",
+  "file": "../customer-app/capp.css",
+  "from": ".cards-step .empty span{text-wrap:pretty;max-width:34ch}",
+  "to": ".empty span{text-wrap:pretty;max-width:34ch}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-34",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C3-34: an unscoped `.empty span` rule"
+  ]
+ },
+ {
+  "id": "c3-m-gate-open",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the CARDS_GATE refusal is dropped (--flags cards builds before S-2)",
+  "file": "../platform/native/package-capp.js",
+  "from": "  if (flags.includes('cards')) {",
+  "to": "  if (false) {",
+  "command": [
+   "node",
+   "../platform/native/package-capp.test.js"
+  ],
+  "kills_with": [
+   "C3-19: native: --flags cards built with CARDS_GATE null"
+  ]
+ },
+ {
+  "id": "c3-m-cards-via-sdkpay",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): runtime.cards is emitted under the sdkPay flag",
+  "file": "../customer-app/capp-boot.js",
+  "from": "...(f.cards === true && f.signup === true ? { cards:",
+  "to": "...((f.cards === true || f.sdkPay === true) && f.signup === true ? { cards:",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-17",
+   "../customer-app/capp-boot.test.mjs"
+  ],
+  "kills_with": [
+   "C3-17: runtime.cards emitted under sdkPay"
+  ]
+ },
+ {
+  "id": "c3-m-guard-order",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the Back guards are asked oldest first",
+  "file": "../customer-app/capp-shell-nav.js",
+  "from": "for (const g of [...guards].reverse())",
+  "to": "for (const g of [...guards])",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-35",
+   "../customer-app/capp-s7a1-shell.test.mjs"
+  ],
+  "kills_with": [
+   "C3-35: the guards are not asked most recent first"
+  ]
+ },
+ {
+  "id": "c3-m-guard-not-unregistered",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): unregister() leaves the guard in place",
+  "file": "../customer-app/capp-shell-nav.js",
+  "from": "      return () => { const i = guards.indexOf(g); if (i >= 0) guards.splice(i, 1); };",
+  "to": "      return () => {};",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-35",
+   "../customer-app/capp-s7a1-shell.test.mjs"
+  ],
+  "kills_with": [
+   "C3-35: unregister() does not restore today's Back"
+  ]
+ },
+ {
+  "id": "c3-m-row-ungated",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the Cuenta row shows without runtime.cards",
+  "file": "../customer-app/capp-home.js",
+  "from": "${vm.cardsRow ? `<button class=\"rowbtn\" data-act=\"cards\">",
+  "to": "${true ? `<button class=\"rowbtn\" data-act=\"cards\">",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-01",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-02: no cards: the row shows"
+  ]
+ },
+ {
+  "id": "c3-m-paint-read",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the cards are read when Cuenta paints",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "{ acct: acctVm(), cardsRow: cardsOn(), notifRow:",
+  "to": "{ acct: acctVm(), cardsRow: cardsOn() && (S.cards || cardsLoad(false), true), notifRow:",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-01",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-01: the Cuenta paint read the cards"
+  ]
+ },
+ {
+  "id": "c3-m-no-busy-latch",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): no synchronous latch: a tap burst confirms twice",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const r = S.cardRm; if (!r || r.busy || !cardsOn()) return;",
+  "to": "const r = S.cardRm; if (!r || !cardsOn()) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-07",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-08: a tap burst sent more than one POST"
+  ],
+  "equivalent": true,
+  "why": "EQUIVALENT under the real UI (probe 11-25, hand-planted on C3-07): the first tap re-renders the sheet synchronously (renderLayer) and swaps in a NEW pill with disabled=true — the old pill is detached (a click on it never bubbles to the delegate) and a click on the disabled one is not dispatched (jsdom and browsers alike): 1 POST without the latch. Only a pill forced back to disabled=false sends a 2nd POST (mutant 2, clean 1), a path no real tap has. The latch is KEPT (advisor ruling (a), 11-25) as the one state-level guard so the one-POST rule does not depend on the markup; C3-08 still asserts one POST."
+ },
+ {
+  "id": "c3-m-cancel-not-dimmed",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (MOCKUP-capp-card-removal v2 frame 4a): the busy sheet's «Cancelar» is disabled but not dimmed (SBS 11-25)",
+  "file": "../customer-app/capp.css",
+  "from": ".errsheet.cardrm .btn2[disabled]{opacity:.45;cursor:default}",
+  "to": ".errsheet.cardrm .btn2[disabled]{cursor:default}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-07",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-08: «Cancelar» is not dimmed while busy"
+  ]
+ },
+ {
+  "id": "c3-m-checkout-bounded",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (Codex #408 P2, rule 27): the checkout's listCards is moved onto cardsRead — a slow list after 12 s becomes «no saved cards»",
+  "file": "../customer-app/capp-api.js",
+  "from": "      const r = await sdkCall('GET', E.listCards, null, h);\n      return !r.network && r.status === 200 && r.json && Array.isArray(r.json.cards) ? r.json : null;",
+  "to": "      return cardsRead(sfetch, E.listCards, h);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-36",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "C3-36: a slow checkout list no longer lands"
+  ]
+ },
+ {
+  "id": "c3-m-open-no-focus",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (Codex #408 P2): opening the confirm sheet leaves focus on the background «Quitar»",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      focusCardHeading();   // Codex #408 P2: focus moves INTO the dialog",
+  "to": "      void 0;   // Codex #408 P2: focus moves INTO the dialog",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-26",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-26: keyboard focus stayed on the background «Quitar»"
+  ]
+ },
+ {
+  "id": "c3-m-css-unscoped-empty",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (Codex #408 P2, C3-34 baseline): the step's empty-line cap is unscoped and restyles every screen's empty state",
+  "file": "../customer-app/capp.css",
+  "from": ".cards-step .empty span{text-wrap:pretty;max-width:34ch}",
+  "to": ".empty span{text-wrap:pretty;max-width:34ch}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-34",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-34: another screen's empty state computes differently"
+  ]
+ },
+ {
+  "id": "c3-m-dark-route-opens",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (Codex #408 deviation #4): a navigation to the step with the gate closed opens it instead of bouncing to Cuenta",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (entry.name === 'cards') { if (!cardsOn()) {",
+  "to": "if (entry.name === 'cards') { if (false) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-01",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the dark route did not bounce to Cuenta"
+  ]
+ },
+ {
+  "id": "c3-m-cancel-while-busy",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the scrim / grab / «Cancelar» close a busy sheet",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (S.cardRm && S.cardRm.busy) return;   // every exit is inert",
+  "to": "      if (false) return;   // every exit is inert",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-23",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-25: the scrim / grab closed a busy sheet"
+  ]
+ },
+ {
+  "id": "c3-m-no-gen",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the post-answer check is skipped: a late answer of a gone identity is applied",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (!live()) return;   // a late answer: ignored",
+  "to": "      if (false) return;   // a late answer: ignored",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-14",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-14: the late answer was applied to the cleared list"
+  ]
+ },
+ {
+  "id": "c3-m-no-precheck",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the remove's pre-dispatch check is skipped: a POST after the identity ended",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (!live()) return;   // the member, the generation or the sheet moved while waiting: NO request",
+  "to": "      if (false) return;   // the member, the generation or the sheet moved while waiting: NO request",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-21",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "a POST went out after the identity ended"
+  ]
+ },
+ {
+  "id": "c3-m-no-precheck-read",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the read's pre-dispatch check is skipped: a GET after the identity ended",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        if (!cardsCurrent(gen, uid)) return;   // a token that outlived its member: no request",
+  "to": "        if (false) return;   // a token that outlived its member: no request",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-21",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "a GET went out after the identity ended"
+  ]
+ },
+ {
+  "id": "c3-m-persist",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the card rows are written to the device store",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        S.cards = { who: uid, load: null, rows: cardMod('CappPayCard', './capp-pay-card.js').cardsVm(list).rows, tails };",
+  "to": "        S.cards = { who: uid, load: null, rows: cardMod('CappPayCard', './capp-pay-card.js').cardsVm(list).rows, tails }; try { storage.setItem('capp:cards_cache', JSON.stringify(S.cards)); } catch (_) {}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-14",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-15: storage holds card data"
+  ]
+ },
+ {
+  "id": "c3-m-back-not-blocked",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the card guard lets a Back through while the remove is in flight",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (S.cardRm.busy) return 'blocked'; cardRmClose(); return 'closed';",
+  "to": "if (S.cardRm.busy) return 'none'; cardRmClose(); return 'closed';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-23",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "while busy was not refused"
+  ]
+ },
+ {
+  "id": "c3-m-focus-first-card",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the opener match drops data-card: Cancel focuses the FIRST card's «Quitar»",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "${op.card ? `[data-card=\"${CSS_ESC(op.card)}\"]` : ''}`) : null)",
+  "to": "`) : null)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-26",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-26: focus did not return to the second card's «Quitar»"
+  ]
+ },
+ {
+  "id": "c3-m-focus-lost-on-reread",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): the focus target is not resolved again after the quiet re-read",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        if (held) focusCardsTarget();",
+  "to": "        if (false) focusCardsTarget();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-27",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-27: the next card gone ⇒ focus is not on the previous card"
+  ]
+ },
+ {
+  "id": "c3-m-auto-retry",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): a failed remove retries once on its own",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (out === 'failed') { r.busy = false; r.err = true;",
+  "to": "      if (out === 'failed' && !r.again) { r.again = true; r.busy = false; return void cardRmConfirm(); }\n      if (out === 'failed') { r.busy = false; r.err = true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-29",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-29: a failed remove was retried on its own"
   ]
  }
 ]

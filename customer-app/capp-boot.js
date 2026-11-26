@@ -42,6 +42,8 @@
   // (getPayAdjust / respondPayAdjust) and the 3DS continuation (continueSdkPayment) were dropped — never served, so never in the runtime
   // (capp-shell-ui's consent block stays, inert: payEp() is null without them)
   const SDK_ENDPOINTS = Object.freeze(['placeSdkOrder', 'placeSdkStatus', 'cancelSdkPending', 'listCards', 'removeCard', 'sdkPayStatus', 'recoverOrderAccess']);
+  // C-3 (PLAN-capp-C3-card-removal-r2 §3.3): the saved-cards screen's own endpoints — independent of sdkPay; members only (sign-in)
+  const CARDS_ENDPOINTS = Object.freeze(['listCards', 'removeCard']);
   const g = typeof self !== 'undefined' ? self : {};
   const pick = (o, name) => o[name] || g[name];
   const avail = (o) => { const A = pick(o, 'CappAvailability'), R = pick(o, 'availabilityReducer'), K = pick(o, 'availKey');
@@ -76,6 +78,7 @@
       // S2: the in-app card screens + their endpoints (CONTRACT-sdk-customer §3 + CONTRACT-sdk-checkout r3; dark until D4 is live)
       ...(f.sdkPay === true ? { sdkPay: { endpoints: Object.fromEntries(SDK_ENDPOINTS.map((n) => [n, url(n)])) } } : {}),
       ...(f.signup === true ? { signup: { firebase: rt.firebase, endpoints: Object.fromEntries(CappSignupApi.ENDPOINTS.map((n) => [n, url(n)])) } } : {}),
+      ...(f.cards === true && f.signup === true ? { cards: { endpoints: Object.fromEntries(CARDS_ENDPOINTS.map((n) => [n, url(n)])) } } : {}),   // dark: package-capp's CARDS_GATE
     };
   }
 

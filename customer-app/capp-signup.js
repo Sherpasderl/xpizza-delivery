@@ -128,8 +128,12 @@
     }
     async function signedIn(g, r) {
       let uid = null;
-      try { uid = await auth.signInWithCustomToken(r.token); } catch (_) { uid = null; }
-      if (!live(g)) { if (uid) { try { await auth.signOut(); } catch (_) {} } return; }   // a mint for a closed sheet is undone
+      // C4: the shared pending-sign-in marker goes on the device INSIDE the queue slot, BEFORE the SDK call — another tab that sees this
+      // user before «Listo» neither admits it nor signs it out
+      const pend = typeof o.pending === 'object' && o.pending ? o.pending : null; let pendUid = null;
+      try { uid = await auth.signInWithCustomToken(r.token, { live: () => live(g), before: () => { if (pend) pendUid = pend.set(r.token); } }); } catch (_) { uid = null; }
+      if (!live(g)) { if (pend) pend.clear(pendUid); return; }   // C1: a mint for a closed sheet was undone inside the adapter's queue slot, scoped to its own uid
+      if (!uid && pend) pend.clear(pendUid);
       if (!uid) { S.busy = false; S.err = COPY.codeGeneric; render(); return; }
       // Codex G6 r1 #4: another account than the one verified before (Back to the phone, a new number) starts from ITS data only —
       // nothing of the previous account's name / email / consent carries over (a Google link in progress belongs to this phone)
@@ -188,13 +192,14 @@
     const finalized = () => !S.open || S.final;
     async function close(why) {
       if (!S.open) return;
-      const wasSignedIn = !!S.uid, finished = S.pane === 'done', owed = S.completion === 'needed';
+      const wasSignedIn = !!S.uid, minted = S.uid, finished = S.pane === 'done', owed = S.completion === 'needed';
       S.final = true; S.open = false; S.gen++; tickStop(); render();
       S.uid = null; S.completion = null; S.vphone = null;
       // a sign-in left mid-completion (no Terms yet) is undone — never a member without the required consent
-      if (wasSignedIn && !finished && owed) { try { await auth.signOut(); } catch (_) {} }
+      if (wasSignedIn && !finished && owed) { try { await auth.signOutIf(minted); } catch (_) {} }   // C1: only the sheet's OWN sign-in, never a newer one
       // «Prefiero seguir como invitado» after a sign-in (Back to the phone pane): the customer chose guest — that session is undone
-      else if (wasSignedIn && why === 'guest') { try { await auth.signOut(); } catch (_) {} }
+      else if (wasSignedIn && why === 'guest') { try { await auth.signOutIf(minted); } catch (_) {} }
+      if (wasSignedIn && o.pending && (why === 'guest' || (!finished && owed))) o.pending.clear(minted);   // C4: its marker goes with the undone sign-in
       emit(why === 'guest' ? 'guest' : why === 'done' ? 'done' : 'closed', {});
     }
 

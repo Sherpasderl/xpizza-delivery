@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import { trackDigests, digestsInFlight, digestsSettled } from './capp-test-digests.mjs';
 import { createClock } from './test-clock.mjs';
 import { namespaceRefusal } from './test/fake-sdk-checkout.mjs';
+import { realSdkServer } from './test/real-sdk-server.mjs';
 
 const require = createRequire(import.meta.url);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -4723,4 +4724,41 @@ test('dish-stats DS-T (rule 4, one source): the client\'s thresholds ARE the pro
   assert.ok(DS_T && typeof DS_T === 'object' && Object.isFrozen(DS_T), '🔴 DS-T: the client exports its frozen copy');
   assert.deepEqual(Object.keys(DS_T).sort(), ['DISH_ORDERS', 'DISH_VOTES', 'PAIR', 'PAIRS_MAX', 'TOP'], 'the keys the adapter reads');
   for (const k of Object.keys(DS_T)) assert.equal(DS_T[k], T[k], `🔴 DS-T: ${k} drifted from the producer's (aggregate.js ${T[k]})`);
+});
+
+// C3-12 (PLAN-capp-C3-card-removal-r2, Q4 «no checkout invalidation hook»): every exit from a store destroys its mount, so the NEXT checkout
+// reads the member's cards again — a card removed in Cuenta (the REAL removeCard; s7a2 C3-09 drives it through the step) is absent from
+// it and never selected. The list answers are the REAL listCards handler's for this member
+test('C3-12: a card removed in Cuenta is gone from the next checkout — the new store mount reads listCards again; the removed card absent, never selected', async () => {
+  const clock = { t: Date.UTC(2026, 9, 1) };
+  const real = realSdkServer({ clock, members: { [SDK_JWT]: 'u1' } });
+  const H = { Authorization: `Bearer ${SDK_JWT}` };
+  await real.saveCard('u1', { brand: 'mastercard', last4: '2222', exp_month: 12, exp_year: 2030 }, 'tok_m'); clock.t += 1000;
+  const visa = await real.saveCard('u1', { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 }, 'tok_v');   // the newest: listed first
+  const listed = async () => { const r = await real.callHandler('listCards', 'GET', H); return { status: r.status, json: r.json }; };
+  const storage = memStore();
+  const a = bootSdk({ storage, script: { listCards: [listed] } }); await sdkCheckout(a);
+  assert.equal(a.text('.paybar.pay .urow.payrow .t b'), 'Visa ···· 4242', 'premise: the visa is listed and preselected');
+  const rm = await real.callHandler('removeCard', 'POST', H, { card_id: visa });
+  assert.deepEqual([rm.status, rm.json], [200, { removed: true }], 'premise: the real removal');
+  a.w.close();
+  const b = bootSdk({ storage, script: { listCards: [listed] } }); await sdkCheckout(b);
+  assert.equal(b.srv.of('listCards').length, 1, '🔴 C3-12: the next store mount did not read the cards again');
+  assert.equal(b.text('.paybar.pay .urow.payrow .t b'), 'Mastercard ···· 2222', '🔴 C3-12: the removed card is still the selection');
+  await b.click('.paybar.pay [data-act="paysheet"]'); await settle();
+  assert.ok(!/4242/.test(b.text('#layer') || ''), '🔴 C3-12: the removed card is still in the chooser');
+});
+
+// Codex #408 P2 (rule 27): the checkout's saved-card read keeps its pre-C-3 transport — C-3's 12 s bound (cardsRead) is Cuenta's only.
+// node's setTimeout is mocked (capp-api.js is required here, so a bound would run on it); the rig's settle runs on setImmediate
+test('C3-36: the checkout\'s listCards is unchanged by C-3 — a list that answers long after 12 s still lands as the selected card (no bound, no «no saved cards»)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let release; const held = new Promise((r) => { release = r; });
+  const b = bootSdk({ script: { listCards: [async () => { await held; return SDK_CARDS(); }] } }); await sdkCheckout(b);
+  assert.equal(b.srv.of('listCards').length, 1, 'premise: the checkout\'s list is in flight');
+  t.mock.timers.tick(60_000);   // far past C-3's 12 s
+  await settle();
+  release(); await settle(); await settle();
+  assert.equal(b.text('.paybar.pay .urow.payrow .t b'), 'Visa ···· 4242', '🔴 C3-36: a slow checkout list no longer lands (a C-3 bound reached the checkout)');
+  assert.equal(b.srv.of('listCards').length, 1, 'one read, as before C-3');
 });

@@ -114,6 +114,31 @@
   const PAID_STATES = new Set(['paid', 'scheduled_paid']);
   const CONFIRMING_STATES = new Set(['verifying', 'pending', 'scheduled_review']);
   const pad2 = (n) => String(n).padStart(2, '0');
+  // C-3 saved cards (PLAN-capp-C3-card-removal-r2 §3.2): ONE timer bounds the whole exchange — the fetch AND the body read. On expiry the
+  // call settles once ({ network: true }); whatever arrives later is dropped here. A member's list read and the remove share it
+  const CARDS_MS = 12000;
+  function cardsExchange(fetchFn, url, init, { timeoutMs = CARDS_MS, timers } = {}) {
+    const T = timers || { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (h) => clearTimeout(h) };
+    return new Promise((resolve) => {
+      let done = false, h = null;
+      const settle = (v) => { if (done) return; done = true; if (h !== null) T.clearTimeout(h); resolve(v); };
+      h = T.setTimeout(() => settle({ network: true }), timeoutMs);
+      (async () => { const r = await fetchFn(url, init); let j = null; try { j = await r.json(); } catch (_) { j = null; } return { status: r.status, json: j && typeof j === 'object' && !Array.isArray(j) ? j : null }; })()
+        .then(settle, () => settle({ network: true }));
+    });
+  }
+  // GET listCards ⇒ { cards: [...] } only on a 200 object whose cards is an array (today's acceptance rule); anything else ⇒ null
+  async function cardsRead(fetchFn, url, headers, o) {
+    const r = await cardsExchange(fetchFn, url, { method: 'GET', headers: { 'Content-Type': 'application/json', ...(headers || {}) } }, o);
+    return !r.network && r.status === 200 && r.json && Array.isArray(r.json.cards) ? r.json : null;
+  }
+  // POST removeCard { card_id } ⇒ 'removed' (exactly 200 { removed: true }) | 'gone' (404: never this member's, or already gone) | 'failed'
+  async function cardRemove(fetchFn, url, headers, cardId, o) {
+    const r = await cardsExchange(fetchFn, url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(headers || {}) }, body: JSON.stringify({ card_id: cardId }) }, o);
+    if (r.network) return 'failed';
+    if (r.status === 404) return 'gone';
+    return r.status === 200 && r.json && r.json.removed === true ? 'removed' : 'failed';
+  }
 
   // ── config: { restaurantId, orderIdPrefix, pendingPayKey, endpoints: { quoteOrder, createOrder, chargeOnlineOrder, paymentStatus },
   //             hours } — all DATA from the host's store config
@@ -1201,5 +1226,5 @@
       confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther, heldBySdk };
   }
 
-  return { createApi, tokenUsable, acceptToken, tokenExpMs, jwtPayload, tokenUid, TOKEN_SKEW_MS, TOKEN_MAX_AHEAD_MS, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
+  return { createApi, cardsRead, cardRemove, tokenUsable, acceptToken, tokenExpMs, jwtPayload, tokenUid, TOKEN_SKEW_MS, TOKEN_MAX_AHEAD_MS, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
 });

@@ -8,6 +8,8 @@
 //   4 procHtml     «Procesando tu pago…» over the dimmed checkout; 4b + the owner's under_review line
 //   5 declineHtml  v2's decline sheet, per bucket; 6 / 7 gateHtml the checkout's .gate well (expired saved card / card unavailable)
 //   4c is the SDK's own native challenge themed with our tokens (contract §8, VENDOR) — not DOM here.
+// C-3 (PLAN-capp-C3-card-removal-r2; MOCKUP-capp-card-removal v2, owner-approved 11-24): cardsStepHtml «Tarjetas guardadas» (a step of
+// Cuenta) and cardRemoveSheetHtml, its confirm sheet; cardGlyph is the Cuenta row's icon (the chooser's own card glyph)
 // Brand-agnostic (the restaurant is not named on these frames); every string from the mockup's copy table (CappPayCard.COPY).
 (function (root, factory) {
   const api = factory();
@@ -136,5 +138,33 @@
     return '<div class="gate" role="status"><b>El pago con tarjeta no está disponible ahora</b><span class="note">Podés pagar en efectivo al recibir tu pedido. Todo lo demás sigue igual.</span><div class="row2"><button class="btn2 dark" data-act="decl-cash">Pagar en efectivo</button></div></div>';
   }
 
-  return { payBarHtml, payRowHtml, chooserHtml, formHtml, procHtml, declineHtml, gateHtml, brandTile };
+  // C-3 frames 2 / 2b / 5 / 6b / loading: the top bar (back · title · spacer), then the body — one .urow per card in the server's order
+  // (the brand tile · the label over its sub-line · a quiet «Quitar»; an expired row dims, «Quitar» stays live), the empty state only
+  // on a confirmed empty answer, the «Direcciones» failed line, the loading line. vm: { rows: cardsVm rows, load: 'pending' | 'failed' |
+  // null, inert: frame 4a (every row action off while a removal is in flight) }. The shell wraps it (CappHome.shellWrap)
+  const cardGlyph = IC.card;
+  function cardsStepHtml(vm) {
+    const v = vm || {}, rows = Array.isArray(v.rows) ? v.rows : [];
+    const row = (c) => `<div class="urow${c.expired ? ' dim' : ''}">${brandTile(c.brand)}<span class="t"><b>${esc(c.label)}</b><span>${esc(c.sub)}</span></span><button class="act" data-act="card-rm" data-card="${esc(c.card_id)}" aria-label="${esc(`Quitar ${c.label}`)}"${v.inert ? ' disabled' : ''}>Quitar</button></div>`;
+    const body = v.load === 'pending' ? '<p class="note aload" role="status">Cargando tus tarjetas…</p>'
+      : v.load === 'failed' ? '<div class="sandline act" role="status"><span>No pudimos cargar tus tarjetas.</span><button class="retry" data-act="cards-retry">Reintentar</button></div>'
+        : !rows.length ? `<div class="empty">${IC.card}<b>Todavía no guardaste ninguna tarjeta</b><span>Al pagar con tarjeta podés elegir «Guardar tarjeta para la próxima». Las que guardás aparecen acá.</span></div>`
+          : `<div class="saved-cards"><div class="urows">${rows.map(row).join('')}</div></div>`;
+    return `<div class="flow cards-step"><div class="topbar"><button class="iconbtn" data-act="cards-back" aria-label="Volver">${IC.back}</button><h1>Tarjetas guardadas</h1><span class="sp"></span></div>${body}</div>`;
+  }
+  // C-3 frames 3 / 4a / 6: the «Olvidar este teléfono» sheet structure with the red pill. The title's tail is cardLabel(null, last4)
+  // («···· 4242»), never a stripped label (the «other» brand has no brand word). The scrim and the grab carry the cancel (the shell
+  // ignores it while busy). vm: { last4, busy, err }
+  function cardRemoveSheetHtml(vm) {
+    const v = vm || {}, busy = v.busy === true;
+    const pill = busy ? '<button class="primary danger busy" data-act="card-rm-confirm" disabled aria-busy="true"><span class="ring" aria-hidden="true"></span>Quitando…</button>'
+      : '<button class="primary danger" data-act="card-rm-confirm">Quitar tarjeta</button>';
+    const err = v.err ? `<p class="err" role="alert">${IC.alert}<span>No pudimos quitar la tarjeta. Probá de nuevo.</span></p>` : '';
+    return `<div class="scrim" data-act="card-rm-cancel"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Quitar tarjeta"><div class="grab" data-act="card-rm-cancel"></div>
+    <div class="errsheet cardrm"><div class="icon calm">${IC.card}</div><h2 id="cardrm-h" tabindex="-1">¿Quitar la tarjeta ${esc(PC.cardLabel(null, v.last4))}?</h2>
+      <p>La quitamos de Sherpa. Si querés volver a usarla, la ingresás de nuevo al pagar.</p>${err}
+      <div class="acts">${pill}<button class="btn2 wide" data-act="card-rm-cancel"${busy ? ' disabled' : ''}>Cancelar</button></div></div></div>`;
+  }
+
+  return { payBarHtml, payRowHtml, chooserHtml, formHtml, procHtml, declineHtml, gateHtml, brandTile, cardGlyph, cardsStepHtml, cardRemoveSheetHtml };
 });

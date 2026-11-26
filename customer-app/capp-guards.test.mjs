@@ -42,9 +42,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Both are FULL commit ids, never a prefix (Codex #288: an 8-char prefix can name two commits or be shadowed by a ref).
 // BASE → eb177fe58 (asm14 rebase, advisor 11-24): asm13 FINAL (ALL GREEN) is eb177fe58 (fd205309a + the cell-23 peel 26bc641f3 + its
 // inventory regen); the lane is rebased onto it (no file overlap) and pins its range from that new cut point, same shape.
-// CAPP_TIP → 02792c1e8: the rebase re-pin also moved JWT_PRE in capp-api.test.mjs, so it is itself a capp commit after the pin.
+// CAPP_TIP → 685cfd5c9: the C-3 + C-7 stack merge (feat/capp-c1-account-delete, the asm14 capp member), a capp commit after the pin.
 const BASE = 'eb177fe58002bde86dfa29247229284ecf449eca';
-const CAPP_TIP = '02792c1e8d340bf716a79818fbf3a1f4b1540338';
+const CAPP_TIP = '685cfd5c9c611ed15d95f63214d9fd31030f9123';
 // ASSEMBLY STEPS (asm11 step 4, advisor 11-17): a capp commit made ON THE TRAIN line, before the lane's merge — it can't be the pin (a pin on
 // the train line pulls the train into the lane range). Each is listed by full sha with its EXACT file set: excused from the «after the pin» walk
 // only while that set is unchanged, and only while it is in HEAD's history (a step that left the tree is a stale entry). None touches a live
@@ -292,6 +292,10 @@ const MERGE_ALLOW = {
   // none above BASE eb177fe58 (asm14 rebase re-pin; was fd205309a, and fd205309a..eb177fe58 holds no merge; advisor ruling (A) 11-24, the asm11 «pruned to above BASE» precedent): the 17 entries re-derived
   // in f995943d2, rebased as 44b3f867d (rider 6fe745ff ×2, dish-stats 0895a17c ×6, asm12 aa5cde11 / 45f1aebb / 520614c6 ×2 / 6dccdf27, asm13 5a9d5538 ×3, r3
   // d13a0bb7) all sit below the lane's cut point now; their proofs stay in that commit's message
+  // the C-3 + C-7 stack merge (advisor 11-26: C-7 3db3dc022 + C-3 08f7b2225, both cut from asm14): four shared files, three in scope here
+  '685cfd5c9c611ed15d95f63214d9fd31030f9123 customer-app/capp-shell-ui.js': "C-3 + C-7 stack: destroy() = C-7's line (bfcache pageshow/pagehide removal) with C-3's `unguardCard();` after `dead = true;` — 1 line from no parent, both parents' calls, 0 dropped",
+  '685cfd5c9c611ed15d95f63214d9fd31030f9123 customer-app/capp-s7a2.test.mjs': "C-3 + C-7 stack: C-7's cells (C2-RE … G5-RESTART) then C-3's «Tarjetas guardadas» cells (… C3-34) — both parents' lines, 0 from no parent",
+  '685cfd5c9c611ed15d95f63214d9fd31030f9123 customer-app/capp-guards.test.mjs': "C-3 + C-7 stack: the CAPP_TIP pin conflict kept parent 1's pin (2b01635fe) + both parents' history lines — 0 from no parent; re-pinned to the merge after",
 };
 // The walk + the criterion (PLAN-capp-guards-cell7 r0, advisor 11-23; Codex #288). The walk is EVERY merge reachable from the head and
 // not from BASE: the lane-line + after-the-pin walk never saw a train merge made BEFORE the lane came in (asm12 13–15). A shallow repository
@@ -456,7 +460,7 @@ test('S2 SBS: the stand-in pay binding and the native-mode injection live ONLY i
   const P = createRequire(import.meta.url)('../platform/native/package-capp.js');
   const head = git('rev-parse', 'HEAD').trim();
   for (const target of P.TARGETS) {
-    const B = P.build({ sha: head, target, env: 'production', flags: [...P.FLAGS] });
+    const B = P.build({ sha: head, target, env: 'production', flags: P.FLAGS.filter((f) => f !== 'cards' || P.CARDS_GATE) });   // cards: refused while its gate is closed (C-3)
     const bad = [...B.files].filter(([, buf]) => { const s = Buffer.from(buf).toString('latin1'); return s.includes(MARK) || s.includes(HARNESS); }).map(([f]) => f);
     assert.deepEqual(bad, [], `🔴 SBS-2: the packaged ${target} bundle carries the stand-in / the harness: ${bad.join(', ')}`);
     const rt = {}; new Function('self', B.files.get('capp-runtime.js').toString('utf8'))(rt);
@@ -574,4 +578,13 @@ test('C7-TIMEOUT-ABSENT: a timed-out blob lookup fails resolutionEdits, never re
   const g = (...a) => (a[0] === 'rev-parse' && a.at(-1) === `${m}:${NEW}` ? gitRun(['hash-object', '--no-filters', '--', fifo], { timeout: 1500 }) : git(...a));
   try { assert.throws(() => resolutionEdits(m, [NEW], range, g), /C7-TIMEOUT/, '🔴 C7-TIMEOUT-ABSENT: a timed-out blob lookup was read as an absent file'); }
   finally { rmSync(fifo, { force: true }); }
+});
+// C3-34 (PLAN-capp-C3-card-removal-r2 §3.9, ✓370-7 / ✓374-1): C-3's CSS stays in its own scope — no UNSCOPED `.empty span` rule (the
+// search / filter / cart empty states keep theirs), and `.cards` stays the «La casa recomienda» carousel's: no new rule names it
+test('C3-34: capp.css has no unscoped `.empty span` rule and no rule on `.cards` beyond the carousel\'s own two', () => {
+  const css = readFileSync(join(ROOT, 'customer-app/capp.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const sels = [...css.matchAll(/([^{}]+)\{/g)].flatMap((m) => m[1].split(',')).map((s) => s.trim().replace(/\s+/g, ' ')).filter((s) => s && !s.startsWith('@'));
+  assert.ok(sels.includes('.urow .act') && sels.length > 200, 'premise: the scan reads capp.css\'s selectors');
+  assert.deepEqual(sels.filter((s) => /(^|[\s>+~])\.empty span$/.test(s) && !/\S\s+\.empty/.test(s)), [], '🔴 C3-34: an unscoped `.empty span` rule restyles every empty state');
+  assert.deepEqual(sels.filter((s) => /\.cards(?![\w-])/.test(s)), ['.cards', '.cards::-webkit-scrollbar'], '🔴 C3-34: a new rule on `.cards` (the carousel\'s class)');
 });

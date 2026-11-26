@@ -16,6 +16,11 @@
 //   exits         EVERY shell exit from a store (a tab, the shell's own back, a screen opened over it, a store-root pass) goes
 //                 through ONE leave(): it asks the mount fn('leave') (r3.2) — `blocked` ⇒ nothing changes — and then tears the
 //                 mount down (onLeave ⇒ destroy, which cancels a «Realizando pedido…» countdown) (Codex r2 New 3, r3 #2)
+//   guardBack     THE shared modal/busy Back seam (PLAN-capp-C3-card-removal-r2 §3.6; C-1 reuses it): guardBack(fn) → unregister().
+//                 A device / browser Back asks the guards FIRST — most recent first, the first answer that is not 'none' wins:
+//                 'blocked' (refused: a destructive call in flight) / 'closed' (the guard closed its own idle sheet) re-push the
+//                 sentinel and leave the stack. No guard (or every guard 'none') ⇒ the logic below, byte for byte. A predicate reads
+//                 live state only (never awaits, never navigates). The shell's own back() and tab taps never ask the guards
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -35,6 +40,7 @@
     const stack = [{ ...home, saved: null }];   // shell screens
     const subs = [];                            // in-store steps of the TOP store mount (one per push), in-app only
     let mountBack = null;
+    const guards = [];
     const top = () => stack[stack.length - 1];
     const predecessor = () => (stack.length > 1 ? stack[stack.length - 2] : null);
     const hist = () => (win && win.history) || null;
@@ -97,6 +103,7 @@
     function onPop() {
       try { if (isSentinel(hist().state)) { armed = true; return 'none'; } } catch (_) {}   // standing on the sentinel (a Forward back onto it)
       armed = false;   // the browser left the sentinel
+      for (const g of [...guards].reverse()) { const r = g(); if (r === 'blocked' || r === 'closed') { pushSentinel(); return r; } }
       const inApp = stack.length > 1 || top().name === 'store';
       if (!inApp) return 'exit';   // Inicio at the root: the sentinel is not re-pushed — the next Back leaves the app (re-armed on the next navigation)
       pushSentinel();
@@ -110,9 +117,15 @@
       popScreen(); return 'popped';
     }
 
+    function guardBack(fn) {
+      const g = () => fn();   // its own identity: one registration, one removal
+      guards.push(g);
+      return () => { const i = guards.indexOf(g); if (i >= 0) guards.splice(i, 1); };
+    }
+
     if (win && typeof win.addEventListener === 'function') win.addEventListener('popstate', onPop);
     return {
-      go, tab, back, adapterFor, onPop, predecessor, current: top, depth: () => stack.length,
+      go, tab, back, guardBack, adapterFor, onPop, predecessor, current: top, depth: () => stack.length,
       destroy() { if (win && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPop); },
     };
   }

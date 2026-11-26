@@ -10,6 +10,10 @@
 // 'extra_not_allowed' }); pauseGate() — the next finish waits at its gate (after the create-once order, BEFORE any attempt is claimed)
 // until release(); loseNext() — the next placeSdkOrder reaches the server but its response is lost (the client sees a network error —
 // once that request is parked at a paused gate, or at once); issueTicket() — a guest's REAL checkout ticket record bound to an order id.
+// SAVED CARDS (C-3): listCards / removeCard go through the REAL HTTP wrappers (endpoints.js makeHandlers: the method check, the 500 on a
+// throw) over the real cores, so 401 / 404 / 405 / 200 are production's. saveCard() writes a card through the real completeVault,
+// expire() through the real markExpired. holdNext(name) parks the next request until released; loseAfterCommit(name) lets the real
+// handler commit, then the client sees a network error; holdBody(name) answers the status but never resolves json().
 // THE FENCE — the REAL one (train asm8 merge obligation, advisor 11-13): payments/sdk/fence.js through the real finishSdk (its read before
 // the first write and again right after the create-once order) and the real cancelSdkPendingCore (the fence FIRST, then the re-read by the
 // verified owner key; a failed write / read ⇒ 503). The capp lane's line-for-line mirror (fence.js @ ef889136 / switch-endpoint.js @
@@ -34,6 +38,9 @@ const OE = require(`${FN}order-exists.js`);
 const DW = require(`${FN}delivery/delivery-wire.js`);
 const FENCE = require(`${FN}payments/sdk/fence.js`);
 const G = require(`${FN}checkout-guest-lib.js`);
+const CARDS = require(`${FN}payments/sdk/cards.js`);
+const { makeHandlers } = require(`${FN}payments/sdk/endpoints.js`);
+const { createHash } = require('node:crypto');
 process.env.OTP_SALT = process.env.OTP_SALT || 'test-salt-'.padEnd(40, 'x');   // the server tests' convention (checkout-guest-gate.test.js:7)
 const OTP = require(`${FN}otp-lib.js`);
 const { normalizePhone } = require(`${FN}whatsapp.js`);
@@ -52,6 +59,22 @@ export function realSdkServer({ clock, members = {}, cards = {}, rids = [], pspS
     verifyIdToken, isTombstoned: async () => false, attributionUid: (d, tomb) => (!tomb && d && typeof d.uid === 'string' ? d.uid : null), deadlineMs: 1500,
     normalizePhone, phoneHash: (d) => OTP.phoneHash(d), cartFpFromBody: G.cartFpFromBody };   // the handler's guest intake deps (index.js:1506)
   let armed = { ...NO_FLAGS }; let gate = null; let loseNext = false; let parked = null; const inflight = [];
+  const H = makeHandlers(() => deps); const holds = {}; const lose = {}; const bodyHolds = {};
+  // the handler's req/res, as the Functions framework hands them (headers by lower-case name, the method, the parsed JSON body)
+  async function viaHandler(name, method, headers, body, query) {
+    const hh = hdrs(headers); let status = 200, out;
+    const req = { method, get: (k) => hh[k.toLowerCase()], body: body || undefined, query: query || {} };
+    const res = { set: () => res, status: (c) => { status = c; return res; }, json: (b) => { out = b; return res; } };
+    await H[name](req, res);
+    return { status, json: out };
+  }
+  async function cardsCall(name, method, headers, body) {
+    if (holds[name]) { const w = holds[name]; holds[name] = null; await w; }
+    const r = await viaHandler(name, method, headers, body);
+    if (lose[name]) { lose[name] = false; throw new TypeError('Failed to fetch'); }   // the handler COMMITTED; the response is lost
+    if (bodyHolds[name]) { bodyHolds[name] = false; return { status: r.status, ok: r.status >= 200 && r.status < 300, json: () => new Promise(() => {}) }; }
+    return { status: r.status, ok: r.status >= 200 && r.status < 300, json: async () => r.json };
+  }
   const hdrs = (h) => Object.fromEntries(Object.entries(h || {}).map(([k, v]) => [k.toLowerCase(), v]));
 
   async function placeSdkOrder(req) {
@@ -104,6 +127,8 @@ export function realSdkServer({ clock, members = {}, cards = {}, rids = [], pspS
       const method = (init && init.method) || 'GET', headers = (init && init.headers) || {}, body = init && init.body ? JSON.parse(init.body) : null;
       const u = new URL(url);
       let res = null;
+      if (E.listCards && url.startsWith(E.listCards)) return cardsCall('listCards', method, headers, body);
+      if (E.removeCard && url.startsWith(E.removeCard)) return cardsCall('removeCard', method, headers, body);
       if (url.startsWith(E.placeSdkOrder)) {
         const lose = loseNext; loseNext = false;
         const p = placeSdkOrder({ headers, body }); inflight.push(p);
@@ -130,5 +155,18 @@ export function realSdkServer({ clock, members = {}, cards = {}, rids = [], pspS
     pauseGate: (at = 'gate') => { let release, mark; const wait = new Promise((r) => { release = r; }); parked = new Promise((r) => { mark = r; }); gate = { wait, mark, at }; return () => release(); },
     loseNext: () => { loseNext = true; },
     settled: () => Promise.allSettled(inflight),
+    // a member's card, written by the REAL vault completion (a new save at generation 0); returns its card_id
+    saveCard: async (uid, display, token) => {
+      const h = createHash('sha256').update(token).digest('hex');
+      const r = await CARDS.completeVault(deps, { uid, token, token_hash: h, display, vault_gen: 0 });
+      if (r.outcome !== 'created' && r.outcome !== 'reused') throw new Error(`saveCard: ${r.outcome}`);
+      return (await db.ref(`customer_cards/${uid}/by_hash/${h}`).once('value')).val();
+    },
+    expire: (uid, token) => CARDS.markExpired(deps, uid, createHash('sha256').update(token).digest('hex')),
+    cardsNode: async (uid) => (await db.ref(`customer_cards/${uid}`).once('value')).val(),
+    callHandler: (name, method, headers, body) => viaHandler(name, method, headers, body),
+    holdNext: (name) => { let release; holds[name] = new Promise((r) => { release = r; }); return () => release(); },
+    loseAfterCommit: (name) => { lose[name] = true; },
+    holdBody: (name) => { bodyHolds[name] = true; },
   };
 }
