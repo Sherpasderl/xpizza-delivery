@@ -171,18 +171,39 @@ function formatStuck(order, result) {
 }
 
 /**
- * S2 (PLAN-brand-agnostic-convergence r9, #334-4): the fan-out RECIPIENTS = the subscribed uids that are CURRENT dispatchers at
- * send time — `dispatchers/{uid}` exists, the predicate of index.js authorizeDispatcherActionWithUid and of the dispatchers rules.
- * A staff push carries a customer's name, so a uid whose check cannot be read is NOT a recipient (fail closed). Revocation is
- * immediate: removing dispatchers/{uid} stops that uid's pushes at the next send (its stale subscription is simply never used).
- * The one db-touching helper here (a read per subscribed uid); the caller passes the uids it read from staff_push.
+ * S2 (PLAN-brand-agnostic-convergence r9 §3-S, #334-4; Codex #414): the fan-out RECIPIENTS = the subscribed uids that are CURRENT
+ * dispatchers at send time — `dispatchers/{uid}` exists, the predicate of index.js authorizeDispatcherActionWithUid and of the
+ * dispatchers rules. A staff push carries a customer's name, so:
+ *   yes      (exists)          → a recipient
+ *   no       (confirmed absent) → not a recipient, and its staff_push/{uid} is PRUNED (revocation) — compare-and-delete on the exact
+ *                                 record the fan-out read, so a concurrent replacement / re-subscribe (any change) is kept
+ *   unknown  (the read failed)  → not a recipient, never deleted (fail closed both ways)
+ * `subs` is the staff_push map the fan-out read. Logs carry a fixed category and counts only (no uid, no order id).
  */
-async function staffRecipients(db, uids) {
-  const ok = await Promise.all(uids.map((uid) => db.ref(`dispatchers/${uid}`).once('value').then((s) => s.exists(), () => false)));
-  return uids.filter((_, i) => ok[i]);
+async function staffRecipients(db, subs) {
+  const uids = Object.keys(subs || {});
+  const m = await Promise.all(uids.map((uid) => db.ref(`dispatchers/${uid}`).once('value').then((sn) => (sn.exists() ? 'yes' : 'no'), () => 'unknown')));
+  const absent = uids.filter((_, i) => m[i] === 'no');
+  if (absent.length) {
+    const r = await Promise.allSettled(absent.map((uid) => db.ref(`staff_push/${uid}`).transaction(staffPushRevokeUpdater(subs[uid]))));
+    const pruned = r.filter((x) => x.status === 'fulfilled' && x.value && x.value.committed).length;
+    try { console.log('staff_push_revoked', JSON.stringify({ confirmed_absent: absent.length, pruned })); } catch (_) { /* logging never blocks the fan-out */ }
+  }
+  return uids.filter((_, i) => m[i] === 'yes');
+}
+
+// Compare-and-delete for a CONFIRMED non-dispatcher: delete only while the node still holds exactly the record the fan-out read.
+// RTDB runs the updater first on the local cache (null for an uncached node): returning null there lets the transaction proceed to the
+// server value, where the comparison decides (the staffPushCleanupUpdater pattern); any difference aborts and keeps the record.
+function staffPushRevokeUpdater(readRecord) {
+  const want = JSON.stringify(readRecord === undefined ? null : readRecord);
+  return (cur) => {
+    if (cur == null) return null;
+    return JSON.stringify(cur) === want ? null : undefined;
+  };
 }
 
 module.exports = {
   coalesceDecision, formatNewOrder, formatGrouped, brandLabel, pushWithCleanup, staffPushCleanupUpdater,
-  isStuck, stuckDedupe, formatStuck, staffRecipients,
+  isStuck, stuckDedupe, formatStuck, staffRecipients, staffPushRevokeUpdater,
 };

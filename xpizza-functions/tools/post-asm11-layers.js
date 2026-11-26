@@ -141,10 +141,24 @@ const INNER = Object.freeze([
  },
  {
   "layer": "staff-push-s2",
-  "label": "index.js fanoutStaffPush — S2: the staff push goes to CURRENT dispatchers only (PLAN-brand-agnostic-convergence r9, #334-4)",
+  "label": "index.js sendStaffPush — S2 / Codex #414: the failed-send log carries no uid / order id",
   "file": "index.js",
-  "now": "\n  const settled = await Promise.allSettled((await require('./staff-push').staffRecipients(db, Object.keys(all))).map((uid) => sendStaffPush(db, uid, payload)));   // S2: CURRENT dispatchers only\n",
+  "now": "\n    console.error(`sendStaffPush: failed status=${res.statusCode} (${String(payload.tag).split(':')[0]})`);   // S2 / Codex #414: no uid, no order id\n",
+  "was": "\n    console.error(`sendStaffPush: ${uid} status=${res.statusCode} (${payload.tag})`);\n"
+ },
+ {
+  "layer": "staff-push-s2",
+  "label": "index.js fanoutStaffPush — S2: CURRENT dispatchers only; confirmed non-dispatchers pruned (PLAN-brand-agnostic-convergence r9, #334-4)",
+  "file": "index.js",
+  "now": "\n  const settled = await Promise.allSettled((await require('./staff-push').staffRecipients(db, all)).map((uid) => sendStaffPush(db, uid, payload)));   // S2: CURRENT dispatchers only; confirmed non-dispatchers pruned\n",
   "was": "\n  const settled = await Promise.allSettled(Object.keys(all).map((uid) => sendStaffPush(db, uid, payload)));\n"
+ },
+ {
+  "layer": "staff-push-s2",
+  "label": "index.js fanoutStaffPush — S2 / Codex #414: the success log carries the tag category only",
+  "file": "index.js",
+  "now": "\n  console.log(`fanoutStaffPush: ${sent}/${settled.length} sent (${String(payload.tag).split(':')[0]})`);   // S2 / Codex #414: the tag's category only (no order id)\n",
+  "was": "\n  console.log(`fanoutStaffPush: ${sent}/${settled.length} sent (${payload.tag})`);\n"
  },
  {
   "layer": "rtdb-gate",

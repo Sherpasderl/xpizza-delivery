@@ -3950,7 +3950,7 @@ async function sendStaffPush(db, uid, payload) {
     },
     sub, payload);
   if (!res.sent && res.reason === 'failed') {
-    console.error(`sendStaffPush: ${uid} status=${res.statusCode} (${payload.tag})`);
+    console.error(`sendStaffPush: failed status=${res.statusCode} (${String(payload.tag).split(':')[0]})`);   // S2 / Codex #414: no uid, no order id
   }
   return { sent: res.sent, reason: res.reason };
 }
@@ -3959,9 +3959,9 @@ async function sendStaffPush(db, uid, payload) {
 // can't reject the whole fan-out (belt-and-suspenders — sendStaffPush already never rejects).
 async function fanoutStaffPush(db, payload) {
   const all = (await db.ref('staff_push').once('value')).val() || {};
-  const settled = await Promise.allSettled((await require('./staff-push').staffRecipients(db, Object.keys(all))).map((uid) => sendStaffPush(db, uid, payload)));   // S2: CURRENT dispatchers only
+  const settled = await Promise.allSettled((await require('./staff-push').staffRecipients(db, all)).map((uid) => sendStaffPush(db, uid, payload)));   // S2: CURRENT dispatchers only; confirmed non-dispatchers pruned
   const sent = settled.filter((r) => r.status === 'fulfilled' && r.value && r.value.sent).length;
-  console.log(`fanoutStaffPush: ${sent}/${settled.length} sent (${payload.tag})`);
+  console.log(`fanoutStaffPush: ${sent}/${settled.length} sent (${String(payload.tag).split(':')[0]})`);   // S2 / Codex #414: the tag's category only (no order id)
   return { sent, total: settled.length };
 }
 
