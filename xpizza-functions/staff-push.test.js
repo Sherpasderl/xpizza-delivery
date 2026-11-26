@@ -23,37 +23,38 @@ test('within window → buffer', () =>
 test('exactly at the window boundary → immediate (inclusive far edge)', () =>
   assert.equal(coalesceDecision({ lastSentAt: 1000, now: 1000 + WIN, windowMs: WIN }), 'immediate'));
 
-// ---- formatGrouped ----
-test('grouped body breaks down by brand, plural noun', () => {
-  const g = formatGrouped({ x_pizza: 2, la_musa: 1, ids: ['a', 'b', 'c'] });
+// ---- formatGrouped (B3: { rid → n } counts + the labels from identity; a legacy buffer reads the same) ----
+const LABELS = { x_pizza: 'X. Pizza', la_musa: 'La Musa' };   // test data: what staffLabels returns from these restaurants' identities
+test('grouped body breaks down by restaurant label, plural noun (a legacy buffer)', () => {
+  const g = formatGrouped({ x_pizza: 2, la_musa: 1, ids: ['a', 'b', 'c'] }, LABELS);
   assert.match(g.title, /3 pedidos nuevos/);
   assert.match(g.body, /2 X\. Pizza/);
   assert.match(g.body, /1 La Musa/);
 });
-test('grouped single → singular noun, only the present brand', () => {
-  const g = formatGrouped({ x_pizza: 0, la_musa: 1, ids: ['a'] });
+test('grouped single → singular noun, only the present restaurant', () => {
+  const g = formatGrouped({ by_rid: { la_musa: 1 }, ids: ['a'] }, LABELS);
   assert.match(g.title, /\b1 pedido nuevo\b/);
   assert.equal(/X\. Pizza/.test(g.body), false);
   assert.match(g.body, /1 La Musa/);
 });
 
-// ---- formatNewOrder ----
-test('formatNewOrder: brand + #n + customer', () => {
-  const f = formatNewOrder({ restaurant_id: 'x_pizza', display_number: 47, customer_name: 'Juan' });
+// ---- formatNewOrder (B3: the label is given — the order's own restaurant, from identity) ----
+test('formatNewOrder: label + #n + customer', () => {
+  const f = formatNewOrder({ restaurant_id: 'x_pizza', display_number: 47, customer_name: 'Juan' }, 'X. Pizza');
   assert.match(f.title, /Nuevo pedido/);
   assert.match(f.body, /X\. Pizza/);
   assert.match(f.body, /#47/);
   assert.match(f.body, /Juan/);
 });
-test('formatNewOrder: la_musa, missing #n and customer degrade gracefully', () => {
-  const f = formatNewOrder({ restaurant_id: 'la_musa' });
+test('formatNewOrder: missing #n and customer degrade gracefully', () => {
+  const f = formatNewOrder({ restaurant_id: 'la_musa' }, 'La Musa');
   assert.match(f.body, /La Musa/);
   assert.equal(/#/.test(f.body), false);
 });
-test('formatNewOrder: unknown restaurant_id falls back to X. Pizza label', () => {
+test('formatNewOrder: no label ⇒ the neutral «Restaurante», never another restaurant\'s name (B3: the old X. Pizza fallback is gone)', () => {
   const f = formatNewOrder({ restaurant_id: undefined, display_number: 3 });
-  assert.match(f.body, /X\. Pizza/);
-  assert.match(f.body, /#3/);
+  assert.match(f.body, /^Restaurante · #3$/);
+  assert.equal(/X\. Pizza|La Musa/.test(f.body), false);
 });
 
 // ---- pushWithCleanup (codex 2b REVISE: the send path must never reject) ----

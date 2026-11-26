@@ -4013,7 +4013,7 @@ exports.notifyStaffOnNewOrder = onValueWritten(
 
     const db = getDatabase();
     const orderId = event.params.orderId;
-    const brand = after.restaurant_id === 'la_musa' ? 'la_musa' : 'x_pizza';
+    const brand = require('./staff-push').pushRidOf(after);   // B3: the order's OWN restaurant (no founder fallback)
     const now = Date.now();
     const WINDOW = await pushWindowMs(db);
 
@@ -4024,21 +4024,20 @@ exports.notifyStaffOnNewOrder = onValueWritten(
     let decision = null;
     const tx = await db.ref('staff_push_state').transaction((s) => {
       decision = null;
-      s = s || { last_sent_at: 0, pending: { x_pizza: 0, la_musa: 0, ids: [] } };
-      if (!s.pending) s.pending = { x_pizza: 0, la_musa: 0, ids: [] };
+      s = s || { last_sent_at: 0, pending: { ids: [] } };
+      if (!s.pending) s.pending = { ids: [] };   // B3: { by_rid: { <rid>: n }, ids } — any restaurant
       decision = coalesceDecision({ lastSentAt: s.last_sent_at || 0, now, windowMs: WINDOW });
       if (decision === 'immediate') {
         s.last_sent_at = now;                                      // open a fresh window
       } else {
-        s.pending[brand] = (s.pending[brand] || 0) + 1;           // fold into the grouped follow-up
-        s.pending.ids = [...(s.pending.ids || []), orderId];
+        s.pending = require('./staff-push').addPending(s.pending, brand, orderId);   // B3: fold into the grouped follow-up (a legacy buffer reads the same)
       }
       return s;
     });
     if (!tx.committed) return;                                     // aborted (never happens here) → no send
 
     if (decision === 'immediate') {
-      try { await fanoutStaffPush(db, { ...formatNewOrder(after), tag: 'neworder', data: { orderId } }); }
+      try { await fanoutStaffPush(db, { ...formatNewOrder(after, (await require('./staff-push').staffLabels(db, [brand]))[brand]), tag: 'neworder', data: { orderId } }); }   // B3: the label from identity
       catch (e) { console.error('notifyStaffOnNewOrder: fanout failed', (e && (e.code || e.name)) || 'error'); }   // S2 / Codex #415: no order id, no message (a read error can carry a path)
     }
     // buffered → flushStaffPushQueue sends the single grouped ping once the window elapses
@@ -4059,18 +4058,18 @@ exports.flushStaffPushQueue = onSchedule(
     const tx = await db.ref('staff_push_state').transaction((s) => {
       toSend = null;
       if (!s || !s.pending) return s;                             // nothing buffered
-      const total = (s.pending.x_pizza || 0) + (s.pending.la_musa || 0);
+      const total = Object.values(require('./staff-push').pendingCounts(s.pending)).reduce((a, b) => a + b, 0);   // B3: every restaurant
       if (total === 0) return s;                                  // nothing to send
       if (now - (s.last_sent_at || 0) < WINDOW) return s;         // still inside the window — wait
       toSend = s.pending;
       s.last_sent_at = now;
-      s.pending = { x_pizza: 0, la_musa: 0, ids: [] };
+      s.pending = { ids: [] };   // B3
       return s;
     });
     if (tx.committed && toSend) {
       // The buffer is already cleared (atomic txn above); the fan-out never rejects, but wrap anyway so
       // a surprise throw can't crash the scheduled invocation.
-      try { await fanoutStaffPush(db, { ...formatGrouped(toSend), tag: 'neworder', data: {} }); }
+      try { await fanoutStaffPush(db, { ...formatGrouped(toSend, await require('./staff-push').staffLabels(db, Object.keys(require('./staff-push').pendingCounts(toSend)))), tag: 'neworder', data: {} }); }   // B3: labels from identity
       catch (e) { console.error('flushStaffPushQueue: fanout failed', (e && (e.code || e.name)) || 'error'); }   // S2 / Codex #415: no message (a read error can carry a path)
     }
   }

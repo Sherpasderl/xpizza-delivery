@@ -10,10 +10,41 @@
  * purely additive, parallel lane.
  */
 
-const BRAND_LABEL = { x_pizza: 'X. Pizza', la_musa: 'La Musa' };
-
-function brandLabel(restaurantId) {
-  return BRAND_LABEL[restaurantId === 'la_musa' ? 'la_musa' : 'x_pizza'];
+// B3 (PLAN-brand-agnostic-convergence r9, audit G4): every restaurant is counted and labelled FROM DATA — no restaurant id or name here.
+// The label is the restaurant's identity display_name, else its name, else a neutral word: an unknown / unreadable identity never
+// borrows another restaurant's name.
+const { brandText } = require('./pickup-label');
+const NEUTRAL_LABEL = 'Restaurante';
+const RID_RE = /^[a-z0-9_]{1,40}$/;
+const pushRidOf = (order) => (order && typeof order.restaurant_id === 'string' && RID_RE.test(order.restaurant_id) ? order.restaurant_id : 'unknown');
+// the pending buffer = { by_rid: { <rid>: n }, ids: [...] }. A LEGACY buffer (before B3: { <rid>: n, …, ids }) reads the same way —
+// every numeric top-level key is a restaurant's count.
+function pendingCounts(p) {
+  const out = {};
+  if (!p || typeof p !== 'object') return out;
+  const add = (k, v) => { if (Number.isSafeInteger(v) && v > 0 && RID_RE.test(k)) out[k] = (out[k] || 0) + v; };
+  for (const [k, v] of Object.entries(p.by_rid || {})) add(k, v);
+  for (const [k, v] of Object.entries(p)) if (k !== 'by_rid' && k !== 'ids') add(k, v);
+  return out;
+}
+function addPending(p, rid, orderId) {
+  const by = pendingCounts(p); by[rid] = (by[rid] || 0) + 1;
+  return { by_rid: by, ids: [...((p && Array.isArray(p.ids)) ? p.ids : []), orderId] };
+}
+// { rid → label } from identity: display_name → name → NEUTRAL_LABEL (a read failure or an unshowable text never fails the push)
+async function staffLabels(db, rids) {
+  const out = {};
+  await Promise.all([...new Set(rids)].map(async (rid) => {
+    let label = null;
+    if (RID_RE.test(rid)) {
+      try {
+        const id = (await db.ref(`restaurants/${rid}/identity`).once('value')).val() || {};
+        label = brandText(id.display_name) || brandText(id.name);
+      } catch (_) { label = null; }
+    }
+    out[rid] = label || NEUTRAL_LABEL;
+  }));
+  return out;
 }
 
 /**
@@ -36,26 +67,23 @@ function coalesceDecision({ lastSentAt, now, windowMs }) {
  * gracefully: display_number may not be stamped yet when this fires (the stamp
  * trigger runs on the same transition, concurrently), so it's omitted if absent.
  */
-function formatNewOrder(order) {
+function formatNewOrder(order, label) {
   const n = (order && Number.isFinite(order.display_number)) ? `#${order.display_number}` : null;
   const who = ((order && order.customer_name) || '').trim() || null;
-  const body = [brandLabel(order && order.restaurant_id), n, who].filter(Boolean).join(' · ');
+  const body = [label || NEUTRAL_LABEL, n, who].filter(Boolean).join(' · ');
   return { title: '🔔 Nuevo pedido', body };
 }
 
 /**
- * Grouped coalesced notification from the pending buffer
- * `{ x_pizza, la_musa, ids }`: `🔔 N pedidos nuevos` / `2 X. Pizza · 1 La Musa`.
+ * Grouped coalesced notification from the pending buffer (B3: { by_rid, ids }, or a legacy one) and the { rid → label } map:
+ * `🔔 N pedidos nuevos` / `2 Casa A · 1 Casa B` — most orders first, then by label.
  */
-function formatGrouped(pending) {
-  const x = (pending && pending.x_pizza) || 0;
-  const m = (pending && pending.la_musa) || 0;
-  const total = x + m;
-  const parts = [];
-  if (x) parts.push(`${x} X. Pizza`);
-  if (m) parts.push(`${m} La Musa`);
+function formatGrouped(pending, labels = {}) {
+  const by = pendingCounts(pending);
+  const rows = Object.entries(by).map(([rid, k]) => ({ k, label: labels[rid] || NEUTRAL_LABEL })).sort((a, b) => b.k - a.k || a.label.localeCompare(b.label));
+  const total = rows.reduce((t, r) => t + r.k, 0);
   const noun = total === 1 ? 'pedido nuevo' : 'pedidos nuevos';
-  return { title: `🔔 ${total} ${noun}`, body: parts.join(' · ') };
+  return { title: `🔔 ${total} ${noun}`, body: rows.map((r) => `${r.k} ${r.label}`).join(' · ') };
 }
 
 /**
@@ -204,6 +232,7 @@ function staffPushRevokeUpdater(readRecord) {
 }
 
 module.exports = {
-  coalesceDecision, formatNewOrder, formatGrouped, brandLabel, pushWithCleanup, staffPushCleanupUpdater,
+  coalesceDecision, formatNewOrder, formatGrouped, pushWithCleanup, staffPushCleanupUpdater,
+  pushRidOf, pendingCounts, addPending, staffLabels, NEUTRAL_LABEL,
   isStuck, stuckDedupe, formatStuck, staffRecipients, staffPushRevokeUpdater,
 };

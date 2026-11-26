@@ -10,6 +10,9 @@
 //   DLV-REJECTED-SEND           a non-terminal send failure logs its line (asserted to EXECUTE): status + category only
 //   DLV-REJECTED-LIST-READ-*    the staff_push list read rejects (its error message carries ids): each trigger's catch line EXECUTES
 //                               (notifyStaffOnNewOrder / flushStaffPushQueue / sweepStuckOrders), with no id and no message
+//   DLV-B3-LABEL / DLV-B3-BUFFER / DLV-B3-GROUPED  (B3, audit G4) a THIRD restaurant's order is labelled by ITS identity
+//                     display_name (never «X. Pizza»), buffered under its own id, and the grouped follow-up (a legacy buffer + the
+//                     third restaurant) names each restaurant by its identity label
 //   DLV-LOGS          no captured staff-push log line (fan-out, send, revocation, the three trigger catches) carries a uid or an order id
 // Run: node staff-push-delivery.test.js
 for (const k of ['FUNCTION_TARGET', 'FIREBASE_DATABASE_EMULATOR_HOST', 'FIRESTORE_EMULATOR_HOST', 'FIREBASE_EMULATOR_HUB', 'FIREBASE_AUTH_EMULATOR_HOST', 'FIREBASE_STORAGE_EMULATOR_HOST', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY']) delete process.env[k];
@@ -21,7 +24,8 @@ const { makeHonestDb } = require('./_honest-rtdb-model');
 const sends = [];
 const webpush = require('web-push');
 let SEND_FAIL = null;   // a cell sets an error the send seam rejects with
-webpush.sendNotification = async (sub) => { sends.push(sub.endpoint); if (SEND_FAIL) throw SEND_FAIL; return { statusCode: 201 }; };
+const bodies = [];
+webpush.sendNotification = async (sub, payload) => { sends.push(sub.endpoint); try { bodies.push(JSON.parse(payload).body); } catch (_) { bodies.push(null); } if (SEND_FAIL) throw SEND_FAIL; return { statusCode: 201 }; };
 let DB = null;
 const dbMod = require('firebase-admin/database');
 dbMod.getDatabase = () => DB;   // BEFORE index.js destructures it
@@ -45,7 +49,7 @@ const capture = () => { const out = []; const o = { log: console.log, warn: cons
   for (const k of ['log', 'warn', 'error']) console[k] = (...a) => { out.push(a.map(String).join(' ')); };
   return { out, done: () => Object.assign(console, o) }; };
 const ALL_LOGS = [];
-async function run(fn) { sends.length = 0; const c = capture(); try { await fn(); } finally { c.done(); ALL_LOGS.push(...c.out); } return [...sends]; }
+async function run(fn) { sends.length = 0; bodies.length = 0; const c = capture(); try { await fn(); } finally { c.done(); ALL_LOGS.push(...c.out); } return [...sends]; }
 
 (async () => {
   assert.strictEqual(typeof idx.notifyStaffOnNewOrder.run, 'function', 'premise: the real triggers');
@@ -101,6 +105,25 @@ async function run(fn) { sends.length = 0; const c = capture(); try { await fn()
     DB = listReadFails({ orders: { [OID]: { status: 'ready', order_type: 'delivery', restaurant_id: 'x_pizza', customer_name: 'Ana', created_at: Date.now() - 3600000 } } }); const from = ALL_LOGS.length;
     await run(() => idx.sweepStuckOrders.run({}));
     assert.ok(lines(from).includes('sweepStuckOrders: fanout failed unavailable'), `🔴 ${L}: ${JSON.stringify(lines(from))}`);
+  });
+  const ID = { x_pizza: { display_name: 'X. Pizza' }, tb_third: { display_name: 'Tercera Casa' } };
+  const third = { status: 'new', payment_method: 'cash', restaurant_id: 'tb_third', customer_name: 'Ana', display_number: 9, created_at: Date.now() };
+  await cell('DLV-B3-LABEL: a third restaurant\'s new order is labelled by ITS identity display_name', async (L) => {
+    DB = makeHonestDb(world({ restaurants: { x_pizza: { identity: ID.x_pizza }, tb_third: { identity: ID.tb_third } } }));
+    await run(() => idx.notifyStaffOnNewOrder.run({ data: { before: snap(null), after: snap(third) }, params: { orderId: 'o3rd' } }));
+    assert.deepStrictEqual(bodies, ['Tercera Casa · #9 · Ana'], `🔴 ${L}: ${JSON.stringify(bodies)}`);
+  });
+  await cell('DLV-B3-BUFFER: inside the window, the third restaurant is buffered under its OWN id', async (L) => {
+    DB = makeHonestDb(world({ staff_push_state: { last_sent_at: Date.now(), pending: { x_pizza: 1, ids: ['old'] } }, restaurants: { tb_third: { identity: ID.tb_third } } }));
+    const got = await run(() => idx.notifyStaffOnNewOrder.run({ data: { before: snap(null), after: snap(third) }, params: { orderId: 'o3rd' } }));
+    assert.deepStrictEqual(got, [], `${L}: premise, buffered (no push)`);
+    const p = (await read('staff_push_state')).pending;
+    assert.deepStrictEqual(require('./staff-push').pendingCounts(p), { x_pizza: 1, tb_third: 1 }, `🔴 ${L}: ${JSON.stringify(p)}`);
+  });
+  await cell('DLV-B3-GROUPED: the grouped follow-up (legacy buffer + a third restaurant) names each by its identity label', async (L) => {
+    DB = makeHonestDb(world({ staff_push_state: { last_sent_at: 1, pending: { x_pizza: 1, by_rid: { tb_third: 2 }, ids: ['a', 'b', 'c'] } }, restaurants: { x_pizza: { identity: ID.x_pizza }, tb_third: { identity: ID.tb_third } } }));
+    await run(() => idx.flushStaffPushQueue.run({}));
+    assert.deepStrictEqual(bodies, ['2 Tercera Casa · 1 X. Pizza'], `🔴 ${L}: ${JSON.stringify(bodies)}`);
   });
   await cell('DLV-LOGS: no fan-out / send / revocation log line carries a uid or an order id', async (L) => {
     const lines = ALL_LOGS.filter((l) => /fanoutStaffPush|sendStaffPush|staff_push_revoked|notifyStaffOnNewOrder|flushStaffPushQueue|sweepStuckOrders/.test(l));

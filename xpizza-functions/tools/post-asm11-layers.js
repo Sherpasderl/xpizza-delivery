@@ -12,7 +12,7 @@
 // always peels first (innermost of all), so per-site layers see a raw read minus only the post-asm11 hunks.
 const BASE = '31f05c8a40c35fe0c442be8839593954c3afc8b1';
 // the LANDING order of the layers (oldest → newest): a new lane APPENDS its name here and its hunks at the end of HUNKS
-const ORDER = Object.freeze(['order-owner', 'uid-path', 'rtdb-gate', 'staff-push-s2']);
+const ORDER = Object.freeze(['order-owner', 'uid-path', 'rtdb-gate', 'staff-push-s2', 'staff-push-b3']);
 const HUNKS = Object.freeze([
  {
   "layer": "order-owner",
@@ -161,18 +161,53 @@ const INNER = Object.freeze([
   "was": "\n  console.log(`fanoutStaffPush: ${sent}/${settled.length} sent (${payload.tag})`);\n"
  },
  {
-  "layer": "staff-push-s2",
-  "label": "index.js notifyStaffOnNewOrder — S2 / Codex #415: the fan-out-failure log carries no order id",
+  "layer": "staff-push-b3",
+  "label": "index.js:4016 — B3: the staff push counts + labels every restaurant from data (PLAN-brand-agnostic-convergence r9, audit G4)",
   "file": "index.js",
-  "now": "\n      catch (e) { console.error('notifyStaffOnNewOrder: fanout failed', (e && (e.code || e.name)) || 'error'); }   // S2 / Codex #415: no order id, no message (a read error can carry a path)\n",
-  "was": "\n      catch (e) { console.error(`notifyStaffOnNewOrder: fanout failed for ${orderId}`, e.message); }\n"
+  "now": "\n    const brand = require('./staff-push').pushRidOf(after);   // B3: the order's OWN restaurant (no founder fallback)\n",
+  "was": "\n    const brand = after.restaurant_id === 'la_musa' ? 'la_musa' : 'x_pizza';\n"
  },
  {
-  "layer": "staff-push-s2",
-  "label": "index.js flushStaffPushQueue — S2 / Codex #415: the fan-out-failure log carries no message",
+  "layer": "staff-push-b3",
+  "label": "index.js:4027 — B3: the staff push counts + labels every restaurant from data (PLAN-brand-agnostic-convergence r9, audit G4); this swap also carries the adjacent S2 / Codex #415 redacted catch",
   "file": "index.js",
-  "now": "\n      catch (e) { console.error('flushStaffPushQueue: fanout failed', (e && (e.code || e.name)) || 'error'); }   // S2 / Codex #415: no message (a read error can carry a path)\n",
-  "was": "\n      catch (e) { console.error('flushStaffPushQueue: fanout failed', e.message); }\n"
+  "now": "\n      s = s || { last_sent_at: 0, pending: { ids: [] } };\n      if (!s.pending) s.pending = { ids: [] };   // B3: { by_rid: { <rid>: n }, ids } — any restaurant\n",
+  "was": "\n      s = s || { last_sent_at: 0, pending: { x_pizza: 0, la_musa: 0, ids: [] } };\n      if (!s.pending) s.pending = { x_pizza: 0, la_musa: 0, ids: [] };\n"
+ },
+ {
+  "layer": "staff-push-b3",
+  "label": "index.js:4033 — B3: the staff push counts + labels every restaurant from data (PLAN-brand-agnostic-convergence r9, audit G4)",
+  "file": "index.js",
+  "now": "\n        s.pending = require('./staff-push').addPending(s.pending, brand, orderId);   // B3: fold into the grouped follow-up (a legacy buffer reads the same)\n",
+  "was": "\n        s.pending[brand] = (s.pending[brand] || 0) + 1;           // fold into the grouped follow-up\n        s.pending.ids = [...(s.pending.ids || []), orderId];\n"
+ },
+ {
+  "layer": "staff-push-b3",
+  "label": "index.js:4040 — B3: the staff push counts + labels every restaurant from data (PLAN-brand-agnostic-convergence r9, audit G4); this swap also carries the adjacent S2 / Codex #415 redacted catch",
+  "file": "index.js",
+  "now": "\n      try { await fanoutStaffPush(db, { ...formatNewOrder(after, (await require('./staff-push').staffLabels(db, [brand]))[brand]), tag: 'neworder', data: { orderId } }); }   // B3: the label from identity\n      catch (e) { console.error('notifyStaffOnNewOrder: fanout failed', (e && (e.code || e.name)) || 'error'); }   // S2 / Codex #415: no order id, no message (a read error can carry a path)\n",
+  "was": "\n      try { await fanoutStaffPush(db, { ...formatNewOrder(after), tag: 'neworder', data: { orderId } }); }\n      catch (e) { console.error(`notifyStaffOnNewOrder: fanout failed for ${orderId}`, e.message); }\n"
+ },
+ {
+  "layer": "staff-push-b3",
+  "label": "index.js:4061 — B3: the staff push counts + labels every restaurant from data (PLAN-brand-agnostic-convergence r9, audit G4)",
+  "file": "index.js",
+  "now": "\n      const total = Object.values(require('./staff-push').pendingCounts(s.pending)).reduce((a, b) => a + b, 0);   // B3: every restaurant\n",
+  "was": "\n      const total = (s.pending.x_pizza || 0) + (s.pending.la_musa || 0);\n"
+ },
+ {
+  "layer": "staff-push-b3",
+  "label": "index.js:4066 — B3: the staff push counts + labels every restaurant from data (PLAN-brand-agnostic-convergence r9, audit G4)",
+  "file": "index.js",
+  "now": "\n      s.pending = { ids: [] };   // B3\n",
+  "was": "\n      s.pending = { x_pizza: 0, la_musa: 0, ids: [] };\n"
+ },
+ {
+  "layer": "staff-push-b3",
+  "label": "index.js:4072 — B3: the staff push counts + labels every restaurant from data (PLAN-brand-agnostic-convergence r9, audit G4); this swap also carries the adjacent S2 / Codex #415 redacted catch",
+  "file": "index.js",
+  "now": "\n      try { await fanoutStaffPush(db, { ...formatGrouped(toSend, await require('./staff-push').staffLabels(db, Object.keys(require('./staff-push').pendingCounts(toSend)))), tag: 'neworder', data: {} }); }   // B3: labels from identity\n      catch (e) { console.error('flushStaffPushQueue: fanout failed', (e && (e.code || e.name)) || 'error'); }   // S2 / Codex #415: no message (a read error can carry a path)\n",
+  "was": "\n      try { await fanoutStaffPush(db, { ...formatGrouped(toSend), tag: 'neworder', data: {} }); }\n      catch (e) { console.error('flushStaffPushQueue: fanout failed', e.message); }\n"
  },
  {
   "layer": "staff-push-s2",
