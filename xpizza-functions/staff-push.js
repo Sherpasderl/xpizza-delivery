@@ -183,16 +183,16 @@ function stuckDedupe(prevAlerted, stuckNow) {
 }
 
 /**
- * Stuck notification text. `⚠️ Pedido #<n>` / `Lleva <m> min sin repartidor` (unassigned) or
+ * Stuck notification text. `Pedido #<n>` / `Lleva <m> min sin repartidor` (unassigned) or
  * `… sin salir` (aging). "sin salir" — not "sin completar" — because the aging alert now only fires
- * for orders that have NOT left yet; one already out for delivery no longer alerts at all. ⚠️ lives
- * only in OS notification text (matches the desktop alert language), never in the PWA's own UI.
+ * for orders that have NOT left yet; one already out for delivery no longer alerts at all. No emoji
+ * (rule 8; Codex #421 / advisor 11-26).
  * #<n> omitted if display_number isn't stamped.
  */
 function formatStuck(order, result) {
   const n = (order && Number.isFinite(order.display_number)) ? ` #${order.display_number}` : '';
   const tail = result.kind === 'unassigned' ? 'sin repartidor' : 'sin salir';
-  return { title: `⚠️ Pedido${n}`, body: `Lleva ${result.minutes} min ${tail}` };
+  return { title: `Pedido${n}`, body: `Lleva ${result.minutes} min ${tail}` };
 }
 
 /**

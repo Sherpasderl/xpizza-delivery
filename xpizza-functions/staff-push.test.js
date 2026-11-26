@@ -184,7 +184,7 @@ test('stuckDedupe: alert once, then skip, clear when unstuck, else skip', () => 
 // ---- formatStuck ----
 test('formatStuck: unassigned → "sin repartidor", aging → "sin salir", #n when stamped', () => {
   const u = formatStuck({ display_number: 7 }, { kind: 'unassigned', minutes: 14 });
-  assert.match(u.title, /⚠️ Pedido #7/); assert.match(u.body, /14 min sin repartidor/);
+  assert.equal(u.title, 'Pedido #7'); assert.match(u.body, /14 min sin repartidor/);
   const a = formatStuck({ display_number: 7 }, { kind: 'aging', minutes: 40 });
   assert.match(a.body, /40 min sin salir/);
   const noN = formatStuck({}, { kind: 'aging', minutes: 40 });

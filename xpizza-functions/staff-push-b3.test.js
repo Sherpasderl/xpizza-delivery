@@ -7,6 +7,7 @@
 //   B3-NEWORDER-LABEL     formatNewOrder uses the label it is given (the order's own restaurant)
 //   B3-LABEL-SOURCE       staffLabels(db, rids): identity display_name → name → «Restaurante» (an unreadable / absent identity never
 //                         borrows another restaurant's name); unshowable text is not used
+//   B3-NO-EMOJI-TITLES    rule 8: the three staff-push titles carry no emoji (new order, grouped, stuck)
 //   B3-NO-FOUNDER-LITERAL staff-push.js names no restaurant id
 // Run: node staff-push-b3.test.js
 const assert = require('assert');
@@ -48,6 +49,12 @@ async function cell(label, fn) { try { await fn(label); console.log(`  ✓ ${++n
     } }, { beforeRead: async (p) => { if (p.startsWith('restaurants/e_down/')) throw new Error('unavailable'); } });
     const got = await SP.staffLabels(db, ['a_disp', 'b_name', 'c_none', 'd_bad', 'e_down', 'f_absent']);
     assert.deepStrictEqual(got, { a_disp: 'Casa A', b_name: 'Casa B', c_none: 'Restaurante', d_bad: 'Casa D', e_down: 'Restaurante', f_absent: 'Restaurante' }, `🔴 ${L}: ${JSON.stringify(got)}`);
+  });
+  await cell('B3-NO-EMOJI-TITLES: the new-order, grouped and stuck titles carry no emoji', async (L) => {
+    const titles = [SP.formatNewOrder({ display_number: 7 }, 'Casa').title, SP.formatGrouped({ a_rid: 2, ids: ['a', 'b'] }, { a_rid: 'Casa' }).title,
+      SP.formatStuck({ display_number: 7 }, { kind: 'unassigned', minutes: 14 }).title];
+    assert.deepStrictEqual(titles, ['Nuevo pedido', '2 pedidos nuevos', 'Pedido #7'], `🔴 ${L}: ${JSON.stringify(titles)}`);
+    assert.ok(!titles.some((t) => /\p{Extended_Pictographic}/u.test(t)), `🔴 ${L}: no pictograph`);
   });
   await cell('B3-NO-FOUNDER-LITERAL: staff-push.js names no restaurant id', async (L) => {
     const src = fs.readFileSync(path.join(__dirname, 'staff-push.js'), 'utf8').replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
