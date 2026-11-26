@@ -134,8 +134,11 @@
     const onPageHide = (e) => {
       if (!e || e.persisted !== true || dead) return;
       gate = 'sealed';
+      memberGen++;   // Codex #427 #4: every admission still waiting on its token is void — with or without a member yet
       try { if (S.member) dropMember(); } catch (_) {}
       try { clearTokenTimers(); stopOrder(); T.clearInterval(dirTimer); } catch (_) {}
+      try { if (availTimer !== null) { T.clearInterval(availTimer); availTimer = null; } availSeq++; } catch (_) {}   // the mounted store's availability polling too
+      try { closePay(); if (toastT !== null) { T.clearTimeout(toastT); toastT = null; } } catch (_) {}   // the pay stream + its tick, the toast
     };
     const bfcache = runtime.native !== true && !!win && typeof win.addEventListener === 'function';
     if (bfcache) { win.addEventListener('pageshow', onPageShow); win.addEventListener('pagehide', onPageHide); }
@@ -363,22 +366,36 @@
     // clears the mark. (The app has never been live: no session predates the mark — nothing to grandfather.)
     const completeUid = () => { try { const v = JSON.parse(storage.getItem(COMPLETE_KEY) || 'null'); return v && v.v === 1 && typeof v.uid === 'string' ? v.uid : null; } catch (_) { return null; } };
     const markComplete = (uid) => { try { storage.setItem(COMPLETE_KEY, JSON.stringify({ v: 1, uid })); } catch (_) {} pendingDone(uid); };
-    // C4 (PLAN-capp-multitab-gate-r7; #240-1): the shared PENDING-SIGN-IN marker — a DEVICE record { uid, attempt, at } the signing tab
+    // C4 (PLAN-capp-multitab-gate-r7; #240-1): the shared PENDING-SIGN-IN markers — DEVICE records { uid, attempt, at } each signing tab
     // writes inside its queue slot BEFORE the SDK call (the uid is the custom token's own claim: it only names the marker) and removes at
     // «Listo» or when the sheet undoes it. Meanwhile another tab seeing that SDK user neither admits it nor signs it out. Past PENDING_MS
-    // it counts as abandoned (the signing tab closed mid-sheet) and the next tab undoes it — a sign-up left open longer starts over
-    const PENDING_KEY = 'capp:signin_pending', PENDING_MS = 10 * 60e3;
-    const pendingOf = () => { try { const v = JSON.parse(rawGet(PENDING_KEY) || 'null'); return v && typeof v.uid === 'string' && Number.isFinite(v.at) ? v : null; } catch (_) { return null; } };
-    const pendingFresh = (uid) => { const v = pendingOf(), age = v ? Number(nowMs()) - v.at : NaN; return !!v && v.uid === uid && age >= 0 && age < PENDING_MS; };
-    function pendingDone(uid) { const v = pendingOf(); if (v && v.uid === uid) { try { storage.removeItem(PENDING_KEY); } catch (_) {} } }
+    // a marker counts as abandoned (the signing tab closed mid-sheet) and the next tab undoes it — a sign-up left open longer starts over.
+    // Codex #427 #3 / #428 #1: EACH attempt under its OWN key (capp:signin_pending:<attempt>) — tabs cannot lock each other, so there is
+    // no shared record to read-modify-write: a write never erases another attempt. A tab removes only the attempts IT wrote; the legacy
+    // single record (capp:signin_pending) is still read
+    const PENDING_KEY = 'capp:signin_pending', PENDING_PRE = PENDING_KEY + ':', PENDING_MS = 10 * 60e3;
+    const pendingRec = (k) => { try { const v = JSON.parse(rawGet(k) || 'null'); return v && typeof v === 'object' && typeof v.uid === 'string' && Number.isFinite(v.at) ? { uid: v.uid, at: v.at, key: k } : null; } catch (_) { return null; } };
+    const pendingList = () => rawKeys().filter((k) => k === PENDING_KEY || k.startsWith(PENDING_PRE)).map(pendingRec).filter(Boolean);
+    const pendingLive = (x) => { const age = Number(nowMs()) - x.at; return age >= 0 && age < PENDING_MS; };
+    const pendingFresh = (uid) => pendingList().some((x) => x.uid === uid && pendingLive(x));
+    const myAttempts = new Map();   // uid → Set(attempt): the markers THIS tab wrote
+    const pendingDel = (k) => { try { storage.removeItem(k); } catch (_) {} };
+    function pendingDone(uid) {   // only this tab's own attempts for `uid` (another tab's stay)
+      const own = myAttempts.get(uid); if (!own) return; myAttempts.delete(uid);
+      for (const a of own) pendingDel(PENDING_PRE + a);
+    }
+    function pendingDropStale(uid) { for (const x of pendingList()) if (x.uid === uid && !pendingLive(x)) pendingDel(x.key); }   // an abandoned one, any tab's
     const pendingMark = {
       set(token) {
         let uid = null; try { const p = pick(o, 'CappApi', './capp-api.js').jwtPayload(token); uid = p && typeof p.uid === 'string' && p.uid ? p.uid : null; } catch (_) { uid = null; }
         if (!uid) return null;
-        try { storage.setItem(PENDING_KEY, JSON.stringify({ uid, attempt: Math.random().toString(36).slice(2, 12), at: Number(nowMs()) })); } catch (_) {}
+        const attempt = Math.random().toString(36).slice(2, 12);
+        for (const x of pendingList()) if (!pendingLive(x)) pendingDel(x.key);   // abandoned markers go (a delete never erases a live one)
+        try { storage.setItem(PENDING_PRE + attempt, JSON.stringify({ uid, attempt, at: Number(nowMs()) })); } catch (_) {}
+        if (!myAttempts.has(uid)) myAttempts.set(uid, new Set()); myAttempts.get(uid).add(attempt);
         return uid;
       },
-      clear(uid) { if (typeof uid === 'string' && uid) pendingDone(uid); },   // only ITS marker (another tab's newer one stays)
+      clear(uid) { if (typeof uid === 'string' && uid) pendingDone(uid); },   // only ITS markers (another tab's stay)
     };
     const clearComplete = () => { try { storage.removeItem(COMPLETE_KEY); } catch (_) {} };
     // ── r3 (owner 11-19; Codex #173 → rule 36): the device's data belongs to ONE identity at a time ──
@@ -435,13 +452,15 @@
     function staleLeave() {
       if (leaving) return;
       leaving = true; gate = 'sealed';
+      memberGen++;   // Codex #429: EVERY seal voids pending admissions (with or without a member yet) — the premise of applyMember's ONE post-token check
       const own = rawGet(OWNER_KEY); swap(own && own.startsWith('u:') ? 'switch' : 'signout');
       if (S.member) dropMember();
       const go = o.replace || ((u) => win.location.replace(u));
       try { go(win.location.origin + '/'); } catch (_) {}
     }
     // Codex #178 #2 (P1): the SDK's user is not the admitted member (it switched before the listener ran) — that IS the switch
-    const switchPre = (nu) => { const c = runtime.push === true ? pushCore() : null, h = c && c.available() ? c.held() : null; return h && h.live && h.owner !== nu ? pushForget() : null; };
+    // Codex #427 #6: an OWED invalidation (a refused exit left no live token) is waited for FIRST, as every exit does (pushAuthExit)
+    const switchPre = (nu) => { const c = runtime.push === true ? pushCore() : null; if (c && c.available() && c.owed()) return pushForget(); const h = c && c.available() ? c.held() : null; return h && h.live && h.owner !== nu ? pushForget() : null; };
     // Codex #189 #1: no user at all (the SDK signed out first) is the sign-out, as the 'guest' callback would be
     function identityMoved(nu) { if (leaving || !seenUid) return; if (!nu) leave('signout', null, () => pushAuthExit()); else if (nu !== seenUid) leave('switch', nu, () => switchPre(nu)); }
     // Codex #197 (P1, the CLASS): THE ONE place the app reads a member's ID token from the SDK (capp-guards' census pins it) — the
@@ -483,7 +502,8 @@
       return true;
     }
     async function signedIn(d) {
-      markComplete(d.uid); ownBy(d.uid);
+      markComplete(d.uid); if (dead || leaving || gate === 'sealed') return;   // Codex #428 #3: its completion write found the device another's (stale ⇒ leaving): stop here
+      ownBy(d.uid);
       CappDeviceAccount.remember(storage, d.phone);   // §4c: the device marker (full E.164), kept across ordinary sign-outs
       CappDeviceAccount.rememberProfile(storage, d);   // the member's own profile, for a RESTORED session's autofill
       await applyMember(d);
@@ -491,11 +511,17 @@
     // Codex G6 r1 #1: EVERY non-member transition (a sign-out, a close mid-completion, a switch) reaches the mounted checkout — its
     // member context (and so its token) never outlives the session
     let memberGen = 0;
+    let ownSignIn = null;   // Codex #427 #2: the uid of THIS tab's own offer sign-in while it is in flight — its outcome is offerCreate's
     function dropMember() { memberGen++; clearTokenTimers(); S.member = null; if (S.store) S.store.ui.setMember(null); identityChanged(); }
     // the member the store mounts / fills from: the profile + the member token the transport sends
     async function applyMember(p) {
       // Codex G6 r1 #3: applied only if, after the token's await, nothing has changed — no sign-out / switch in between, and the
       // session is still THIS uid's
+      // Codex #428 #2: a sealed (bfcache / leaving) document admits no one — a late auth callback starts nothing (not even a token read).
+      // ONE guard per risk (advisor 11-26, rule 6c): this START check refuses NEW admissions; work already PENDING is voided by the
+      // generation (every seal bumps memberGen — onPageHide, leave() — so the post-token `gen !== memberGen` check below covers it). A
+      // second sealed check after the token is an exact duplicate of that bump: do not re-add it (it would mask c7mt-24 / g6-14)
+      if (gate === 'sealed') return;
       const gen = ++memberGen, uid = p.uid; clearTokenTimers();   // a new identity: the old one's token timers are cancelled
       const idToken = await ownedMemberToken(uid);
       if (dead || gen !== memberGen) return;
@@ -785,6 +811,7 @@
         { const pk = CappDeviceAccount.peekProfile(storage); if (pk && u && u.uid && pk.uid !== u.uid) CappDeviceAccount.forgetProfile(storage); }
         // the sheet in progress owns its outcome: a member only at «Listo» (its 'signed-in'), never by the SDK's callback mid-flow
         if (signup && signup.state.open) { schedule(); return; }
+        if (ownSignIn && u && u.uid === ownSignIn) { schedule(); return; }   // Codex #427 #2: so is this tab's own offer sign-in (never a follower's drop)
         // a RESTORED session without THIS uid's completion mark: never a member; signed out (a rejected sign-out is retried at the next
         // restore — nothing is cleared until the 'guest' callback confirms it)
         // (Codex r1 P1-4: the device's token is forgotten FIRST, while this session's token is still valid — bounded, then signed out)
@@ -793,7 +820,7 @@
         const inFlight = !!(u && u.uid && completeUid() !== u.uid && pendingFresh(u.uid));
         if (inFlight && seenUid) { leave('signout', null, () => pushAuthExit()); return; }
         if (inFlight) { dropMember(); schedule(); return; }
-        if (u && u.uid && completeUid() !== u.uid) pendingDone(u.uid);   // an abandoned marker (past the TTL) goes with the undo below
+        if (u && u.uid && completeUid() !== u.uid) pendingDropStale(u.uid);   // an abandoned marker (past the TTL) goes with the undo below
         if (u && u.uid && completeUid() !== u.uid && seenUid) { const x = u.uid; leave('signout', null, () => pushAuthExit().then((ok) => (ok === false ? false : fbAuth.signOutIf(x).then(() => true, () => true)))); return; }
         if (u && u.uid && completeUid() !== u.uid) { const x = u.uid; dropMember(); pushAuthExit().then((ok) => { if (ok !== false) return fbAuth.signOutIf(x).catch(() => {}); }); schedule(); return; }
         if (u && u.uid) settleOwner(u.uid);   // r3: her completion mark names her ⇒ the device's data is checked against the stamp
@@ -1631,18 +1658,26 @@
       // C5 (PLAN-capp-multitab-gate-r7): the offer's sign-in is live only while this tab, its identity, its order and its device stamp
       // are the ones it started with — checked before the redeem is sent and inside the adapter's queue slot (C1: skipped at its turn, or
       // undone scoped to its uid when it lands stale); a reply landing after a leave signs nothing in (the SDK is never flipped by a tab that left)
-      const g0 = memberGen, stamp0 = myStamp;
-      const liveOffer = () => !dead && !leaving && memberGen === g0 && S.order === od && myStamp === stamp0;
+      // Codex #427 #1: also the device's CURRENT shared stamp and the SDK's CURRENT user, read inside the slot — another tab's admission
+      // is seen at once, never only after its storage event reaches this tab (the SDK may be the offer's own new user once it landed)
+      const g0 = memberGen, stamp0 = myStamp, sdk0 = fbAuth.current();
+      const liveOffer = () => !dead && !leaving && memberGen === g0 && S.order === od && myStamp === stamp0 && rawGet(OWNER_KEY) === stamp0
+        && (fbAuth.current() === sdk0 || (!!ownSignIn && fbAuth.current() === ownSignIn));
       try {
         // G3: who is redeeming — the admitted member's own token, or a tab SETTLED as a guest; anything else sends nothing
         const tok = S.member ? await ownedToken(S.member.uid) : null;
         const who = S.member ? (tok ? { idToken: tok } : null) : authNow() === 'guest' ? { asGuest: true } : null;
         if (who && liveOffer()) r = await suApi.redeemSignupGrant({ grant: od.grant.token, email, name: od.name || '', ...who });
-        if (r && r.ok && r.token) uid = await fbAuth.signInWithCustomToken(r.token, { live: liveOffer, before: () => { pendUid = pendingMark.set(r.token); } });   // liveness: the slot's
+        if (r && r.ok && r.token) uid = await fbAuth.signInWithCustomToken(r.token, { live: liveOffer, before: () => { pendUid = ownSignIn = pendingMark.set(r.token); } });   // liveness: the slot's
       } catch (_) { uid = null; }
+      ownSignIn = null;
       if (!uid && pendUid) pendingDone(pendUid);   // C4: an undone / failed sign-in leaves no marker
       offerBusy = false;
       if (dead || S.order !== od) return;
+      // Codex #428 #3: re-checked AFTER the slot resolved — another tab's ownership can land between the slot's last check and here: the
+      // landed sign-in is undone (scoped to its uid) and never admitted
+      if (typeof uid === 'string' && uid && rawGet(OWNER_KEY) !== stamp0) { fbAuth.signOutIf(uid).catch(() => {}); pendingDone(uid); uid = null; }
+      if (!uid && r && r.ok && r.token && !liveOffer()) return;   // a stale tab (another identity holds the device): nothing more here — its leave follows
       if (typeof uid === 'string' && uid) { od.offerDone = true; od.claimedBy = `u:${uid}`; await signedIn({ uid, name: (r && r.name) || od.name || '', phone: od.phoneWire, email: email || null, isNew: !!(r && r.isNew) }); if (!dead && S.tab === 'order' && !S.store) renderNow(); return; }
       // a grant the server would not redeem (expired, consumed): the approved sign-in sheet, pre-filled — never a dead control
       od.offerDone = true; renderNow(); openSignin({ ctx: 'account', prefill: od.phoneWire || null });

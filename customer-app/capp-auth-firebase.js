@@ -11,6 +11,7 @@
 //                                                       landed: signed out again, scoped to ITS uid, inside its own slot)
 //     signOut() → Promise                            an ORDINARY sign-out (the device marker is kept, §4c)
 //     signOutIf(uid) → Promise<boolean>              signs out ONLY while the SDK user is still `uid` (a sheet undoing its OWN sign-in)
+//     current() → uid | null                         the SDK's user NOW (null = none, or the SDK not loaded yet) — read inside a slot's liveness
 //   THE QUEUE (PLAN-capp-multitab-gate-r7 C1, #347-4): every SDK identity transition — the three above — runs strictly ONE at a time,
 //   in call order, so a stale attempt's continuation can never undo a NEWER sign-in (Ana's late call signing Bob out)
 //     idTokenOwned(force?) → Promise<{ token, uid }>  uid = the SDK's user when the answer is made (null = signed out); token = null
@@ -30,6 +31,7 @@
     const o = opts || {};
     const loadSdk = typeof o.loadSdk === 'function' ? o.loadSdk : importSdk;
     let ready = null;   // Promise<{ auth, authMod }> — ONE initialization per adapter
+    let authNow = null;   // the initialized auth, for current()
     function ensure() {
       if (ready) return ready;
       if (!o.config || typeof o.config !== 'object' || !o.config.apiKey) return Promise.reject(new Error('capp-auth: no firebase config'));
@@ -37,6 +39,7 @@
         const app = initializeApp(o.config, o.appName || 'capp');
         const auth = authMod.getAuth(app);
         await authMod.setPersistence(auth, authMod.browserLocalPersistence);
+        authNow = auth;
         return { auth, authMod };
       });
       ready.catch(() => { ready = null; });   // a failed load can be retried («Reintentar» on «Sin conexión»)
@@ -73,6 +76,7 @@
         });
       },
       signOut() { return slot(async () => { const { auth, authMod } = await ensure(); await authMod.signOut(auth); }); },
+      current() { return authNow && authNow.currentUser ? authNow.currentUser.uid || null : null; },
       signOutIf(uid) { return slot(async () => { const { auth, authMod } = await ensure(); if (!currentIs(auth, uid)) return false; await authMod.signOut(auth); return true; }); },
       // Codex #152 #2: the token WITH the SDK user it belongs to — and only if that user is STILL the SDK's current one when the token
       // arrives (a sign-out / switch can land while getIdToken is in flight, BEFORE the auth listeners — and so the shell — hear of it)

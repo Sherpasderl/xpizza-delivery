@@ -412,6 +412,21 @@ test('PUSH-SIDE-DURABLE (Codex r2 P2): each side\'s success is durable the momen
   assert.equal(b.api.calls.filter((c) => c[0] === 'unregister').length, 0, 'never re-sent to the server');
   assert.equal(r.ok, true); assert.equal((JSON.parse(a.store.getItem(P.KEY)).pending || []).length, 0, 'both done ⇒ gone');
 });
+// Codex #427 #5: an OLDER phone invalidation completing never clears a NEWER debt — the owed record stays while any record's phone step is owed
+test('G5-OWED-SCOPE: A\'s invalidation held; notifications on again; B\'s fails; A\'s then succeeds ⇒ still owed (B\'s phone step is not done)', async () => {
+  const nA = dfr(), a = mk();
+  let nat = 0; a.f.plugin.unregister = () => (++nat === 1 ? nA.p : Promise.reject(new Error('native down')));
+  await a.push.enable({}, { owner: 'u_a' });
+  a.push.forget(); await drain();   // A's phone invalidation is out, held
+  await a.push.enable({}, { owner: 'u_a' });   // notifications on again (a new live token)
+  a.push.forget(); await drain();   // B: the phone refuses
+  assert.ok(a.push.owed(), 'premise: owed after the refused invalidation');
+  nA.r(); await drain();   // A's (older) invalidation completes — successfully
+  const left = (JSON.parse(a.store.getItem(P.KEY)).pending || []).filter((p) => p.native !== true);
+  assert.ok(left.length >= 1, 'premise: a record whose phone step is still owed');
+  assert.ok(a.push.owed(), '🔴 G5-OWED-SCOPE: an older invalidation cleared the newer debt');
+  assert.equal(await a.push.nativeDone(), false, '🔴 G5-OWED-SCOPE: the exit gate reads «done» while a phone invalidation is owed');
+});
 // G5 client (PLAN-capp-multitab-gate-r7 §4 G5, ✓366-5): the enforced boundary is the PHONE's invalidation. A durable owed record is written
 // BEFORE the live token moves to pending and leaves only once the phone's invalidation SUCCEEDS; the exit gate waits for that result
 // (the server's unregister runs after, best-effort, never gating) — and the record survives a restart

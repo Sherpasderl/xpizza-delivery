@@ -144,7 +144,9 @@
       const nativeP = !nOps.size ? Promise.resolve(true)
         : !on || read().token ? Promise.resolve(false)
         : Promise.resolve().then(() => plugin.unregister()).then(() => true, () => false);
-      nativeP.then((ok) => { if (ok && nOps.size) mark(nOps, 'native'); if (ok) write({ owed: null }); });
+      // Codex #427 #5: the debt is settled per op — the owed record leaves only when NO record's phone step is still owed (an older
+      // invalidation completing never clears a newer one's debt)
+      nativeP.then((ok) => { if (ok && nOps.size) mark(nOps, 'native'); if (ok && !pendingOf(read()).some((p) => p.native !== true)) write({ owed: null }); });
       lastNative = nativeP.then((ok) => ok === true && !owedRec());
       const owed = pend.filter((p) => p.server !== true);
       const rs = await Promise.all([nativeP, ...owed.map((p) => (api && typeof api.unregister === 'function'

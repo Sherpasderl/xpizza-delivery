@@ -19,6 +19,12 @@ import { payView, line as payLine } from './test/fake-sdk-pay.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, '..');
 const require = createRequire(import.meta.url);
 const { JSDOM } = createRequire(join(ROOT, 'xpizza-functions/x.js'))('jsdom');
+// a custom token from its REAL writer: firebase-admin's createCustomToken (as signup-platform.js mints it), signed locally with a
+// throwaway key — the JWT the SDK and the shell's pending marker read (a `ct:` string carries no uid claim, so it hid the C4/C5 paths)
+const adminCt = (() => { let A = null; return async (uid) => { const R = createRequire(join(ROOT, 'xpizza-functions/x.js'));
+  if (!A) { const { privateKey } = require('node:crypto').generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
+    A = R('firebase-admin/auth').getAuth(R('firebase-admin/app').initializeApp({ credential: R('firebase-admin/app').cert({ projectId: 'demo-ct', clientEmail: 'ct@demo-ct.iam.gserviceaccount.com', privateKey }) }, 'capp-ct')); }
+  return A.createCustomToken(uid, { customer: true }); }; })();
 const CappDirectory = require('./capp-directory.js'), CappEligibility = require('./capp-eligibility.js');
 const CappHome = require('./capp-home.js'), CappShell = require('./capp-shell.js'), CappMenu = require('./capp-menu.js'), CappUI = require('./capp-ui.js');
 const { provisionBrand } = await import(join(ROOT, 'xpizza-functions/contract/capp/capture.mjs'));
@@ -754,7 +760,7 @@ function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToke
     onAuthStateChanged: (a, next) => { listeners.push(next); const first = () => next(user ? { uid: user } : null); if (authGate) authGate.q.push(first); else Promise.resolve().then(first); return () => { listeners = listeners.filter((x) => x !== next); }; },
     signInWithCustomToken: async (a, t) => { calls.ct.push(t); user = ctUid(t); if (notifyGate && notifyGate.on) notifyGate.q.push(emitU); else emitU(); return { user: { uid: user } }; },
     signOut: async () => { calls.out++; if (failSignOut > 0) { failSignOut--; throw new Error('network'); } user = null; if (notifyGate && notifyGate.on) notifyGate.q.push(emitU); else emitU(); } };
-  return { calls, loadSdk: async () => { calls.load++; return { initializeApp: () => ({}), authMod }; } };
+  return { calls, get user() { return user; }, flip: (u) => { user = u; }, loadSdk: async () => { calls.load++; return { initializeApp: () => ({}), authMod }; } };
 }
 const SU_EP = Object.fromEntries(require('./capp-signup-api.js').ENDPOINTS.map((k) => [k, `https://fn.test/${k}`]));   // the ONE source of the set
 const SU_RUNTIME = { ...RUNTIME, guestCardOnly: true, signup: { firebase: { apiKey: 'k_test', projectId: 'p' }, endpoints: SU_EP } };
@@ -2098,10 +2104,10 @@ async function guestPaidOrder() {
 test('Pedido recibido · frame 7: a guest card order\'s paid return shows the account offer (phone + email pre-filled); «Crear mi cuenta» redeems the grant and signs in — the offer gone', async () => {
   const { storage, id, RT } = await guestPaidOrder();
   // the paid return: a NEW page load on the same device storage
-  const fb = fakeFirebase(); const su = [];
+  const fb = fakeFirebase(); const su = []; const CT = await adminCt('u_new');
   const suFetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop(); const b = i && i.body ? JSON.parse(i.body) : null; su.push([ep, b]);
     const j = ep === 'getSignupConfig' ? { ok: true, terms_url: 'https://legal.test/t', privacy_url: 'https://legal.test/p', legal_ready: true, google_enabled: false }
-      : ep === 'redeemSignupGrant' ? { ok: true, token: 'ct:u_new', is_new: true, name: 'Ana', completion: 'complete' } : { ok: true };
+      : ep === 'redeemSignupGrant' ? { ok: true, token: CT, is_new: true, name: 'Ana', completion: 'complete' } : { ok: true };
     return { status: 200, json: async () => j }; };
   const pay2 = async (u) => ({ status: 200, ok: true, json: async () => (u.startsWith('/x/s') ? { ok: true, state: 'paid' } : { ok: false }) });
   const B = bootShell({ storage, auth: 'guest', runtime: RT, apiFetch: pay2, search: `?pay=complete&order=${id}&t=pt_1`, mountExtra: { loadSdk: fb.loadSdk, signupFetch: suFetch } });
@@ -2119,7 +2125,10 @@ test('Pedido recibido · frame 7: a guest card order\'s paid return shows the ac
     const r = su.find((x) => x[0] === 'redeemSignupGrant');
     assert.ok(r, '🔴 PR-7: «Crear mi cuenta» redeems the grant'); assert.equal(r[1].grant, 'sg_1'); assert.equal(r[1].email, 'ana.perez@gmail.com');
     assert.equal(r[1].as_guest, true, '🔴 G3-SHELL: a tab settled as a guest redeems as_guest (and nothing else names who redeems)');
-    assert.deepEqual(fb.calls.ct, ['ct:u_new'], '🔴 PR-7: signed in with the redeemed custom token (no second code)');
+    assert.deepEqual(fb.calls.ct, [CT], '🔴 PR-7: signed in with the redeemed custom token (no second code)');
+    assert.equal(fb.user, 'u_new', '🔴 PR-7-KEEP: the offer\'s own sign-in was undone (the SDK ends signed out)');
+    assert.equal(fb.calls.out, 0, '🔴 PR-7-KEEP: a compensating sign-out ran on the offer\'s own sign-in');
+    assert.equal(B.ui.state.member && B.ui.state.member.uid, 'u_new', '🔴 PR-7-KEEP: the new account is not the admitted member');
     assert.equal(su.filter((x) => x[0] === 'requestOtp').length, 0, 'no second code');
     assert.equal(B.q('.guestcard.offer'), null, '🔴 PR-7: the offer is gone for the member');
   } finally { B.w.close(); }
@@ -2216,6 +2225,98 @@ test('r3 (identity) OFFER-RACE: the offer\'s redeem lands AFTER this tab left (a
     assert.equal(JSON.parse(storage.getItem('capp:member_complete')).uid, 'u_bob', '🔴 OFFER-RACE: no completion mark of the new account lands');
     assert.ok(!/u_new/.test(storage.getItem('capp:member_profile') || ''), '🔴 OFFER-RACE: no member profile of the new account lands');
     assert.deepEqual(keysOf(storage).filter((k) => /^capp:(?:active_order|[^:]+:(?:cart|placed|sent_order))$/.test(k)).sort(), recs, 'the device records are untouched by the late reply');
+  } finally { A.w.close(); }
+});
+// Codex #428 #3: Bob's ownership lands right AFTER the adapter resolved (the slot's own last check passed) — `flipAt` = which read of the
+// device's stamp after the landing sees it: 2 = the offer's post-slot re-check; 3 = signedIn()'s completion write (its stale leave)
+async function offerAfterSlot(flipAt) {
+  const { storage: base, id, RT } = await guestPaidOrder();
+  base.setItem('capp:device_account', JSON.stringify({ v: 1, account: true, e164: '+50499990001' }));   // Bob's phone, remembered on this device
+  const fb0 = fakeFirebase(), CT = await adminCt('u_new'); let landed = false, n = 0; const trace = [];
+  let wrapped = false; const fb = { ...fb0, get user() { return fb0.user; }, calls: fb0.calls, loadSdk: async () => { const x = await fb0.loadSdk(); if (!wrapped) { wrapped = true; const ct = x.authMod.signInWithCustomToken; x.authMod.signInWithCustomToken = async (...a) => { const r = await ct(...a); landed = true; return r; }; } return x; } };
+  const storage = { getItem: (k) => { if (landed && k === 'capp:member_owner') { trace.push(++n); if (n === flipAt) base.setItem('capp:member_owner', 'u:u_bob'); } return base.getItem(k); },
+    setItem: (k, v) => base.setItem(k, v), removeItem: (k) => base.removeItem(k), key: (i) => base.key(i), get length() { return base.length; }, _m: base._m };
+  const suFetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop();
+    const j = ep === 'getSignupConfig' ? { ok: true, terms_url: 'https://legal.test/t', privacy_url: 'https://legal.test/p', legal_ready: true, google_enabled: false }
+      : ep === 'redeemSignupGrant' ? { ok: true, token: CT, is_new: true, name: 'Ana', completion: 'complete' } : { ok: true };
+    return { status: 200, json: async () => j }; };
+  const pay2 = async (u) => ({ status: 200, ok: true, json: async () => (u.startsWith('/x/s') ? { ok: true, state: 'paid' } : { ok: false }) });
+  const A = bootShell({ storage, auth: 'guest', runtime: RT, apiFetch: pay2, search: `?pay=complete&order=${id}&t=pt_1`, mountExtra: { loadSdk: fb.loadSdk, signupFetch: suFetch } });
+  await flush(); await flush(); await flush(800);
+  assert.ok(A.q('.mk-sheet .guestcard.offer'), 'premise: the offer in the order sheet');
+  A.click('[data-act="offer-create"]'); await flush(); await flush(); await flush(); await flush();
+  return { A, fb, base, trace };
+}
+test('Codex #428 #3 OFFER-AFTER-SLOT: Bob\'s ownership lands right after the adapter resolved — the offer\'s landed sign-in is undone, never admitted', async () => {
+  const { A, fb, base, trace } = await offerAfterSlot(2);
+  try {
+    assert.ok(trace.length >= 2, `premise: the stamp was read after the landing (${trace})`);
+    assert.equal(base.getItem('capp:member_owner'), 'u:u_bob', 'premise: Bob\'s stamp');
+    assert.notEqual(fb.user, 'u_new', '🔴 OFFER-AFTER-SLOT: the stale tab\'s landed sign-in stays on the browser over Bob\'s device');
+    assert.ok(!A.ui.state.member, '🔴 OFFER-AFTER-SLOT: the stale tab admitted the new account');
+    assert.equal(JSON.parse(base.getItem('capp:device_account')).e164, '+50499990001', '🔴 OFFER-AFTER-SLOT: Bob\'s remembered phone was overwritten');
+  } finally { A.w.close(); }
+});
+test('Codex #428 #3 SIGNEDIN-ABORT: Bob\'s ownership lands at the completion write (its stale leave) — signedIn() stops: Bob\'s phone kept, no admission', async () => {
+  const { A, base, trace } = await offerAfterSlot(3);
+  try {
+    assert.ok(trace.length >= 3, `premise: the completion write read the stamp (${trace})`);
+    assert.ok(!A.ui.state.member, '🔴 SIGNEDIN-ABORT: the leaving tab admitted the new account');
+    assert.equal(JSON.parse(base.getItem('capp:device_account')).e164, '+50499990001', '🔴 SIGNEDIN-ABORT: signedIn() kept going after its completion write sealed the tab — Bob\'s remembered phone overwritten');
+  } finally { A.w.close(); }
+});
+// Codex #427 #1: the same race with the cross-tab notification DELAYED — the slot revalidates the device's CURRENT stamp itself
+test('Codex #427 #1 OFFER-DELAYED: the redeem reply lands after another tab admitted Bob, BEFORE this tab hears of it (the storage event delayed) — no sign-in, no admission, Bob\'s stamp stays his', async () => {
+  const { storage, id, RT } = await guestPaidOrder();
+  let release = null; const held = new Promise((r) => { release = r; });
+  const fb = fakeFirebase(); const su = []; const CT = await adminCt('u_new');
+  const suFetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop(); const b = i && i.body ? JSON.parse(i.body) : null; su.push([ep, b]);
+    if (ep === 'redeemSignupGrant') await held;
+    const j = ep === 'getSignupConfig' ? { ok: true, terms_url: 'https://legal.test/t', privacy_url: 'https://legal.test/p', legal_ready: true, google_enabled: false }
+      : ep === 'redeemSignupGrant' ? { ok: true, token: CT, is_new: true, name: 'Ana', completion: 'complete' } : { ok: true };
+    return { status: 200, json: async () => j }; };
+  const pay2 = async (u) => ({ status: 200, ok: true, json: async () => (u.startsWith('/x/s') ? { ok: true, state: 'paid' } : { ok: false }) });
+  const A = bootShell({ storage, auth: 'guest', runtime: RT, apiFetch: pay2, search: `?pay=complete&order=${id}&t=pt_1`, mountExtra: { loadSdk: fb.loadSdk, signupFetch: suFetch } });
+  try {
+    await flush(); await flush(); await flush(800);
+    assert.ok(A.q('.mk-sheet .guestcard.offer'), 'premise: the offer in the order sheet');
+    A.click('[data-act="offer-create"]'); await flush(); await flush();
+    assert.ok(su.some((x) => x[0] === 'redeemSignupGrant'), 'premise: the redeem is in flight (held)');
+    storage.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' }));   // Bob's completion mark (switchTo's writer format)
+    const { S: B } = await relaunch(storage, 'u_bob');   // tab B: the same device storage — Bob is admitted there
+    try { await flush(); assert.equal(storage.getItem(OWNER), 'u:u_bob', 'premise: the device is Bob\'s (tab B stamped it)'); } finally { B.w.close(); }
+    const recs = keysOf(storage).filter((k) => /^capp:(?:active_order|[^:]+:(?:cart|placed|sent_order))$/.test(k)).sort();
+    assert.equal(A.replaced.length, 0, 'premise: tab A has NOT heard of the change (no storage event yet)');
+    release(); await flush(); await flush(); await flush();   // the redeem reply lands while tab A still believes it is the guest
+    assert.deepEqual(fb.calls.ct, [], '🔴 OFFER-DELAYED: the late grant signed the new account in over Bob\'s device (the shared SDK flipped, even if undone after)');
+    assert.notEqual(fb.user, 'u_new', '🔴 OFFER-DELAYED: the late grant signed the new account in over Bob\'s device');
+    assert.equal(A.q('#su-host.open'), null, '🔴 OFFER-DELAYED: the stale tab opened the sign-in sheet');
+    assert.equal(storage.getItem(OWNER), 'u:u_bob', '🔴 OFFER-DELAYED: Bob\'s stamp is overwritten');
+    assert.equal(JSON.parse(storage.getItem('capp:member_complete')).uid, 'u_bob', '🔴 OFFER-DELAYED: a completion mark of the new account landed');
+    assert.ok(!/u_new/.test(storage.getItem('capp:member_profile') || ''), '🔴 OFFER-DELAYED: a member profile of the new account landed');
+    assert.deepEqual(keysOf(storage).filter((k) => /^capp:(?:active_order|[^:]+:(?:cart|placed|sent_order))$/.test(k)).sort(), recs, 'the device records are untouched by the late reply');
+  } finally { A.w.close(); }
+});
+test('Codex #427 #1 OFFER-SDK: while the redeem is in flight the SHARED SDK becomes Bob (another tab\'s sign-in, its callback not delivered here) — the late grant never signs over him', async () => {
+  const { storage, id, RT } = await guestPaidOrder();
+  let release = null; const held = new Promise((r) => { release = r; });
+  const fb = fakeFirebase(); const su = []; const CT = await adminCt('u_new');
+  const suFetch = async (u, i) => { const ep = u.split('?')[0].split('/').pop(); const b = i && i.body ? JSON.parse(i.body) : null; su.push([ep, b]);
+    if (ep === 'redeemSignupGrant') await held;
+    const j = ep === 'getSignupConfig' ? { ok: true, terms_url: 'https://legal.test/t', privacy_url: 'https://legal.test/p', legal_ready: true, google_enabled: false }
+      : ep === 'redeemSignupGrant' ? { ok: true, token: CT, is_new: true, name: 'Ana', completion: 'complete' } : { ok: true };
+    return { status: 200, json: async () => j }; };
+  const pay2 = async (u) => ({ status: 200, ok: true, json: async () => (u.startsWith('/x/s') ? { ok: true, state: 'paid' } : { ok: false }) });
+  const A = bootShell({ storage, auth: 'guest', runtime: RT, apiFetch: pay2, search: `?pay=complete&order=${id}&t=pt_1`, mountExtra: { loadSdk: fb.loadSdk, signupFetch: suFetch } });
+  try {
+    await flush(); await flush(); await flush(800);
+    assert.ok(A.q('.mk-sheet .guestcard.offer'), 'premise: the offer in the order sheet');
+    A.click('[data-act="offer-create"]'); await flush(); await flush();
+    assert.ok(su.some((x) => x[0] === 'redeemSignupGrant'), 'premise: the redeem is in flight (held)');
+    fb.flip('u_bob');   // the browser's shared SDK persistence is Bob's now (tab B signed him in); no stamp yet, no callback here
+    release(); await flush(); await flush(); await flush();   // the redeem reply lands while tab A still believes it is the guest
+    assert.deepEqual(fb.calls.ct, [], '🔴 OFFER-SDK: the late grant signed in over the SDK\'s current user');
+    assert.equal(fb.user, 'u_bob', '🔴 OFFER-SDK: Bob is no longer the SDK\'s user');
   } finally { A.w.close(); }
 });
 // ── «Pedido recibido» stage 2: the LIVE status, in place, from order_tracking/{token} (RTDB REST stream) — the record from the REAL
@@ -3023,27 +3124,31 @@ test('Receipt overlap: A held, back, B opened and held; A lands first ⇒ NOT dr
     assert.deepEqual(rrows(S).slice(-2), ['Pago Tarjeta', 'Estado Confirmado'], 'B\'s own tail');
   } finally { S.w.close(); }
 });
+// Codex #428 #2 (re-modelled): a document whose SDK switched identity LEAVES (r3) and is sealed — it never admits anyone again, so the
+// «Ana again» is a NEW document (her reload). Its new read B lands, THEN the old document's late read A ⇒ a reopen still shows B's details
 test('Receipt overlap across identities (Codex r1 #3): Ana\'s read A held → Bob → Ana again; her NEW read B (updated details) lands, THEN the old A ⇒ a reopen shows B\'s details (A never overwrites the kept receipt)', async () => {
   const db = { u_bob: {} }, orders = {}, G = gates();
   placeReal(db, orders, 'u_ana', 'XP-X1', {});
   const st = g7Store(G7_PROFILE({ promos: true }));
-  const { S, fb, mo } = await pedidosBoot(db, { orders, rgate: G.fn, storage: st });
+  const { S, fb } = await pedidosBoot(db, { orders, rgate: G.fn, storage: st });
+  let R = null;
   try {
     await openPastReceipt(S, 'XP-X1'); assert.equal(G.q.length, 1, 'premise: read A held');
     const { authMod } = await fb.loadSdk();
     st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' })); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush(); await flush();
-    st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_ana' })); await authMod.signInWithCustomToken(null, 'ct:u_ana'); await flush(); await flush(); await flush();
-    assert.equal(S.ui.state.member && S.ui.state.member.uid, 'u_ana', 'premise: Ana admitted again');
+    assert.equal(S.replaced.length, 1, 'premise: the switch made the old document leave (sealed; it reloads)');
+    st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_ana' }));   // Ana signs in again: a NEW document
+    ({ S: R } = await pedidosBoot(db, { orders, rgate: G.fn, storage: st }));
+    assert.equal(R.ui.state.member && R.ui.state.member.uid, 'u_ana', 'premise: Ana admitted again (the new document)');
     orders['XP-X1'].address_details = 'portón verde (actualizado)';
-    await openPastReceipt(S, 'XP-X1');
-    const reads = () => mo.calls.filter((c) => c.url.includes('order_id=XP-X1')).length;
-    assert.ok(reads() >= 2 && G.q.length >= 2, 'premise: a NEW read B (the identity change voided A\'s in-flight entry)');
+    await openPastReceipt(R, 'XP-X1');
+    assert.ok(G.q.length >= 2, 'premise: a NEW read B');
     for (const r of G.q.slice(1)) r(); await flush(); await flush();
-    assert.ok(/portón verde/.test(txt(S.q('.mk-card'))), 'premise: B drawn');
-    G.q[0](); await flush(); await flush();
-    S.click('[data-act="order-close"]'); await flush(); await openPastReceipt(S, 'XP-X1');
-    assert.ok(/portón verde/.test(txt(S.q('.mk-card'))), '🔴 RC-17: the late OLD read never overwrote the kept receipt');
-  } finally { S.w.close(); }
+    assert.ok(/portón verde/.test(txt(R.q('.mk-card'))), 'premise: B drawn');
+    G.q[0](); await flush(); await flush();   // the OLD document's late read A
+    R.click('[data-act="order-close"]'); await flush(); await openPastReceipt(R, 'XP-X1');
+    assert.ok(/portón verde/.test(txt(R.q('.mk-card'))), '🔴 RC-17: the late OLD read never overwrote the kept receipt');
+  } finally { S.w.close(); if (R) R.w.close(); }
 });
 // ── «Volver a pedir» (advisor 11-01: BY DATA — a line is reorderable when it carries the canonical dish_id; an all-null store has
 // no pill and no section). Recipes from the REAL writer (attachCustomerAttribution → normalizeReorderItems), dish_id from the REAL
@@ -7629,6 +7734,21 @@ test('C2-INTERLEAVE: a guest tab\'s cart that lands AFTER Ana\'s stamp (between 
     assert.equal(S.ui.store().ui.cart.lines().length, 0, '🔴 C2-INTERLEAVE: Ana sees a cart the guest tab wrote after her stamp');
   } finally { S.w.close(); }
 });
+// Codex #427 #7: another tab's stamp can land BETWEEN two reads of it inside one write (no cross-tab lock) — the façade reads the device's
+// stamp ONCE (its stale check) and tags with the stamp it just confirmed; a second read would tag the interleaved write as the newcomer's
+test('C2-TAG-ONCE: Bob\'s stamp lands between the stale check and the tag of a guest tab\'s write — the record is tagged by its writer (guest), never as Bob\'s', async () => {
+  const base = owned({}, 'guest');
+  // the flip: the SECOND read of the stamp since the last write — i.e. a second read INSIDE one write — sees Bob's stamp land first
+  let armed = false, reads = 0, flipped = false;
+  const flip = { getItem: (k) => { if (armed && !flipped && k === 'capp:member_owner' && ++reads === 2) { flipped = true; base.setItem('capp:member_owner', 'u:u_bob'); } return base.getItem(k); },
+    setItem: (k, v) => { reads = 0; return base.setItem(k, v); }, removeItem: (k) => { reads = 0; return base.removeItem(k); }, key: (i) => base.key(i), get length() { return base.length; }, _m: base._m };
+  const G = bootShell({ storage: flip }); await flush();
+  try {
+    armed = true; reads = 0; await cartWrite(G); armed = false;   // the store's own cart writer (a line, the checkout, a mode tap) under the flip
+    const rec = base.getItem('capp:x_pizza:cart'); assert.ok(rec, 'premise: the cart write landed');
+    assert.equal(JSON.parse(rec).o, 'guest', '🔴 C2-TAG-ONCE: the interleaved write was tagged as the newcomer\'s');
+  } finally { G.w.close(); }
+});
 test('C2-ADOPT: a guest who signs in keeps HER cart (re-tagged to her in the signing tab); a guest record a stale tab writes after that is not adopted', async () => {
   const fb = fakeFirebase(); const srv = signupServer(ANA);
   // a stale guest tab's La Musa cart, exactly as the RUNNING code's guest writer stores it (its own tab, its own device stamp 'guest')
@@ -7683,9 +7803,62 @@ test('C3-SEAL: entering the bfcache (pagehide, persisted) seals the device store
     // (a frozen document paints nothing, and a restored one reloads — C3-BFCACHE; what matters here is that nothing of hers is WRITTEN)
   } finally { S.w.close(); }
 });
+// Codex #427 #4: the seal voids an admission still WAITING on its token (no member yet) and stops the mounted store's polling too
+test('C3-SEAL-ADMIT: an admission waiting on its token when the page enters the bfcache never lands — even with no member yet', async () => {
+  const hold = { on: true, q: [] };
+  const { S } = await pedidosBoot({}, { fbOpts: { hold }, noFlush: true });
+  try {
+    await flush(); await flush(); await flush();
+    assert.ok(!S.ui.state.member, 'premise: the admission is pending (its token held)');
+    assert.ok(hold.q.length >= 1, 'premise: a held token read');
+    S.w.dispatchEvent(pageEv(S.w, 'pagehide', true)); await flush();
+    hold.on = false; for (const f of hold.q.splice(0)) f(); await flush(); await flush(); await flush();
+    assert.ok(!S.ui.state.member, '🔴 C3-SEAL-ADMIT: a pending admission landed in a sealed document');
+  } finally { S.w.close(); }
+});
+// Codex #428 #2: a DELAYED first auth callback delivered after the seal starts a NEW admission (a fresh generation) — refused once sealed
+test('C3-SEAL-LATE: the SDK\'s first auth callback arrives after the page entered the bfcache — no admission into the sealed document', async () => {
+  const gate = { q: [] };
+  const { S, fb } = await pedidosBoot({}, { fbOpts: { authGate: gate }, noFlush: true });
+  try {
+    await flush(); await flush();
+    assert.ok(!S.ui.state.member, 'premise: no member yet (the first auth state is held)');
+    assert.ok(gate.q.length >= 1, 'premise: the first auth callback is held');
+    S.w.dispatchEvent(pageEv(S.w, 'pagehide', true)); await flush(); const reads0 = fb.calls.reads;
+    for (const f of gate.q.splice(0)) f(); await flush(); await flush(); await flush();
+    assert.ok(!S.ui.state.member, '🔴 C3-SEAL-LATE: a callback delivered after the seal admitted a member into the sealed document');
+    assert.equal(fb.calls.reads, reads0, '🔴 C3-SEAL-LATE-START: a sealed document started an admission (a token read)');
+  } finally { S.w.close(); }
+});
+// Codex #429: EVERY seal bumps the generation (ruling (a)'s premise) — staleLeave() included: an admission still waiting on its token
+// when another tab takes the device never lands in the tab that left
+test('C3-SEAL-STALE: the initial admission waits on its token; another tab takes the device (storage event) — this tab leaves, and the late token admits no one', async () => {
+  const hold = { on: true, q: [] }, st = g7Store(G7_PROFILE({ promos: true }));
+  const { S } = await pedidosBoot({}, { storage: st, fbOpts: { hold }, noFlush: true });
+  try {
+    await flush(); await flush(); await flush();
+    assert.ok(!S.ui.state.member, 'premise: the admission is pending (its token held)');
+    st.setItem('capp:member_owner', 'u:u_bob'); storageEv(S, 'capp:member_owner'); await flush();
+    assert.equal(S.replaced.length, 1, 'premise: this tab left (another identity holds the device)');
+    hold.on = false; for (const f of hold.q.splice(0)) f(); await flush(); await flush(); await flush();
+    assert.ok(!S.ui.state.member, '🔴 C3-SEAL-STALE: a pending admission landed in the tab that left (staleLeave sealed without voiding it)');
+  } finally { S.w.close(); }
+});
+test('C3-SEAL-STORE: a mounted store stops polling availability when the page enters the bfcache', async () => {
+  let reads = 0;
+  const S = bootShell({ mountExtra: { readAvailability: async () => { reads++; return []; } } }); await flush();
+  try {
+    S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); await flush();
+    assert.ok(S.ui.store(), 'premise: a mounted store');
+    const r0 = reads; await flush(31_000); assert.ok(reads > r0, 'premise: the store polls availability');
+    S.w.dispatchEvent(pageEv(S.w, 'pagehide', true)); await flush(); const r1 = reads; await flush(120_000);
+    assert.equal(reads, r1, '🔴 C3-SEAL-STORE: the mounted store kept polling availability after the seal');
+  } finally { S.w.close(); }
+});
 // ── C4 (PLAN-capp-multitab-gate-r7 §2 C4; #240-1): a follower tab never signs out another tab's UNFINISHED sign-in ───────────────────
 // two tabs of ONE browser: one device store, one Firebase persistence (the same SDK double — its user is the browser's)
 const PENDING = 'capp:signin_pending';
+const pendingKeys = (st) => keysOf(st).filter((k) => k === PENDING || k.startsWith(PENDING + ':'));   // one key per attempt (Codex #428 #1)
 async function twoTabs({ verify = { ...ANA, token: CT('u_ana') } } = {}) {
   const fb = fakeFirebase(), storage = owned({}, 'guest');
   const A = bootShell({ auth: 'unresolved', storage, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(verify).fetch } });
@@ -7700,13 +7873,62 @@ test('C4-FOLLOWER: Bob signs in mid-sheet in tab B ⇒ tab A neither admits him 
   try {
     await signInViaSheet(T2.B); await flush(); await flush();
     assert.equal(await T2.who(), 'u_ana', '🔴 C4-FOLLOWER: tab A signed out the sign-in still in progress in tab B');
-    assert.ok(JSON.parse(T2.storage.getItem(PENDING) || 'null'), 'the pending marker is on the device while the sheet is open');
+    assert.equal(pendingKeys(T2.storage).length, 1, 'the pending marker is on the device while the sheet is open');
     assert.equal(T2.A.q('.acct-hero'), null, 'tab A did not admit the unfinished sign-in');
     T2.B.click(suHost(T2.B).querySelector('[data-su="finish"]')); await flush(); await flush();
-    assert.equal(T2.storage.getItem(PENDING), null, '🔴 C4-CLEAR: «Listo» left the pending marker');
+    assert.deepEqual(pendingKeys(T2.storage), [], '🔴 C4-CLEAR: «Listo» left the pending marker');
     storageEv(T2.A, 'capp:member_owner'); await flush();
     assert.deepEqual(T2.A.replaced, ['https://app.test/'], 'tab A reloads into the browser\'s new identity');
   } finally { T2.close(); }
+});
+// Codex #427 #3: OVERLAPPING sign-ins (Ana in tab A, Bob in tab B) while tab F follows — each attempt keeps its own marker and «Listo»
+// clears only its own: Bob finishing first never erases Ana's, so F never signs out her still-unfinished sign-in
+test('C4-MULTI: Ana and Bob sign in at once (A, B) while F follows; Bob finishes first; the SDK lands on Ana ⇒ F leaves her sign-in alone', async () => {
+  const fb = fakeFirebase(), storage = owned({}, 'guest');
+  const mkT = (verify, now) => bootShell({ auth: 'unresolved', storage, runtime: SU_RUNTIME, ...(now ? { now } : {}), mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(verify).fetch } });
+  const A = mkT({ ...ANA, token: CT('u_ana') }), B = mkT({ ...ANA, name: 'Bob', token: CT('u_bob') }, A.clock), F = mkT(ANA, A.clock);
+  try {
+    await flush(); await flush();
+    // both sheets open (the phone sent) BEFORE either verifies — the overlap
+    const toCode = async (S) => { S.click('.tabbar [data-tab="account"]'); await flush(); S.click('.guestcard .primary'); await flush();
+      const ph = suHost(S).querySelector('#su-phone'); ph.value = '99990000'; ph.dispatchEvent(new S.w.Event('input', { bubbles: true })); S.click(suHost(S).querySelector('[data-su="phone-go"]')); await flush(); };
+    const verify = async (S) => { const b0 = suHost(S).querySelector('[data-su-otp="0"]'); b0.value = '482913'; b0.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
+      S.click(suHost(S).querySelector('[data-su="verify"]')); await flush(); await flush(); };
+    await toCode(A); await toCode(B);
+    await verify(A); await flush();   // Ana: verified, her sheet at «Listo» (her marker)
+    await verify(B); await flush();   // Bob: verified (his marker), the SDK is his now
+    assert.ok(suHost(B).querySelector('[data-su="finish"]'), 'premise: Bob at «Listo»');
+    B.click(suHost(B).querySelector('[data-su="finish"]')); await flush(); await flush();   // Bob finishes FIRST
+    const outs = fb.calls.out;
+    const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, CT('u_ana')); await flush(); await flush(); await flush();   // Ana's lands last
+    assert.equal(fb.user, 'u_ana', '🔴 C4-MULTI: a follower signed out Ana\'s unfinished sign-in (her marker was lost to Bob\'s)');
+    assert.equal(fb.calls.out, outs, '🔴 C4-MULTI: a sign-out ran against Ana\'s unfinished sign-in');
+  } finally { A.w.close(); B.w.close(); F.w.close(); }
+});
+// Codex #428 #1: the markers are written by tabs that cannot lock each other — B reads the device's markers, A's marker lands, B writes.
+// A's write is its REAL writer's output (captured from Ana's own sheet on a scratch device, format-agnostic), replayed at B's first
+// marker WRITE (after B's read); whatever B writes must never erase it (no shared read-modify-write)
+test('C4-INTERLEAVE: A\'s marker lands between B\'s read and B\'s write — Ana\'s marker survives, so a follower leaves her unfinished sign-in alone', async () => {
+  const PRE = 'capp:signin_pending';
+  const scratch = owned({}, 'guest'), rec = [], sset = scratch.setItem.bind(scratch);
+  scratch.setItem = (k, v) => { if (k.startsWith(PRE)) rec.push([k, v]); return sset(k, v); };
+  const fbS = fakeFirebase(); const SA = bootShell({ auth: 'unresolved', storage: scratch, runtime: SU_RUNTIME, mountExtra: { loadSdk: fbS.loadSdk, signupFetch: signupServer({ ...ANA, token: CT('u_ana') }).fetch } });
+  try { await flush(); await flush(); await signInViaSheet(SA); await flush(); } finally { SA.w.close(); }
+  assert.ok(rec.length >= 1, 'premise: Ana\'s sheet wrote her marker (captured)');
+  const base = owned({}, 'guest'); let replayed = false;
+  const replay = () => { if (!replayed) { replayed = true; for (const [k, v] of rec) base.setItem(k, v); } };
+  const viewB = { getItem: (k) => base.getItem(k), setItem: (k, v) => { if (String(k).startsWith(PRE)) replay(); return base.setItem(k, v); },
+    removeItem: (k) => base.removeItem(k), key: (i) => base.key(i), get length() { return base.length; }, _m: base._m };
+  const fb = fakeFirebase();
+  const F = bootShell({ auth: 'unresolved', storage: base, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
+  const B = bootShell({ auth: 'unresolved', storage: viewB, runtime: SU_RUNTIME, now: F.clock, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer({ ...ANA, name: 'Bob', token: CT('u_bob') }).fetch } });
+  try {
+    await flush(); await flush();
+    await signInViaSheet(B); await flush();   // Bob's marker write — Ana's lands between its read and its write
+    assert.equal(replayed, true, 'premise: Ana\'s marker landed inside Bob\'s marker write');
+    const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, CT('u_ana')); await flush(); await flush(); await flush();
+    assert.equal(fb.user, 'u_ana', '🔴 C4-INTERLEAVE: a follower signed out Ana\'s unfinished sign-in (Bob\'s marker write erased hers)');
+  } finally { F.w.close(); B.w.close(); }
 });
 test('C4-CANCEL / C4-STALE: B cancels ⇒ only B undoes its own sign-in and the marker goes; a marker older than 10 min ⇒ the next tab signs that incomplete user out once', async () => {
   const T2 = await twoTabs({ verify: { ok: true, token: CT('u_new'), is_new: true, completion: 'needed' } });
@@ -7715,7 +7937,7 @@ test('C4-CANCEL / C4-STALE: B cancels ⇒ only B undoes its own sign-in and the 
     assert.equal(await T2.who(), 'u_new', 'premise: the new account is signed in, its completion owed');
     T2.B.click(suHost(T2.B).querySelector('[data-su="close"]')); await flush(); await flush();
     assert.equal(await T2.who(), null, 'B undid its own sign-in');
-    assert.equal(T2.storage.getItem(PENDING), null, '🔴 C4-CLEAR: a cancelled sign-in left the pending marker');
+    assert.deepEqual(pendingKeys(T2.storage), [], '🔴 C4-CLEAR: a cancelled sign-in left the pending marker');
   } finally { T2.close(); }
   const fb = fakeFirebase({ persisted: 'u_ana' });
   const storage = owned({ [PENDING]: JSON.stringify({ uid: 'u_ana', attempt: 'a1', at: T0 - 11 * 60e3 }) }, 'guest');
@@ -7725,6 +7947,26 @@ test('C4-CANCEL / C4-STALE: B cancels ⇒ only B undoes its own sign-in and the 
     const { authMod } = await fb.loadSdk();
     assert.equal(authMod.getAuth().currentUser, null, '🔴 C4-TTL: an abandoned (> 10 min) incomplete sign-in was kept');
     assert.equal(storage.getItem(PENDING), null, 'its marker is cleaned');
+  } finally { S.w.close(); }
+});
+// Codex #427 #6: after a REFUSED exit the live token is gone but the debt is owed — a uid switch (the SDK became Bob) must still wait
+// for the phone's invalidation of the owed token; it never reloads into Bob with Ana's token possibly still on the phone
+test('G5-SWITCH: a refused exit leaves the invalidation owed (no live token) — a uid switch then does not reload while it is still owed', async () => {
+  const storage = g7Store(G7_PROFILE({ promos: true }));
+  const { S, f, srv, fb } = await pushBoot({ fake: { permission: 'granted' }, storage });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await flush();
+    S.click('.switch[data-k="pedidos"]'); await until(() => srv.tokens() === 1);
+    S.click('[data-act="notifs-back"]'); await flush();
+    const un = f.plugin.unregister; let calls = 0; f.plugin.unregister = async () => { calls++; throw new Error('fcm down'); };
+    S.click('[data-act="signout"]'); await flush(); await flush(); await flush(4000); await flush();
+    assert.equal(S.replaced.length, 0, 'premise: the exit was refused');
+    assert.ok(JSON.parse(storage.getItem('capp:push:v1')).owed, 'premise: the invalidation is owed');
+    const c0 = calls; const { authMod } = await fb.loadSdk();
+    await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush(); await flush(); await flush(4000); await flush();   // the SDK's user switched (another tab)
+    assert.ok(calls > c0, '🔴 G5-SWITCH: the switch did not retry the owed invalidation');
+    assert.equal(S.replaced.length, 0, '🔴 G5-SWITCH: the switch reloaded while Ana\'s invalidation is still owed');
+    f.plugin.unregister = un;
   } finally { S.w.close(); }
 });
 // G5 (PLAN-capp-multitab-gate-r7 §4 G5): the phone's invalidation GATES the exit — it fails ⇒ «Cerrar sesión» is refused (the SDK never

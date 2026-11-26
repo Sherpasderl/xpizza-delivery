@@ -44193,14 +44193,12 @@
   "command": [
    "node",
    "--test",
-   "--test-name-pattern=^C2-INTERLEAVE",
+   "--test-name-pattern=^C2-TAG-ONCE",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "C2-DROP: Ana's boot kept a record another identity wrote"
-  ],
-  "equivalent": true,
-  "why": "EQUIVALENT (advisor 11-26 ruling (a); probe 11-26, hand-planted on ^(C2-|C4-|C5|C3-SEAL|G5-EXIT): 7/7 pass): in the facade's setItem the stale check has just confirmed rawGet(OWNER_KEY) === myStamp, and tagged() runs in the SAME synchronous step, so the two tags cannot differ; a failing rawGet reads null, which is stale, so the write is refused before tagging. The cross-tab interleave lands INSIDE rawStorage.setItem, after the tag is built. The pre-fix C2-INTERLEAVE 'killed' it only because Ana's boot was really a guest boot (its mismatch wipe dropped the cart)."
+   "C2-TAG-ONCE: the interleaved write was tagged as the newcomer's"
+  ]
  },
  {
   "id": "c7mt-06",
@@ -44292,8 +44290,8 @@
   "slice": "c7mt",
   "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C4: the marker TTL ignored (an abandoned sign-in is kept forever)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "return !!v && v.uid === uid && age >= 0 && age < PENDING_MS; };",
-  "to": "return !!v && v.uid === uid && age >= 0; };",
+  "from": "const pendingLive = (x) => { const age = Number(nowMs()) - x.at; return age >= 0 && age < PENDING_MS; };",
+  "to": "const pendingLive = (x) => { const age = Number(nowMs()) - x.at; return age >= 0; };",
   "command": [
    "node",
    "--test",
@@ -44370,6 +44368,227 @@
   ],
   "kills_with": [
    "G5-REFUSE: the SDK signed out while the phone still holds her token"
+  ]
+ },
+ {
+  "id": "c7mt-17",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #2: the offer's own sign-in treated as a follower's (its callback drops the member, C1 undoes it)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        if (ownSignIn && u && u.uid === ownSignIn) { schedule(); return; }   // Codex #427 #2: so is this tab's own offer sign-in (never a follower's drop)\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^Pedido recibido · frame 7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PR-7-KEEP: the offer's own sign-in was undone"
+  ]
+ },
+ {
+  "id": "c7mt-18",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #1: the offer's slot never reads the device's CURRENT stamp (a delayed storage event lets a late grant land)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "myStamp === stamp0 && rawGet(OWNER_KEY) === stamp0\n",
+  "to": "myStamp === stamp0\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=OFFER-DELAYED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "OFFER-DELAYED: the late grant signed the new account in over Bob's device"
+  ]
+ },
+ {
+  "id": "c7mt-19",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #1: the offer's slot never reads the SDK's CURRENT user",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        && (fbAuth.current() === sdk0 || (!!ownSignIn && fbAuth.current() === ownSignIn));",
+  "to": "        ;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=OFFER-SDK",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "OFFER-SDK: the late grant signed in over the SDK's current user"
+  ]
+ },
+ {
+  "id": "c7mt-20",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #1: a stale tab whose sign-in was skipped opens the sign-in sheet",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (!uid && r && r.ok && r.token && !liveOffer()) return;   // a stale tab (another identity holds the device): nothing more here — its leave follows\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=OFFER-DELAYED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "OFFER-DELAYED: the stale tab opened the sign-in sheet"
+  ]
+ },
+ {
+  "id": "c7mt-21",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #6: a uid switch ignores an OWED invalidation (no live token left)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (c && c.available() && c.owed()) return pushForget(); ",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=G5-SWITCH",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G5-SWITCH: the switch did not retry the owed invalidation"
+  ]
+ },
+ {
+  "id": "c7mt-22",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #5: any successful phone invalidation clears the owed record (an older one clears a newer debt)",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (ok && !pendingOf(read()).some((p) => p.native !== true)) write({ owed: null });",
+  "to": "if (ok) write({ owed: null });",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=G5-OWED-SCOPE",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "G5-OWED-SCOPE: an older invalidation cleared the newer debt"
+  ]
+ },
+ {
+  "id": "c7mt-23",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #3 / #428 #1: every attempt written to ONE shared device record (a newer or interleaved attempt erases another)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        try { storage.setItem(PENDING_PRE + attempt, JSON.stringify({ uid, attempt, at: Number(nowMs()) })); } catch (_) {}",
+  "to": "        try { storage.setItem(PENDING_KEY, JSON.stringify({ uid, attempt, at: Number(nowMs()) })); } catch (_) {}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C4-(MULTI|INTERLEAVE)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C4-MULTI: a follower signed out Ana's unfinished sign-in"
+  ]
+ },
+ {
+  "id": "c7mt-24",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #4: the seal leaves an admission still waiting on its token valid",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      memberGen++;   // Codex #427 #4: every admission still waiting on its token is void — with or without a member yet\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C3-SEAL-ADMIT",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-SEAL-ADMIT: a pending admission landed in a sealed document"
+  ]
+ },
+ {
+  "id": "c7mt-25",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #427 #4: the seal leaves the mounted store's availability polling running",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      try { if (availTimer !== null) { T.clearInterval(availTimer); availTimer = null; } availSeq++; } catch (_) {}   // the mounted store's availability polling too\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C3-SEAL-STORE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-SEAL-STORE: the mounted store kept polling availability after the seal"
+  ]
+ },
+ {
+  "id": "c7mt-26",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #428 #2: a sealed document still admits a NEW member (a late first auth callback after the seal)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (gate === 'sealed') return;\n      const gen = ++memberGen",
+  "to": "      const gen = ++memberGen",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C3-SEAL-LATE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-SEAL-LATE: a callback delivered after the seal admitted a member into the sealed document"
+  ]
+ },
+ {
+  "id": "c7mt-28",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #428 #3: no re-check after the slot resolved (a landed sign-in stays over the new owner's device)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (typeof uid === 'string' && uid && rawGet(OWNER_KEY) !== stamp0) { fbAuth.signOutIf(uid).catch(() => {}); pendingDone(uid); uid = null; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=OFFER-AFTER-SLOT",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "OFFER-AFTER-SLOT: the stale tab's landed sign-in stays on the browser over Bob's device"
+  ]
+ },
+ {
+  "id": "c7mt-29",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #428 #3: signedIn() keeps going after its completion write sealed the tab",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      markComplete(d.uid); if (dead || leaving || gate === 'sealed') return;   // Codex #428 #3: its completion write found the device another's (stale ⇒ leaving): stop here\n",
+  "to": "      markComplete(d.uid);\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SIGNEDIN-ABORT",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "SIGNEDIN-ABORT: signedIn() kept going after its completion write sealed the tab"
+  ]
+ },
+ {
+  "id": "c7mt-30",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): Codex #429: staleLeave() seals without voiding an admission still waiting on its token",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      memberGen++;   // Codex #429: EVERY seal voids pending admissions (with or without a member yet) — the premise of applyMember's ONE post-token check\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C3-SEAL-STALE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-SEAL-STALE: a pending admission landed in the tab that left"
   ]
  }
 ]
