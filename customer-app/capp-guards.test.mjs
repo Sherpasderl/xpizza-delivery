@@ -296,6 +296,8 @@ const MERGE_ALLOW = {
   '685cfd5c9c611ed15d95f63214d9fd31030f9123 customer-app/capp-shell-ui.js': "C-3 + C-7 stack: destroy() = C-7's line (bfcache pageshow/pagehide removal) with C-3's `unguardCard();` after `dead = true;` — 1 line from no parent, both parents' calls, 0 dropped",
   '685cfd5c9c611ed15d95f63214d9fd31030f9123 customer-app/capp-s7a2.test.mjs': "C-3 + C-7 stack: C-7's cells (C2-RE … G5-RESTART) then C-3's «Tarjetas guardadas» cells (… C3-34) — both parents' lines, 0 from no parent",
   '685cfd5c9c611ed15d95f63214d9fd31030f9123 customer-app/capp-guards.test.mjs': "C-3 + C-7 stack: the CAPP_TIP pin conflict kept parent 1's pin (2b01635fe) + both parents' history lines — 0 from no parent; re-pinned to the merge after",
+  // asm14 assembly (2e, advisor 11-26): the capp member e5dda6bde merged onto cf794d905 (fix/capp-plant-harden), both cut from e748526db
+  '2cf232ceab41c81c10ac6684f86da6b4b40324c4 customer-app/capp-guards.test.mjs': "asm14: cf794d905's C7-TIMEOUT + C7-TIMEOUT-ABSENT cells then C-3's C3-34 cell at the same spot — both parents' lines, 0 from no parent; CAPP_TIP = the capp parent's 685cfd5c9",
 };
 // The walk + the criterion (PLAN-capp-guards-cell7 r0, advisor 11-23; Codex #288). The walk is EVERY merge reachable from the head and
 // not from BASE: the lane-line + after-the-pin walk never saw a train merge made BEFORE the lane came in (asm12 13–15). A shallow repository
