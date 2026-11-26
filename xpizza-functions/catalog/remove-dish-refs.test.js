@@ -37,11 +37,11 @@ function saveDb(rid) {
   const state = { source: { data: base(rid), updateTime: T0 } };
   const doc = (path) => ({
     get: async () => {
-      if (path === `restaurants/${rid}/meta/source`) { const frozen = clone(state.source.data); return { exists: true, data: () => frozen, updateTime: state.source.updateTime }; }
+      if (state.docs && state.docs[path]) { const d = clone(state.docs[path]); return { exists: true, data: () => d }; } if (path === `restaurants/${rid}/meta/source`) { const frozen = clone(state.source.data); return { exists: true, data: () => frozen, updateTime: state.source.updateTime }; }
       if (path === `restaurants/${rid}/meta/active_version`) return { exists: true, data: () => ({ version: ACTIVE, generation: 0 }) };
       return { exists: false, data: () => ({}) };
     },
-    set: async (data) => { state.source = { data, updateTime: T1 }; return { writeTime: T1 }; },
+    set: async (data) => { if (path !== `restaurants/${rid}/meta/source`) { (state.docs = state.docs || {})[path] = clone(data); return { writeTime: T1 }; } state.source = { data, updateTime: T1 }; return { writeTime: T1 }; },   // path-aware: only meta/source is the draft (S3's meta/pending_summary is its own doc)
     update: async (data, pre) => { if (!pre || pre.lastUpdateTime !== state.source.updateTime) { const e = new Error('FAILED_PRECONDITION'); e.code = 9; throw e; } state.source = { data, updateTime: T1 }; return { writeTime: T1 }; },
   });
   return { state, collection: (c) => ({ doc: (d) => ({ collection: (c2) => ({ doc: (d2) => doc(`${c}/${d}/${c2}/${d2}`) }), get: async () => ({ exists: true, data: () => ({}) }) }) }) };

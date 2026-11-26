@@ -7,5 +7,6 @@ export function clock12(ms) {
   if (!Number.isFinite(ms)) return '';
   const t = new Date(ms - HN_OFFSET_MS);
   const h = t.getUTCHours();
-  return `${(h % 12) || 12}:${String(t.getUTCMinutes()).padStart(2, '0')} ${h >= 12 ? 'p. m.' : 'a. m.'}`;
+  // one non-breaking unit (16b, owner 11-25): a narrow line never orphans «a. m.» / «p. m.» from the time
+  return `${(h % 12) || 12}:${String(t.getUTCMinutes()).padStart(2, '0')}\u00a0${h >= 12 ? 'p.\u00a0m.' : 'a.\u00a0m.'}`;
 }

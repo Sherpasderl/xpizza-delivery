@@ -22,7 +22,7 @@ const { availKey } = require('../avail-key');
 const { getActiveVersionId } = require('../catalog/catalog-firestore');
 const DP = require('../delivery/delivery-pricing');   // envío restaurant limit (PLAN-envio-restaurant-limit-r5 §5): the ONE reader of the policy node
 const { readVersionMenu } = require('../catalog/catalog-menu'); const { branchPhotosOf } = require('../photos/branch-photos');   // DISH PHOTOS A2 step 12 (E-P4)
-const { hnDateISO } = require('../lib/hn-date');
+const { hnDateISO } = require('../lib/hn-date'); const { readHasPending } = require('../catalog/pending-summary');   // S3 r1: getMyBranches' has_pending (self-contained; per catalog: 2 parallel RPCs, 3 documents, bounded)
 const { displayName } = require('./location-name');
 const { PAUSE_REASONS } = require('./pause-reasons');
 const { effectiveResetList } = require('./reset-list');
@@ -133,7 +133,7 @@ function appLimitOf(raw, rid) {
   return eff === DP.LIMIT_INVALID ? { app_max_km: null, limit_invalid: true } : { app_max_km: eff, limit_invalid: false };
 }
 
-async function getMyBranchesCore({ db, verifyIdToken, now = () => Date.now(), log = console }, req) {
+async function getMyBranchesCore({ db, verifyIdToken, now = () => Date.now(), log = console, fs = null }, req) {   const pendingBy = new Map(); const pendingOf = (cid) => { if (!pendingBy.has(cid)) pendingBy.set(cid, fs ? readHasPending(fs, cid) : Promise.resolve(null)); return pendingBy.get(cid); };   // S3 r1: ONE lookup per catalog id (the brand's), shared by its branches
   if (!req || req.method !== 'GET') return reply(405, { error: 'method_not_allowed' });
   const v = await verifiedContext({ verifyIdToken }, req);
   if (v.fail) return v.fail;
@@ -162,7 +162,7 @@ async function getMyBranchesCore({ db, verifyIdToken, now = () => Date.now(), lo
     try {
       const row = { rid: l.rid, brand_id: a.brandId, role: l.role, state: a.state, caps: a.caps, name: await displayName(db, l.rid) };
       // operational fields ONLY under a capability that justifies them (a stats-only / retired branch gets none)
-      if (OPS_CAPS.some((c) => can(a, c))) { Object.assign(row, await operationalOf(db, l.rid, nowMs)); const p = await policyP; if (p.ok) Object.assign(row, appLimitOf(p.v, l.rid)); }
+      if (OPS_CAPS.some((c) => can(a, c))) { Object.assign(row, await operationalOf(db, l.rid, nowMs)); const p = await policyP; if (p.ok) Object.assign(row, appLimitOf(p.v, l.rid)); } if (can(a, 'catalog.read_editor')) row.has_pending = await pendingOf(a.brandId);   // S3 r1 (owner 11-23, advisor 11-24): «cambios sin publicar» per CATALOG id = the brand's — fresh or null, never stale
       return row;
     } catch (e) {
       log.warn('portal_ops_branch_degraded', JSON.stringify({ fn: 'getMyBranches', rid: l.rid, error: String((e && e.message) || e).slice(0, 160) }));

@@ -59,6 +59,8 @@ ok(`${FILES.length} file(s) → ${BASE} byte-for-byte; inside / duplicate / outs
   // fix/privacy-gaps-5f: the privacy layer is generated against main (= asm11), the NEWEST — it peels first, on the raw read, directly inside the
   // ledgers1 peel: D4(mktprice(audience(ledgers1(privacy(raw))))); and in the layer guards' own raw/disk reads (which composed no inverse before)
   const PRIV_IN_LS1_IN_AUD_IN_MKT_IN_D4 = /require\('[./]*(?:tools\/)?d4-intake-inverse'\)\.unapplyD4Module\(\w+, require\('[./]*(?:tools\/)?mktprice-module-inverse'\)\.unapplyMktPriceModule\(\w+, require\('[./]*(?:tools\/)?audience-module-inverse'\)\.unapplyAudienceModule\(\w+, require\('[./]*(?:tools\/)?ledgers1-module-inverse'\)\.unapplyLedgerS1Module\(\w+, require\('[./]*(?:tools\/)?privacy-module-inverse'\)\.unapplyPrivacyModule\(\w+, (?:fs|fsys)\.readFileSync\(/g;
+  // S3 r1 (pending, the NEWEST layer; it owns no D4 / mktprice / audience / ledgers1 / privacy file): a layer guard's own raw read may peel it first
+  const PEND_RAW_DEF = /const (?:raw|src|disk) = require\('[./]*(?:tools\/)?pending-module-inverse'\)\.unapplyPendingModule\(\w+, (?:fs|fsys)\.readFileSync\(/g;
   const PRIV_RAW_DEF = /const (?:raw|disk) = require\('[./]*(?:tools\/)?privacy-module-inverse'\)\.unapplyPrivacyModule\(\w+, (?:fs|fsys)\.readFileSync\(/g;
   for (const f of files) {
     if (/^tools\/.*-inverse\.js$/.test(f)) continue;
@@ -70,7 +72,8 @@ ok(`${FILES.length} file(s) → ${BASE} byte-for-byte; inside / duplicate / outs
     const ls1Fed = new Set([...s.matchAll(LS1_IN_AUD_IN_MKT_IN_D4)].map((m) => m.index + m[0].lastIndexOf('require(')));   // the ledgers1 call's own offset (asm11 17)
     const privFed = new Set([...s.matchAll(PRIV_IN_LS1_IN_AUD_IN_MKT_IN_D4)].map((m) => m.index + m[0].lastIndexOf('require(')));   // the privacy call's own offset
     for (const m of s.matchAll(PRIV_RAW_DEF)) privFed.add(m.index + m[0].indexOf('require('));
-    const bad = [...s.matchAll(INNER)].filter((m) => m[1] !== 'd4-intake' && !(m[1] === 'mktprice-module' && fed.has(m.index)) && !(m[1] === 'audience-module' && audFed.has(m.index)) && !(m[1] === 'ledgers1-module' && ls1Fed.has(m.index)) && !(m[1] === 'privacy-module' && privFed.has(m.index)));
+    const pendFed = new Set([...s.matchAll(PEND_RAW_DEF)].map((m) => m.index + m[0].indexOf('require(')));
+    const bad = [...s.matchAll(INNER)].filter((m) => m[1] !== 'd4-intake' && !(m[1] === 'mktprice-module' && fed.has(m.index)) && !(m[1] === 'audience-module' && audFed.has(m.index)) && !(m[1] === 'ledgers1-module' && ls1Fed.has(m.index)) && !(m[1] === 'privacy-module' && privFed.has(m.index)) && !(m[1] === 'pending-module' && pendFed.has(m.index)));
     assert.strictEqual(bad.length, 0, `D4-WIRING: ${f}: ${bad.length} raw read(s) feed the ${bad.map((m) => m[1]).join(', ')} inverse WITHOUT the D4 layer innermost`);
   }
   ok(`the D4 layer sits innermost at all ${sites} raw-read sites that compose the older layers`);

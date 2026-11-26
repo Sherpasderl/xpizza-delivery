@@ -62,11 +62,13 @@ test('the date line, Honduras time, exact to the frame', () => {
   assert.equal(IL.dateLine(Date.UTC(2026, 10, 13, 5, 59)), 'Resumen de hoy · jueves 12 de noviembre', '05:59 UTC is still Thursday in Honduras');
 });
 test('the pause time: THE portal clock, the customer app\'s 12-hour «p. m.» form (advisor 11-13; the frame\'s «pm»)', () => {
-  assert.equal(clock12(hn(2026, 11, 12, 15, 10)), '3:10 p. m.', '🔴 the one clock');
-  assert.equal(clock12(hn(2026, 11, 12, 0, 5)), '12:05 a. m.');
-  assert.equal(clock12(hn(2026, 11, 12, 12, 0)), '12:00 p. m.');
-  assert.equal(clock12(hn(2026, 11, 12, 9, 7)), '9:07 a. m.');
-  assert.equal(IL.when(hn(2026, 11, 12, 15, 10)), 'desde las 3:10 p. m.', 'Inicio reads it');
+  // 16b (owner 11-25 via the advisor): the time and «a. m.» are ONE non-breaking unit (SBS f5@390: «… desde las 10:59» / «a. m.» orphaned)
+  assert.equal(clock12(hn(2026, 11, 12, 15, 10)), '3:10\u00a0p.\u00a0m.', '🔴 the one clock, one unit');
+  assert.equal(clock12(hn(2026, 11, 12, 0, 5)), '12:05\u00a0a.\u00a0m.');
+  assert.equal(clock12(hn(2026, 11, 12, 12, 0)), '12:00\u00a0p.\u00a0m.');
+  assert.equal(clock12(hn(2026, 11, 12, 9, 7)), '9:07\u00a0a.\u00a0m.');
+  for (let m = 0; m < 24 * 60; m += 7) assert.ok(!/\s/.test(clock12(hn(2026, 11, 12, 0, m)).replace(/\u00a0/g, '')), `🔴 16b: no breakable space at ${m} min`);
+  assert.equal(IL.when(hn(2026, 11, 12, 15, 10)), 'desde\u00a0las\u00a03:10\u00a0p.\u00a0m.', '🔴 16b: «desde las h:mm a. m.» drops as ONE phrase');
 });
 test('«N pendientes» counts the rows drawn; one is singular', () => {
   assert.equal(IL.pendLabel(4), '4 pendientes');
@@ -79,25 +81,102 @@ const branch = (rid, name, extra = {}) => ({ rid, brand_id: 'marca_v', role: 'ow
   control: { state: 'open', paused_until: null, pause_reason: null, pause_since: null }, devices: 0, last_order_today: null, ...extra });
 const PAUSED = (since) => ({ state: 'paused', paused_until: null, pause_reason: 'Cocina llena', pause_since: since });
 
-test('«Para revisar» = a paused branch in scope (with since-when); «Reanudar» only with location.pause; open / other-scope branches never', () => {
-  const since = hn(2026, 11, 12, 15, 10);
-  const bs = [branch('r_a', 'Centro', { control: PAUSED(since) }), branch('r_b', 'Los Próceres'), branch('r_c', 'El Trapiche', { control: PAUSED(null), caps: ['stats.read'] })];
+test('«Para revisar» = a paused branch in scope (with since-when); «Reanudar» only with location.pause; open / other-scope branches never', async () => {
+  const since = hn(2026, 11, 12, 15, 10); const f = await realPending('false');   // the menu settled (a REAL save undone): pause rows only
+  const bs = [branch('r_a', 'Centro', { control: PAUSED(since), has_pending: f }), branch('r_b', 'Los Próceres', { has_pending: f }), branch('r_c', 'El Trapiche', { control: PAUSED(null), caps: ['stats.read'] })];
   assert.deepEqual(IL.reviewRows(bs, null), [
-    { kind: 'pause', rid: 'r_a', text: 'Sucursal Centro está en pausa', when: 'desde las 3:10 p. m.', resume: true },
+    { kind: 'pause', rid: 'r_a', text: 'Sucursal Centro está en pausa', when: 'desde\u00a0las\u00a03:10\u00a0p.\u00a0m.', resume: true },
     { kind: 'pause', rid: 'r_c', text: 'Sucursal El Trapiche está en pausa', when: '', resume: false },
   ], '🔴 one row per paused branch; «Reanudar» only where the member may resume');
   assert.deepEqual(IL.reviewRows(bs, 'r_b'), [], 'the pill scopes the list');
   assert.deepEqual(IL.reviewRows(bs, 'r_a').map((r) => r.rid), ['r_a']);
 });
 
-test('«cambios sin publicar» (S3: the SERVER\'s count, branches[i].pending_count): a row only for a number > 0; null (stale) / 0 / absent → no row, never a guess', () => {
-  const bs = [branch('r_a', 'Centro', { pending_count: 2 }), branch('r_b', 'Los Próceres', { pending_count: null }), branch('r_c', 'El Trapiche', { pending_count: 0 }), branch('r_d', 'Norte', { pending_count: 1 })];
-  assert.deepEqual(IL.reviewRows(bs, 'r_a'), [{ kind: 'menu', rid: 'r_a', text: 'Tenés 2 cambios sin publicar en el menú' }], '🔴 the drawn row from the server count');
-  assert.deepEqual(IL.reviewRows(bs, 'r_b'), [], 'stale (null): absent');
-  assert.deepEqual(IL.reviewRows(bs, 'r_c'), [], 'zero: absent');
-  assert.deepEqual(IL.reviewRows(bs, 'r_d'), [{ kind: 'menu', rid: 'r_d', text: 'Tenés 1 cambio sin publicar en el menú' }], 'one: singular');
-  const both = IL.reviewRows([branch('r_a', 'Centro', { pending_count: 3, control: PAUSED(null) })], 'r_a');
-  assert.deepEqual(both.map((r) => r.kind), ['pause', 'menu'], 'the frame\'s order: the pause first');
+// ── S3 r1 has_pending (owner 11-23: NO number; mockup JfNRMF8L APPROVED, frames 1/3/4/5/6; advisor rulings 11-25 Q1–Q3) ─────────────
+// The value comes from 5f's REAL writers in THIS tree: the real save (editCatalogCore via test/_s2core-harness) records it and the real
+// readHasPending serves it — what getMyBranches puts on a branch with catalog.read_editor, read once per catalog id = the brand
+// (5f PS-BRANCHES). WHO gets the key is the real getMyBranchesCore's call (absent without the menu permission). The rest of a row
+// (control, names) is the shipped fixture: has_pending / caps are laid over it exactly as the server serves them.
+const FQ = createRequire(join(dirname(fileURLToPath(import.meta.url)), '..', 'xpizza-functions', 'package.json'));
+const quietly = async (fn) => { const l = console.log, w = console.warn; console.log = () => {}; console.warn = () => {}; try { return await fn(); } finally { console.log = l; console.warn = w; } };
+const REAL = new Map();
+// kind 'true' (a real save that changes 2 prices) · 'false' (that save undone by the next real save: the review draws nothing) ·
+// 'null' (no save recorded: the read cannot be fresh)
+export async function realPending(kind) {
+  if (REAL.has(kind)) return REAL.get(kind);
+  const H = FQ('./test/_s2core-harness'); const PS = FQ('./catalog/pending-summary');
+  H.SW.extrasCatalog = true;
+  const w = H.world('la_musa');
+  const reprice = (by) => (d) => { for (const it of d.items.filter((i) => i.display && i.display.variantOf == null).slice(0, 2)) { it.price += by; it.display.price = it.price; } };
+  if (kind !== 'null') assert.equal((await quietly(() => w.save(reprice(7)))).status, 200, 'premise: the real save');
+  if (kind === 'false') assert.equal((await quietly(() => w.save(reprice(-7)))).status, 200, 'premise: the real undoing save');
+  const v = await PS.readHasPending(w.fs, 'la_musa', { warn() {} });
+  assert.equal(String(v), kind, `premise: the real reader serves ${kind}`);
+  REAL.set(kind, v);
+  return v;
+}
+// the real getMyBranchesCore over a two-branch brand: an owner (menu permission) and a manager without it → { [rid]: { caps, has_pending? } }
+export async function realServed(uid) {
+  const { createFakeDb } = FQ('./merchant/_fake-db'); const R = FQ('./access/roster'); const PS = FQ('./catalog/pending-summary');
+  const fake = createFakeDb({ brands: { tb: { name: 'Tercera', active: true, locations: { tb_centro: 'member', tb_sur: 'member' }, activation: { state: 'on', since: 1 } } },
+    restaurants: { tb_centro: { identity: { brand_id: 'tb', name: 'Centro', active: true, prep_default_min: 20, version: 1 } }, tb_sur: { identity: { brand_id: 'tb', name: 'Sur', active: true, prep_default_min: 25, version: 1 } } } });
+  const op = (o) => R.mutateRoster({ db: fake, now: () => 1 }, 'tb', { kind: 'cli', operator: 'op' }, o);
+  await op({ type: 'bootstrap_owner', uid: 'ownerT1', profile: { name: 'Dueña', email: 'd@tb.hn' } });
+  await op({ type: 'grant_manager', uid: 'mgrNoMenu', rids: ['tb_centro'], can_edit_menu: false });
+  const fs = FQ('./catalog/firestore-fake').makeDb(); const meta = (id) => fs.collection('restaurants').doc('tb').collection('meta').doc(id);
+  await meta('source').set({ v: 1 }); await meta('active_version').set({ version: 'v5', generation: 5 });
+  await PS.record(fs, 'tb', { pending: true, sourceUpdateTime: PS.encodeUpdateTime((await meta('source').get()).updateTime), baseActiveVersion: 'v5' });
+  const adminOf = (f) => ({ ref: (p) => { const x = f.ref(p); return { ...x, get: () => x.once() }; } });
+  const out = await FQ('./portal/ops-core').getMyBranchesCore({ db: adminOf(fake), fs, verifyIdToken: async () => ({ uid }), now: () => Date.UTC(2026, 10, 12, 21), log: { warn() {}, log() {}, error() {} } },
+    { method: 'GET', get: (h) => (h === 'authorization' ? 'Bearer t' : undefined) });
+  assert.equal(out.status, 200, 'premise: the real getMyBranches');
+  return Object.fromEntries(out.body.branches.map((b) => [b.rid, { caps: b.caps, ...(Object.prototype.hasOwnProperty.call(b, 'has_pending') ? { has_pending: b.has_pending } : {}) }]));
+}
+const SHORT = 'Tenés cambios sin publicar en el menú';
+const NB = (s) => s.replace(/ /g, ' ');   // «de» + the brand name: ONE non-breaking unit (frame 6 note 11)
+
+test('frame 1 — has_pending true (a REAL save), one branch in scope: the short row «Tenés cambios sin publicar en el menú», no number', async () => {
+  const t = await realPending('true');
+  const bs = [branch('r_a', 'Centro', { has_pending: t })];
+  assert.deepEqual(IL.reviewRows(bs, 'r_a', 'Pizzería Del Valle'), [{ kind: 'menu', rid: 'r_a', text: SHORT }], '🔴 the drawn row, no digit');
+  assert.deepEqual(IL.reviewRows(bs, null, 'Pizzería Del Valle'), [{ kind: 'menu', rid: 'r_a', text: SHORT }], 'a one-branch brand under «Todas» keeps the short line');
+  assert.ok(!/\d/.test(IL.reviewRows(bs, 'r_a', 'X')[0].text), 'never a number (owner 11-23)');
+});
+test('frame 6 — one brand menu: «Todas» with 2+ branches ⇒ ONE row naming the brand («de» + name one non-breaking unit), never one per branch', async () => {
+  const t = await realPending('true');
+  const bs = [branch('r_a', 'Centro', { has_pending: t }), branch('r_b', 'Col. Trejo', { has_pending: t }), branch('r_c', 'Bulevar del Norte', { has_pending: t })];
+  assert.deepEqual(IL.reviewRows(bs, null, 'Pizzería Del Valle'), [{ kind: 'menu', rid: 'r_a', text: `${SHORT} de ${NB('Pizzería Del Valle')}` }], '🔴 frame 6: one row for the brand');
+  assert.deepEqual(IL.reviewRows(bs, 'r_b', 'Pizzería Del Valle'), [{ kind: 'menu', rid: 'r_b', text: SHORT }], 'one branch in the pill: the short line, that branch\'s «Revisar»');
+});
+test('frame 3 — has_pending null (no fresh read) or ABSENT on an editor branch ⇒ the quiet invitation «Revisá si hay algo sin publicar»; «Todas» 2+ names the brand (advisor Q3)', async () => {
+  const n = await realPending('null');
+  for (const extra of [{ has_pending: n }, {}, { pending_count: 3 }]) {   // a legacy pending_count is never trusted after the switch
+    assert.deepEqual(IL.reviewRows([branch('r_a', 'Centro', extra)], 'r_a', 'Pizzería Del Valle'), [{ kind: 'menu', quiet: true, rid: 'r_a', text: 'Revisá si hay algo sin publicar' }], `🔴 ${JSON.stringify(extra)}: the invitation`);
+  }
+  const bs = [branch('r_a', 'Centro', { has_pending: n }), branch('r_b', 'Col. Trejo', { has_pending: n })];
+  assert.deepEqual(IL.reviewRows(bs, null, 'Pizzería Del Valle'), [{ kind: 'menu', quiet: true, rid: 'r_a', text: `Revisá si hay algo sin publicar en el menú de ${NB('Pizzería Del Valle')}` }], 'Q3: named, one row');
+});
+test('has_pending false (a REAL save undone) ⇒ no menu row; a branch WITHOUT catalog.read_editor (the REAL getMyBranches serves no key) ⇒ no menu row, no invitation (advisor Q2)', async () => {
+  const f = await realPending('false');
+  assert.deepEqual(IL.reviewRows([branch('r_a', 'Centro', { has_pending: f })], 'r_a', 'X'), [], '🔴 false: nothing to review');
+  const mgr = (await realServed('mgrNoMenu')).tb_centro;
+  assert.ok(!('has_pending' in mgr) && !mgr.caps.includes('catalog.read_editor'), 'premise: the real server serves no key to a member without the menu permission');
+  assert.deepEqual(IL.reviewRows([branch('r_a', 'Centro', mgr)], 'r_a', 'X'), [], '🔴 Q2: not applicable — never the invitation to a menu they cannot open');
+  const own = await realServed('ownerT1');
+  assert.deepEqual([own.tb_centro.has_pending, own.tb_sur.has_pending], [true, true], 'premise: one catalog id ⇒ both branches carry the brand\'s value');
+});
+test('frame 5 — pause rows first, then the one menu row; the invitation joins a pause row when the menu state is unknown', async () => {
+  const t = await realPending('true'); const n = await realPending('null');
+  assert.deepEqual(IL.reviewRows([branch('r_a', 'Centro', { has_pending: t, control: PAUSED(null) })], 'r_a', 'X').map((r) => [r.kind, !!r.quiet]), [['pause', false], ['menu', false]], '🔴 the frame\'s order');
+  assert.deepEqual(IL.reviewRows([branch('r_a', 'Centro', { has_pending: n, control: PAUSED(null) })], 'r_a', 'X').map((r) => [r.kind, !!r.quiet]), [['pause', false], ['menu', true]], 'pause + invitation');
+});
+test('allKnown (frame 4): every in-scope control known AND every EDITOR branch\'s has_pending a boolean; a non-editor branch\'s menu is n/a (Q2); null / absent / legacy pending_count ⇒ not known', async () => {
+  const f = await realPending('false'); const n = await realPending('null');
+  const mgr = (await realServed('mgrNoMenu')).tb_centro;
+  assert.equal(IL.allKnown([branch('r_a', 'Centro', { has_pending: f })], null), true, '🔴 false + open ⇒ known');
+  assert.equal(IL.allKnown([branch('r_a', 'Centro', mgr)], null), true, '🔴 Q2: a non-editor reaches «Todo en orden» on its controls alone');
+  for (const extra of [{ has_pending: n }, {}, { pending_count: 0 }]) assert.equal(IL.allKnown([branch('r_a', 'Centro', extra)], null), false, `🔴 ${JSON.stringify(extra)} ⇒ unknown`);
+  assert.equal(IL.allKnown([branch('r_a', 'Centro', { has_pending: f, control: { state: 'unknown' } })], null), false, 'an unknown control ⇒ unknown');
 });
 
 // ── the real stats chain (a Thursday; last Thursday is the comparison) ───────────────────────────────────────────────
@@ -218,7 +297,7 @@ test('s-inicio — the greeting, the date, the pill, the three REAL figures; one
     '🔴 the page draws the server\'s figures, labels as drawn');
 });
 test('1b — nothing paused, every result KNOWN (Codex backfill item 6): «Todo en orden»; ONE branch ⇒ «No hay nada pendiente en {Sucursal}.» (owner 11-15); no count; «Editar producto» is the one quick action', async () => {
-  const p = await page([branch('r_a', 'Centro', { pending_count: 0 })]);
+  const p = await page([branch('r_a', 'Centro', { has_pending: await realPending('false') })]);
   const ok = p.view.querySelector('.in-ok');
   assert.ok(ok, '🔴 the calm empty state');
   assert.equal(textOf(ok.querySelector('b')), 'Todo en orden');
@@ -246,11 +325,12 @@ test('«Ayuda» (owner 11-14): a plain row that opens WhatsApp with Sherpa suppo
 });
 test('a paused branch: «Sucursal Centro está en pausa desde las 3:10 pm» + «Reanudar» → the REAL pause request; the row goes and 1b shows', async () => {
   const since = NOW - 3600e3 + 10 * 60e3;   // 14:10
-  const p = await page([branch('r_a', 'Centro', { control: PAUSED(since), pending_count: 0 })], { pause: (b) => okJson({ ok: true, control: { state: 'open', paused_until: null, pause_reason: null, pause_since: null } }) });
+  const p = await page([branch('r_a', 'Centro', { control: PAUSED(since), has_pending: await realPending('false') })], { pause: (b) => okJson({ ok: true, control: { state: 'open', paused_until: null, pause_reason: null, pause_since: null } }) });
   const row = p.view.querySelector('.in-row');
   assert.ok(row, '🔴 the pause row');
-  assert.equal(textOf(row.querySelector('.in-rt')), `Sucursal Centro está en pausa ${IL.when(since)}`);
-  assert.equal(IL.when(since), 'desde las 2:10 p. m.');
+  assert.equal(textOf(row.querySelector('.in-rt')), `Sucursal Centro está en pausa ${IL.when(since)}`.replace(/\u00a0/g, ' '));
+  assert.equal(row.querySelector('.in-when').textContent, IL.when(since), '🔴 16b: the raw DOM keeps «2:10\u00a0p.\u00a0m.» one unit');
+  assert.equal(IL.when(since), 'desde\u00a0las\u00a02:10\u00a0p.\u00a0m.');
   assert.equal(textOf(cls(p.view, 'in-cnt')[0]), '1 pendiente');
   btnText(p.view, 'Reanudar').click(); await settle(20);
   const sent = p.calls.filter((c) => c.fn === 'setBranchPause');
@@ -258,10 +338,11 @@ test('a paused branch: «Sucursal Centro está en pausa desde las 3:10 pm» + «
   assert.equal(p.view.querySelector('.in-row'), null, '🔴 the row is gone (acts in place)');
   assert.ok(p.view.querySelector('.in-ok'), 'and 1b shows');
 });
-test('the menu row: «Tenés 2 cambios sin publicar en el menú» + «Revisar» → Productos; counted in «N pendientes»', async () => {
-  const p = await page([branch('r_a', 'Centro', { pending_count: 2 })]);
+test('frame 1 — the menu row: «Tenés cambios sin publicar en el menú» + «Revisar» → Productos; «1 pendiente» counts the ROW, never changes (advisor Q1)', async () => {
+  const p = await page([branch('r_a', 'Centro', { has_pending: await realPending('true') })]);
   const row = p.view.querySelector('.in-row');
-  assert.ok(row, '🔴 the row'); assert.equal(textOf(row.querySelector('.in-rt')), 'Tenés 2 cambios sin publicar en el menú');
+  assert.ok(row, '🔴 the row'); assert.equal(textOf(row.querySelector('.in-rt')), 'Tenés cambios sin publicar en el menú');
+  assert.ok(!has(row, 'in-quiet'), 'a real row, not the invitation');
   assert.equal(textOf(cls(p.view, 'in-cnt')[0]), '1 pendiente');
   btnText(p.view, 'Revisar').click(); await settle(5);
   assert.ok(!has(p.byId.get('viewmenu'), 'hidden') && has(p.view, 'hidden'), '🔴 «Revisar» opens Productos');
@@ -277,7 +358,8 @@ test('«Editar producto» opens Productos; Rendimiento hides Inicio; coming back
   assert.equal(p.stats().filter((c) => c.query.restaurantId === 'r_a' && c.query.compare === 'previous_week').length, 1, '🔴 cached: no second read inside the session');
 });
 test('several branches (Codex backfill item 4): ONE authorized branch is the default (per-branch first, DECISIONS 11-13) — one read for it; «Todas» stays offered: ONE merged read (S2 restaurantIds), the REAL merged figures; the list spans every branch', async () => {
-  const p = await page([branch('r_a', 'Centro'), branch('r_b', 'Los Próceres', { control: PAUSED(null) })]);
+  const f = await realPending('false');   // the menu settled: the list is the pause rows
+  const p = await page([branch('r_a', 'Centro', { has_pending: f }), branch('r_b', 'Los Próceres', { control: PAUSED(null), has_pending: f })]);
   const opts = all(cls(p.view, 'in-menu')[0]).filter((n) => n.tag === 'button').map(textOf);
   assert.deepEqual(opts, ['Todas las sucursales', 'Centro', 'Los Próceres'], 'the frame\'s options');
   assert.equal(textOf(p.view.querySelector('.in-pill')), 'Centro', '🔴 item 4: one authorized branch by default, never the merged «Todas»');
@@ -296,14 +378,15 @@ test('several branches (Codex backfill item 4): ONE authorized branch is the def
   assert.deepEqual(cls(p.view, 'in-row').map((r) => textOf(r.querySelector('.in-rt'))), ['Sucursal Los Próceres está en pausa'], 'the list covers every branch under «Todas»');
 });
 test('picking one branch reads THAT branch alone; its list is its own', async () => {
-  const p = await page([branch('r_a', 'Centro'), branch('r_b', 'Los Próceres', { control: PAUSED(null) })]);
+  const f = await realPending('false');
+  const p = await page([branch('r_a', 'Centro', { has_pending: f }), branch('r_b', 'Los Próceres', { control: PAUSED(null), has_pending: f })]);
   all(cls(p.view, 'in-menu')[0]).filter((n) => n.tag === 'button')[1].click(); await settle(20);
   assert.equal(textOf(p.view.querySelector('.in-pill')), 'Centro');
   assert.ok(p.stats().some((c) => c.query.restaurantId === 'r_a' && c.query.restaurantIds === undefined), '🔴 the single form for one branch');
   assert.equal(cls(p.view, 'in-row').length, 0, 'Centro is not paused');
 });
 test('«Todas» where the member cannot read every branch: no merged figures (absent), the list still shows', async () => {
-  const p = await page([branch('r_a', 'Centro'), branch('r_b', 'Los Próceres', { caps: ['location.pause'], control: PAUSED(null) })]);
+  const p = await page([branch('r_a', 'Centro', { has_pending: await realPending('false') }), branch('r_b', 'Los Próceres', { caps: ['location.pause'], control: PAUSED(null) })]);
   assert.equal(textOf(p.view.querySelector('.in-pill')), 'Centro', 'premise: the readable branch is the default');
   btnText(cls(p.view, 'in-menu')[0], 'Todas las sucursales').click(); await settle(30);
   assert.equal(cls(p.view, 'in-figs').length, 0, '🔴 no figure without a source for every branch');
@@ -321,58 +404,42 @@ test('SHIP GATE: no placeholder ships — every Inicio string is owner-approved 
   assert.deepEqual(pending, [], `🔴 placeholders still pending owner approval: ${pending.join(', ')}`);
 });
 
-// S3 EQUIVALENCE (advisor 11-13; 5f S3 LANDED at 8e94f0aa8): the server's pending_count for a SAVED draft === the review screen's
-// line count (review.js reviewModel(...).total — the «Revisar y publicar» sentences, folded as the screen folds them). Each facet is a
-// REAL save through 5f's real editCatalogCore (test/_s2core-harness, the production precondition decoder), the count read back with
-// the real PS.readPendingCount; the screen's count comes from the portal's own review model over the SAME diff. A facet that differs is
-// reported for a ruling (never silently aligned). The review context mirrors app.js productReviewCtx's option map (variantOf → parent).
-export const S3_REF = '8e94f0aa8';
-test('S3 equivalence (REAL save + REAL recorder at 5f 8e94f0aa8): pending_count === the review screen\'s line count, facet by facet', async () => {
-  const fq = refTree(S3_REF);
-  const H = fq('./test/_s2core-harness'); const PS = fq('./catalog/pending-summary');
-  H.SW.extrasAuthoring = true;
-  const { runInThisContext } = await import('node:vm');
-  const { readFileSync } = await import('node:fs');
-  for (const f of ['extras-eligibility.js', 'exposure-transitions.js']) runInThisContext(readFileSync(new URL(`./${f}`, import.meta.url), 'utf8'));
-  const { reviewModel } = await import('./review.js');
-  const E = await import('./editor.js'); const IE = await import('./item-edit-logic.js');
-  const ctxOf = (src) => { const items = src.items.filter((r) => r && r.display && typeof r.key === 'string'); const k = new Map(items.map((r) => [String(r.display.id), r.key])); const par = new Map(); const ix = new Map();
-    for (const r of items) { if (r.display.variantOf == null) continue; const pk = k.get(String(r.display.variantOf)); if (pk) { par.set(r.key, pk); ix.set(r.key, ix.size); } }
-    return { optionParent: (x) => par.get(x) || null, optionIndex: (x) => ix.get(x) || 0, extraName: (x) => x, structure: { nameOf: (x) => x, categoryName: (x) => String(x) } }; };
-  const quiet = async (fn) => { const l = console.log, w = console.warn; console.log = () => {}; console.warn = () => {}; try { return await fn(); } finally { console.log = l; console.warn = w; } };
-  const isLauncher = (d, i) => !!(d.structure.variant_items || {})[String(i.display.id)];
-  const plain = (d) => d.items.filter((i) => i.display && i.display.variantOf == null && !isLauncher(d, i));
-  const reprice = (it, n) => { it.price += n; it.display.price = it.price; };
-  const viaDrawer = (n) => (source) => { const d = E.createDraft(JSON.parse(JSON.stringify(source))); const xs = E.draftSource(d).extras.filter((e) => e.display && e.display.cat === 'Salsas').map((e) => e.key);
-    const st = IE.open(d, 'dimsum_01', [], { extrasAuthoring: true, extrasCatalog: true }); for (const x of xs.slice(0, n)) IE.set(st, 'extraOn', { key: x, on: false });
-    assert.deepEqual(IE.save(d, st), { ok: true }, 'premise: the drawer writer saved'); return E.draftSource(d); };
-  const FACETS = {
-    'three prices': (d) => plain(d).slice(0, 3).forEach((it) => reprice(it, 7)),
-    'a description': (d) => { plain(d)[0].display.desc = 'Otra descripción'; },
-    'a name': (d) => { plain(d)[1].display.name += ' Nueva'; },
-    'price + description on one dish': (d) => { const it = plain(d)[0]; reprice(it, 7); it.display.desc = 'Otra'; },
-    'an option\'s price': (d) => reprice(d.items.find((i) => i.display && i.display.variantOf != null), 9),
-    'an extra\'s price': (d) => { const x = d.extras.find((e) => e && e.display); x.price = (x.price || 0) + 5; if (x.display) x.display.price = x.price; },
-    'a section move': (d) => { const it = plain(d)[0]; it.display.cat = d.structure.categories.find((c) => String(c.id) !== String(it.display.cat)).id; delete it.display.subcat; },
-    'a subsection move': (d) => { const it = plain(d).find((i) => i.display.subcat); const c = d.structure.categories.find((x) => String(x.id) === String(it.display.cat)); it.display.subcat = c.subcats.find((x) => x !== it.display.subcat); },
-    'a launcher + its options renamed': (d) => { const l = d.items.find((i) => i.display && isLauncher(d, i)); l.display.name += ' X';
-      for (const id of d.structure.variant_items[String(l.display.id)].variantIds) { const o = d.items.find((i) => String(i.display.id) === String(id) || i.ref === id); if (o) o.display.name += ' X'; } },
-    'a launcher\'s description': (d) => { d.items.find((i) => i.display && isLauncher(d, i)).display.desc = 'Nueva desc'; },
-  };
-  const got = {};
-  for (const [name, f] of [...Object.entries(FACETS), ['one dish extra off (the drawer)', viaDrawer(1)], ['two dish extras off (the drawer)', viaDrawer(2)]]) {
-    const w = H.world('la_musa');
-    const src = (await w.draft()).source;
-    const r = await quiet(() => (name.endsWith('(the drawer)') ? w.save(f(src)) : w.save(f)));
-    assert.equal(r.status, 200, `premise: the real save of «${name}» ${JSON.stringify(r.body).slice(0, 160)}`);
-    got[name] = [await PS.readPendingCount(w.fs, 'la_musa'), reviewModel(r.body.diff, ctxOf((await w.draft()).source)).total];
-  }
-  for (const [name, [pc, total]] of Object.entries(got)) assert.ok(Number.isInteger(pc) && pc > 0, `premise: a fresh count for «${name}» (got ${pc})`);
-  assert.deepEqual(Object.fromEntries(Object.entries(got).map(([k, [pc]]) => [k, pc])), Object.fromEntries(Object.entries(got).map(([k, [, t]]) => [k, t])),
-    '🔴 pending_count === the review screen\'s line count, every facet');
+// S3 EQUIVALENCE — RETIRED with pending_count (owner 11-23: no number). has_pending === «the review screen draws lines» is now proven in
+// THIS tree by 5f's PS-REVIEW-PARITY (xpizza-functions/catalog/pending-review-parity.test.mjs: jsdom over the portal's real renderReview,
+// real saves) and PS-SAVE / PS-NET-ZERO / PS-STRUCTURE-ONLY (catalog/pending-summary.test.js); this file takes its values from those
+// same real writers (realPending above).
+
+// ── the rendered «Para revisar» on has_pending (mockup JfNRMF8L frames 3 / 6; advisor Q1–Q3 11-25) ──
+const paraRevisar = (view) => all(view).find((n) => (n.children || []).some((c) => c && typeof c === 'object' && has(c, 'in-sect') && all(c).some((h) => h.tag === 'h2' && textOf(h) === 'Para revisar')));
+test('frame 3 — null renders the quiet invitation (.in-quiet): «Revisar» opens the menu; no «N pendientes», no «Todo en orden»', async () => {
+  const p = await page([branch('r_a', 'Centro', { has_pending: await realPending('null') })]);
+  const row = p.view.querySelector('.in-row');
+  assert.ok(row && has(row, 'in-quiet'), '🔴 the invitation row, muted');
+  assert.equal(textOf(row.querySelector('.in-rt')), 'Revisá si hay algo sin publicar');
+  assert.deepEqual([cls(p.view, 'in-cnt').length, p.view.querySelector('.in-ok')], [0, null], '🔴 an invitation is not a pending item, and never a claim');
+  btnText(p.view, 'Revisar').click(); await settle(5);
+  assert.ok(!has(p.byId.get('viewmenu'), 'hidden'), '«Revisar» opens Productos, where the real state is read live');
 });
-test('S3 equivalence — facets NOT yet exercised (the seeds / harness cannot produce them here): each needs its real save before it counts as proven', { todo: 'additions, removals, S2 attachments, the extras-order structure line, photos, S3 choices, S4 sections; and a section move that ALSO changes the subsection (no seed has two subsectioned sections)' }, () => {
-  assert.fail('not exercised');
+test('frame 6 — «Todas» over a two-branch brand, has_pending true: ONE row naming the brand (getMyBranches brands[].name); «1 pendiente»', async () => {
+  const t = await realPending('true');
+  const p = await page([branch('r_a', 'Centro', { has_pending: t }), branch('r_b', 'Col. Trejo', { has_pending: t })]);
+  btnText(cls(p.view, 'in-menu')[0], 'Todas las sucursales').click(); await settle(30);
+  const rows = cls(p.view, 'in-row');
+  assert.equal(rows.length, 1, '🔴 one brand menu ⇒ one row, never one per branch');
+  assert.equal(rows[0].querySelector('.in-rt').textContent, `Tenés cambios sin publicar en el menú de\u00a0Pizzería\u00a0Del\u00a0Valle`, '🔴 «de» + the brand name: one non-breaking unit');
+  assert.equal(textOf(cls(p.view, 'in-cnt')[0]), '1 pendiente', 'Q1: the count counts rows');
+});
+test('16c — «Para revisar» is NEVER a bare heading: has_pending true / false / null / absent × paused or not × one branch or «Todas»', async () => {
+  const v = { true: await realPending('true'), false: await realPending('false'), null: await realPending('null') };
+  for (const k of ['true', 'false', 'null', 'absent']) for (const paused of [false, true]) for (const scopeAll of [false, true]) {
+    const ex = (over) => ({ ...(k === 'absent' ? {} : { has_pending: v[k] }), ...(paused ? { control: PAUSED(null) } : {}), ...over });
+    const p = await page([branch('r_a', 'Centro', ex()), branch('r_b', 'Col. Trejo', ex())]);
+    if (scopeAll) { btnText(cls(p.view, 'in-menu')[0], 'Todas las sucursales').click(); await settle(30); }
+    const col = paraRevisar(p.view);
+    assert.ok(col, 'premise: the column');
+    const body = col.children.filter((n) => n && typeof n === 'object' && !has(n, 'in-sect'));
+    assert.ok(body.some((n) => has(n, 'in-row') || has(n, 'in-ok')), `🔴 ${k} · paused ${paused} · ${scopeAll ? 'Todas' : 'one'}: something under «Para revisar»`);
+  }
 });
 
 // ═══ Codex backfill FULL HIGH (advisor 11-15) on 1da090e00..f905f5171 — REVISE: the cells (RED at 84e949b18), the real stats chain ═══
@@ -427,40 +494,28 @@ test('N5 a day the roll-up never computed is UNAVAILABLE («—»), never «L 0�
   const zero = await serve({ restaurantId: 'r_b', ...IL.statsQuery('2026-11-10') }, 'Bearer TK-test');
   assert.deepEqual([zero.body.missing_days, IL.figures(zero.body, '2026-11-10').sales.value, IL.figures(zero.body, '2026-11-10').orders.value], [[], 'L 0', '0'], 'a computed empty day is the fact');
 });
-test('N6 «Todo en orden» only over KNOWN results: pending_count absent or a control «unknown» ⇒ no claim; «Todas» all known ⇒ the sentence', async () => {
+test('N6 «Todo en orden» only over KNOWN results: has_pending absent on an editor branch or a control «unknown» ⇒ no claim; «Todas» all known ⇒ the sentence', async () => {
+  const f = await realPending('false');
   const a = await page([branch('r_a', 'Centro')]);
-  assert.equal(a.view.querySelector('.in-ok'), null, 'N6: pending_count unknown ⇒ no claim');
-  const b = await page([branch('r_a', 'Centro', { pending_count: 0, control: { state: 'unknown' } })]);
+  assert.equal(a.view.querySelector('.in-ok'), null, 'N6: has_pending unknown ⇒ no claim');
+  const b = await page([branch('r_a', 'Centro', { has_pending: f, control: { state: 'unknown' } })]);
   assert.equal(b.view.querySelector('.in-ok'), null, 'N6: control unknown ⇒ no claim');
-  const c = await page([branch('r_a', 'Centro', { pending_count: 0 }), branch('r_b', 'Los Próceres', { pending_count: 0 })]);
+  const c = await page([branch('r_a', 'Centro', { has_pending: f }), branch('r_b', 'Los Próceres', { has_pending: f })]);
   btnText(cls(c.view, 'in-menu')[0], 'Todas las sucursales').click(); await settle(30);
   const ok = c.view.querySelector('.in-ok');
   assert.ok(ok && textOf(ok).includes('No hay nada pendiente en tus sucursales.'), 'N6: «Todas», every result known ⇒ the sentence');
 });
-// a REAL pending count: one real save at 5f S3 (8e94f0aa8), the count by the real recorder
-async function realPending() {
-  const fq = refTree(S3_REF); const H = fq('./test/_s2core-harness'); const PS = fq('./catalog/pending-summary');
-  const l = console.log, w = console.warn; console.log = () => {}; console.warn = () => {};
-  try {
-    const wd = H.world('la_musa');
-    const r = await wd.save((d) => { const it = d.items.find((i) => i.display && i.display.variantOf == null); it.price += 7; it.display.price = it.price; });
-    assert.equal(r.status, 200, 'premise: the real save');
-    const n = await PS.readPendingCount(wd.fs, 'la_musa');
-    assert.ok(Number.isInteger(n) && n > 0, 'premise: a real count');
-    return n;
-  } finally { console.log = l; console.warn = w; }
-}
 test('N7 «Revisar» opens THAT branch\'s menu: its own editor ⇒ Productos; another branch ⇒ the guarded select + a one-shot landing; refused ⇒ nothing', async () => {
-  const n = await realPending();
-  const own = await page([branch('r_a', 'Centro', { pending_count: n }), branch('r_b', 'Los Próceres')]);
+  const n = await realPending('true');
+  const own = await page([branch('r_a', 'Centro', { has_pending: n }), branch('r_b', 'Los Próceres')]);
   btnText(own.view, 'Revisar').click(); await settle(10);
   assert.ok(!has(own.byId.get('viewmenu'), 'hidden'), 'N7: the row\'s own branch (the editor\'s) ⇒ Productos');
-  const other = await page([branch('r_a', 'Centro'), branch('r_b', 'Los Próceres', { pending_count: n })]);
+  const other = await page([branch('r_a', 'Centro'), branch('r_b', 'Los Próceres', { has_pending: n })]);
   btnText(cls(other.view, 'in-menu')[0], 'Los Próceres').click(); await settle(20);
   btnText(other.view, 'Revisar').click(); await settle(10);
   const read = (m, k) => (m.has(k) ? JSON.parse(m.get(k)) : null);
   assert.deepEqual([(read(other.sess, 'sherpa.portal.sel.uA') || {}).scope, read(other.sess, 'sherpa.portal.land.uA'), other.reloads()], ['r_b', 'menu', 1], 'N7: Los Próceres selected through the guarded reload, landing on Productos');
-  const blocked = await page([branch('r_a', 'Centro'), branch('r_b', 'Los Próceres', { pending_count: n })]);
+  const blocked = await page([branch('r_a', 'Centro'), branch('r_b', 'Los Próceres', { has_pending: n })]);
   btnText(cls(blocked.view, 'in-menu')[0], 'Los Próceres').click(); await settle(20);
   blocked.mods.shell._shellState.dirty.add('test-unsaved');   // canLeave refuses (unsaved edits)
   btnText(blocked.view, 'Revisar').click(); await settle(10);
@@ -477,9 +532,9 @@ test('N7b the landing marker is consumed EXACTLY ONCE: the next page opens on Pr
 
 test('N6r2 «Todo en orden» only for a control state in the SERVER\'s enum (control-state.js, Codex r2): «bogus» or «» ⇒ no claim', async () => {
   for (const state of ['bogus', '']) {
-    const p = await page([branch('r_a', 'Centro', { pending_count: 0, control: { state, paused_until: null, pause_reason: null, pause_since: null } })]);
+    const p = await page([branch('r_a', 'Centro', { has_pending: await realPending('false'), control: { state, paused_until: null, pause_reason: null, pause_since: null } })]);
     assert.equal(p.view.querySelector('.in-ok'), null, `N6r2: control.state «${state}» ⇒ no claim`);
   }
-  const ok = await page([branch('r_a', 'Centro', { pending_count: 0 })]);
+  const ok = await page([branch('r_a', 'Centro', { has_pending: await realPending('false') })]);
   assert.ok(ok.view.querySelector('.in-ok'), 'premise: a known «open» + a known count ⇒ the claim');
 });

@@ -82,20 +82,12 @@ const el = (tag, cls, text) => {
 
 import { dragOn, dots } from './extras-view.js';   // STRUCTURE S4 (frame E): the ONE grip drag (S2's X4)
 
-// ── STRUCTURE S4 — the addendum's PROPOSED lines (MOCKUP-portal-structure-S4-addendum H3): null ⇒ «⟦s4.key⟧» on screen until the owner
-// approves them (structure-s4-ui's SHIP GATE stays red until then). Frame E's own strings are the approved base mockup's, literal.
-export const S4_COPY = Object.freeze({
-  emptyTitle: "Todavía no tiene productos", emptyBody: "Se muestra a tus clientes cuando tenga al menos uno. Agregá uno nuevo o traé uno desde otra categoría con «Mover a…».", subcatNeedsDish: "Agregá un producto primero", dropCat: "Quitar categoría", dropTitle: "¿Quitar la categoría {nombre}?", dropSub: "Categoría nueva · sin productos", dropBody: "No tiene productos y nunca se mostró a tus clientes. Podés deshacerlo hasta publicar.", nameTaken: "Ya hay una categoría con ese nombre. Elegí otro.",
-  sheetSubFirst: "{categoria} · {nprod} · primera subcategoría", sheetSub: "{categoria} · {subs}", subName: "Nombre de la subcategoría", subPh: "Ej. Rellenas, Al horno", products: "Productos", firstLine: "La primera subcategoría agrupa todos los productos de {categoria}. Después creá otra y pasá a ella los que quieras.", moveLine: "Los marcados salen de su subcategoría actual y pasan a {nueva}.", needOne: "Marcá al menos un producto para crear la subcategoría.", createSub: "Crear subcategoría",
-  subNameTaken: "Ya hay una subcategoría con ese nombre en {categoria}. Elegí otro.", subCaps: "Llegaste al máximo de 12 subcategorías en {categoria}.", menuNote: "{categoria} queda vacía y oculta hasta que tenga productos.", toastBack: "{producto} volvió a {seccion} · {categoria} queda vacía", unpromoteLine: "{categoria} queda vacía: se muestra cuando tenga productos.", barSub: " · 1 subcategoría", barSubs: " · {n} subcategorías", barOrder: " · orden",
-  mismatchBody: "Otra edición movió las categorías mientras trabajabas, así que no guardamos nada. Recargá para traer la última versión y volvé a aplicar tu cambio.", partialTitle: "{categoria} cambió mientras editabas", partialBody: "La primera subcategoría de {categoria} tiene que incluir todos sus productos, y {categoria} tiene productos nuevos que no estaban en tu lista. Recargá para traer la última versión y volvé a crear la subcategoría.", partialLine: "La primera subcategoría de {categoria} tiene que incluir todos sus productos. Recargá para ver los nuevos y volvé a crear la subcategoría.", goSection: "Ir a la sección", notAttachTitle: "{categoria} todavía no puede llevar extras", notAttachBody: "{categoria} es nueva y aún no se muestra a tus clientes. Publicala con productos primero y después asignale el grupo de extras.", notAttachLine: "{categoria} es nueva y aún no se muestra a tus clientes. Publicala con productos primero y después asignale el grupo de extras.",
-  capsCats: "Llegaste al máximo de 30 categorías. Usá una existente o quitá una vacía.", unnamedLine: "Antes de crear una categoría, poné nombre a las que no tienen.", nameAll: "Ponerles nombre",
-  rowSubcat: "Subcategoría", subAddedRow: "{sub} · {nprod}", rowCatSubcat: "{categoria} · Subcategoría", rowCatNew: "Categoría · nueva", promoteRow: "se muestra con {nprod} · pasa después de {anterior}", promoteRowFirst: "se muestra con {nprod}", rowCatEmpty: "Categoría · vacía", neverShown: "nunca se mostró a tus clientes", afterRow: "pasa después de {categoria}",
-  notAttachOption: "{categoria} · nueva · publicala con productos primero",
-});
-// «N productos» with agreement (advisor 11-19, the barSuffix ruling): the approved «N productos» strings take {nprod} = nProd(n)
-export const nProd = (n) => `${n} ${n === 1 ? 'producto' : 'productos'}`;
-export const s4Copy = (k, vars = null) => (typeof S4_COPY[k] === 'string' ? S4_COPY[k].replace(/\{(\w+)\}/g, (m, v) => (vars && Object.prototype.hasOwnProperty.call(vars, v) ? String(vars[v]) : m)) : `⟦s4.${k}⟧`);
+// ── STRUCTURE S4 — the addendum's lines: S4_COPY / nProd / s4Copy — ONE source: review-lines.js (the review's section rows and the
+// server's «cambios sin publicar» count read the same lines; PLAN-portal-review-lines-r0). Re-exported here under their names.
+import './review-lines.js';
+export const S4_COPY = globalThis.ReviewLines.S4_COPY;
+export const nProd = globalThis.ReviewLines.nProd;
+export const s4Copy = globalThis.ReviewLines.s4Copy;
 
 // `s4` (STRUCTURE S4, the server's `sections` switch; absent ⇒ today's rail exactly): { staged: [{id, name}] (the new sections, after
 // the declared ones), isNew(id) (a section new in this draft: the F tag «Nueva»), box: null | { value, line } (the inline «Nueva categoría»

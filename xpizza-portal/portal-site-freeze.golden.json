@@ -132,12 +132,15 @@
   "render.js",
   "render.test.mjs",
   "rendimiento.test.mjs",
+  "review-lines.js",
+  "review-lines.test.mjs",
   "review-products.test.mjs",
   "review.js",
   "review.test.mjs",
   "reviews-v2-frozen-response.fixture.json",
   "rgb-fold.mjs",
   "rgui-fold.mjs",
+  "rl-fold.mjs",
   "rp-fold.mjs",
   "s1-fold.mjs",
   "s2-fold.mjs",
@@ -240,8 +243,8 @@
    "bytes": 841
   },
   "styles.css": {
-   "sha256": "874933dec97862ddeeea6c00443374ca71f146f12d0ef91bc1e81ad7f6186e38",
-   "bytes": 250234
+   "sha256": "588d941370c888cc4497aaf8199104513e56588c9fbb7d51fd9a646a9a9fe4fe",
+   "bytes": 250373
   }
  },
  "diff_aid": {
@@ -2866,6 +2869,12 @@
    [
     "",
     ".inicio .in-row .in-rt .in-when",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".inicio .in-row.in-quiet .in-rt",
     "color",
     "var(--mute)"
    ],

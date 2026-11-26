@@ -18,7 +18,7 @@ const assert = require('assert');
 const http = require('http');
 const crypto = require('crypto');
 
-require('./_emulator-required')('database', 'auth');   // BEFORE any Admin import — refuses a production target
+require('./_emulator-required')('firestore', 'database', 'auth');   // BEFORE any Admin import — refuses a production target
 if (!process.env.FIREBASE_AUTH_EMULATOR_HOST) { console.error('🔴 REFUSED — FIREBASE_AUTH_EMULATOR_HOST not set (run via npm run test:orch-o1b)'); process.exit(2); }
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 const ORIGIN = 'https://sherpa-portal.netlify.app';

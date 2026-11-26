@@ -2443,6 +2443,7 @@
   .inicio .in-row{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line2)}
   .inicio .in-row .in-rt{font-size:14px;line-height:1.45;text-wrap:pretty}
   .inicio .in-row .in-rt .in-when{color:var(--mute)}
+  .inicio .in-row.in-quiet .in-rt{color:var(--mute)}   /* has_pending unknown (mockup JfNRMF8L frame 3): the invitation row, muted text */
   .inicio .in-ico{width:30px;height:30px;border-radius:50%;background:var(--board-2);color:var(--mute);display:inline-flex;align-items:center;justify-content:center;flex:none}
   .inicio .in-ico svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round;display:block}
   .inicio .in-act{background:none;border:none;font:inherit;font-size:13.5px;font-weight:650;color:var(--accent);cursor:pointer;padding:6px 0;white-space:nowrap;text-decoration:underline;text-underline-offset:3px;text-decoration-color:transparent;transition:text-decoration-color .15s}

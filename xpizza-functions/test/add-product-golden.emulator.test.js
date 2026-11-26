@@ -326,6 +326,13 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
     const ppExpected = /getEditableCatalog/.test(c.name) && c.status === 200 ? 1 : 0;
     assert.strictEqual(left.filter(isPlatformPendingRead).length, ppExpected, `${c.name}: platform-pending stamp reads`);
     for (let k = left.length - 1; k >= 0; k -= 1) if (isPlatformPendingRead(left[k])) left.splice(k, 1);
+    // S3 r1 (DECLARED, exact — PLAN-5f-inicio-s3-pending-rebase-r0, pending-summary.js record): every successful save or publish writes
+    // has_pending beside the draft — exactly ONE set (a price-only diff is always a known answer, never the delete); no other pending_summary call
+    const isPendingSummarySet = (x) => /^set restaurants\/[^/]+\/meta\/pending_summary$/.test(x);
+    const psWant = (/(save|publish)/.test(c.name) && c.status === 200) ? 1 : 0;
+    assert.strictEqual(left.filter(isPendingSummarySet).length, psWant, `${c.name}: pending-summary records ${JSON.stringify(left.filter((x) => /meta\/pending_summary$/.test(x)))}`);
+    assert.ok(left.every((x) => !/meta\/pending_summary$/.test(x) || isPendingSummarySet(x)), `${c.name}: no other pending-summary call`);
+    for (let k = left.length - 1; k >= 0; k -= 1) if (isPendingSummarySet(left[k])) left.splice(k, 1);
     const allowExtra = (/publish/.test(c.name) && c.status === 200) ? left.every((x) => isKdsSyncRead(x) || isOverlapBaselineRead(x) || isEligibilityCreate(x))
       : /getEditableCatalog/.test(c.name) ? left.every((x) => isKdsSyncRead(x) || isReservedKeysRead(x)) && left.filter(isReservedKeysRead).length === (c.status === 200 ? 1 : 0)
       : /stale save/.test(c.name) ? left.every(isKdsSyncRead)

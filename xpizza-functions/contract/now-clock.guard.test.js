@@ -41,6 +41,12 @@ const REVIEWED = Object.freeze({
   // train asm3 (2e): portal-ui F-1 (376eeb8f) meets this guard (main, 4edddc60) — resolvePlatformPending's transaction names the stamp
   // doc's SNAPSHOT `now` (the current one); it is read for .exists / .updateTime only and never called
   'xpizza-functions/catalog/platform-pending.js::await tx.get(ref)': 'a Firestore snapshot named now (read for .exists / .updateTime; not callable)',
+  // portal-ui rl296b (advisor 11-24, option E; the 4458f99b5 precedent): catalog/review-lines.js, the byte copy of the portal's review
+  // line model, names the catalog diff's NEW side `now` beside `was` (its old side) — a row's was/now pair and two key sets; never a
+  // clock or timestamp, and nothing in the file reads time. Exact source texts only: any other `now` form in the file is still judged.
+  'xpizza-functions/catalog/review-lines.js::c.new': "the review row model's was/now pair: the catalog diff's new value (not a clock)",
+  'xpizza-functions/catalog/review-lines.js::Array.isArray(c.new) ? c.new.map(String) : []': "the catalog diff's new key set (not a clock)",
+  "xpizza-functions/catalog/review-lines.js::(c.recommended.new || []).map(choiceOf).join(', ')": "the recommended choice's new text (not a clock)",
 });
 // the guarded names: `now` (write-provenance COMMON) and `clock` (so a call `X.clock()` is a timestamp by the same induction)
 const NAMES = new Set(['now', 'clock']);
@@ -236,4 +242,20 @@ for (const code of ['function h(clock) { return clock(); } function g() { const 
   assert.strictEqual(neg(code), 0, `NEGATIVE control: an allowed form passes — ${code}`);
 }
 ok(`negatives: ${NEGATIVES.length} unsafe forms fail closed; 9 allowed forms pass`);
+
+// the review-lines exception is exact-text, not file-wide: planted into the REAL unit, a `now` that writes and a `now` bound to
+// anything but the three reviewed texts still fail; the file as shipped passes
+{
+  const RL = 'xpizza-functions/catalog/review-lines.js';
+  const unit = C.sources().find((u) => u.kind === 'fn' && u.file === RL);
+  assert.ok(unit, `${RL} is in the census scope`);
+  const withCode = (extra) => scan([{ ...unit, code: `${unit.code}\n${extra}\n` }]).offenders.filter((o) => o.startsWith(`${RL}:`));
+  assert.deepStrictEqual(withCode(''), [], `${RL} as shipped passes`);
+  for (const [extra, why] of [
+    ["const plantedA = { now: () => db.ref('orders/x').set(1) };", 'a now that writes'],
+    ['const plantedB = { was: 1, now: c.old };', 'a was/now pair whose now is NOT the diff\'s new value'],
+    ['let now; now = makeClock();', 'a now reassigned to an unresolved call'],
+  ]) assert.ok(withCode(extra).length >= 1, `PLANTED in ${RL}: ${why} must still fail — ${extra}`);
+  ok(`${RL}: the three reviewed texts pass; a planted writer, a now = c.old and an unresolved now still fail`);
+}
 console.log(`\nnow-clock.guard: OK (${n})`);

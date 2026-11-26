@@ -116,9 +116,9 @@ async function scenarios(rid) {
   // the save: a price edit's written source doc; a new dish named like a minted key is refused as today
   const T0 = '2026-10-24T10:00:00.000000Z'; const T1 = '2026-10-24T11:00:00.000000Z';
   const saveDb = () => { const state = { source: { data: clone(seed), updateTime: T0 } };
-    const doc = (pth) => ({ get: async () => { if (pth === `restaurants/${rid}/meta/source`) { const f = clone(state.source.data); return { exists: true, data: () => f, updateTime: state.source.updateTime }; }
+    const doc = (pth) => ({ get: async () => { if (state.docs && state.docs[pth]) { const d = clone(state.docs[pth]); return { exists: true, data: () => d }; } if (pth === `restaurants/${rid}/meta/source`) { const f = clone(state.source.data); return { exists: true, data: () => f, updateTime: state.source.updateTime }; }
       if (pth === `restaurants/${rid}/meta/active_version`) return { exists: true, data: () => ({ version: 'v-off', generation: 0 }) }; return { exists: false, data: () => ({}) }; },
-    set: async (data) => { state.source = { data, updateTime: T1 }; return { writeTime: T1 }; },
+    set: async (data) => { if (pth !== `restaurants/${rid}/meta/source`) { (state.docs = state.docs || {})[pth] = clone(data); return { writeTime: T1 }; } state.source = { data, updateTime: T1 }; return { writeTime: T1 }; },   // path-aware: only meta/source is the draft (S3's meta/pending_summary is its own doc)
     update: async (data, pre) => { if (!pre || pre.lastUpdateTime !== state.source.updateTime) { const e = new Error('FAILED_PRECONDITION'); e.code = 9; throw e; } state.source = { data, updateTime: T1 }; return { writeTime: T1 }; } });
     return { state, collection: (c) => ({ doc: (dd) => ({ collection: (c2) => ({ doc: (d2) => doc(`${c}/${dd}/${c2}/${d2}`) }), get: async () => ({ exists: true, data: () => ({}) }) }) }) }; };
   const liveRead = async () => { const { inputs, built } = buildSourceCandidate(rid, seed); return { built: { ...built, extras: inputs.extras }, versionId: 'v-off', extraRecords: built.extras }; };

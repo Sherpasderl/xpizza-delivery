@@ -121,14 +121,17 @@ function figuresBlock(rid) {
 
 function reviewCol(rid) {
   const col = el('div');
-  const rows = IL.reviewRows(branches(), rid === ALL ? null : rid);
+  const rows = IL.reviewRows(branches(), rid === ALL ? null : rid, S.ctx && S.ctx.sel && S.ctx.sel.brand ? S.ctx.sel.brand.name : '');
+  // «N pendientes» counts the ROWS to review (advisor 11-25 Q1: the owner's «no number» is about changes inside the menu, never shown);
+  // the quiet invitation is not a pending item (frame 3), so it is not counted
+  const items = rows.filter((r) => !r.quiet).length;
   const sect = el('div', 'in-sect');
   sect.append(el('h2', null, 'Para revisar'));
-  if (rows.length) sect.append(el('span', 'in-cnt', IL.pendLabel(rows.length)));
+  if (items) sect.append(el('span', 'in-cnt', IL.pendLabel(items)));
   col.append(sect);
   if (S.err) { S.err.classList.add('in-err'); col.append(S.err); }
   if (!rows.length) {
-    // Codex backfill item 6: the claim only over KNOWN results (every in-scope branch's control readable and its pending_count a number)
+    // Codex backfill item 6: the claim only over KNOWN results (every in-scope branch's control readable and its menu state known)
     // and only as wide as the scope: «Todas» ⇒ «… en tus sucursales.»; ONE branch ⇒ «No hay nada pendiente en {Sucursal}.» (owner-APPROVED
     // 11-15). Unknown ⇒ no claim at all.
     if (!IL.allKnown(branches(), rid === ALL ? null : rid)) return col;
@@ -143,7 +146,7 @@ function reviewCol(rid) {
     return col;
   }
   for (const r of rows) {
-    const row = el('div', 'in-row');
+    const row = el('div', r.quiet ? 'in-row in-quiet' : 'in-row');
     const ic = el('span', 'in-ico'); ic.append(r.kind === 'menu' ? svg(MENU_D) : svg(...ICON.pause));
     const rt = el('div', 'in-rt', r.text);
     if (r.when) { rt.append(document.createTextNode(' ')); rt.append(el('span', 'in-when', r.when)); }

@@ -162,6 +162,7 @@
     "xpizza-functions/catalog/move-rules-parity.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/catalog/offers-serve.test.js",
+    "xpizza-functions/catalog/pending-summary.test.js",
     "xpizza-functions/catalog/pickup-backstop.test.js",
     "xpizza-functions/catalog/plan4-display-fields.test.js",
     "xpizza-functions/catalog/platform-pending.test.js",
@@ -560,6 +561,7 @@
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
     "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/review-lines.test.mjs",
     "xpizza-portal/structure-s3.test.mjs",
     "xpizza-portal/structure-s4-review.test.mjs",
     "xpizza-portal/ventas-tab.test.mjs",
@@ -650,6 +652,7 @@
     "xpizza-functions/catalog/move-rules-parity.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/catalog/offers-serve.test.js",
+    "xpizza-functions/catalog/pending-summary.test.js",
     "xpizza-functions/catalog/pickup-backstop.test.js",
     "xpizza-functions/catalog/platform-pending.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
@@ -990,6 +993,7 @@
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
     "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/review-lines.test.mjs",
     "xpizza-portal/structure-s3.test.mjs",
     "xpizza-portal/structure-s4-review.test.mjs",
     "xpizza-portal/ventas-tab.test.mjs"
@@ -1152,6 +1156,7 @@
     "xpizza-functions/catalog/move-rules-parity.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/catalog/offers-serve.test.js",
+    "xpizza-functions/catalog/pending-summary.test.js",
     "xpizza-functions/catalog/pickup-backstop.test.js",
     "xpizza-functions/catalog/plan4-display-fields.test.js",
     "xpizza-functions/catalog/platform-pending.test.js",
@@ -1540,6 +1545,7 @@
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
     "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/review-lines.test.mjs",
     "xpizza-portal/structure-s3.test.mjs",
     "xpizza-portal/structure-s4-review.test.mjs",
     "xpizza-portal/ventas-tab.test.mjs",
@@ -1634,6 +1640,7 @@
     "xpizza-functions/catalog/move-rules-parity.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/catalog/offers-serve.test.js",
+    "xpizza-functions/catalog/pending-summary.test.js",
     "xpizza-functions/catalog/pickup-backstop.test.js",
     "xpizza-functions/catalog/platform-pending.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
@@ -1979,6 +1986,7 @@
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
     "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/review-lines.test.mjs",
     "xpizza-portal/structure-s3.test.mjs",
     "xpizza-portal/structure-s4-review.test.mjs",
     "xpizza-portal/ventas-tab.test.mjs"
@@ -3049,6 +3057,8 @@
   "catalog/move-rules.js",
   "catalog/offers-serve.js",
   "catalog/paid-text.js",
+  "catalog/pending-answer.js",
+  "catalog/pending-summary.js",
   "catalog/pickup-backstop.js",
   "catalog/platform-pending.js",
   "catalog/platform-removal.js",
@@ -3066,6 +3076,7 @@
   "catalog/resolve-lines.js",
   "catalog/restaurant-registry.js",
   "catalog/review-diff.js",
+  "catalog/review-lines.js",
   "catalog/reward-icons.js",
   "catalog/reward-removed.js",
   "catalog/rollback-refs.js",
@@ -3792,6 +3803,7 @@
      "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
      "inverses": [
       "tools/grpid-module-inverse.js",
+      "tools/pending-module-inverse.js",
       "tools/rdr-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
       "tools/s2-module-inverse.js",
@@ -3803,6 +3815,7 @@
     }
    ],
    "lifts": [
+    "xpizza-functions/pending-wiring.guard.test.js",
     "xpizza-functions/rdr-wiring.guard.test.js",
     "xpizza-functions/s2-wiring.guard.test.js"
    ]
@@ -3868,7 +3881,14 @@
    "lifts": []
   },
   "catalog/firestore-fake.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/pending-wiring.guard.test.js",
+     "inverses": [
+      "tools/pending-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": []
   },
   "catalog/form-menu-source.js": {
@@ -3981,6 +4001,14 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/pending-answer.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/pending-summary.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/pickup-backstop.js": {
    "pins": [],
    "lifts": []
@@ -3995,9 +4023,7 @@
   },
   "catalog/platform-structure.js": {
    "pins": [],
-   "lifts": [
-    "xpizza-functions/s3choice-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "catalog/portal-reads.js": {
    "pins": [],
@@ -4078,6 +4104,7 @@
      "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
      "inverses": [
       "tools/grpid-module-inverse.js",
+      "tools/pending-module-inverse.js",
       "tools/rdr-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
       "tools/s2-module-inverse.js",
@@ -4091,6 +4118,7 @@
      "file": "xpizza-functions/grpid-wiring.guard.test.js",
      "inverses": [
       "tools/grpid-module-inverse.js",
+      "tools/pending-module-inverse.js",
       "tools/rdr-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/s3choice-module-inverse.js",
@@ -4101,9 +4129,19 @@
      "file": "xpizza-functions/s2core-wiring.guard.test.js",
      "inverses": [
       "tools/grpid-module-inverse.js",
+      "tools/pending-module-inverse.js",
       "tools/rdr-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js",
+      "tools/s3choice-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/s3choice-wiring.guard.test.js",
+     "inverses": [
+      "tools/pending-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s3choice-module-inverse.js",
       "tools/s4sect-module-inverse.js"
      ]
@@ -4111,10 +4149,9 @@
    ],
    "lifts": [
     "xpizza-functions/catalog/publish-paths.test.js",
+    "xpizza-functions/pending-wiring.guard.test.js",
     "xpizza-functions/rdr-wiring.guard.test.js",
-    "xpizza-functions/s2-wiring.guard.test.js",
-    "xpizza-functions/s3choice-wiring.guard.test.js",
-    "xpizza-functions/s4sect-wiring.guard.test.js"
+    "xpizza-functions/s2-wiring.guard.test.js"
    ]
   },
   "catalog/publish-request.js": {
@@ -4126,11 +4163,16 @@
       "tools/rdr-module-inverse.js",
       "tools/s4sect-module-inverse.js"
      ]
+    },
+    {
+     "file": "xpizza-functions/s4sect-wiring.guard.test.js",
+     "inverses": [
+      "tools/s4sect-module-inverse.js"
+     ]
     }
    ],
    "lifts": [
-    "xpizza-functions/rdr-wiring.guard.test.js",
-    "xpizza-functions/s4sect-wiring.guard.test.js"
+    "xpizza-functions/rdr-wiring.guard.test.js"
    ]
   },
   "catalog/renderer-contract.generated.js": {
@@ -4168,6 +4210,10 @@
    "lifts": []
   },
   "catalog/review-diff.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/review-lines.js": {
    "pins": [],
    "lifts": []
   },
@@ -4278,11 +4324,16 @@
       "tools/s2core-module-inverse.js",
       "tools/s4sect-module-inverse.js"
      ]
+    },
+    {
+     "file": "xpizza-functions/s4sect-wiring.guard.test.js",
+     "inverses": [
+      "tools/s4sect-module-inverse.js"
+     ]
     }
    ],
    "lifts": [
-    "xpizza-functions/frozenkeys-wiring.guard.test.js",
-    "xpizza-functions/s4sect-wiring.guard.test.js"
+    "xpizza-functions/frozenkeys-wiring.guard.test.js"
    ]
   },
   "catalog/staged-categories.js": {
@@ -4294,10 +4345,16 @@
    "lifts": []
   },
   "catalog/structure-gate.js": {
-   "pins": [],
-   "lifts": [
-    "xpizza-functions/s3choice-wiring.guard.test.js"
-   ]
+   "pins": [
+    {
+     "file": "xpizza-functions/s3choice-wiring.guard.test.js",
+     "inverses": [
+      "tools/s2bext-module-inverse.js",
+      "tools/s3choice-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
   },
   "catalog/text-version.js": {
    "pins": [],

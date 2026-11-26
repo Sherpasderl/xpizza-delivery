@@ -194,6 +194,19 @@ test('V1 chart · long ranges: week buckets keyed by the server, the clipped fir
   assert.equal(m.sparse, true, '> 14 buckets: a sampled label row');
   assert.ok(m.buckets.filter((x) => x.k === 'missing').length > 0, 'weeks the roll-up never computed are breaks, never zeros');
 });
+test('16b (advisor 11-25, SBS re-shoot): the stamps keep «4\u00a0sep» one unit; the detail footer never ends «m..»', async () => {
+  route({ serve: await world() });
+  const old = await getSalesStats({ rid: 'r_a', ...OLD, granularity: 'day', compare: 'none', token });
+  const t = Math.max(...old.days.map((d) => Date.parse(d.computed_at)).filter(Number.isFinite));   // the REAL roll-up's stamp
+  const later = t + 5 * 86400000;
+  assert.match(RL.updatedWords(old, later), /^\d{1,2}\u00a0[a-z]{3}, \d{1,2}:\d{2}\u00a0[ap]\.\u00a0m\.$/, '🔴 the footer stamp: «4\u00a0sep» never splits');
+  assert.match(RL.freshWords(old, { fetchedAt: t, nowMs: later }), /^Calculado el \d{1,2}\u00a0[a-z]{3}, /, 'the chart stamp: the same unit');
+  const foot = RL.detailModel(old, later).foot;
+  assert.ok(foot.endsWith(`Actualizado: ${RL.updatedWords(old, later)}`), `🔴 one period after «m.», never «m..» (${JSON.stringify(foot.slice(-30))})`);
+  assert.ok(!/\.\.$/.test(foot));
+  const live = RL.detailModel({ days: [{ computed_at: 'live' }] }, later).foot;
+  assert.ok(live.endsWith('Actualizado: en vivo.'), 'a stamp without its own period still ends the sentence');
+});
 test('V1 words: freshness from the server (live ⇒ «Hoy en vivo · actualizado hace N min» by fetch; else «Calculado hoy / ayer / el …, h:mm p. m.»), the range and the pill', async () => {
   route({ serve: await world() });
   const old = await getSalesStats({ rid: 'r_a', ...OLD, granularity: 'day', compare: 'none', token });
@@ -201,7 +214,7 @@ test('V1 words: freshness from the server (live ⇒ «Hoy en vivo · actualizado
   const { clock12 } = await import('./portal-time.js');
   assert.equal(RL.freshWords(old, { fetchedAt: t, nowMs: t + 60000 }), `Calculado hoy, ${clock12(t)}`, 'the roll-up\'s own stamp, THE portal clock');
   assert.equal(RL.freshWords(old, { fetchedAt: t, nowMs: t + 86400000 }), `Calculado ayer, ${clock12(t)}`);
-  assert.match(RL.freshWords(old, { fetchedAt: t, nowMs: t + 5 * 86400000 }), /^Calculado el \d{1,2} [a-z]{3}, \d{1,2}:\d{2} [ap]\. m\.$/, 'older: «el 9 nov»');
+  assert.match(RL.freshWords(old, { fetchedAt: t, nowMs: t + 5 * 86400000 }), /^Calculado el \d{1,2} [a-z]{3}, \d{1,2}:\d{2} [ap]\. m\.$/, 'older: «el 9 nov»');
   const r = RL.rendRangeFor('14d', TODAY);
   const live = await getSalesStats({ rid: 'r_a', ...r, granularity: 'day', compare: 'none', token });
   assert.equal(RL.freshWords(live, { fetchedAt: NOW - 10 * 60000, nowMs: NOW }), 'Hoy en vivo · actualizado hace 10 min', 'live ⇒ when THIS body arrived');

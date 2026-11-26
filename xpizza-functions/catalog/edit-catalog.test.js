@@ -39,7 +39,7 @@ function stubFirestore(sourceDoc, { onGetSource = null, activeVersionId = ACTIVE
   const doc = (path) => ({
     get: async () => {
       state.reads.push(path);
-      if (path === `restaurants/${RID}/meta/source`) {
+      if (state.docs && state.docs[path]) { const d = JSON.parse(JSON.stringify(state.docs[path])); return { exists: true, data: () => d }; } if (path === `restaurants/${RID}/meta/source`) {
         // FROZEN at read time, like a real DocumentSnapshot. A live getter here would keep returning
         // whatever the doc currently holds, which quietly makes "hash the snapshot" and "hash the
         // submitted source" the same value — and hides a real bug behind an unfaithful stub.
@@ -53,7 +53,7 @@ function stubFirestore(sourceDoc, { onGetSource = null, activeVersionId = ACTIVE
       }
       return { exists: false, data: () => ({}) };
     },
-    set: async (data) => { state.writes.push({ path, op: 'set' }); state.source = { data, updateTime: T1 }; return { writeTime: T1 }; },
+    set: async (data) => { state.writes.push({ path, op: 'set' }); if (path !== `restaurants/${RID}/meta/source`) { (state.docs = state.docs || {})[path] = JSON.parse(JSON.stringify(data)); return { writeTime: T1 }; } state.source = { data, updateTime: T1 }; return { writeTime: T1 }; },   // path-aware: only meta/source is the draft
     update: async (data, precondition) => {
       state.writes.push({ path, op: 'update', precondition });
       if (!precondition || precondition.lastUpdateTime === undefined) {
@@ -110,7 +110,7 @@ const withPrice = (delta) => {
       rid: RID, baseActiveVersionId: ACTIVE, sourceUpdateTime: r.body.updateTime,
       sourceHash: r.body.sourceHash, diff: r.body.diff,
     }).ok, true, 'and it verifies against the state actually returned');
-    assert.strictEqual(db.state.writes.length, 1, 'exactly ONE write');
+    assert.deepStrictEqual(db.state.writes.map((w) => w.path.split('/').slice(-2).join('/')), ['meta/source', 'meta/pending_summary'], 'exactly ONE draft write, then S3\'s pending_summary record (PLAN-portal-inicio-server-r0)');
     assert.ok(db.state.writes[0].path.endsWith('/meta/source'), 'and it is the draft');
   }
   ok('a valid edit writes the draft and returns { updateTime, diff, token } — one write, to meta/source');

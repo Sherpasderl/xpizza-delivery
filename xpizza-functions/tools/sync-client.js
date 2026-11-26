@@ -47,6 +47,9 @@ fs.copyFileSync(path.join(ROOT, 'xpizza-portal', 'fonts', 'figtree-latin.8330490
 // (marketing/offer-rules-sync.guard.test.js); the server requires marketing/offer-rules.js itself
 for (const f of [...new Set(require(path.join(ROOT, 'platform', 'sites.json')).deployments.filter((d) => d.app === 'orders' && d.context === 'platform').map((d) => d.folder))])
   fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'marketing', 'offer-rules.js'), path.join(ROOT, f, 'offer-rules.js'));
+// «Para revisar» (PLAN-portal-review-lines-r0, advisor 11-23): THE review line model → the server, byte-identical
+// (catalog/review-lines-sync.guard.test.js): S3's «cambios sin publicar» count is the review's own total, never a second formula
+fs.copyFileSync(path.join(ROOT, 'xpizza-portal', 'review-lines.js'), path.join(ROOT, 'xpizza-functions', 'catalog', 'review-lines.js'));
 console.log(`sync-client: copied sherpa-client.js into ${folders.length} site folders, order-self-update.js into ${orderFolders.length}, order-control-state.js into xpizza-dispatch, pay-rate.js into xpizza-functions + xpizza-driver, cart-sig.js into ${cartSigFolders.length} folders`);
 // Inicio «Ayuda» (owner 11-14): Sherpa support's WhatsApp → the portal, GENERATED from the ONE source (support-contact-gen.js)
 fs.writeFileSync(path.join(ROOT, 'xpizza-portal', 'support-contact.js'), require('./support-contact-gen').supportContactSource(require(path.join(ROOT, 'platform', 'sites.json'))));

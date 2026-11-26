@@ -13,7 +13,7 @@ import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProble
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail, s4Copy, nProd, SECTION_NAME_PROBLEM, SECTION_NAME_MAX } from './render.js';
 import { addCategory, dropStagedCategory, sectionIsNew, addSubcat, moveItem, pendingSections, reorderSections, reorderSubcats, reorderItems, renameSubcat, stagedName } from './editor.js';   // STRUCTURE S4 (the drawing half)
-import { movedGroups, reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
+import { movedGroups, reviewModel, reviewCtxFromSource, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
 // DISH PHOTOS B (PLAN-dish-photos r2 §3) — the photo state, field, crop step and upload controller
 import * as PL from './photo-logic.js';
@@ -2419,33 +2419,10 @@ function rowTextTag(it) {
 }
 // S4 «Productos» (frame E) — what the review needs from the draft to ARRANGE the server's lines (never to derive them): an
 // option's product, by pricing key (the diff's keys), and the product's own choice order.
+// PLAN-portal-review-lines-r0 (D1): the review's context from the draft — ONE builder (review-lines.js), shared with the server's count
 function productReviewCtx() {
-  const items = ((draftSource(state.draft) || {}).items || []).filter((r) => r && r.display && typeof r.key === 'string');
-  const keyOfId = new Map(items.map((r) => [String(r.display.id), r.key]));
-  const parent = new Map();
-  const index = new Map();
-  for (const r of items) {
-    if (r.display.variantOf == null) continue;
-    const pk = keyOfId.get(String(r.display.variantOf));
-    if (pk) { parent.set(r.key, pk); index.set(r.key, index.size); }
-  }
-  // STRUCTURE S1 (advisor 11-12): the server's checklist lines name extras by key — their display names, from the draft
-  const extraNames = new Map((draftSource(state.draft).extras || []).filter((x) => x && typeof x.key === 'string' && x.display).map((x) => [x.key, x.display.name]));
-  // STRUCTURE S2: the «Estructura» rows' names (the server diff names dishes by key and sections by id) — the draft's, ungated: the
-  // server sends S2 fields only for an S2 op
-  const structure = { nameOf: (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },
-    categoryName, sectionOf: (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r ? { cat: r.display.cat == null ? null : `${r.display.cat}`, subcat: typeof r.display.subcat === 'string' ? `${r.display.subcat}` : null } : { cat: null, subcat: null }; } };
-  // STRUCTURE S4-E: how many dishes a section (or one of its subsections) holds now, and a section's name that only the staged list knows
-  structure.dishesIn = (id, sub = null) => items.filter((r) => r.display.variantOf == null && String(r.display.cat) === String(id) && (sub == null || r.display.subcat === sub)).length;
-  structure.categoryName = (id) => stagedName(state.draft, id) || categoryName(id);
-  // STRUCTURE S3 (B3): an option's choice text (a removed one from the loaded rows) and a dish's choice label now, from the draft
-  structure.choiceOf = (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r && typeof r.display.choice === 'string' ? `${r.display.choice}` : String(k); };
-  structure.priceOf = (k) => { const r = items.find((x) => x.key === k); return r && Number.isInteger(r.price) ? r.price : null; };   // Codex #183-6: the saved price (the S3 «queda con un solo precio» row)
-  structure.choiceLabel = (k) => { const g = choiceGroup(state.draft, k); return g && typeof g.label === 'string' ? `${g.label}` : null; };
-  // Codex S2 UI r1 P1-4: each extra's group, so a checklist key its group's detach drops folds into that «Estructura» row
-  const extraGroups = new Map((draftSource(state.draft).extras || []).filter((x) => x && typeof x.key === 'string' && x.display && x.display.cat != null).map((x) => [x.key, `${x.display.cat}`]));
-  return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0), extraName: (k) => extraNames.get(k) || null,
-    extraGroup: (k) => extraGroups.get(k) || null, structure, productRemoval: state.productRemoval === true };   // «Quitar del menú» (R4): the served switch
+  return reviewCtxFromSource(draftSource(state.draft), { productRemoval: state.productRemoval === true, categoryName, removedRowFor,
+    stagedName: (id) => stagedName(state.draft, id), choiceGroup: (k) => choiceGroup(state.draft, k) });
 }
 function productReviewOpts() {
   if (state.textEditEnabled !== true) return null;   // switch off: today's review rows exactly

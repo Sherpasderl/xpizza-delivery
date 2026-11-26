@@ -21,7 +21,7 @@ const INSERTS = new Set(['catalog/choice-compare.js']);
 assert.strictEqual(BASE, '31f05c8a4', 'the layer is generated against main 31f05c8a4');
 assert.deepStrictEqual([...FILES].sort(), ['catalog/add-product.js', 'catalog/choice-compare.js', 'catalog/edit-catalog-handler.js', 'catalog/form-menu-source.js', 'catalog/platform-structure.js', 'catalog/publish-edited-handler.js', 'catalog/publish-request.js', 'catalog/source-store.js'], 'the owned (pinned) files S4 edits');
 for (const f of FILES) {
-  const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+  const src = require('./tools/pending-module-inverse').unapplyPendingModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));
   const b = git(['show', `${BASE}:xpizza-functions/${f}`]);
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(require('./tools/rewardgroups-module-inverse').unapplyRewardGroupsModule(f, unapplyS4sectModule(f, src)), b, `🔴 S4SECT-BASE: ${f} minus the s4sect hunks (then asm12's reward-groups layer, below it on choice-compare.js) is not ${BASE}:${f}`);
@@ -38,7 +38,7 @@ ok(`${FILES.length} files → ${BASE} byte-for-byte (same-line except ${[...INSE
 
 // ── 2. the placement ──
 const OWNERS = new Set();
-for (const t of fs.readdirSync(path.join(__dirname, 'tools')).filter((x) => /-inverse\.js$/.test(x) && x !== 's4sect-module-inverse.js')) {
+for (const t of fs.readdirSync(path.join(__dirname, 'tools')).filter((x) => /-inverse\.js$/.test(x) && x !== 's4sect-module-inverse.js' && x !== 'pending-module-inverse.js')) {   // S3 r1: the NEWER pending layer is peeled inside s4sect (innermost, on the raw read) — not an older owner
   const m = require(`./tools/${t}`);
   const F = m.FILES ? [...m.FILES] : (Array.isArray(m.HUNKS) ? m.HUNKS.map((h) => h.file) : (typeof m.FILE === 'string' ? [m.FILE] : []));
   if (F.some((f) => FILES.includes(f))) OWNERS.add(t.replace(/\.js$/, ''));

@@ -208,6 +208,10 @@
   }
  ],
  "timerReview": {
+  "xpizza-functions/catalog/pending-summary.js:within>anon:setTimeout": {
+   "class": "io-deadline",
+   "reason": "S3 r2 (Codex #393 P1-2/P2-3): within() bounds the OPTIONAL has_pending summary — the save / publish hook (computation + write) and getMyBranches' read — at SUMMARY_WAIT_MS (1500); on expiry the write is abandoned (a late write is served only while exactly fresh) or the read answers null; the timer is cleared when the race settles — REAL"
+  },
   "xpizza-functions/checkout-guest-gate.js:chargeUidOf>anon:setTimeout": {
    "class": "io-deadline",
    "reason": "PLAN-guest-checkout-server, Codex S2 r1 P2-4 (3a): chargeUidOf races chargeOnlineOrder's own identity resolution (verifyIdToken + the tombstone read) against deadlineMs (default 1500, mirroring the handler's 1.5 s identity deadline); on expiry (or any error) it resolves UNDEFINED = unresolved, which FAILS CLOSED: the caller then takes the generic online-only 400, byte-identical to today, never the guest path (Codex r2 P2, 7ef9fb2d); only a VERIFIED null selects the typed guest_cash_not_allowed reason. Never delays an answer past 1.5 s; never writes. 2e REVIEWED 2026-10-31: io-deadline CONFIRMED; REAL"
@@ -419,6 +423,7 @@
   "catalog/context-writer.js#rawFromNode": "catalog",
   "catalog/draft-assess.js#assessDraft": "catalog",
   "catalog/edit-catalog-handler.js#editCatalogCore": "catalog",
+  "catalog/edit-catalog-handler.js#editCatalogCore>anon": "catalog",
   "catalog/edit-catalog-handler.js#refusal": "catalog",
   "catalog/evidence-encoding.js#read": "catalog",
   "catalog/exposure-source.js#deriveExposure": "catalog",
@@ -461,6 +466,10 @@
   "catalog/review-diff.js#nameOf": "catalog",
   "catalog/review-diff.js#leftWithDish": "catalog",
   "catalog/add-product.js#s2ExposureClaims": "catalog",
+  "catalog/review-lines.js#sectionRowsOf": "catalog",
+  "catalog/review-lines.js#reviewCtxFromSource": "catalog",
+  "catalog/review-lines.js#reviewCount": "catalog",
+  "catalog/review-lines.js#hasPending": "catalog",
   "catalog/review-diff.js#reviewDiffS2S3": "catalog",
   "catalog/review-diff.js#catOf": "catalog",
   "catalog/review-diff.js#reviewDiffS2S3>anon": "catalog",
@@ -529,6 +538,7 @@
   "catalog/public-menu.js#fromSource": "catalog",
   "catalog/public-photos.js#buildPhotos": "catalog",
   "catalog/publish-edited-handler.js#publishEditedCore": "catalog",
+  "catalog/publish-edited-handler.js#publishEditedCore>anon": "catalog",
   "catalog/publish-parity.js#catalogDescriptor": "catalog",
   "catalog/redeem-source.js#assertRedeemAllowMatchesToday": "catalog",
   "catalog/redeem-source.js#attachRedeemFields": "catalog",
@@ -1280,7 +1290,9 @@
   "xpizza-portal/real-backend.mjs#makeBackend": "portal TEST harness (real-backend.mjs) — the REAL catalog cores' items handed to a fake transport, not production",
   "xpizza-portal/render.js#drop": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
   "xpizza-portal/render.js#renderDetail>anon": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
-  "xpizza-portal/review.js#sectionRowsOf": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+  "xpizza-portal/review-lines.js#reviewCount": "portal catalog authoring — THE review line model's count (PLAN-portal-review-lines-r0): reads the review model's own `total` (catalog draft lines arranged from the server diff), not persisted orders",
+  "xpizza-portal/review-lines.js#hasPending": "portal catalog authoring — S3 has_pending (OWNER 11-23, Codex #296): whether the review model draws any line (its own `total` > 0), from catalog draft lines arranged from the server diff; not persisted orders",
+  "xpizza-portal/review-lines.js#sectionRowsOf": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
   "xpizza-portal/app.js#itemsMove": "portal catalog authoring / auth / shell — catalog items, not persisted orders (S4 E: a dish row's grip move — a computed index into the draft's own item order)",
   "xpizza-portal/item-edit-logic.js#choiceUpdateNew>anon>anon": "portal catalog authoring / auth / shell — catalog items, not persisted orders (S3: a NEW option's draft row, spread from the drawer's copy)",
   "xpizza-portal/item-edit-logic.js#pricedOps>anon>anon": "portal catalog authoring / auth / shell — catalog items, not persisted orders (S3 #201/#202: a NEW option of a choice added in this drawer, spread with its price from the drawer's ONE price store whenever the copy's ops reach the writer)",
@@ -1296,7 +1308,7 @@
   "xpizza-portal/render.js#renderRail": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
   "xpizza-portal/render.js#renderDetail": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
   "xpizza-portal/review.js#renderReview": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
-  "xpizza-portal/app.js#productReviewCtx": "portal catalog authoring — S4 «Productos» (frame E): an option's product and the choice order, read from the DRAFT's catalog items by key, to ARRANGE the server diff's lines; not persisted orders",
+  "xpizza-portal/review-lines.js#reviewCtxFromSource": "portal catalog authoring — S4 «Productos» (frame E): an option's product and the choice order, read from the DRAFT's catalog items by key, to ARRANGE the server diff's lines; not persisted orders",
   "xpizza-portal/app.js#productReviewOpts": "portal catalog authoring — S4 «Productos» (frame E): the names / sections the review rows show, from the DRAFT's catalog items; not persisted orders",
   "xpizza-portal/app.js#productRefusal": "portal catalog authoring — S4 review-time refusal (advisor ruling 11-10): finds the EXISTING product a field-tagged refusal names among the DRAFT's catalog items; not persisted orders",
   "xpizza-portal/extras-eligibility.js#projectEligibility": "portal catalog authoring — S4 «Editar producto» (S2 §1.6): THE ONE extras-eligibility rule, a BYTE COPY of catalog/extras-eligibility.js written by tools/sync-client.js (drift guard catalog/extras-eligibility-sync.guard.test.js); in the portal it reads only the DRAFT's catalog items / extras to say which extras a move changes; not persisted orders",

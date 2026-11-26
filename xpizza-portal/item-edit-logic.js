@@ -495,12 +495,11 @@ export function choiceUpdateNew(s, ref, patch = {}) {
 // ── the S3 addendum's PROPOSED lines (MOCKUP-portal-structure-S3-addendum H2 / B6): null ⇒ «⟦s3.key⟧» on screen until the owner approves
 // the addendum's copy — structure-s3-ui's SHIP GATE stays red until then. Panel D's own strings are the approved base mockup's, literal.
 export const CHOICE_LABEL_MAX = 40;   // the server's group-label cap (choice-compare LABEL_MAX = section-compare NAME_MAX); the D2 sheet counts «n/40»
-// S3_COPY: the S3 addendum's lines verbatim (owner 11-14); labelTooLong / optNameRequired = the owner's own strings (11-19)
-export const S3_COPY = Object.freeze({ recRequired: "Falta la opción recomendada: marcá una para guardar los cambios.", recRemoved: "Quitaste la opción recomendada: marcá otra para guardar.", tooFew: "Una elección necesita al menos dos opciones. Agregá otra o quitá la elección.", removePick: "{nombre} queda con un solo precio. Elegí cuál; podés cambiarlo antes de publicar.", pickTitle: "Elegí el precio que queda", pickAria: "Precio que queda", b7Line: "La primera opción queda como recomendada. Tocá otra para cambiarla.", labelRequired: "Escribí el nombre de la elección.", labelTooLong: "El nombre de la elección pasa de 40 letras. Acortalo.", optNameRequired: "Escribí el nombre de la opción.", dupName: "Ya hay una opción con ese nombre en esta elección. Usá otro.",
-  recMany: "Solo una opción puede ser la recomendada. Dejá una marcada.", priceFromInvalid: "Ese precio ya no está entre las opciones. Elegí uno de la lista.", indexInvalid: "No pudimos revisar las elecciones del menú. Recargá la página.", nameNeedsNewId: "Ese nombre se quitó en esta misma publicación. Publicá primero y agregalo después.",
-  revLauncher: "elección {nombre} · {n} opciones · desde L {min}", revPlain: "elección {nombre} · queda con un solo precio: L {precio}", revRecChanged: "Recomendada · {old} → {new}", revRecNew: "Recomendada · {new}" });
-// an approved line may name its data as {token}s (the review rows: {nombre}, {n}, {min}, {precio}, {old}, {new}); a placeholder shows none
-export const s3Copy = (k, vars = null) => (typeof S3_COPY[k] === 'string' ? S3_COPY[k].replace(/\{(\w+)\}/g, (m, v) => (vars && Object.prototype.hasOwnProperty.call(vars, v) ? String(vars[v]) : m)) : `⟦s3.${k}⟧`);
+// S3_COPY / s3Copy — ONE source: review-lines.js (the review's choice rows and the server's «cambios sin publicar» count read the same
+// lines; PLAN-portal-review-lines-r0). Re-exported here under their names, so every caller's import is unchanged.
+import './review-lines.js';
+export const S3_COPY = globalThis.ReviewLines.S3_COPY;
+export const s3Copy = globalThis.ReviewLines.s3Copy;
 // The server's NAME rules for the copy's choice, judged before «Guardar» (choice-compare.js / add-product.js): the choice's own name is
 // required (label_required), every option needs a name (choice_label_required), and no two options of the group share a name under
 // the ONE fold (choice_duplicate: add-product normalizeName ≡ section-transitions nameFold, the synced byte copy) — the LATER twin is
