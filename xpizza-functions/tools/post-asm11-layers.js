@@ -12,7 +12,7 @@
 // always peels first (innermost of all), so per-site layers see a raw read minus only the post-asm11 hunks.
 const BASE = '31f05c8a40c35fe0c442be8839593954c3afc8b1';
 // the LANDING order of the layers (oldest → newest): a new lane APPENDS its name here and its hunks at the end of HUNKS
-const ORDER = Object.freeze(['order-owner', 'uid-path', 'rtdb-gate']);
+const ORDER = Object.freeze(['order-owner', 'uid-path', 'rtdb-gate', 'staff-push-s2']);
 const HUNKS = Object.freeze([
  {
   "layer": "order-owner",
@@ -138,6 +138,13 @@ const INNER = Object.freeze([
   "file": "index.js",
   "now": "\n    returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => require('./lib/rtdb-gate').gatedGet(db.ref(`restaurants/${restaurantId}/identity/brand_id`)).then((s) => s.val()) });\n",
   "was": "\n    returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => db.ref(`restaurants/${restaurantId}/identity/brand_id`).get().then((s) => s.val()) });\n"
+ },
+ {
+  "layer": "staff-push-s2",
+  "label": "index.js fanoutStaffPush — S2: the staff push goes to CURRENT dispatchers only (PLAN-brand-agnostic-convergence r9, #334-4)",
+  "file": "index.js",
+  "now": "\n  const settled = await Promise.allSettled((await require('./staff-push').staffRecipients(db, Object.keys(all))).map((uid) => sendStaffPush(db, uid, payload)));   // S2: CURRENT dispatchers only\n",
+  "was": "\n  const settled = await Promise.allSettled(Object.keys(all).map((uid) => sendStaffPush(db, uid, payload)));\n"
  },
  {
   "layer": "rtdb-gate",

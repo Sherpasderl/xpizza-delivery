@@ -3959,7 +3959,7 @@ async function sendStaffPush(db, uid, payload) {
 // can't reject the whole fan-out (belt-and-suspenders — sendStaffPush already never rejects).
 async function fanoutStaffPush(db, payload) {
   const all = (await db.ref('staff_push').once('value')).val() || {};
-  const settled = await Promise.allSettled(Object.keys(all).map((uid) => sendStaffPush(db, uid, payload)));
+  const settled = await Promise.allSettled((await require('./staff-push').staffRecipients(db, Object.keys(all))).map((uid) => sendStaffPush(db, uid, payload)));   // S2: CURRENT dispatchers only
   const sent = settled.filter((r) => r.status === 'fulfilled' && r.value && r.value.sent).length;
   console.log(`fanoutStaffPush: ${sent}/${settled.length} sent (${payload.tag})`);
   return { sent, total: settled.length };

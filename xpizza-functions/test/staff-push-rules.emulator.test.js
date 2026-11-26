@@ -11,6 +11,8 @@
  *   B — a staff user cannot write or read another uid's subscription.
  *   C — a customer-token user cannot write (auth.token.customer !== true clause).
  *   D — anon cannot read or write.
+ *   E — S2 (PLAN-brand-agnostic-convergence r9, #334-4): only a CURRENT dispatcher (dispatchers/{uid} exists) can write its
+ *       staff_push/$uid — a signed-in non-dispatcher staff / driver account cannot, nor a dispatcher whose entry was removed.
  * (staff_push_state / order push_alerted are admin-only — written by Cloud Functions which bypass
  *  rules — so there is intentionally no client rule to test for them.)
  *
@@ -26,6 +28,8 @@ const RULES = fs.readFileSync(path.join(__dirname, '..', '..', 'xpizza-reference
 
 const STAFF = 'u_staff0000000000000000';
 const OTHER = 'u_other0000000000000000';
+const NONDISP = 'u_nondisp00000000000000';   // signed in, no customer / handheld claim, NOT in dispatchers
+const REVOKED = 'u_revoked00000000000000';   // a dispatcher whose dispatchers/{uid} entry is removed
 const SUB = { subscription: { endpoint: 'https://push.example/abc', keys: { p256dh: 'k1', auth: 'k2' } }, updated_at: 1700000000000 };
 
 (async () => {
@@ -37,6 +41,8 @@ const SUB = { subscription: { endpoint: 'https://push.example/abc', keys: { p256
   // Admin-seed OTHER's subscription (rules disabled) so the cross-user read test has a target.
   await env.withSecurityRulesDisabled(async (ctx) => {
     await ctx.database().ref('staff_push/' + OTHER).set(SUB);
+    await ctx.database().ref('dispatchers/' + STAFF).set(true);   // S2: A / B's writer is a current dispatcher
+    await ctx.database().ref('dispatchers/' + REVOKED).set(true);
   });
 
   const staffDb = env.authenticatedContext(STAFF).database();                          // staff (no customer claim)
@@ -64,6 +70,14 @@ const SUB = { subscription: { endpoint: 'https://push.example/abc', keys: { p256
   // ── D: anon denied ──
   await no('D anon cannot write', set(anonDb, 'staff_push/' + STAFF, SUB));
   await no('D anon cannot read', get(anonDb, 'staff_push/' + STAFF));
+
+  // ── E: S2 — only a CURRENT dispatcher writes a subscription ──
+  const nondispDb = env.authenticatedContext(NONDISP).database();
+  const revokedDb = env.authenticatedContext(REVOKED).database();
+  await no('E a signed-in NON-dispatcher cannot write its own staff_push', set(nondispDb, 'staff_push/' + NONDISP, SUB));
+  await ok('E premise: a current dispatcher writes its own staff_push', set(revokedDb, 'staff_push/' + REVOKED, SUB));
+  await env.withSecurityRulesDisabled(async (ctx) => { await ctx.database().ref('dispatchers/' + REVOKED).remove(); });
+  await no('E a REVOKED dispatcher (dispatchers/{uid} removed) cannot write its staff_push any more', set(revokedDb, 'staff_push/' + REVOKED, SUB));
 
   await env.cleanup();
   console.log(`staff-push-rules: OK (${n} cases)`);

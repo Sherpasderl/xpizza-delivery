@@ -170,7 +170,19 @@ function formatStuck(order, result) {
   return { title: `⚠️ Pedido${n}`, body: `Lleva ${result.minutes} min ${tail}` };
 }
 
+/**
+ * S2 (PLAN-brand-agnostic-convergence r9, #334-4): the fan-out RECIPIENTS = the subscribed uids that are CURRENT dispatchers at
+ * send time — `dispatchers/{uid}` exists, the predicate of index.js authorizeDispatcherActionWithUid and of the dispatchers rules.
+ * A staff push carries a customer's name, so a uid whose check cannot be read is NOT a recipient (fail closed). Revocation is
+ * immediate: removing dispatchers/{uid} stops that uid's pushes at the next send (its stale subscription is simply never used).
+ * The one db-touching helper here (a read per subscribed uid); the caller passes the uids it read from staff_push.
+ */
+async function staffRecipients(db, uids) {
+  const ok = await Promise.all(uids.map((uid) => db.ref(`dispatchers/${uid}`).once('value').then((s) => s.exists(), () => false)));
+  return uids.filter((_, i) => ok[i]);
+}
+
 module.exports = {
   coalesceDecision, formatNewOrder, formatGrouped, brandLabel, pushWithCleanup, staffPushCleanupUpdater,
-  isStuck, stuckDedupe, formatStuck,
+  isStuck, stuckDedupe, formatStuck, staffRecipients,
 };

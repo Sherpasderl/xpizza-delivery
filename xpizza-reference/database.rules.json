@@ -42,7 +42,7 @@
     "staff_push": {
       "$uid": {
         ".read":  "auth != null && auth.token.handheld !== true && auth.uid === $uid",
-        ".write": "auth != null && auth.token.handheld !== true && auth.uid === $uid && auth.uid !== 'svc-assigner' && auth.token.customer !== true"
+        ".write": "auth != null && auth.token.handheld !== true && auth.uid === $uid && auth.uid !== 'svc-assigner' && auth.token.customer !== true && root.child('dispatchers').child(auth.uid).exists()"
       }
     },
 
