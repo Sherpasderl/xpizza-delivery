@@ -1,3 +1,4 @@
+const { pathFrom } = require('./_ref-path');   // the real ref's path API on a stand-in (lib/rtdb-gate reads it)
 /**
  * Emulator behavioral suite for the earn engine (rewards-earn.js). Run:
  *   firebase emulators:exec --only database --project demo-xpizza "node test/rewards-earn.emulator.test.js"
@@ -113,7 +114,7 @@ const onStatus = async (db, orderId, after, now) => {
     //      Final state must have NO user_rewards/{uid}. Shared creditNode → covers BOTH earn and welcome.
     const raceDbFor = (uid, tomb) => { let reads = 0;
       const stagedGet = async () => { reads += 1; return { val: () => (reads >= 2 ? tomb : null) }; };
-      const shim = { ref: (path) => (path === `deleted_uids/${uid}`) ? { get: stagedGet } : db.ref(path), _reads: () => reads };
+      const shim = { ref: (path) => (path === `deleted_uids/${uid}`) ? { ...pathFrom(db.ref(path)), get: stagedGet } : db.ref(path), _reads: () => reads };
       return shim;
     };
     // earn racing a deletion
