@@ -19,6 +19,7 @@
 // Run: node staff-push-delivery.test.js
 for (const k of ['FUNCTION_TARGET', 'FIREBASE_DATABASE_EMULATOR_HOST', 'FIRESTORE_EMULATOR_HOST', 'FIREBASE_EMULATOR_HUB', 'FIREBASE_AUTH_EMULATOR_HOST', 'FIREBASE_STORAGE_EMULATOR_HOST', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY']) delete process.env[k];
 const assert = require('assert');
+const fs = require('fs');
 const WATCHDOG = setTimeout(() => { console.error('staff-push-delivery: FAILED — watchdog (20 s)'); process.exit(1); }, 20000);
 const { makeHonestDb } = require('./_honest-rtdb-model');
 
@@ -52,6 +53,20 @@ const capture = () => { const out = []; const o = { log: console.log, warn: cons
   return { out, done: () => Object.assign(console, o) }; };
 const ALL_LOGS = [];
 async function run(fn) { sends.length = 0; bodies.length = 0; const c = capture(); try { await fn(); } finally { c.done(); ALL_LOGS.push(...c.out); } return [...sends]; }
+
+// the PRIOR release's index.js + staff-push.js in a mkdtemp OUTSIDE the source tree (Codex #422): relative requires rewritten absolute,
+// so the copy loads the CURRENT tree's other modules and the PRIOR staff-push.js. Any failure removes the temp dir before rethrowing.
+function writePrior(show, { failAfterFirst = false } = {}) {
+  const path = require('path'); const dir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'b3-prior-'));
+  try {
+    const T2 = path.join(dir, 'staff-push.prior-s2.tmp.js'); fs.writeFileSync(T2, show('staff-push.js'));
+    if (failAfterFirst) throw new Error('injected setup failure');
+    const abs = show('index.js').split("require('./staff-push')").join(`require(${JSON.stringify(T2)})`)
+      .replace(/require\((['"])\.\//g, (m, q) => `require(${q}${__dirname}/`).replace(/require\((['"])\.\.\//g, (m, q) => `require(${q}${path.dirname(__dirname)}/`);
+    const T1 = path.join(dir, 'index.prior-s2.tmp.js'); fs.writeFileSync(T1, abs);
+    return { dir, T1 };
+  } catch (e) { fs.rmSync(dir, { recursive: true, force: true }); throw e; }
+}
 
 (async () => {
   assert.strictEqual(typeof idx.notifyStaffOnNewOrder.run, 'function', 'premise: the real triggers');
@@ -128,16 +143,14 @@ async function run(fn) { sends.length = 0; bodies.length = 0; const c = capture(
     assert.deepStrictEqual(bodies, ['2 Tercera Casa · 1 X. Pizza'], `🔴 ${L}: ${JSON.stringify(bodies)}`);
   });
   await cell('DLV-B3-MIXED: B3 ↔ the prior S2 code over one buffer — every count sent exactly once, no id lost', async (L) => {
-    const cp = require('child_process'); const os = require('os'); const path = require('path'); const fs = require('fs');
+    const cp = require('child_process'); const os = require('os'); const path = require('path');
     const PRIOR = '17f93d53546368ba5c5d62e540b4d99a4e776099';
     const show = (p) => cp.execFileSync('git', ['show', `${PRIOR}:xpizza-functions/${p}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
-    const T1 = path.join(__dirname, 'index.prior-s2.tmp.js'); const T2 = path.join(__dirname, 'staff-push.prior-s2.tmp.js');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'b3-mixed-'));
-    fs.writeFileSync(T1, show('index.js').split("require('./staff-push')").join("require('./staff-push.prior-s2.tmp.js')")); fs.writeFileSync(T2, show('staff-push.js'));
+    let dir = null; let T1 = null;
     const prior = (mode, ev) => {   // run one PRIOR trigger over the current world; the world continues from its result
       const w = path.join(dir, `w${Math.random()}.json`), o = `${w}.out`; fs.writeFileSync(w, JSON.stringify(DB.root));
-      const args = [path.join(__dirname, 'test', '_prior-staff-push-run.js'), mode, w, o]; if (ev) { fs.writeFileSync(`${w}.ev`, JSON.stringify(ev)); args.push(`${w}.ev`); }
-      const r = cp.spawnSync(process.execPath, args, { cwd: __dirname, encoding: 'utf8', timeout: 30000 });
+      const args = [path.join(__dirname, 'test', '_prior-staff-push-run.js'), T1, mode, w, o]; if (ev) { fs.writeFileSync(`${w}.ev`, JSON.stringify(ev)); args.push(`${w}.ev`); }
+      const r = cp.spawnSync(process.execPath, args, { cwd: __dirname, encoding: 'utf8', timeout: 30000, env: { ...process.env, NODE_PATH: path.join(__dirname, 'node_modules') } });
       assert.strictEqual(r.status, 0, `${L}: the prior ${mode} ran (${(r.stderr || '').slice(0, 200)})`);
       const out = JSON.parse(fs.readFileSync(o, 'utf8')); DB = makeHonestDb(out.root); return out.bodies;
     };
@@ -146,6 +159,7 @@ async function run(fn) { sends.length = 0; bodies.length = 0; const c = capture(
     const openWindow = async () => DB.ref('staff_push_state/last_sent_at').set(Date.now());   // inside the window ⇒ buffer
     const closeWindow = async () => DB.ref('staff_push_state/last_sent_at').set(1);           // past the window ⇒ flush
     try {
+      ({ dir, T1 } = writePrior(show));
       DB = makeHonestDb(world({ restaurants: { x_pizza: { identity: { display_name: 'X. Pizza' } }, la_musa: { identity: { display_name: 'La Musa' } } } }));
       // B3 appends → the PRIOR flusher
       await openWindow(); await b3notify('x_pizza', 'o1'); await b3notify('la_musa', 'o2');
@@ -163,7 +177,16 @@ async function run(fn) { sends.length = 0; bodies.length = 0; const c = capture(
       assert.deepStrictEqual(require('./staff-push').pendingCounts((await read('staff_push_state')).pending), { x_pizza: 1 }, `🔴 ${L}: B3 reads the prior notifier's buffer`);
       await closeWindow(); await run(() => idx.flushStaffPushQueue.run({}));
       assert.deepStrictEqual([...bodies], ['1 X. Pizza'], `🔴 ${L}: ${JSON.stringify(bodies)}`);
-    } finally { for (const p of [T1, T2]) fs.rmSync(p, { force: true }); fs.rmSync(dir, { recursive: true, force: true }); }
+    } finally { if (dir) fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+  await cell('DLV-B3-PRIOR-CLEANUP: a setup failure after the first prior file is written leaves no copy behind; none ever lands in the source tree', async (L) => {
+    const before = fs.readdirSync(require('os').tmpdir()).filter((f) => f.startsWith('b3-prior-')).length;
+    let threw = false;
+    try { writePrior(() => 'x', { failAfterFirst: true }); } catch (e) { threw = /injected/.test(e.message); }
+    assert.ok(threw, `${L}: premise, the injected failure fired after the first file`);
+    assert.strictEqual(fs.readdirSync(require('os').tmpdir()).filter((f) => f.startsWith('b3-prior-')).length, before, `🔴 ${L}: the temp dir was removed`);
+    const inTree = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.name === 'node_modules' || e.name.startsWith('.') ? [] : e.isDirectory() ? inTree(require('path').join(d, e.name)) : /\.prior-s2\.tmp\.js$/.test(e.name) ? [e.name] : []));
+    assert.deepStrictEqual(inTree(__dirname), [], `🔴 ${L}: no prior copy in the source tree`);
   });
   await cell('DLV-LOGS: no fan-out / send / revocation log line carries a uid or an order id', async (L) => {
     const lines = ALL_LOGS.filter((l) => /fanoutStaffPush|sendStaffPush|staff_push_revoked|notifyStaffOnNewOrder|flushStaffPushQueue|sweepStuckOrders/.test(l));
