@@ -1553,6 +1553,7 @@
       layerOpener = { ...(layerOpener || {}), fb: '[data-act="cards-back"]' };   // the opener gone ⇒ «Volver»
       unguardCard();
       cardGuard = nav.guardBack(() => { if (!S.cardRm) return 'none'; if (S.cardRm.busy) return 'blocked'; cardRmClose(); return 'closed'; });   // the ONE Back seam
+      focusCardHeading();   // Codex #408 P2: focus moves INTO the dialog (the opener is captured by openLayer first)
     }
     function cardRmClose(restore = true) {
       if (S.cardRm && S.cardRm.busy) return;   // every exit is inert while the call is in flight (frame 4a)

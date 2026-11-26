@@ -161,7 +161,7 @@
       : '<button class="primary danger" data-act="card-rm-confirm">Quitar tarjeta</button>';
     const err = v.err ? `<p class="err" role="alert">${IC.alert}<span>No pudimos quitar la tarjeta. Probá de nuevo.</span></p>` : '';
     return `<div class="scrim" data-act="card-rm-cancel"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Quitar tarjeta"><div class="grab" data-act="card-rm-cancel"></div>
-    <div class="errsheet"><div class="icon calm">${IC.card}</div><h2 id="cardrm-h" tabindex="-1">¿Quitar la tarjeta ${esc(PC.cardLabel(null, v.last4))}?</h2>
+    <div class="errsheet cardrm"><div class="icon calm">${IC.card}</div><h2 id="cardrm-h" tabindex="-1">¿Quitar la tarjeta ${esc(PC.cardLabel(null, v.last4))}?</h2>
       <p>La quitamos de Sherpa. Si querés volver a usarla, la ingresás de nuevo al pagar.</p>${err}
       <div class="acts">${pill}<button class="btn2 wide" data-act="card-rm-cancel"${busy ? ' disabled' : ''}>Cancelar</button></div></div></div>`;
   }

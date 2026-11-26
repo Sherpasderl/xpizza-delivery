@@ -7630,7 +7630,14 @@ test('C3-01 / C3-02: the member Cuenta row «Tarjetas guardadas» right after «
   } finally { C.S.w.close(); }
   for (const [label, runtime] of [['no cards', G7_RUNTIME], ['sdkPay without cards', { ...G7_RUNTIME, sdkPay: { endpoints: { listCards: 'https://fn.test/listCards', removeCard: 'https://fn.test/removeCard' } } }]]) {
     const N = await cardsBoot({ runtime });
-    try { await toCuenta(N.S); assert.equal(N.S.q('[data-act="cards"]'), null, `🔴 C3-02: ${label}: the row shows`); assert.equal(N.reqs.length, 0, `${label}: no card request`); } finally { N.S.w.close(); }
+    try {
+      await toCuenta(N.S); assert.equal(N.S.q('[data-act="cards"]'), null, `🔴 C3-02: ${label}: the row shows`); assert.equal(N.reqs.length, 0, `${label}: no card request`);
+      // Codex #408 deviation #4: the dark route itself — a navigation to the step with the gate closed bounces to Cuenta, zero requests
+      N.S.ui.nav.go({ name: 'cards' }); await flush(); await flush();
+      assert.equal(N.S.q('.cards-step'), null, `🔴 C3-02: ${label}: the dark route opened the card step`);
+      assert.ok(N.S.q('.rows .rowbtn[data-act="addresses"]'), `🔴 C3-02: ${label}: the dark route did not bounce to Cuenta`);
+      assert.equal(N.reqs.length, 0, `🔴 C3-02: ${label}: the dark route sent a card request`);
+    } finally { N.S.w.close(); }
   }
   const fb = fakeFirebase();
   const G = bootShell({ auth: 'guest', runtime: C3_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, payFetch: async () => { throw new Error('a guest read cards'); } } }); await flush();
@@ -7695,11 +7702,14 @@ test('C3-07 / C3-08 / C3-09 / C3-20: «Quitar» opens the sheet; a double tap se
     C.S.click(rmOf(C.S, C.ids[0])); await flush();
     assert.ok(sheetOpen(C.S), 'the sheet opens');
     assert.equal(txt(C.S.q('#layer #cardrm-h')), '¿Quitar la tarjeta ···· 4242?', '🔴 C3-07: the sheet title');
+    assert.equal(C.S.w.getComputedStyle(C.S.q('#layer [data-act="card-rm-cancel"].btn2')).opacity, '1', 'an idle «Cancelar» is not dimmed');
+    assert.equal(C.S.w.document.activeElement && C.S.w.document.activeElement.id, 'cardrm-h', '🔴 C3-07: opening the sheet left focus behind it (not on the sheet heading)');
     const rel = C.real.holdNext('removeCard');
     C.S.click('#layer [data-act="card-rm-confirm"]'); C.S.click('#layer [data-act="card-rm-confirm"]'); await flush();
     const pill = C.S.q('#layer [data-act="card-rm-confirm"]');
     assert.deepEqual([pill.disabled, pill.getAttribute('aria-busy'), txt(pill)], [true, 'true', 'Quitando…'], '🔴 C3-08: the busy pill (4a)');
     assert.equal(C.S.q('#layer [data-act="card-rm-cancel"].btn2').disabled, true, '4a: «Cancelar» disabled');
+    assert.equal(C.S.w.getComputedStyle(C.S.q('#layer [data-act="card-rm-cancel"].btn2')).opacity, '0.45', '🔴 C3-08: «Cancelar» is not dimmed while busy (4a: the mockup\'s .btn2[disabled])');
     assert.ok(C.S.qa('.saved-cards [data-act="card-rm"]').every((b) => b.disabled), '4a: every row action disabled');
     C.S.click('#layer [data-act="card-rm-confirm"]'); await flush();
     rel(); await flush(); await flush();
@@ -7859,6 +7869,7 @@ test('C3-26 / C3-28: cancelling the SECOND card\'s sheet gives focus back to the
   try {
     await openCards(C);
     rmOf(C.S, C.ids[1]).focus(); C.S.click(rmOf(C.S, C.ids[1])); await flush();
+    assert.equal(C.S.w.document.activeElement && C.S.w.document.activeElement.id, 'cardrm-h', '🔴 C3-26: keyboard focus stayed on the background «Quitar» after the sheet opened');
     C.S.click('#layer .btn2[data-act="card-rm-cancel"]'); await flush();
     assert.equal(C.S.w.document.activeElement && C.S.w.document.activeElement.dataset.card, C.ids[1], '🔴 C3-26: focus did not return to the second card\'s «Quitar»');
     C.S.click(rmOf(C.S, C.ids[1])); await flush();
@@ -7983,10 +7994,14 @@ test('C3-29 / C3-30 / C3-31 / C3-32: the remove is bounded at 12 s (a held token
     } finally { C.S.w.close(); } }
 });
 
-test('C3-34: the «La casa recomienda» carousel (.cards) and the other empty states compute the same styles as before C-3 (capp.css at HEAD vs this tree)', () => {
+// Codex #408 P2: the «before» is PINNED to C-3's base (e748526db, feat/capp-asm14's final tip) — never HEAD, which holds C-3's own CSS once
+// committed, so a committed regression would compare equal to itself
+const C3_CSS_BASE = 'e748526dbf2e7ed8acee3b671b54a6f9dad51447';
+test('C3-34: the «La casa recomienda» carousel (.cards) and the other empty states compute the same styles as before C-3 (capp.css at C-3\'s base e748526db vs this tree)', () => {
   const { JSDOM: JD } = createRequire(new URL('../xpizza-functions/x.js', import.meta.url))('jsdom');
-  const before = execFileSync('git', ['show', 'HEAD:customer-app/capp.css'], { cwd: join(HERE, '..'), encoding: 'utf8', maxBuffer: 1 << 26 });
+  const before = execFileSync('git', ['show', `${C3_CSS_BASE}:customer-app/capp.css`], { cwd: join(HERE, '..'), encoding: 'utf8', maxBuffer: 1 << 26 });
   const now = readFileSync(join(HERE, 'capp.css'), 'utf8');
+  assert.ok(!before.includes('.saved-cards{') && now.includes('.saved-cards{'), 'premise: the baseline predates C-3\'s CSS (it is not this tree)');
   const probe = (css) => { const w = new JD(`<!doctype html><style>${css}</style><div class="app"><div class="cards"><div class="mcard">x</div></div><div class="empty"><b>t</b><span>un texto largo</span></div><div class="cards-step"><div class="empty"><span>y</span></div></div></div>`).window;
     const st = (sel, props) => Object.fromEntries(props.map((p) => [p, w.getComputedStyle(w.document.querySelector(sel)).getPropertyValue(p)]));
     const out = { carousel: st('.app > .cards', ['display', 'gap', 'overflow-x', 'padding-right', 'padding-left', 'padding-top', 'scroll-snap-type']), empty: st('.app > .empty span', ['max-width', 'text-wrap']), scoped: st('.cards-step .empty span', ['max-width']) };

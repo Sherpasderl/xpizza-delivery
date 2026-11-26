@@ -4748,3 +4748,17 @@ test('C3-12: a card removed in Cuenta is gone from the next checkout — the new
   await b.click('.paybar.pay [data-act="paysheet"]'); await settle();
   assert.ok(!/4242/.test(b.text('#layer') || ''), '🔴 C3-12: the removed card is still in the chooser');
 });
+
+// Codex #408 P2 (rule 27): the checkout's saved-card read keeps its pre-C-3 transport — C-3's 12 s bound (cardsRead) is Cuenta's only.
+// node's setTimeout is mocked (capp-api.js is required here, so a bound would run on it); the rig's settle runs on setImmediate
+test('C3-36: the checkout\'s listCards is unchanged by C-3 — a list that answers long after 12 s still lands as the selected card (no bound, no «no saved cards»)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let release; const held = new Promise((r) => { release = r; });
+  const b = bootSdk({ script: { listCards: [async () => { await held; return SDK_CARDS(); }] } }); await sdkCheckout(b);
+  assert.equal(b.srv.of('listCards').length, 1, 'premise: the checkout\'s list is in flight');
+  t.mock.timers.tick(60_000);   // far past C-3's 12 s
+  await settle();
+  release(); await settle(); await settle();
+  assert.equal(b.text('.paybar.pay .urow.payrow .t b'), 'Visa ···· 4242', '🔴 C3-36: a slow checkout list no longer lands (a C-3 bound reached the checkout)');
+  assert.equal(b.srv.of('listCards').length, 1, 'one read, as before C-3');
+});

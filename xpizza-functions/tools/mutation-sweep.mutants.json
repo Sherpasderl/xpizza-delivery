@@ -44169,8 +44169,8 @@
   "slice": "c3cards",
   "label": "C-3 saved cards (PLAN-capp-C3-card-removal-r2 §5.4): a non-array `cards` envelope is accepted as a list",
   "file": "../customer-app/capp-api.js",
-  "from": "    return !r.network && r.status === 200 && r.json && Array.isArray(r.json.cards) ? r.json : null;",
-  "to": "    return !r.network && r.status === 200 && r.json && r.json.cards ? r.json : null;",
+  "from": "    const r = await cardsExchange(fetchFn, url, { method: 'GET', headers: { 'Content-Type': 'application/json', ...(headers || {}) } }, o);\n    return !r.network && r.status === 200 && r.json && Array.isArray(r.json.cards) ? r.json : null;",
+  "to": "    const r = await cardsExchange(fetchFn, url, { method: 'GET', headers: { 'Content-Type': 'application/json', ...(headers || {}) } }, o);\n    return !r.network && r.status === 200 && r.json && r.json.cards ? r.json : null;",
   "command": [
    "node",
    "--test",
@@ -44384,6 +44384,91 @@
   ],
   "equivalent": true,
   "why": "EQUIVALENT under the real UI (probe 11-25, hand-planted on C3-07): the first tap re-renders the sheet synchronously (renderLayer) and swaps in a NEW pill with disabled=true — the old pill is detached (a click on it never bubbles to the delegate) and a click on the disabled one is not dispatched (jsdom and browsers alike): 1 POST without the latch. Only a pill forced back to disabled=false sends a 2nd POST (mutant 2, clean 1), a path no real tap has. The latch is KEPT (advisor ruling (a), 11-25) as the one state-level guard so the one-POST rule does not depend on the markup; C3-08 still asserts one POST."
+ },
+ {
+  "id": "c3-m-cancel-not-dimmed",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (MOCKUP-capp-card-removal v2 frame 4a): the busy sheet's «Cancelar» is disabled but not dimmed (SBS 11-25)",
+  "file": "../customer-app/capp.css",
+  "from": ".errsheet.cardrm .btn2[disabled]{opacity:.45;cursor:default}",
+  "to": ".errsheet.cardrm .btn2[disabled]{cursor:default}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-07",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-08: «Cancelar» is not dimmed while busy"
+  ]
+ },
+ {
+  "id": "c3-m-checkout-bounded",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (Codex #408 P2, rule 27): the checkout's listCards is moved onto cardsRead — a slow list after 12 s becomes «no saved cards»",
+  "file": "../customer-app/capp-api.js",
+  "from": "      const r = await sdkCall('GET', E.listCards, null, h);\n      return !r.network && r.status === 200 && r.json && Array.isArray(r.json.cards) ? r.json : null;",
+  "to": "      return cardsRead(sfetch, E.listCards, h);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-36",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "C3-36: a slow checkout list no longer lands"
+  ]
+ },
+ {
+  "id": "c3-m-open-no-focus",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (Codex #408 P2): opening the confirm sheet leaves focus on the background «Quitar»",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      focusCardHeading();   // Codex #408 P2: focus moves INTO the dialog",
+  "to": "      void 0;   // Codex #408 P2: focus moves INTO the dialog",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-26",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-26: keyboard focus stayed on the background «Quitar»"
+  ]
+ },
+ {
+  "id": "c3-m-css-unscoped-empty",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (Codex #408 P2, C3-34 baseline): the step's empty-line cap is unscoped and restyles every screen's empty state",
+  "file": "../customer-app/capp.css",
+  "from": ".cards-step .empty span{text-wrap:pretty;max-width:34ch}",
+  "to": ".empty span{text-wrap:pretty;max-width:34ch}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-34",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-34: another screen's empty state computes differently"
+  ]
+ },
+ {
+  "id": "c3-m-dark-route-opens",
+  "slice": "c3cards",
+  "label": "C-3 saved cards (Codex #408 deviation #4): a navigation to the step with the gate closed opens it instead of bouncing to Cuenta",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (entry.name === 'cards') { if (!cardsOn()) {",
+  "to": "if (entry.name === 'cards') { if (false) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-01",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the dark route did not bounce to Cuenta"
+  ]
  },
  {
   "id": "c3-m-cancel-while-busy",

@@ -1084,7 +1084,8 @@
     async function listCards() {
       if (!E.listCards || !memberOf()) return null;
       const h = await sdkHeaders(null, null); if (!h) return null;
-      return cardsRead(sfetch, E.listCards, h);
+      const r = await sdkCall('GET', E.listCards, null, h);
+      return !r.network && r.status === 200 && r.json && Array.isArray(r.json.cards) ? r.json : null;
     }
     // D4 F5 (advisor Q2 ruled 11-12): THIS restaurant's availability (?restaurant_id=: the flag ∩ its allowlist entry — the placement gate),
     // memoized PER restaurant so the checkout's first paint reads it synchronously (cached-first; the request is a silent revalidation). A
