@@ -6,7 +6,7 @@ export const PUSH_EVENTS = Object.freeze(['registration', 'registrationError', '
 export const PUSH_METHODS = Object.freeze(['addListener', 'checkPermissions', 'createChannel', 'deleteChannel', 'getDeliveredNotifications', 'listChannels', 'register',
   'removeAllDeliveredNotifications', 'removeAllListeners', 'removeDeliveredNotifications', 'requestPermissions', 'unregister']);
 
-export function createFakePushPlugin({ permission = 'prompt', onRequest = 'granted', token = 'fcm_tok_test_0001', registrationError = null } = {}) {
+export function createFakePushPlugin({ permission = 'prompt', onRequest = 'granted', token = 'fcm_tok_test_0001', registrationError = null, unregisterFails = null } = {}) {
   let perm = permission;
   const calls = [], listeners = new Map(PUSH_EVENTS.map((e) => [e, new Set()]));
   const emit = (e, payload) => { for (const f of [...listeners.get(e)]) f(payload); };
@@ -22,7 +22,7 @@ export function createFakePushPlugin({ permission = 'prompt', onRequest = 'grant
         else emit('registration', { value: token });
       }, 0);
     },
-    async unregister() { rec('unregister'); },
+    async unregister() { rec('unregister'); if (typeof unregisterFails === 'function' && unregisterFails()) throw new Error('unregister failed'); },   // G5: the phone's invalidation can fail
     async getDeliveredNotifications() { rec('getDeliveredNotifications'); return { notifications: [] }; },
     async removeDeliveredNotifications(d) { rec('removeDeliveredNotifications', d); },
     async removeAllDeliveredNotifications() { rec('removeAllDeliveredNotifications'); },

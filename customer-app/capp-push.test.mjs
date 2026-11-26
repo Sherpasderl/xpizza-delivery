@@ -412,3 +412,23 @@ test('PUSH-SIDE-DURABLE (Codex r2 P2): each side\'s success is durable the momen
   assert.equal(b.api.calls.filter((c) => c[0] === 'unregister').length, 0, 'never re-sent to the server');
   assert.equal(r.ok, true); assert.equal((JSON.parse(a.store.getItem(P.KEY)).pending || []).length, 0, 'both done ⇒ gone');
 });
+// G5 client (PLAN-capp-multitab-gate-r7 §4 G5, ✓366-5): the enforced boundary is the PHONE's invalidation. A durable owed record is written
+// BEFORE the live token moves to pending and leaves only once the phone's invalidation SUCCEEDS; the exit gate waits for that result
+// (the server's unregister runs after, best-effort, never gating) — and the record survives a restart
+test('G5-OWED: the owed record is written BEFORE the token moves and cleared only by a SUCCESSFUL phone invalidation; nativeDone() answers the phone\'s result without waiting on the server; the record survives a restart', async () => {
+  const store = memStore(); const { push, f, api } = mk({ store });
+  await push.enable(); assert.ok(push.held().live, 'premise: a live token');
+  const order = []; const set0 = store.setItem.bind(store);
+  store.setItem = (k, v) => { const j = JSON.parse(v); if (j.owed && !order.includes('owed')) order.push('owed'); if (!j.token && Array.isArray(j.pending) && j.pending.length && !order.includes('moved')) order.push('moved'); return set0(k, v); };
+  const un = f.plugin.unregister; let fail = true; f.plugin.unregister = async () => { if (fail) throw new Error('fcm down'); return un(); };
+  let srvGo; api.unregister = () => new Promise((r) => { srvGo = () => r({ ok: true }); });   // the server hangs
+  const all = push.forget();
+  assert.equal(await push.nativeDone(), false, '🔴 G5-NATIVE: a failed phone invalidation is not reported as failed (or waited on the server)');
+  assert.deepEqual(order, ['owed', 'moved'], '🔴 G5-ORDER: the owed record was not written BEFORE the token moved to pending');
+  assert.ok(push.owed(), '🔴 G5-OWED: the record left without a successful phone invalidation');
+  const again = mk({ store }).push;   // a restart: the same device record
+  assert.ok(again.owed(), '🔴 G5-RESTART: the owed record did not survive a restart');
+  fail = false; again.settle(); assert.equal(await again.nativeDone(), true, 'the retry succeeds on the phone');
+  assert.equal(again.owed(), null, '🔴 G5-CLEAR: a successful phone invalidation left the owed record');
+  srvGo(); await all;
+});

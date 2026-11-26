@@ -219,8 +219,12 @@
         if (r.status === 404 && j.reason === 'unknown_restaurant') return { ok: false, reason: 'unknown_restaurant' };
         return { ok: false, reason: r.status === 403 ? 'deleted' : reasonOf(r) };
       },
-      async redeemSignupGrant({ grant, email, name, promos }) {
-        const r = await call(E.redeemSignupGrant, { body: { grant, context: CONTEXT, email, name, accept_terms: true, promos: promos === true } });
+      // G3 (PLAN-capp-multitab-gate-r7): the redemption names WHO is redeeming — EXACTLY ONE of the admitted member's ID token (the
+      // header the signup endpoints take) or as_guest (a tab settled as a guest). Neither or both ⇒ nothing is sent
+      async redeemSignupGrant({ grant, email, name, promos, idToken, asGuest }) {
+        const member = typeof idToken === 'string' && !!idToken, guest = asGuest === true;
+        if (member === guest) return { ok: false, reason: 'bad_request' };
+        const r = await call(E.redeemSignupGrant, { ...(member ? { idToken } : {}), body: { grant, context: CONTEXT, email, name, accept_terms: true, promos: promos === true, ...(guest ? { as_guest: true } : {}) } });
         const j = r.json;
         if (r.status === 200 && j && j.ok === true && typeof j.token === 'string') return signedIn({ ...j, completion: 'complete' });
         return { ok: false, reason: reasonOf(r) };

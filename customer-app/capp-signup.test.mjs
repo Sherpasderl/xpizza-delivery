@@ -56,6 +56,56 @@ test('G6 auth adapter → CappAuthState: unresolved until the first callback (ne
   await assert.rejects(createFirebaseAuth({ config: null, loadSdk: S.loadSdk }).signInWithCustomToken('ct:x'), /no firebase config/);
 });
 
+// ── C1 (PLAN-capp-multitab-gate-r7 §2 C1, #347-4): the adapter's ONE queue of SDK identity transitions ───────────────────────────────
+// a fake SDK whose custom-token sign-ins are HELD until the cell releases them (a slow network), logging the order the SDK sees
+function gatedSdk() {
+  const log = [], held = []; let user = null, listeners = [];
+  const emit = () => { for (const l of listeners) l(user ? { uid: user } : null); };
+  const auth = { get currentUser() { return user ? { uid: user, getIdToken: async () => `id:${user}` } : null; } };
+  const authMod = { browserLocalPersistence: 'LOCAL', getAuth: () => auth, setPersistence: async () => {},
+    onAuthStateChanged: (a, next) => { listeners.push(next); return () => { listeners = listeners.filter((x) => x !== next); }; },
+    signInWithCustomToken: (a, t) => { const u = t.replace(/^ct:/, ''); log.push(`in:${u}`); return new Promise((res) => held.push({ u, go: () => { user = u; log.push(`done:${u}`); emit(); res({ user: { uid: u } }); } })); },
+    signOut: async () => { log.push(`out:${user}`); user = null; emit(); } };
+  return { loadSdk: async () => ({ initializeApp: () => ({}), authMod }), log, held, who: () => user,
+    release: async (u) => { await settle(); const i = held.findIndex((h) => h.u === u); assert.ok(i >= 0, `premise: ${u}'s sign-in reached the SDK`); held.splice(i, 1)[0].go(); await settle(); } };
+}
+test('C1: Ana\'s sheet closes mid-sign-in, Bob signs in — the transitions run ONE at a time in call order; Ana\'s is compensated (scoped to her uid) INSIDE her slot, before Bob\'s starts; the browser ends as Bob', async () => {
+  const G = gatedSdk(); const fb = createFirebaseAuth({ config: CFG, loadSdk: G.loadSdk });
+  let ana = true;
+  const pa = fb.signInWithCustomToken('ct:ana', { live: () => ana });
+  await settle(); ana = false;   // Ana closes her sheet while her call is in flight
+  const pb = fb.signInWithCustomToken('ct:bob', { live: () => true });
+  await settle();
+  assert.deepEqual(G.log, ['in:ana'], '🔴 C1-QUEUE: Bob\'s sign-in reached the SDK while Ana\'s was still running');
+  await G.release('ana'); await G.release('bob');
+  assert.equal(await pa, null, 'a compensated attempt answers no user');
+  assert.equal(await pb, 'bob');
+  assert.deepEqual(G.log, ['in:ana', 'done:ana', 'out:ana', 'in:bob', 'done:bob'], '🔴 C1-COMPENSATE: Ana\'s scoped sign-out did not run inside her slot, before Bob\'s sign-in');
+  assert.equal(G.who(), 'bob', '🔴 C1: the browser does not end as Bob');
+});
+test('C1: an attempt closed BEFORE its turn never reaches the SDK; a sign-out queued behind a sign-in runs after it; signOutIf signs out only its own uid', async () => {
+  const G = gatedSdk(); const fb = createFirebaseAuth({ config: CFG, loadSdk: G.loadSdk });
+  let bob = true;
+  const pa = fb.signInWithCustomToken('ct:ana', { live: () => true });
+  const pb = fb.signInWithCustomToken('ct:bob', { live: () => bob });
+  await settle(); bob = false;
+  await G.release('ana'); await settle();
+  assert.equal(await pb, null, 'skipped');
+  assert.deepEqual(G.log, ['in:ana', 'done:ana'], '🔴 C1-SKIP: an attempt closed before its turn reached the SDK');
+  assert.equal(await pa, 'ana');
+  const pc = fb.signInWithCustomToken('ct:cleo', { live: () => true });
+  const po = fb.signOut();
+  await settle();
+  assert.deepEqual(G.log.slice(2), ['in:cleo'], '🔴 C1-ORDER: a sign-out queued behind a sign-in ran before it');
+  await G.release('cleo'); await po; await pc;
+  assert.deepEqual(G.log.slice(2), ['in:cleo', 'done:cleo', 'out:cleo'], 'the sign-out ran after the sign-in');
+  const pd = fb.signInWithCustomToken('ct:dan', { live: () => true }); await G.release('dan'); await pd;
+  await fb.signOutIf('ana');
+  assert.equal(G.who(), 'dan', '🔴 C1-SCOPED: signOutIf signed out another user');
+  await fb.signOutIf('dan');
+  assert.equal(G.who(), null, 'signOutIf signs out its own uid');
+});
+
 // ── the signup sheet (capp-signup.js) against fakes of the transport + the auth adapter, rendered in jsdom ──
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -76,16 +126,22 @@ function fakeApi(o = {}) {
     googleSignIn: rec('googleSignIn', o.googleSignIn || { ok: false, reason: 'bad_token' }),
     completeProfile: rec('completeProfile', o.complete || { ok: true }) };
 }
+// the REAL adapter (capp-auth-firebase.js: its C1 queue, its scoped compensation) over a fake SDK — never a hand-built adapter double,
+// which would be laxer than production (it had no queue and an unscoped sign-out)
 function fakeAuth() {
-  const calls = { ct: [], out: 0 }; let uid = null;
-  return { calls, get uid() { return uid; },
-    signInWithCustomToken: async (t) => { calls.ct.push(t); uid = t.replace(/^ct:/, ''); return uid; },
+  const calls = { ct: [], out: 0 }; let uid = null, hold = null;
+  const auth = { get currentUser() { return uid ? { uid, getIdToken: async () => `id:${uid}` } : null; } };
+  const authMod = { browserLocalPersistence: 'LOCAL', getAuth: () => auth, setPersistence: async () => {}, onAuthStateChanged: () => () => {},
+    signInWithCustomToken: async (a, t) => { const h = hold; hold = null; if (h) await h(); calls.ct.push(t); uid = t.replace(/^ct:/, ''); return { user: { uid } }; },
     signOut: async () => { calls.out++; uid = null; } };
+  const fb = createFirebaseAuth({ config: CFG, loadSdk: async () => ({ initializeApp: () => ({}), authMod }) });
+  Object.defineProperty(fb, 'uid', { get: () => uid });
+  return Object.assign(fb, { calls, holdNext: (h) => { hold = h; } });
 }
 function sheet(o = {}) {
   const w = new JSDOM('<!doctype html><body><div id="h"></div></body>', { pretendToBeVisual: true }).window;
   const host = w.document.getElementById('h'); const api = fakeApi(o); const auth = fakeAuth(); const events = [];
-  if (o.holdSignIn) { const real = auth.signInWithCustomToken; auth.signInWithCustomToken = (t) => new Promise((r) => { o.holdSignIn.release = () => r(real(t)); }); }
+  if (o.holdSignIn) auth.holdNext(() => new Promise((r) => { o.holdSignIn.release = r; }));   // the SDK's sign-in waits for the cell
   // the host's owned accessor as production's (Codex #197): a token only for the user the SDK holds — another uid ⇒ none
   const su = createSignup({ doc: w.document, host, api, auth, memberToken: async (u) => (auth.uid && auth.uid === u ? `id:${u}` : null), google: o.google || null, ...(o.intl ? { intlPhone: true, CappPhone: require('./capp-phone.js') } : {}), timers: o.timers || { setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {} }, ...(o.now ? { now: o.now } : {}), onEvent: (n, d) => events.push([n, d]) });
   const q = (s) => host.querySelector(s), qa = (s) => [...host.querySelectorAll(s)];
@@ -368,7 +424,7 @@ test('runtime.signup endpoints: ENDPOINTS is the ONE source — every transport 
   const a = createSignupApi({ endpoints: EP, fetch: async (u) => { seen.push(String(u).split('?')[0]); return { status: 200, json: async () => ({ ok: true }) }; } });
   await a.config(); await a.requestOtp({ phone: '+50496123344' }); await a.verifyOtp({ phone: '+50496123344', code: '123456' }); await a.googleStart({ sessionId: 's' });
   await a.googleSignIn({ sessionId: 's', idToken: 't' }); await a.completeProfile({ idToken: 't', email: 'a@b.test', name: 'A', promos: true }); await a.setPromos({ idToken: 't', value: true });
-  await a.redeemSignupGrant({ grant: 'g', email: 'a@b.test', name: 'A', promos: false });
+  await a.redeemSignupGrant({ grant: 'g', email: 'a@b.test', name: 'A', promos: false, asGuest: true });
   await a.getMyOrders({ idToken: 't', limit: 20 });   // «Pedidos» (NOTE-getMyOrders): the member's history read
   await a.getMyRating({ idToken: 't', orderId: 'XPZ-1234' }); await a.rateOrder({ idToken: 't', orderId: 'XPZ-1234', fields: { store: 5 } });   // C-2
   await a.getMyProfile({ idToken: 't' }); await a.useMyAddress({ idToken: 't', id: 'a_abcdef', expected_rev: 0, expected_default: null });   // C-DIR-1 (3a S-ADDR-1 / S-ADDR-2; r3: the selection CAS)
@@ -554,4 +610,21 @@ test('C-1b setFavorite: a POST { context, rid, on } with the header token; 200 �
   assert.deepEqual(await favApi(S.set_unknown).setFavorite({ idToken: 'tok', rid: 'no_such_rid', on: true }), { ok: false, reason: 'unknown_restaurant' });
   assert.deepEqual(await favApi(S.deleted).setFavorite({ idToken: 'tok', rid: 'x_pizza', on: true }), { ok: false, reason: 'deleted' });
   for (const bad of [{ rid: 'X PIZZA', on: true }, { rid: 'x_pizza', on: 'yes' }]) assert.deepEqual(await favApi(S.set_on).setFavorite({ idToken: 'tok', ...bad }), { ok: false, reason: 'bad_request' }, 'refused locally');
+});
+
+// G3 client (PLAN-capp-multitab-gate-r7 §4 G3): the redemption names who redeems — EXACTLY ONE of the admitted member's ID token (the
+// signup endpoints' own header) or as_guest; neither or both ⇒ nothing is sent
+test('G3-CLIENT: redeemSignupGrant sends exactly one identity — a member\'s token header XOR as_guest; neither or both sends nothing', async () => {
+  const seen = [];
+  const a = createSignupApi({ endpoints: { redeemSignupGrant: 'https://ep.test/redeemSignupGrant' }, fetch: async (u, init) => { seen.push(init); return { status: 200, json: async () => ({ ok: true, token: 'ct:u1', uid: 'u1' }) }; } });
+  const base = { grant: 'g', email: 'a@b.test', name: 'A', promos: false };
+  await a.redeemSignupGrant({ ...base, asGuest: true });
+  assert.deepEqual([JSON.parse(seen[0].body).as_guest, seen[0].headers['x-firebase-id-token']], [true, undefined], '🔴 G3-GUEST: a guest redemption is not as_guest, or carries a token');
+  await a.redeemSignupGrant({ ...base, idToken: 'id_tok' });
+  assert.deepEqual([JSON.parse(seen[1].body).as_guest, seen[1].headers['x-firebase-id-token']], [undefined, 'id_tok'], '🔴 G3-MEMBER: a member redemption does not carry exactly its token');
+  for (const who of [{}, { idToken: 'id_tok', asGuest: true }, { idToken: '' }, { asGuest: 'yes' }]) {
+    const out = await a.redeemSignupGrant({ ...base, ...who });
+    assert.equal(seen.length, 2, `🔴 G3-NONE: a redemption naming neither (or both) was sent (${JSON.stringify(who)})`);   // the send first: its own property
+    assert.deepEqual(out, { ok: false, reason: 'bad_request' }, `${JSON.stringify(who)} is refused locally`);
+  }
 });

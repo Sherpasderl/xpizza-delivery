@@ -77,9 +77,19 @@
     // mount's — another tab left (its wipe removed the stamp) or another identity owns the device now ⇒ refused, and this tab seals itself
     // and restarts (staleLeave). ONE check, here
     const stale = (k) => memberKey(k) && rawGet(OWNER_KEY) !== myStamp;
+    // C2 (PLAN-capp-multitab-gate-r7; #240 P1-2's local residual): every UNKEYED member record carries its WRITER — stored as
+    // { o: <this mount's stamp>, v: <the value> } — and reads back ONLY under that same stamp. localStorage has no cross-tab atomicity:
+    // a stale tab's write can land after another identity's stamp (between its check above and its write); that record is invisible to
+    // the new identity and dropped at its boot. The per-uid records (the uid in the key) and the device records are unchanged
+    const tagged = (v) => JSON.stringify({ o: myStamp, v: String(v) });
+    const untag = (raw, stamp) => {
+      if (raw == null || stamp == null) return null;
+      let r = null; try { r = JSON.parse(raw); } catch (_) { return null; }
+      return r && typeof r === 'object' && r.o === stamp && typeof r.v === 'string' ? r.v : null;
+    };
     const storage = rawStorage ? {
-      getItem: (k) => (hidden(k) ? null : rawStorage.getItem(k)),
-      setItem: (k, v) => { k = String(k); if (((gate === 'sealed' || unstamped) && memberKey(k)) || hidden(k)) return; if (stale(k)) { staleLeave(); return; } rawStorage.setItem(k, v); },
+      getItem: (k) => (hidden(k) ? null : MEMBER_REC.test(String(k)) ? untag(rawStorage.getItem(k), myStamp) : rawStorage.getItem(k)),
+      setItem: (k, v) => { k = String(k); if (((gate === 'sealed' || unstamped) && memberKey(k)) || hidden(k)) return; if (stale(k)) { staleLeave(); return; } rawStorage.setItem(k, MEMBER_REC.test(k) ? tagged(v) : v); },
       removeItem: (k) => { k = String(k); if (((gate === 'sealed' || unstamped) && memberKey(k)) || hidden(k)) return; if (stale(k)) { staleLeave(); return; } rawStorage.removeItem(k); },
       key: (i) => rawStorage.key(i),
       get length() { return rawStorage.length; },
@@ -116,6 +126,19 @@
     const clock = () => new Date(nowMs());
     const T = o.timers || { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: (f, ms) => setInterval(f, ms), clearInterval: (t) => clearInterval(t) };
     const runtime = o.runtime || {};
+    // C3 (PLAN-capp-multitab-gate-r7; #347-1): the WEBSITE's back/forward cache — registered FIRST. A restored document would resume its
+    // old JS (the old member, the old SDK instance, which can re-persist the OLD user into the shared persistence), so it never resumes:
+    // it reloads into whoever holds the browser now. On the way IN (pagehide, persisted) the shell seals its device store, drops the
+    // member and stops its own timers, synchronously — nothing of it writes or presents while frozen. Native: one webview, no bfcache
+    const onPageShow = (e) => { if (e && e.persisted === true) { try { (o.reload || (() => win.location.reload()))(); } catch (_) {} } };
+    const onPageHide = (e) => {
+      if (!e || e.persisted !== true || dead) return;
+      gate = 'sealed';
+      try { if (S.member) dropMember(); } catch (_) {}
+      try { clearTokenTimers(); stopOrder(); T.clearInterval(dirTimer); } catch (_) {}
+    };
+    const bfcache = runtime.native !== true && !!win && typeof win.addEventListener === 'function';
+    if (bfcache) { win.addEventListener('pageshow', onPageShow); win.addEventListener('pagehide', onPageHide); }
     // PLAN-capp-desktop-website r2 D-2: the ONE breakpoint (capp-view.js, ≥ 1024 px ⇒ the APPROVED v6 desktop). Read synchronously
     // HERE so `.desk` is on #app before the first paint; a settled crossing re-renders the mounted store in place (state kept)
     // PLAN-capp-desktop-D4a-routing r2 (APPROVED, Phase 1 = URL REFLECTION): with o.routing (the web boot) the URL FOLLOWS the
@@ -339,7 +362,24 @@
     // signed out and never applied, restore after restore until the sign-out is CONFIRMED (the 'guest' callback). An ordinary sign-out
     // clears the mark. (The app has never been live: no session predates the mark — nothing to grandfather.)
     const completeUid = () => { try { const v = JSON.parse(storage.getItem(COMPLETE_KEY) || 'null'); return v && v.v === 1 && typeof v.uid === 'string' ? v.uid : null; } catch (_) { return null; } };
-    const markComplete = (uid) => { try { storage.setItem(COMPLETE_KEY, JSON.stringify({ v: 1, uid })); } catch (_) {} };
+    const markComplete = (uid) => { try { storage.setItem(COMPLETE_KEY, JSON.stringify({ v: 1, uid })); } catch (_) {} pendingDone(uid); };
+    // C4 (PLAN-capp-multitab-gate-r7; #240-1): the shared PENDING-SIGN-IN marker — a DEVICE record { uid, attempt, at } the signing tab
+    // writes inside its queue slot BEFORE the SDK call (the uid is the custom token's own claim: it only names the marker) and removes at
+    // «Listo» or when the sheet undoes it. Meanwhile another tab seeing that SDK user neither admits it nor signs it out. Past PENDING_MS
+    // it counts as abandoned (the signing tab closed mid-sheet) and the next tab undoes it — a sign-up left open longer starts over
+    const PENDING_KEY = 'capp:signin_pending', PENDING_MS = 10 * 60e3;
+    const pendingOf = () => { try { const v = JSON.parse(rawGet(PENDING_KEY) || 'null'); return v && typeof v.uid === 'string' && Number.isFinite(v.at) ? v : null; } catch (_) { return null; } };
+    const pendingFresh = (uid) => { const v = pendingOf(), age = v ? Number(nowMs()) - v.at : NaN; return !!v && v.uid === uid && age >= 0 && age < PENDING_MS; };
+    function pendingDone(uid) { const v = pendingOf(); if (v && v.uid === uid) { try { storage.removeItem(PENDING_KEY); } catch (_) {} } }
+    const pendingMark = {
+      set(token) {
+        let uid = null; try { const p = pick(o, 'CappApi', './capp-api.js').jwtPayload(token); uid = p && typeof p.uid === 'string' && p.uid ? p.uid : null; } catch (_) { uid = null; }
+        if (!uid) return null;
+        try { storage.setItem(PENDING_KEY, JSON.stringify({ uid, attempt: Math.random().toString(36).slice(2, 12), at: Number(nowMs()) })); } catch (_) {}
+        return uid;
+      },
+      clear(uid) { if (typeof uid === 'string' && uid) pendingDone(uid); },   // only ITS marker (another tab's newer one stays)
+    };
     const clearComplete = () => { try { storage.removeItem(COMPLETE_KEY); } catch (_) {} };
     // ── r3 (owner 11-19; Codex #173 → rule 36): the device's data belongs to ONE identity at a time ──
     // The FIRST settled identity (a guest, or a member her completion mark names) is checked against the stamp: 'guest' is anyone's (a
@@ -365,6 +405,7 @@
       const mismatch = own !== 'guest' && own !== id && unkeyedHeld();
       if (mismatch) wipeIdentity(uid); else dropUidKeyed(uid);
       stampAs(id);   // stamped only AFTER the check (or the wipe)
+      for (const k of rawKeys()) if (MEMBER_REC.test(k) && untag(rawGet(k), myStamp) === null) rawDel(k);   // C2: a record another identity wrote is dropped
       if (gate !== 'held') return;
       gate = 'open'; if (!bootDone) return;   // settled before the boot ran: its steps run as on any open boot
       // the gated boot's held steps: on a MATCH, what the boot deferred (the location, the searches, a payment return, the active order,
@@ -379,9 +420,15 @@
     // offer's sign-in) never rewrites the device's stamp, which by then is another identity's (its records would be re-labelled as this one's)
     function ownBy(uid) { if (leaving) return; seenUid = uid; if (!settled) settleOwner(uid); else stampAs('u:' + uid); }
     function stampAs(id) {
+      const prev = myStamp;
       try { rawStorage.setItem(OWNER_KEY, id); } catch (_) {}
       // Codex #189 P2-3: only a stamp the device HOLDS is this mount's; a failed write keeps the device's own (no stale ⇒ no restart)
       const held = rawGet(OWNER_KEY); unstamped = held !== id; myStamp = unstamped ? held : id;
+      // C2 adoption (as today: a guest who signs in keeps her cart and location): THIS tab's guest records become the member's — only
+      // the ones tagged 'guest' at this moment; a guest record a stale tab writes later stays a guest's (invisible to her)
+      if (!unstamped && prev === 'guest' && /^u:/.test(id)) {
+        for (const k of rawKeys()) { if (!MEMBER_REC.test(k)) continue; const v = untag(rawGet(k), 'guest'); if (v !== null) { try { rawStorage.setItem(k, JSON.stringify({ o: id, v })); } catch (_) {} } }
+      }
     }
     // Codex #178 #1: the device's stamp moved under this tab (another tab left, or another identity owns it): this tab writes no member
     // record from here on and starts again at the root — NO wipe (what is on the device now is not this tab's to delete)
@@ -546,7 +593,7 @@
       // r3: the quiet overlay at once, then the restart; the server forgets THIS device's token while the session's ID token is still
       // valid (rule 20). A rejected sign-out changes nothing: the overlay goes, she is still the member
       signingOut = true;
-      const ok = await leave('signout', null, async () => { await pushAuthExit(); try { await fbAuth.signOut(); return true; } catch (_) { return false; } });
+      const ok = await leave('signout', null, async () => { if ((await pushAuthExit()) === false) return false; try { await fbAuth.signOut(); return true; } catch (_) { return false; } });   // G5: no sign-out while the phone still holds her token
       signingOut = false; if (!ok) renderNow();
     }
     // ── push (MOCKUP-capp-push r1): a MEMBER's, on a native phone (the token is registered under the member's ID token) ──
@@ -688,17 +735,24 @@
     }
     // bounded (3 s) — a hung network never holds the sign-out; the phone's invalidation already ran (it never waits on the server) and
     // what the server has not confirmed stays in the core's durable record (Codex r1 P1-2)
+    // G5 (PLAN-capp-multitab-gate-r7 §4, ✓366-5): the exit waits for the PHONE's invalidation of every owed token (the core's durable
+    // owed record), on its own bound — a timeout is a failure; false ⇒ the exit is REFUSED (the record stays, the next exit retries). The
+    // server's unregister keeps running on its own, best-effort, and never gates the exit
     async function pushForget() {
-      if (!push || !push.available()) return;
+      if (!push || !push.available()) return true;
       S.pushPrefs = null; S.pushReady = null;
-      await Promise.race([push.forget().catch(() => {}), new Promise((r) => T.setTimeout(r, 3000))]);
+      push.forget().catch(() => {});
+      const ok = await Promise.race([push.nativeDone().then((x) => x === true, () => false), new Promise((r) => T.setTimeout(() => r(false), 3000))]);
+      return ok && !push.owed();
     }
     // Codex r1 P1-4: THE one auth-transition hook — every way an identity ends (the shell's sign-out, the SDK's own sign-out ⇒ guest,
     // a uid switch, a session without its completion mark) forgets the device's live token for ITS owner: whenever the session is no
     // longer an admitted member who owns it. Push never shipped before the owner field, so a token with no owner is no one's here
     function pushAuthExit() {
       const c = runtime.push === true && SU ? pushCore() : null;
-      if (!c || !c.available() || !c.held().live) return Promise.resolve();
+      if (!c || !c.available()) return Promise.resolve(true);
+      if (c.owed()) return pushForget();   // G5: an invalidation still owed (a failed one, or before a restart) — checked FIRST, every exit
+      if (!c.held().live) return Promise.resolve(true);
       const u = auth && auth.user ? auth.user() : null, owner = c.held().owner;
       if (!signingOut && u && u.uid && owner === u.uid && S.member && S.member.uid === u.uid && completeUid() === u.uid) return Promise.resolve();
       return pushForget();
@@ -734,8 +788,14 @@
         // a RESTORED session without THIS uid's completion mark: never a member; signed out (a rejected sign-out is retried at the next
         // restore — nothing is cleared until the 'guest' callback confirms it)
         // (Codex r1 P1-4: the device's token is forgotten FIRST, while this session's token is still valid — bounded, then signed out)
-        if (u && u.uid && completeUid() !== u.uid && seenUid) { leave('signout', null, () => pushAuthExit().then(() => fbAuth.signOut()).then(() => true, () => true)); return; }
-        if (u && u.uid && completeUid() !== u.uid) { dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {})); schedule(); return; }
+        // C4: ANOTHER tab's sign-in still in progress (a fresh pending marker for this very user): never admitted here, never signed out —
+        // its «Listo» stamps the device (this tab follows by reload), its cancel signs it out there; past the TTL it is undone here, scoped
+        const inFlight = !!(u && u.uid && completeUid() !== u.uid && pendingFresh(u.uid));
+        if (inFlight && seenUid) { leave('signout', null, () => pushAuthExit()); return; }
+        if (inFlight) { dropMember(); schedule(); return; }
+        if (u && u.uid && completeUid() !== u.uid) pendingDone(u.uid);   // an abandoned marker (past the TTL) goes with the undo below
+        if (u && u.uid && completeUid() !== u.uid && seenUid) { const x = u.uid; leave('signout', null, () => pushAuthExit().then((ok) => (ok === false ? false : fbAuth.signOutIf(x).then(() => true, () => true)))); return; }
+        if (u && u.uid && completeUid() !== u.uid) { const x = u.uid; dropMember(); pushAuthExit().then((ok) => { if (ok !== false) return fbAuth.signOutIf(x).catch(() => {}); }); schedule(); return; }
         if (u && u.uid) settleOwner(u.uid);   // r3: her completion mark names her ⇒ the device's data is checked against the stamp
         // a session the SDK RESTORED (no sheet ran): the cached profile of THIS uid, at once (cached-first)
         // a token another person owns (a live switch, OR a cold restore as someone else — Codex r1 P1-4) is forgotten before admission
@@ -750,7 +810,7 @@
       const syncDark = () => { host.classList.toggle('dark', app.classList.contains('dark')); host.classList.toggle('desk', app.classList.contains('desk')); };   // D-2: the sheet follows the viewport too
       syncDark();
       signup = CappSignup.createSignup({ doc, host: { addEventListener: (...a) => host.addEventListener(...a), contains: (n) => host.contains(n), querySelector: (q) => host.querySelector(q), set innerHTML(v) { syncDark(); host.classList.toggle('open', !!v); host.innerHTML = v; }, get innerHTML() { return host.innerHTML; } },
-        api: (suApi = CappSignupApi.createSignupApi({ endpoints: SU.endpoints, fetch: o.signupFetch, timers: T })), auth: fbAuth, memberToken: (uid) => ownedMemberToken(uid), google: o.google || null, timers: T, now: nowMs,
+        api: (suApi = CappSignupApi.createSignupApi({ endpoints: SU.endpoints, fetch: o.signupFetch, timers: T })), auth: fbAuth, pending: pendingMark, memberToken: (uid) => ownedMemberToken(uid), google: o.google || null, timers: T, now: nowMs,
         ...(runtime.intlPhone === true ? { intlPhone: true, CappPhone: typeof CappPhone !== 'undefined' ? CappPhone : o.CappPhone } : {}),   // part B (b): the in-sheet country pane
         onEvent: (n, d) => { if (n === 'signed-in') signedIn(d); } });
       // Codex r1 P2-7: the push core (and its TAP listener) at startup — a cold start from a tapped push lands on Inicio and the tap
@@ -1567,9 +1627,20 @@
       const od = S.order; if (!od || !od.grant || offerBusy || !suApi || !fbAuth) return;
       const em = app.querySelector('#offer-email'), email = em ? String(em.value || '').trim() : od.email;
       offerBusy = true;
-      let uid = null, r = null;
-      // a reply landing after a leave signs nothing in (the SDK is never flipped by a tab that left; the fresh page decides)
-      try { r = await suApi.redeemSignupGrant({ grant: od.grant.token, email, name: od.name || '' }); if (r && r.ok && r.token && !leaving) uid = await fbAuth.signInWithCustomToken(r.token); } catch (_) { uid = null; }
+      let uid = null, r = null, pendUid = null;
+      // C5 (PLAN-capp-multitab-gate-r7): the offer's sign-in is live only while this tab, its identity, its order and its device stamp
+      // are the ones it started with — checked before the redeem is sent and inside the adapter's queue slot (C1: skipped at its turn, or
+      // undone scoped to its uid when it lands stale); a reply landing after a leave signs nothing in (the SDK is never flipped by a tab that left)
+      const g0 = memberGen, stamp0 = myStamp;
+      const liveOffer = () => !dead && !leaving && memberGen === g0 && S.order === od && myStamp === stamp0;
+      try {
+        // G3: who is redeeming — the admitted member's own token, or a tab SETTLED as a guest; anything else sends nothing
+        const tok = S.member ? await ownedToken(S.member.uid) : null;
+        const who = S.member ? (tok ? { idToken: tok } : null) : authNow() === 'guest' ? { asGuest: true } : null;
+        if (who && liveOffer()) r = await suApi.redeemSignupGrant({ grant: od.grant.token, email, name: od.name || '', ...who });
+        if (r && r.ok && r.token) uid = await fbAuth.signInWithCustomToken(r.token, { live: liveOffer, before: () => { pendUid = pendingMark.set(r.token); } });   // liveness: the slot's
+      } catch (_) { uid = null; }
+      if (!uid && pendUid) pendingDone(pendUid);   // C4: an undone / failed sign-in leaves no marker
       offerBusy = false;
       if (dead || S.order !== od) return;
       if (typeof uid === 'string' && uid) { od.offerDone = true; od.claimedBy = `u:${uid}`; await signedIn({ uid, name: (r && r.name) || od.name || '', phone: od.phoneWire, email: email || null, isNew: !!(r && r.isNew) }); if (!dead && S.tab === 'order' && !S.store) renderNow(); return; }
@@ -2237,7 +2308,7 @@
       // §4c for the sign-in flow (G6): set the marker at sign-in; ONLY «Cerrar sesión y olvidar este teléfono» / deletion forgets it
       rememberAccount: (e164) => CappDeviceAccount.remember(storage, e164), forgetAccount: () => CappDeviceAccount.forget(storage),
       destroy() {
-        dead = true; clearTokenTimers(); stopOrder(); if (typeof logoOff === 'function') logoOff(); if (typeof unTheme === 'function') { try { unTheme(); } catch (_) {} } unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (win && typeof win.removeEventListener === 'function') win.removeEventListener('storage', onStorage); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
+        dead = true; if (bfcache) { win.removeEventListener('pageshow', onPageShow); win.removeEventListener('pagehide', onPageHide); } clearTokenTimers(); stopOrder(); if (typeof logoOff === 'function') logoOff(); if (typeof unTheme === 'function') { try { unTheme(); } catch (_) {} } unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (win && typeof win.removeEventListener === 'function') win.removeEventListener('storage', onStorage); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
         doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); doc.removeEventListener('visibilitychange', onVisible); if (app && typeof app.removeEventListener === 'function') app.removeEventListener('scroll', onRowScroll, true); nav.destroy();
       },
     };

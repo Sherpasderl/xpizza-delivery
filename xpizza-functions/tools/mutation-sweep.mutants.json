@@ -27476,7 +27476,7 @@
   "slice": "g6",
   "label": "closing mid-completion keeps the sign-in (a member without the Términos)",
   "file": "../customer-app/capp-signup.js",
-  "from": "      if (wasSignedIn && !finished && owed) { try { await auth.signOut(); } catch (_) {} }\n",
+  "from": "      if (wasSignedIn && !finished && owed) { try { await auth.signOutIf(minted); } catch (_) {} }   // C1: only the sheet's OWN sign-in, never a newer one\n",
   "to": "      if (false) {}\n",
   "command": [
    "node",
@@ -27491,9 +27491,9 @@
   "id": "g6-03",
   "slice": "g6",
   "label": "a custom-token mint for a closed sheet is kept",
-  "file": "../customer-app/capp-signup.js",
-  "from": "if (!live(g)) { if (uid) { try { await auth.signOut(); } catch (_) {} } return; }",
-  "to": "if (!live(g)) { return; }",
+  "file": "../customer-app/capp-auth-firebase.js",
+  "from": "          if (currentIs(auth, uid)) await authMod.signOut(auth);\n",
+  "to": "",
   "command": [
    "node",
    "--test",
@@ -27658,7 +27658,7 @@
   "slice": "g6",
   "label": "Codex G6 r2 #2: a restored uid is applied without its completion mark",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "        if (u && u.uid && completeUid() !== u.uid) { dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {})); schedule(); return; }\n",
+  "from": "        if (u && u.uid && completeUid() !== u.uid) { const x = u.uid; dropMember(); pushAuthExit().then((ok) => { if (ok !== false) return fbAuth.signOutIf(x).catch(() => {}); }); schedule(); return; }\n",
   "to": "",
   "command": [
    "node",
@@ -27726,8 +27726,8 @@
   "slice": "g6",
   "label": "Codex G6 r2 #2: the uid is marked before its sign-out is confirmed (a rejected sign-out admits it at the next restore)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "completeUid() !== u.uid) { dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {}));",
-  "to": "completeUid() !== u.uid) { dropMember(); markComplete(u.uid); pushAuthExit().then(() => fbAuth.signOut().catch(() => {}));",
+  "from": "completeUid() !== u.uid) { const x = u.uid; dropMember(); pushAuthExit()",
+  "to": "completeUid() !== u.uid) { const x = u.uid; dropMember(); markComplete(u.uid); pushAuthExit()",
   "command": [
    "node",
    "--test",
@@ -27759,8 +27759,8 @@
   "slice": "g6",
   "label": "Codex G6 r4: no finalization latch (a closed / finalized sheet can be finished again)",
   "file": "../customer-app/capp-signup.js",
-  "from": "    const finalized = () => !S.open || S.final;\n    async function close(why) {\n      if (!S.open) return;\n      const wasSignedIn = !!S.uid, finished = S.pane === 'done', owed = S.completion === 'needed';\n      S.final = true; S.open = false; S.gen++; tickStop(); render();\n      S.uid = null; S.completion = null; S.vphone = null;\n",
-  "to": "    const finalized = () => false;\n    async function close(why) {\n      if (!S.open) return;\n      const wasSignedIn = !!S.uid, finished = S.pane === 'done', owed = S.completion === 'needed';\n      S.final = true; S.open = false; S.gen++; tickStop(); render();\n",
+  "from": "    const finalized = () => !S.open || S.final;\n    async function close(why) {\n      if (!S.open) return;\n      const wasSignedIn = !!S.uid, minted = S.uid, finished = S.pane === 'done', owed = S.completion === 'needed';\n      S.final = true; S.open = false; S.gen++; tickStop(); render();\n      S.uid = null; S.completion = null; S.vphone = null;\n",
+  "to": "    const finalized = () => false;\n    async function close(why) {\n      if (!S.open) return;\n      const wasSignedIn = !!S.uid, minted = S.uid, finished = S.pane === 'done', owed = S.completion === 'needed';\n      S.final = true; S.open = false; S.gen++; tickStop(); render();\n",
   "command": [
    "node",
    "--test",
@@ -39056,7 +39056,7 @@
   "slice": "capp-push",
   "label": "sign-out without forgetting the token",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "async () => { await pushAuthExit(); try { await fbAuth.signOut(); return true; }",
+  "from": "async () => { if ((await pushAuthExit()) === false) return false; try { await fbAuth.signOut(); return true; }",
   "to": "async () => { try { await fbAuth.signOut(); return true; }",
   "command": [
    "node",
@@ -39164,8 +39164,8 @@
   "slice": "capp-push",
   "label": "Codex r1 P1-4: a COLD restored session without its completion mark is signed out without forgetting the token (r3: the admitted case is leave()'s)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {}));",
-  "to": "dropMember(); fbAuth.signOut().catch(() => {});",
+  "from": "dropMember(); pushAuthExit().then((ok) => { if (ok !== false) return fbAuth.signOutIf(x).catch(() => {}); });",
+  "to": "dropMember(); fbAuth.signOutIf(x).catch(() => {});",
   "command": [
    "node",
    "--test",
@@ -42906,8 +42906,8 @@
   "slice": "r3-rs",
   "label": "r3 (identity, 11-20): the offer's redeem reply landing after a leave still signs the new account in (the SDK flipped by a tab that left)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "if (r && r.ok && r.token && !leaving) uid = await fbAuth.signInWithCustomToken(r.token);",
-  "to": "if (r && r.ok && r.token) uid = await fbAuth.signInWithCustomToken(r.token);",
+  "from": "uid = await fbAuth.signInWithCustomToken(r.token, { live: liveOffer, before:",
+  "to": "uid = await fbAuth.signInWithCustomToken(r.token, { live: () => true, before:",
   "command": [
    "node",
    "--test",
@@ -44111,6 +44111,265 @@
   ],
   "kills_with": [
    "JWT-ONE-SINK: memberToken's tokenUsable is not the module's own validator (shadowed or re-bound)"
+  ]
+ },
+ {
+  "id": "c7mt-01",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C1: the transition queue bypassed (each SDK transition runs at once)",
+  "file": "../customer-app/capp-auth-firebase.js",
+  "from": "    const slot = (fn) => { const run = tail.then(fn); tail = run.then(() => {}, () => {}); return run; };",
+  "to": "    const slot = (fn) => Promise.resolve().then(fn);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C1",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "C1-QUEUE: Bob's sign-in reached the SDK while Ana's was still running"
+  ]
+ },
+ {
+  "id": "c7mt-02",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C1: signOutIf unscoped (signs out whoever the SDK holds)",
+  "file": "../customer-app/capp-auth-firebase.js",
+  "from": "if (!currentIs(auth, uid)) return false; await authMod.signOut(auth); return true;",
+  "to": "await authMod.signOut(auth); return true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C1",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "C1-SCOPED: signOutIf signed out another user"
+  ]
+ },
+ {
+  "id": "c7mt-03",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C1: an attempt closed before its turn still reaches the SDK",
+  "file": "../customer-app/capp-auth-firebase.js",
+  "from": "          if (!live()) return null;   // closed before its turn: no SDK call at all",
+  "to": "          if (false) return null;   // closed before its turn: no SDK call at all",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C1",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "C1-SKIP: an attempt closed before its turn reached the SDK"
+  ],
+  "equivalent": true,
+  "why": "EQUIVALENT for the sign-in property (advisor 11-26 ruling 1(a); probe 11-26, hand-planted on ^C1: 2/2 pass): capp-auth-firebase.js re-checks `if (!live()) return null;` right after `await ensure()`, before the SDK's signInWithCustomToken, so a closed attempt still never signs in. The first check only spares a dead attempt the SDK module load (harmless; no source change after light)."
+ },
+ {
+  "id": "c7mt-04",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C2: the writer-tag check removed from getItem (another identity's record reads back)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      return r && typeof r === 'object' && r.o === stamp && typeof r.v === 'string' ? r.v : null;",
+  "to": "      return r && typeof r === 'object' && typeof r.v === 'string' ? r.v : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C2-INTERLEAVE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C2-DROP: Ana's boot kept a record another identity wrote"
+  ]
+ },
+ {
+  "id": "c7mt-05",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C2: the tag written as the CURRENT device stamp instead of this mount's",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    const tagged = (v) => JSON.stringify({ o: myStamp, v: String(v) });",
+  "to": "    const tagged = (v) => JSON.stringify({ o: rawGet(OWNER_KEY), v: String(v) });",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C2-INTERLEAVE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C2-DROP: Ana's boot kept a record another identity wrote"
+  ],
+  "equivalent": true,
+  "why": "EQUIVALENT (advisor 11-26 ruling (a); probe 11-26, hand-planted on ^(C2-|C4-|C5|C3-SEAL|G5-EXIT): 7/7 pass): in the facade's setItem the stale check has just confirmed rawGet(OWNER_KEY) === myStamp, and tagged() runs in the SAME synchronous step, so the two tags cannot differ; a failing rawGet reads null, which is stale, so the write is refused before tagging. The cross-tab interleave lands INSIDE rawStorage.setItem, after the tag is built. The pre-fix C2-INTERLEAVE 'killed' it only because Ana's boot was really a guest boot (its mismatch wipe dropped the cart)."
+ },
+ {
+  "id": "c7mt-06",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C2: the adoption re-tags every record, another identity's included",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const v = untag(rawGet(k), 'guest'); if (v !== null) {",
+  "to": "const v = (() => { try { return JSON.parse(rawGet(k)).v; } catch (_) { return null; } })(); if (v !== null) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C2-ADOPT",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C2-ADOPT-FOREIGN: the adoption re-tagged another identity's record as hers"
+  ]
+ },
+ {
+  "id": "c7mt-07",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C3: the persisted check removed (every pageshow reloads)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    const onPageShow = (e) => { if (e && e.persisted === true) {",
+  "to": "    const onPageShow = (e) => { if (e) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-BFCACHE",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-PERSISTED: a normal pageshow reloaded"
+  ]
+ },
+ {
+  "id": "c7mt-08",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C3: the pagehide seal removed (a frozen page keeps writing)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (!e || e.persisted !== true || dead) return;\n      gate = 'sealed';",
+  "to": "      if (!e || e.persisted !== true || dead) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C3-SEAL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3-SEAL: the device store changed"
+  ]
+ },
+ {
+  "id": "c7mt-09",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C4: the pending-marker check removed from the follower rule",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        const inFlight = !!(u && u.uid && completeUid() !== u.uid && pendingFresh(u.uid));",
+  "to": "        const inFlight = false;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C4-FOLLOWER",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C4-FOLLOWER: tab A signed out the sign-in still in progress in tab B"
+  ]
+ },
+ {
+  "id": "c7mt-10",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C4: the marker written AFTER the SDK call",
+  "file": "../customer-app/capp-auth-firebase.js",
+  "from": "          if (typeof p.before === 'function') p.before();   // inside the slot, BEFORE the SDK call (C4's pending-sign-in marker)\n          const cred = await authMod.signInWithCustomToken(auth, token);",
+  "to": "          const cred = await authMod.signInWithCustomToken(auth, token);\n          if (typeof p.before === 'function') p.before();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C4-FOLLOWER",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C4-FOLLOWER: tab A signed out the sign-in still in progress in tab B"
+  ]
+ },
+ {
+  "id": "c7mt-11",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): C4: the marker TTL ignored (an abandoned sign-in is kept forever)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "return !!v && v.uid === uid && age >= 0 && age < PENDING_MS; };",
+  "to": "return !!v && v.uid === uid && age >= 0; };",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C4-CANCEL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C4-TTL: an abandoned (> 10 min) incomplete sign-in was kept"
+  ]
+ },
+ {
+  "id": "c7mt-13",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): G3: a redemption naming neither identity (or both) is sent",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "        if (member === guest) return { ok: false, reason: 'bad_request' };",
+  "to": "        if (false) return { ok: false, reason: 'bad_request' };",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G3-CLIENT",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "G3-NONE: a redemption naming neither (or both) was sent"
+  ]
+ },
+ {
+  "id": "c7mt-14",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): G5: the owed record is never written before the token moves",
+  "file": "../customer-app/capp-push.js",
+  "from": "        write({ owed: { owner: typeof s0.owner === 'string' ? s0.owner : null, at: now() } });\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G5",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "G5-ORDER: the owed record was not written BEFORE the token moved to pending"
+  ]
+ },
+ {
+  "id": "c7mt-15",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): G5: an exit does not check the owed record first",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (c.owed()) return pushForget();   // G5",
+  "to": "      if (false) return pushForget();   // G5",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G5-EXIT",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G5-RESTART: the exit did not wait for the phone's invalidation of the owed token before the SDK signed out"
+  ]
+ },
+ {
+  "id": "c7mt-16",
+  "slice": "c7mt",
+  "label": "C-7 multitab (PLAN-capp-multitab-gate-r7): G5: «Cerrar sesión» ignores a refused phone invalidation",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "async () => { if ((await pushAuthExit()) === false) return false; try { await fbAuth.signOut();",
+  "to": "async () => { await pushAuthExit(); try { await fbAuth.signOut();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G5-EXIT",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G5-REFUSE: the SDK signed out while the phone still holds her token"
   ]
  }
 ]
