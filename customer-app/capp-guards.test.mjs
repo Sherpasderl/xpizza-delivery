@@ -42,9 +42,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Both are FULL commit ids, never a prefix (Codex #288: an 8-char prefix can name two commits or be shadowed by a ref).
 // BASE → eb177fe58 (asm14 rebase, advisor 11-24): asm13 FINAL (ALL GREEN) is eb177fe58 (fd205309a + the cell-23 peel 26bc641f3 + its
 // inventory regen); the lane is rebased onto it (no file overlap) and pins its range from that new cut point, same shape.
-// CAPP_TIP → 02792c1e8: the rebase re-pin also moved JWT_PRE in capp-api.test.mjs, so it is itself a capp commit after the pin.
+// CAPP_TIP → 47a90c9b1: C-7 multi-tab (feat/capp-c7-multitab), a capp commit after the pin.
 const BASE = 'eb177fe58002bde86dfa29247229284ecf449eca';
-const CAPP_TIP = '02792c1e8d340bf716a79818fbf3a1f4b1540338';
+const CAPP_TIP = '47a90c9b186a95f7c8f97bb809760a2b88ca162b';
 // ASSEMBLY STEPS (asm11 step 4, advisor 11-17): a capp commit made ON THE TRAIN line, before the lane's merge — it can't be the pin (a pin on
 // the train line pulls the train into the lane range). Each is listed by full sha with its EXACT file set: excused from the «after the pin» walk
 // only while that set is unchanged, and only while it is in HEAD's history (a step that left the tree is a stale entry). None touches a live
