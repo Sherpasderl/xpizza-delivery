@@ -62,24 +62,23 @@
     const v = JSON.parse(typeof atob === 'function' ? atob(pad) : Buffer.from(pad, 'base64').toString('binary'));
     return v && typeof v === 'object' && !Array.isArray(v) ? v : null;
   };
-  // the exp of a STRUCTURALLY valid JWT, ms — FAIL CLOSED: exactly three non-empty base64url segments, header and payload JSON objects,
-  // exp a finite integer whose ms value is finite; anything else ⇒ null (unusable)
-  function tokenExpMs(t) {
+  // the payload of a STRUCTURALLY valid JWT — the ONE structure rule every token read goes through (6c, DECISIONS:5643) — FAIL CLOSED:
+  // exactly three non-empty base64url segments, header and payload JSON objects; anything else ⇒ null
+  function jwtPayload(t) {
     if (typeof t !== 'string' || !t) return null;
     const parts = t.split('.'); if (parts.length !== 3 || !parts.every((p) => p && B64URL.test(p))) return null;
-    try {
-      if (!segJson(parts[0])) return null;
-      const pl = segJson(parts[1]); if (!pl) return null;
-      const exp = pl.exp;
-      return typeof exp === 'number' && Number.isInteger(exp) && Number.isFinite(exp * 1000) ? exp * 1000 : null;
-    } catch (_) { return null; }
+    try { return segJson(parts[0]) ? segJson(parts[1]) : null; } catch (_) { return null; }
+  }
+  // the exp, ms: a finite integer whose ms value is finite; anything else ⇒ null (unusable)
+  function tokenExpMs(t) {
+    const pl = jwtPayload(t), exp = pl && pl.exp;
+    return typeof exp === 'number' && Number.isInteger(exp) && Number.isFinite(exp * 1000) ? exp * 1000 : null;
   }
   // the user a token NAMES (Codex #193): its `sub` — and `user_id`, when present, must agree; anything else ⇒ null. A consistency check on
   // our own token at the sink (never trust: the server verifies the signature)
   function tokenUid(t) {
-    if (typeof t !== 'string' || !t) return null;
-    const parts = t.split('.'); if (parts.length !== 3 || !parts.every((p) => p && B64URL.test(p))) return null;
-    try { const pl = segJson(parts[1]); const s = pl && pl.sub; return typeof s === 'string' && s && (pl.user_id === undefined || pl.user_id === s) ? s : null; } catch (_) { return null; }
+    const pl = jwtPayload(t), s = pl && pl.sub;
+    return typeof s === 'string' && s && (pl.user_id === undefined || pl.user_id === s) ? s : null;
   }
   function tokenUsable(m, now) {
     const t = m && typeof m.idToken === 'string' && m.idToken ? m.idToken : null; if (!t) return null;
@@ -1202,5 +1201,5 @@
       confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther, heldBySdk };
   }
 
-  return { createApi, tokenUsable, acceptToken, tokenExpMs, TOKEN_SKEW_MS, TOKEN_MAX_AHEAD_MS, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
+  return { createApi, tokenUsable, acceptToken, tokenExpMs, jwtPayload, tokenUid, TOKEN_SKEW_MS, TOKEN_MAX_AHEAD_MS, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };
 });

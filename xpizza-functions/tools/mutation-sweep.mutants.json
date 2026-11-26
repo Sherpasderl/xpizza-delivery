@@ -34882,8 +34882,8 @@
   "slice": "promo",
   "label": "PLAN-capp-store-promo-feeinfo: Codex promo r4 #4 reverted: the JWT structure check is skipped (malformed tokens pass)",
   "file": "../customer-app/capp-api.js",
-  "from": "  function tokenExpMs(t) {\n    if (typeof t !== 'string' || !t) return null;\n    const parts = t.split('.'); if (parts.length !== 3 || !parts.every((p) => p && B64URL.test(p))) return null;",
-  "to": "  function tokenExpMs(t) {\n    if (typeof t !== 'string' || !t) return null;\n    const parts = t.split('.'); if (parts.length < 2) return null;",
+  "from": "  function jwtPayload(t) {\n    if (typeof t !== 'string' || !t) return null;\n    const parts = t.split('.'); if (parts.length !== 3 || !parts.every((p) => p && B64URL.test(p))) return null;",
+  "to": "  function jwtPayload(t) {\n    if (typeof t !== 'string' || !t) return null;\n    const parts = t.split('.'); if (parts.length < 2) return null;",
   "command": [
    "node",
    "--test",
@@ -43686,6 +43686,465 @@
   ],
   "kills_with": [
    "🔴 PAY-LABELS-rec"
+  ]
+ },
+ {
+  "id": "cell7-01",
+  "slice": "cell7",
+  "label": "capp-guards cell 7 (PLAN-capp-guards-cell7 r0): the walk back to the lane line + after-the-pin — a train merge before the lane is never judged",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "const c7Walk = (head) => git('rev-list', '--merges', `${BASE}..${head}`).trim().split('\\n').filter(Boolean);",
+  "to": "const c7Walk = (head) => [...git('rev-list', '--merges', '--first-parent', `${BASE}..${CAPP_TIP}`).trim().split('\\n'), ...git('rev-list', '--merges', '--ancestry-path', `${CAPP_TIP}..${head}`).trim().split('\\n')].filter(Boolean);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-WALK"
+  ]
+ },
+ {
+  "id": "cell7-02",
+  "slice": "cell7",
+  "label": "capp-guards cell 7: the criterion back to «blob differs from every parent» — git's clean merges flagged, a one-side resolution missed",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "const c7HandPaths = (m, scopes) => {",
+  "to": "const c7HandPaths = (m, scopes) => resolutionEdits(m, scopes, ['-1', m]).map(({ f }) => f); const c7HandPathsFull = (m, scopes) => {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-CLEAN"
+  ]
+ },
+ {
+  "id": "cell7-03",
+  "slice": "cell7",
+  "label": "capp-guards cell 7: an octopus merge is silently skipped instead of failing",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "  assert.equal(n, 2, `🔴 octopus merge",
+  "to": "  if (n !== 2) return []; assert.equal(n, 2, `🔴 octopus merge",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-OCTOPUS"
+  ]
+ },
+ {
+  "id": "cell7-04",
+  "slice": "cell7",
+  "label": "capp-guards cell 7 (Codex #288 P1): git's conflict paths dropped — a modify/delete or binary conflict kept as one side is not seen",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "return [...new Set([...diff, ...r.hits.filter(inScope)])].sort();",
+  "to": "return [...new Set([...diff])].sort();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-MODDEL"
+  ]
+ },
+ {
+  "id": "cell7-05",
+  "slice": "cell7",
+  "label": "capp-guards cell 7 (Codex #288 P1): a merge-tree message type the parser does not know is skipped instead of failing",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "    bad(`message type «${type}»`);",
+  "to": "    continue;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-UNMAPPABLE"
+  ]
+ },
+ {
+  "id": "cell7-06",
+  "slice": "cell7",
+  "label": "capp-guards cell 7 (Codex #288 P1): a relocation by directory rename is read as git's own outcome, not a hand decision",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "const C7_INFO = new Set(['Auto-merging', 'Fast forwarding submodule']);",
+  "to": "const C7_INFO = new Set(['Auto-merging', 'Fast forwarding submodule', 'Path updated due to directory rename']);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-DIRMSG"
+  ]
+ },
+ {
+  "id": "cell7-07",
+  "slice": "cell7",
+  "label": "capp-guards cell 7 (Codex #288 P2): a shallow repository is walked",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "  assert.equal(shallow(), 'false', '🔴 C7-SHALLOW",
+  "to": "  assert.equal('false', 'false', '🔴 C7-SHALLOW",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-SHALLOW"
+  ]
+ },
+ {
+  "id": "cell7-08",
+  "slice": "cell7",
+  "label": "capp-guards cell 7 (Codex #288 P2): hits keyed by an 8-char prefix, not the full merge id (the one c7Key, proven on planted merges)",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "const c7Key = ({ m, f }) => `${m} ${f}`;",
+  "to": "const c7Key = ({ m, f }) => `${m.slice(0, 8)} ${f}`;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-HITKEY: a cell-7 hit is not keyed"
+  ]
+ },
+ {
+  "id": "cell7-09",
+  "slice": "cell7",
+  "label": "capp-guards cell 7 (Codex #288 P1): the recorded tree is no longer compared with git's re-merge — a line added by hand in a clean merge is not seen",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "  const diff = paths(git('diff-tree', '-r', '--no-renames', '--name-only', '-z', r.tree, m, '--', ...scopes));",
+  "to": "  const diff = [];",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C7-|no capp edit hidden",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-EVIL"
+  ]
+ },
+ {
+  "id": "gitbound-01",
+  "slice": "gitbound",
+  "label": "capp-guards: a git child past its bound surfaces as a raw spawnSync ETIMEDOUT, not the named C7-TIMEOUT failure",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "catch (e) { if (e && e.code === 'ETIMEDOUT') throw new Error(`🔴 C7-TIMEOUT: git ${args.join(' ')}",
+  "to": "catch (e) { if (false) throw new Error(`🔴 C7-TIMEOUT: git ${args.join(' ')}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C7-TIMEOUT",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-TIMEOUT: a hung git child is not reported as one"
+  ]
+ },
+ {
+  "id": "gitbound-02",
+  "slice": "gitbound",
+  "label": "capp-guards (Codex #384 P1-5): blobAt reads a timed-out lookup as an absent file, so a merge resolution that adds a path silently drops out of resolutionEdits",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "catch (e) { if (e && e.status === 1) return null; throw e; } };",
+  "to": "catch (e) { return null; } };",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C7-TIMEOUT-ABSENT",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "C7-TIMEOUT-ABSENT: a timed-out blob lookup was read as an absent file"
+  ]
+ },
+ {
+  "id": "jwt1-01",
+  "slice": "jwt1",
+  "label": "jwtPayload: the header is no longer checked (a token whose header is not a JSON object is read)",
+  "file": "../customer-app/capp-api.js",
+  "from": "    try { return segJson(parts[0]) ? segJson(parts[1]) : null; } catch (_) { return null; }",
+  "to": "    try { return segJson(parts[1]); } catch (_) { return null; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE «header not JSON»: jwtPayload"
+  ]
+ },
+ {
+  "id": "jwt1-02",
+  "slice": "jwt1",
+  "label": "jwtPayload: more than three segments accepted",
+  "file": "../customer-app/capp-api.js",
+  "from": "if (parts.length !== 3 ||",
+  "to": "if (parts.length < 3 ||",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE «extra segment»: jwtPayload"
+  ]
+ },
+ {
+  "id": "jwt1-03",
+  "slice": "jwt1",
+  "label": "jwtPayload: a segment outside base64url accepted",
+  "file": "../customer-app/capp-api.js",
+  "from": "!parts.every((p) => p && B64URL.test(p))",
+  "to": "!parts.every((p) => p)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE «non-base64url segment»: jwtPayload"
+  ]
+ },
+ {
+  "id": "jwt1-04",
+  "slice": "jwt1",
+  "label": "tokenUid: a user_id that disagrees with sub is accepted (Codex #193)",
+  "file": "../customer-app/capp-api.js",
+  "from": "(pl.user_id === undefined || pl.user_id === s)",
+  "to": "true",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE «user_id disagrees»: tokenUid"
+  ]
+ },
+ {
+  "id": "jwt1-05",
+  "slice": "jwt1",
+  "label": "tokenExpMs: a fractional exp accepted",
+  "file": "../customer-app/capp-api.js",
+  "from": "Number.isInteger(exp) && ",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE «exp fractional»: tokenExpMs"
+  ]
+ },
+ {
+  "id": "jwt1-06",
+  "slice": "jwt1",
+  "label": "tokenUid re-inlines its own structure check (the pre-dedupe shape: no header check)",
+  "file": "../customer-app/capp-api.js",
+  "from": "    const pl = jwtPayload(t), s = pl && pl.sub;",
+  "to": "    if (typeof t !== 'string' || !t) return null; const parts = t.split('.'); if (parts.length !== 3 || !parts.every((p) => p && B64URL.test(p))) return null; const pl = segJson(parts[1]), s = pl && pl.sub;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE «header not JSON»: tokenUid"
+  ]
+ },
+ {
+  "id": "jwt2-01",
+  "slice": "jwt2",
+  "label": "a second caller of tokenUid (lastTip reads the uid too)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      const tok = await memberToken(m);\n      if (!tok || memberOf() !== m) return { uid: m.uid, cents: null };",
+  "to": "      const tok = await memberToken(m); void tokenUid(tok);\n      if (!tok || memberOf() !== m) return { uid: m.uid, cents: null };",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE-SINK: tokenUid's call sites are not exactly [memberToken]"
+  ]
+ },
+ {
+  "id": "jwt2-02",
+  "slice": "jwt2",
+  "label": "an alias of tokenUid (a value read, not a call)",
+  "file": "../customer-app/capp-api.js",
+  "from": "  function tokenUsable(m, now) {",
+  "to": "  const uidOf = tokenUid; void uidOf;\n  function tokenUsable(m, now) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE-SINK: tokenUid's call sites are not exactly [memberToken]"
+  ]
+ },
+ {
+  "id": "jwt2-03",
+  "slice": "jwt2",
+  "label": "the sink reads the cached field, not the tokenUsable result",
+  "file": "../customer-app/capp-api.js",
+  "from": "      const tu = t ? tokenUid(t) : null;",
+  "to": "      const tu = t ? tokenUid(m.idToken) : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE-SINK: tokenUid is not called on a bare token binding"
+  ]
+ },
+ {
+  "id": "jwt2-04",
+  "slice": "jwt2",
+  "label": "the sink reads the uid unguarded (not only when a usable token exists)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      const tu = t ? tokenUid(t) : null;",
+  "to": "      const tu = tokenUid(t);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE-SINK: tokenUid is not reached only when the usable token is present"
+  ]
+ },
+ {
+  "id": "jwt2-05",
+  "slice": "jwt2",
+  "label": "the token binding is not the tokenUsable result",
+  "file": "../customer-app/capp-api.js",
+  "from": "      const t = tokenUsable(m, now());   // never an expired token",
+  "to": "      const t = m.idToken;   // never an expired token",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE-SINK: the token tokenUid reads is not memberToken's one tokenUsable result"
+  ]
+ },
+ {
+  "id": "jwt2-06",
+  "slice": "jwt2",
+  "label": "memberToken lets a token naming no user through (behaviour changed)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (t && tu !== m.uid) {",
+  "to": "      if (t && tu && tu !== m.uid) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE-EQ «missing sub»: memberToken answers differently after the dedupe"
+  ]
+ },
+ {
+  "id": "rows1-01",
+  "slice": "rows1",
+  "label": "the tapped sheet row's spinner takes its address's place (the pre-fix shape)",
+  "file": "../customer-app/capp-home.js",
+  "from": "${esc(a.label)}<span>${esc(a.detected)}</span>${dir.pend === a.id ? SPIN : ''}</button>",
+  "to": "${esc(a.label)}<span>${dir.pend === a.id ? SPIN : esc(a.detected)}</span></button>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SHEET-ROW",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "SHEET-ROW: the tapped row drops its address while it spins"
+  ]
+ },
+ {
+  "id": "rows1-02",
+  "slice": "rows1",
+  "label": "the spinner drawn INSIDE the address slot, not after it",
+  "file": "../customer-app/capp-home.js",
+  "from": "${esc(a.label)}<span>${esc(a.detected)}</span>${dir.pend === a.id ? SPIN : ''}</button>",
+  "to": "${esc(a.label)}<span>${esc(a.detected)}${dir.pend === a.id ? SPIN : ''}</span></button>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=SHEET-ROW",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "SHEET-ROW: the spinner is not after the address"
+  ]
+ },
+ {
+  "id": "jwt3-01",
+  "slice": "jwt3",
+  "label": "a local tokenUsable shadows the validator and returns the cached token unchecked (Codex #321)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      const t = tokenUsable(m, now());   // never an expired token",
+  "to": "      const tokenUsable = (mm) => (mm && mm.idToken) || null;\n      const t = tokenUsable(m, now());   // never an expired token",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE-SINK: memberToken's tokenUsable is not the module's own validator (shadowed or re-bound)"
+  ]
+ },
+ {
+  "id": "jwt3-02",
+  "slice": "jwt3",
+  "label": "a hoisted local function tokenUsable, declared AFTER the call, shadows the validator (Codex #321)",
+  "file": "../customer-app/capp-api.js",
+  "from": "      if (t && tu !== m.uid) {",
+  "to": "      function tokenUsable(mm) { return (mm && mm.idToken) || null; }\n      if (t && tu !== m.uid) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^JWT-ONE",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "JWT-ONE-SINK: memberToken's tokenUsable is not the module's own validator (shadowed or re-bound)"
   ]
  }
 ]

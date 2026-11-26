@@ -6530,6 +6530,20 @@ test('r3 (a) Codex #153 DIR-CONFIRM: a tap in «Direcciones» keeps «Casa · en
     noProblems(addr);
   } finally { S.w.close(); }
 });
+// cosheet SBS 11-23 (D2, advisor: restore the APPROVED confirm-first prototype :445): the tapped row keeps its address in the right
+// slot and the spinner sits AFTER it — `label<span>line</span><spinner>`; never the spinner in the address's place
+test('r3 (a) SHEET-ROW: the tapped row keeps its address, the spinner after it (the confirm-first prototype :445)', async () => {
+  const h = held();
+  const { S } = await seedCheckout({ ugate: () => h.gate() });
+  try {
+    S.click('[data-act="co-addr"]'); await flush();
+    S.click(sheetRow(S, AID.trabajo)); await flush();
+    const r = sheetRow(S, AID.trabajo), line = r.querySelector(':scope > span');
+    assert.equal(line && txt(line), 'Blvd. Morazán, Tegucigalpa', '🔴 SHEET-ROW: the tapped row drops its address while it spins');
+    assert.ok(line.nextElementSibling && line.nextElementSibling.classList.contains('addrspin') && !line.querySelector('.addrspin'), '🔴 SHEET-ROW: the spinner is not after the address');
+    h.release(); await flush(); await flush();
+  } finally { S.w.close(); }
+});
 test('r3 (a) SHEET-CONFIRM: the checkout\'s «Entregar en» spins on the tapped row (the rest disabled, «Cambiar» too once closed); the checkout keeps Casa until the 200', async () => {
   const h = held();
   const { S, ui, addr } = await seedCheckout({ ugate: () => h.gate() });

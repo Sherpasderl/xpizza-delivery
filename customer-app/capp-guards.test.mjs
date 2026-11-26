@@ -24,7 +24,7 @@
 // Run: node --test customer-app/capp-guards.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, existsSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -37,8 +37,14 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // BASE → 31f05c8a4 (advisor 11-18, ruling (A); feat/capp-direcciones-r2, rebuilt on it): a capp lane cut from post-asm11 main pins its OWN range — BASE = its merge base with
 // origin/main as a LITERAL sha (never computed at run time, so the guard cannot drift lax), CAPP_TIP = the lane tip. The offers-r20 /
 // push pins (827373d6..2b4aae89) and their merges landed on main with asm11 and sit below BASE now (MERGE_ALLOW pruned to above BASE).
-const BASE = '31f05c8a';
-const CAPP_TIP = '9a7a3506';
+// BASE → fd205309a (asm14, advisor ruling (A) 11-24): feat/capp-asm14 is cut from the asm13 tip fd205309a (train 18efaf24a + the asm13
+// re-pin), so it pins its OWN range from that cut point — a pin on the train line would pull the asm12/asm13 trains into the lane range.
+// Both are FULL commit ids, never a prefix (Codex #288: an 8-char prefix can name two commits or be shadowed by a ref).
+// BASE → eb177fe58 (asm14 rebase, advisor 11-24): asm13 FINAL (ALL GREEN) is eb177fe58 (fd205309a + the cell-23 peel 26bc641f3 + its
+// inventory regen); the lane is rebased onto it (no file overlap) and pins its range from that new cut point, same shape.
+// CAPP_TIP → 02792c1e8: the rebase re-pin also moved JWT_PRE in capp-api.test.mjs, so it is itself a capp commit after the pin.
+const BASE = 'eb177fe58002bde86dfa29247229284ecf449eca';
+const CAPP_TIP = '02792c1e8d340bf716a79818fbf3a1f4b1540338';
 // ASSEMBLY STEPS (asm11 step 4, advisor 11-17): a capp commit made ON THE TRAIN line, before the lane's merge — it can't be the pin (a pin on
 // the train line pulls the train into the lane range). Each is listed by full sha with its EXACT file set: excused from the «after the pin» walk
 // only while that set is unchanged, and only while it is in HEAD's history (a step that left the tree is a stale entry). None touches a live
@@ -52,12 +58,25 @@ const ASSEMBLY_STEPS = {
   'b1a95926a59c50fd3a79e9b39f2dd5198d5e2602': ['customer-app/capp-s7a2.test.mjs', 'customer-app/fixtures/s7a2/directory.json', 'customer-app/fixtures/s7a2/gen-directory.mjs'],   // s7a2 alignment (the real pricing writer + view)
   'cfc688d868156e7b0c6e6af5039a2ea8d3da9c04': ['customer-app/capp-s7a2.test.mjs'],   // Codex #127 P2 (the counterfactual containment)
 };
-const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
+// every git child is bounded (asm14 slot 11-24: a hash-object child hung on its stdin pipe and stalled the sweep). A git that does not
+// finish in GIT_MS is SIGKILLed (git spawns no grandchild here, so the child is the whole group) and the cell FAILS, never stalls.
+const GIT_MS = 60_000;
+const gitRun = (args, opts = {}) => {
+  const ms = opts.timeout ?? GIT_MS;
+  try { return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26, killSignal: 'SIGKILL', ...opts, timeout: ms }); }
+  catch (e) { if (e && e.code === 'ETIMEDOUT') throw new Error(`🔴 C7-TIMEOUT: git ${args.join(' ')} did not finish in ${ms / 1000} s — failed, never stalled`); throw e; }
+};
+const isTimeout = (e) => /C7-TIMEOUT/.test(String(e && e.message));
+// a blob from a temp FILE, never a stdin pipe (the pipe is what hung); --no-filters hashes the bytes exactly as --stdin did
+const hashBody = (g, body) => { const f = join(tmpdir(), `capp-blob-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  writeFileSync(f, body); try { return g(['hash-object', '-w', '--no-filters', '--', f]); } finally { rmSync(f, { force: true }); } };
+const git = (...a) => gitRun(a);
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
 // byte identity, null-safe: a missing copy is a named failure, not an ENOENT before the named assertion (Codex r1 P3)
 const sameBytes = (a, b) => existsSync(join(ROOT, a)) && existsSync(join(ROOT, b)) && readFileSync(join(ROOT, a)).equals(readFileSync(join(ROOT, b)));
-const isAncestor = (a, b) => { try { git('merge-base', '--is-ancestor', a, b); return true; } catch (_) { return false; } };
+// only git's own «no» (exit 1) is false or absent; a C7-TIMEOUT or any other failure propagates, never read as a negative (Codex #384 P1-5)
+const isAncestor = (a, b) => { try { git('merge-base', '--is-ancestor', a, b); return true; } catch (e) { if (e && e.status === 1) return false; throw e; } };
 // the files tools/sync-client.js copies INTO customer-app/ — read from sync-client itself (run against a recording fs; nothing written)
 const syncedIntoApp = () => {
   const tool = join(ROOT, 'xpizza-functions', 'tools', 'sync-client.js'), real = createRequire(tool), copies = [];
@@ -100,14 +119,14 @@ const capRange = (head = 'HEAD') => {
 // every NON-merge commit on the first-parent chain BASE..upTo, plus every path a first-parent MERGE's resolution wrote itself (its blob
 // differs from EVERY parent's: equal to parent 2 = the merged-in line's own change, equal to parent 1 = untouched). ONE helper, shared
 // with the evil-merge cell below. A plain BASE..CAPP_TIP diff would count all of main's merged-in work as this lane's.
-const blobAt = (rev, f) => { try { return git('rev-parse', '-q', '--verify', `${rev}:${f}`).trim(); } catch (_) { return null; } };
-const resolutionEdits = (upTo, scopes, range = ['--first-parent', `${BASE}..${upTo}`]) => {
+const blobAt = (rev, f, g = git) => { try { return g('rev-parse', '-q', '--verify', `${rev}:${f}`).trim(); } catch (e) { if (e && e.status === 1) return null; throw e; } };
+const resolutionEdits = (upTo, scopes, range = ['--first-parent', `${BASE}..${upTo}`], g = git) => {
   const out = [];
   for (const m of git('rev-list', '--merges', ...range).trim().split('\n').filter(Boolean)) {
     const parents = git('log', '-1', '--format=%P', m).trim().split(' ').filter(Boolean);
     for (const f of paths(git('diff', '--no-renames', '--name-only', '-z', `${m}^1`, m, '--', ...scopes))) {
-      const b = blobAt(m, f);
-      if (parents.every((p) => blobAt(p, f) !== b)) out.push({ m, f });
+      const b = blobAt(m, f, g);
+      if (parents.every((p) => blobAt(p, f, g) !== b)) out.push({ m, f });
     }
   }
   return out;
@@ -264,39 +283,146 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 });
 
 // EVIL MERGES (advisor ruling 11-07): «later» skips merge commits (--no-merges), so a capp edit made INSIDE a merge resolution would
-// escape it. For each first-parent merge in BASE..HEAD, a customer-app/ path whose blob differs from EVERY parent's was written by
-// the resolution itself (equal to parent 2 = the merged-in line's own change; equal to parent 1 = untouched). The sync-client and
-// PORTED copies are exempt (their byte-identity checks own them, re-asserted here); any other hit must sit in MERGE_ALLOW, keyed
-// «<merge sha8> <path>», with a one-line reason — reviewed, and an entry that no longer hits is stale and fails.
-// The walk is the LANE's first-parent line BASE..CAPP_TIP (like every other range cell), plus every merge AFTER the pin that descends
-// from it (--ancestry-path CAPP_TIP..HEAD: the assembly merges that bring the lane in). Walking BASE..HEAD's first-parent line (asm10
-// RC 75c1bccea) followed the TRAIN once the lane came in as a merge's second parent — it flagged train/asm8 + asm9 merges (195147ff,
-// 11273d0c: not capp resolutions) and silently dropped the lane's own merges below.
+// escape it. Every merge in BASE..HEAD is judged by git's own re-merge (c7Hits above, PLAN-capp-guards-cell7 r0): a customer-app/ path
+// the resolution wrote by hand. The sync-client and PORTED copies are exempt (their byte-identity checks own them, re-asserted here);
+// any other hit must sit in MERGE_ALLOW, keyed «<merge FULL id> <path>» (compared exactly — Codex #288), with a one-line reason —
+// reviewed, and an entry that no longer hits is stale and fails. The guard file's own pin conflicts are listed too, never exempt
+// (advisor 11-23 Q1: a hand-resolved guard is the weakest point). Git's CLEAN merges never hit, so they need no entry.
 const MERGE_ALLOW = {
-  // above BASE 31f05c8a only. asm12 (advisor 11-19): the rider 6fe745ff ×2 and dish-stats 0895a17c ×6 merge-forward entries left the walk at
-  // T 6de4b94c9 (their merges are on those lanes' own lines, neither on the banner lane line nor after its pin) — their rulings stay in the
-  // lanes' history (and in this re-pin's commit message). asm13 (advisor ruling, as in asm12): the asm12 step-16 banner merge 6dccdf27 ×3
-  // left the walk at asm13 — it is on the asm12 TRAIN line, neither an ancestor of CAPP_TIP 9a7a3506 nor a merge after it; its ruling
-  // stays in asm12's history (and in this re-pin's commit message)
-  'd13a0bb7 customer-app/capp-home.js': "banner→r3 merge: git's clean 3-way merge of both lanes' edits; remerge-diff empty (no hand resolution)",
-  'd13a0bb7 customer-app/capp-s7a2.test.mjs': "banner→r3 merge: git's clean 3-way merge of both lanes' edits; remerge-diff empty (no hand resolution)",
-  // asm13 step 04 (advisor ruling, as in asm12): the r3 merge 5a9d5538 (feat/capp-direcciones-r3 8ac5f729a into train/asm13) — proven with
-  // `git show --remerge-diff` per file
-  '5a9d5538 customer-app/capp-guards.test.mjs': 'asm13 step 04: hand-resolved union — registry line once + MERGE_ALLOW = union (remerge-diff 11 lines)',
-  '5a9d5538 customer-app/capp-s7a2.test.mjs': 'asm13 step 04: hand-resolved — hunk1 ours+capp, hunk2 capp cells BEFORE the COUNTERFACTUAL guard (runs last); 427 tests = 357-12+82',
-  '5a9d5538 customer-app/capp-sbs-fixes.test.mjs': 'asm13 step 04: hand-resolved — ours + capp tests (union)',
-  '5a9d5538 customer-app/capp-ui.js': "asm13 step 04: git's clean 3-way merge; remerge-diff empty (no hand resolution)",
-  '5a9d5538 customer-app/capp-ui.test.mjs': "asm13 step 04: git's clean 3-way merge; remerge-diff empty (no hand resolution)",
-  '5a9d5538 customer-app/capp.css': "asm13 step 04: git's clean 3-way merge; remerge-diff empty (no hand resolution)",
+  // none above BASE eb177fe58 (asm14 rebase re-pin; was fd205309a, and fd205309a..eb177fe58 holds no merge; advisor ruling (A) 11-24, the asm11 «pruned to above BASE» precedent): the 17 entries re-derived
+  // in f995943d2, rebased as 44b3f867d (rider 6fe745ff ×2, dish-stats 0895a17c ×6, asm12 aa5cde11 / 45f1aebb / 520614c6 ×2 / 6dccdf27, asm13 5a9d5538 ×3, r3
+  // d13a0bb7) all sit below the lane's cut point now; their proofs stay in that commit's message
 };
-test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..${CAPP_TIP} + the merges after the pin`, () => {
-  const [, tip] = capRange(), synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
+// The walk + the criterion (PLAN-capp-guards-cell7 r0, advisor 11-23; Codex #288). The walk is EVERY merge reachable from the head and
+// not from BASE: the lane-line + after-the-pin walk never saw a train merge made BEFORE the lane came in (asm12 13–15). A shallow repository
+// is refused first (its boundary can end a merged-in line and hide the merges below it). A hit is a path the resolution decided BY HAND,
+// against git's own re-merge of the two parents (merge-tree --write-tree, directory renames pinned to «conflict» so a relocation always
+// surfaces): (a) the recorded tree differs from git's reconstructed tree (--no-renames; content AND mode), or (b) git left it conflicted —
+// a stage entry, or a CONFLICT / directory-rename message — however it was resolved (a modify/delete or binary conflict kept as one side
+// leaves git's tree equal to the result, so (a) alone cannot see it). Output the parser cannot map FAILS (C7-UNMAPPABLE), and so does an
+// octopus merge (two parents only). The old «blob differs from every parent» flagged git's clean merges and missed d13a0bb7's own pin
+// conflict (kept as one side); --remerge-diff --name-only missed the header-only conflicts (Codex #288 P1).
+const C7_INFO = new Set(['Auto-merging', 'Fast forwarding submodule']);   // git's own outcome: nothing left to a person
+const C7_DIR = new Set(['Path updated due to directory rename', 'Directory rename skipped since directory was renamed on both sides']);
+// `git merge-tree --write-tree -z --messages` → { tree, hits }: the tree id, NUL; one «<mode> <oid> <stage>\t<path>» per conflicted stage;
+// an empty field; then per message «<n>», n paths, «<type>», «<text>» — each NUL-ended. Anything else is unmappable.
+const c7ParseMergeTree = (out) => {
+  const t = out.split('\0'), hits = [], bad = (why) => { throw new Error(`🔴 C7-UNMAPPABLE: git merge-tree output not understood (${why}) — review the merge by hand`); };
+  let i = 0; const tree = t[i++];
+  if (!/^[0-9a-f]{40}$/.test(tree)) bad('no tree id');
+  for (; t[i] !== ''; i++) { if (i >= t.length) bad('no section end'); const e = /^[0-7]{6} [0-9a-f]{40} [123]\t([^]+)$/.exec(t[i]); if (!e) bad(`conflict entry «${t[i]}»`); hits.push(e[1]); }
+  for (i++; i < t.length && t[i] !== '';) {
+    const n = Number(t[i++]);
+    if (!/^[1-9]\d*$/.test(t[i - 1]) || i + n + 2 > t.length) bad(`message path count «${t[i - 1]}»`);
+    const ps = t.slice(i, i + n), type = t[i + n]; i += n + 2;
+    if (C7_INFO.has(type)) continue;
+    if (/^CONFLICT ?\(/.test(type) || C7_DIR.has(type)) { hits.push(...ps); continue; }
+    bad(`message type «${type}»`);
+  }
+  if (i !== t.length - 1) bad('trailing fields');
+  return { tree, hits };
+};
+const c7MergeTree = (p1, p2) => {
+  let out;
+  try { out = gitRun(['-c', 'merge.directoryRenames=conflict', 'merge-tree', '--write-tree', '-z', '--messages', p1, p2], { stdio: ['ignore', 'pipe', 'pipe'] }); }
+  catch (e) { if (isTimeout(e)) throw e; if (e.status !== 1 || typeof e.stdout !== 'string') throw new Error(`🔴 C7-UNMAPPABLE: git merge-tree failed (status ${e.status}) for ${p1} ${p2}`); out = e.stdout; }   // 1 = conflicts
+  return c7ParseMergeTree(out);
+};
+const c7Walk = (head) => git('rev-list', '--merges', `${BASE}..${head}`).trim().split('\n').filter(Boolean);
+const c7HandPaths = (m, scopes) => {
+  const [p1, p2] = git('log', '-1', '--format=%P', m).trim().split(' '), r = c7MergeTree(p1, p2), inScope = (f) => scopes.some((s) => f.startsWith(s));
+  const diff = paths(git('diff-tree', '-r', '--no-renames', '--name-only', '-z', r.tree, m, '--', ...scopes));
+  return [...new Set([...diff, ...r.hits.filter(inScope)])].sort();
+};
+const c7Hits = (head, { scopes = ['customer-app/'], shallow = () => git('rev-parse', '--is-shallow-repository').trim() } = {}) => {
+  assert.equal(shallow(), 'false', '🔴 C7-SHALLOW: a shallow repository can end a merged-in line early and hide its merges — run on a full clone');
+  return c7Walk(head).flatMap((m) => {
+    const n = git('log', '-1', '--format=%P', m).trim().split(' ').filter(Boolean).length;
+    assert.equal(n, 2, `🔴 octopus merge ${m.slice(0, 8)} (${n} parents): git's re-merge judges two-parent merges only — review it by hand`);
+    return c7HandPaths(m, scopes).map((f) => ({ m, f }));
+  });
+};
+// one key for a hit, the live cell's and C7-PLANT's alike (Codex #288 P2): «<full merge id> <path>», never a prefix — so the full-id keying
+// is proven on planted merges even when the lane range holds none (asm14 rebase: BASE..HEAD has no merge, MERGE_ALLOW is empty)
+const c7Key = ({ m, f }) => `${m} ${f}`;
+test(`no capp edit hidden in a merge resolution: every merge in ${BASE}..HEAD, judged by git's own re-merge`, () => {
+  capRange(); const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
   for (const { src, dst } of synced) assert.ok(sameBytes(dst, src), `🔴 ${dst} differs from (or is missing beside) its source ${src} — the merge exemption no longer holds`);
   for (const [f, sources] of Object.entries(PORTED)) for (const src of sources) assert.ok(sameBytes(`customer-app/${f}`, src), `🔴 customer-app/${f} differs from (or is missing beside) ${src} — the merge exemption no longer holds`);
-  const hits = [...resolutionEdits(tip, ['customer-app/']), ...resolutionEdits('HEAD', ['customer-app/'], ['--ancestry-path', `${tip}..HEAD`])].filter(({ f }) => !exempt.has(f)).map(({ m, f }) => `${m.slice(0, 8)} ${f}`);
+  const hits = c7Hits('HEAD').filter(({ f }) => !exempt.has(f)).map(c7Key);
   const unlisted = hits.filter((h) => !(h in MERGE_ALLOW)), stale = Object.keys(MERGE_ALLOW).filter((k) => !hits.includes(k));
   assert.equal(unlisted.join('\n'), '', `🔴 customer-app/ edit(s) made in a merge resolution (differ from every parent; not in MERGE_ALLOW):\n${unlisted.join('\n')}`);
   assert.equal(stale.join('\n'), '', `🔴 stale MERGE_ALLOW entr(ies) — no longer a resolution edit:\n${stale.join('\n')}`);
+});
+
+// PLAN-capp-guards-cell7 r0 (advisor 11-23): cell 7 driven over PLANTED history — objects only (git commit-tree over a scratch index; no
+// ref, no worktree change), as the cell below plants. The planted merges sit on a train line BEFORE the lane comes in (J's second parent
+// is HEAD), the asm12 13–15 shape: an evil resolution (M1), git's own clean merge (M2), a conflict kept as one side (M3).
+const plantCommit = (parents, from, edits, msg) => {
+  const idx = join(tmpdir(), `capp-c7-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.idx`), env = { ...process.env, GIT_INDEX_FILE: idx, GIT_AUTHOR_NAME: 'plant', GIT_AUTHOR_EMAIL: 'plant@invalid', GIT_COMMITTER_NAME: 'plant', GIT_COMMITTER_EMAIL: 'plant@invalid' };
+  const g = (args) => gitRun(args, { env }).trim();
+  try { g(['read-tree', from]);
+    for (const [f, e] of Object.entries(edits)) {   // a string = the body (100644) · { body, mode } · null = deleted
+      if (e === null) { g(['update-index', '--force-remove', f]); continue; }
+      const { body, mode = '100644' } = typeof e === 'string' ? { body: e } : e;
+      g(['update-index', '--add', '--cacheinfo', `${mode},${hashBody(g, body)},${f}`]); }
+    return g(['commit-tree', g(['write-tree']), ...parents.flatMap((p) => ['-p', p]), '-m', msg]); } finally { rmSync(idx, { force: true }); } };
+const C7_CSS = 'customer-app/capp.css', C7_MD = 'customer-app/c7-plant-md.txt', C7_BIN = 'customer-app/c7-plant.bin';
+const c7Plant = () => {
+  const base = git('rev-parse', `${BASE}^{commit}`).trim(), head = git('rev-parse', 'HEAD').trim(), c0 = git('show', `${base}:${C7_CSS}`);
+  const s1 = plantCommit([base], base, { [C7_CSS]: `${c0}\n/* s1 */\n` }, 'side'), c1 = `${c0}\n/* s1 */\n/* evil */\n`;
+  const m1 = plantCommit([base, s1], s1, { [C7_CSS]: c1 }, 'train merge: a hand-added line in the resolution');
+  const a2 = plantCommit([m1], m1, { [C7_CSS]: `/* a2 */\n${c1}` }, 'a2'), b2 = plantCommit([m1], m1, { [C7_CSS]: `${c1}/* b2 */\n` }, 'b2');
+  const c2 = `/* a2 */\n${c1}/* b2 */\n`, m2 = plantCommit([a2, b2], a2, { [C7_CSS]: c2 }, "train merge: git's own clean result");
+  const a3 = plantCommit([m2], m2, { [C7_CSS]: `${c2}/* a3 */\n` }, 'a3'), b3 = plantCommit([m2], m2, { [C7_CSS]: `${c2}/* b3 */\n` }, 'b3');
+  const m3 = plantCommit([a3, b3], a3, {}, 'train merge: a conflict resolved to one side (b3 dropped)'), c3 = `${c2}/* a3 */\n`;
+  // Codex #288 P1: the resolutions a content diff of git's re-merge cannot see — a modify/delete kept as modified, a binary conflict kept
+  // as one side (git's own tree holds that side), and a mode changed by hand on an otherwise clean merge
+  const s4 = plantCommit([m3], m3, { [C7_MD]: 'one\ntwo\n', [C7_BIN]: 'bin\0base\0' }, 'seed: a text file and a binary');
+  const x4 = plantCommit([s4], s4, { [C7_MD]: 'one\ntwo\nthree\n' }, 'x4 modifies'), y4 = plantCommit([s4], s4, { [C7_MD]: null }, 'y4 deletes');
+  const m4 = plantCommit([x4, y4], x4, {}, 'train merge: modify/delete kept as modified');
+  const x5 = plantCommit([m4], m4, { [C7_BIN]: 'bin\0ours\0' }, 'x5'), y5 = plantCommit([m4], m4, { [C7_BIN]: 'bin\0theirs\0' }, 'y5');
+  const m5 = plantCommit([x5, y5], x5, {}, 'train merge: a binary conflict kept as one side');
+  const a6 = plantCommit([m5], m5, { [C7_MD]: 'zero\none\ntwo\nthree\n' }, 'a6'), b6 = plantCommit([m5], m5, { [C7_CSS]: `${c3}/* b6 */\n` }, 'b6');
+  const m6 = plantCommit([a6, b6], a6, { [C7_CSS]: { body: `${c3}/* b6 */\n`, mode: '100755' } }, 'train merge: clean contents, a mode set by hand');
+  return { base, head, s1, a2, m1, m2, m3, m4, m5, m6, j: plantCommit([m6, head], head, {}, 'the lane comes in') };
+};
+test('C7-PLANT: cell 7 walks EVERY merge in range and judges it by git\'s own re-merge (PLAN-capp-guards-cell7 r0)', () => {
+  const P = c7Plant(), hits = c7Hits(P.j).map(c7Key), walked = c7Walk(P.j);
+  assert.ok(['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].every((k) => walked.includes(P[k])), '🔴 C7-WALK: a train merge made BEFORE the lane is not walked');
+  assert.ok(hits.length > 0 && hits.every((h) => /^[0-9a-f]{40} customer-app\//.test(h)), `🔴 C7-HITKEY: a cell-7 hit is not keyed «<full merge id> <path>»:\n${hits.join('\n')}`);
+  assert.ok(hits.includes(`${P.m1} ${C7_CSS}`), '🔴 C7-EVIL: a line added by hand in a clean merge\'s resolution is not seen');
+  assert.ok(!hits.includes(`${P.m2} ${C7_CSS}`) && !hits.includes(`${P.m6} ${C7_MD}`), "🔴 C7-CLEAN: git's own clean merge is flagged as a hand resolution");
+  assert.ok(hits.includes(`${P.m3} ${C7_CSS}`), "🔴 C7-ONE-SIDE: a conflict resolved to one side (the other side's change dropped) is not seen");
+  assert.ok(hits.includes(`${P.m4} ${C7_MD}`), '🔴 C7-MODDEL: a modify/delete conflict kept as modified (the deletion dropped) is not seen');
+  assert.ok(hits.includes(`${P.m5} ${C7_BIN}`), '🔴 C7-BINARY: a binary conflict kept as one side is not seen');
+  assert.ok(hits.includes(`${P.m6} ${C7_CSS}`), '🔴 C7-MODE: a file mode changed by hand in a resolution is not seen');
+});
+// Codex #288 P2: a shallow clone can end a merged-in line at its boundary and hide the merges below it — refused before any walk
+test('C7-SHALLOW: cell 7 refuses a shallow repository', () => {
+  assert.throws(() => c7Hits('HEAD', { shallow: () => 'true' }), /C7-SHALLOW/, '🔴 C7-SHALLOW: a shallow repository is walked');
+});
+// Codex #288 P1: the parser over git's REAL output for a planted conflict (M4), then that output with ONE record appended — the kinds git
+// cannot be driven to emit here (an ERROR type, a type this git does not know, a relocation by directory rename), so the fail-closed
+// branch is exercised and a directory-rename message is proven a hit
+test('C7-UNMAPPABLE: merge-tree output the parser cannot map fails; a directory-rename message is a hit', () => {
+  const P = c7Plant(), [p1, p2] = git('log', '-1', '--format=%P', P.m4).trim().split(' ');
+  let real; try { real = gitRun(['merge-tree', '--write-tree', '-z', '--messages', p1, p2], { stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { if (isTimeout(e)) throw e; real = e.stdout; }
+  const add = (n, ps, type) => `${real}${n}\0${ps.map((p) => `${p}\0`).join('')}${type}\0text\n\0`;
+  assert.ok(c7ParseMergeTree(real).hits.includes(C7_MD), "premise: git's real output parses and names the modify/delete path");
+  assert.ok(c7ParseMergeTree(add(1, ['customer-app/moved.js'], 'Path updated due to directory rename')).hits.includes('customer-app/moved.js'), '🔴 C7-DIRMSG: a path relocated by a directory rename is not a hit');
+  for (const [label, out] of [['an ERROR type', add(1, ['customer-app/x.js'], 'ERROR (object read failed)')], ['an unknown type', add(1, ['customer-app/x.js'], 'SOMETHING (new)')],
+    ['a zero path count', add(0, [], 'Auto-merging')], ['trailing fields', `${real}junk`]])
+    assert.throws(() => c7ParseMergeTree(out), /C7-UNMAPPABLE/, `🔴 C7-UNMAPPABLE: ${label} is accepted`);
+});
+// Codex #288 P2: an 8-char prefix can name two commits (or be shadowed by a ref) — the pins and MERGE_ALLOW keys are FULL ids, compared exactly
+test('C7-FULLID: BASE, CAPP_TIP and every MERGE_ALLOW key name a commit by its full id', () => {
+  for (const [k, v] of Object.entries({ BASE, CAPP_TIP })) assert.match(v, /^[0-9a-f]{40}$/, `🔴 C7-FULLID: ${k} is not a full commit id`);
+  for (const k of Object.keys(MERGE_ALLOW)) assert.match(k, /^[0-9a-f]{40} customer-app\/\S/, `🔴 C7-FULLID: MERGE_ALLOW key «${k}» is not «<full id> <path>»`);
+});
+test('C7-OCTOPUS: a merge of more than two parents fails cell 7 (never silently skipped)', () => {
+  const P = c7Plant(), o = plantCommit([P.base, P.s1, P.a2], P.a2, {}, 'octopus'), j = plantCommit([o, P.head], P.head, {}, 'the lane comes in');
+  assert.throws(() => c7Hits(j), /octopus/, '🔴 C7-OCTOPUS: a 3-parent merge is not refused');
 });
 
 // The re-based pin still BITES (advisor 11-18): a planted, unreviewed customer-app/ commit on top of HEAD — objects only (git commit-tree
@@ -304,8 +430,8 @@ test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}.
 // exempt re-pin and passes.
 test('capp-guards still bites after the 11-18 re-base: a planted capp commit after CAPP_TIP goes RED', () => {
   const plant = (f, extra) => { const idx = join(tmpdir(), `capp-plant-${process.pid}-${Date.now()}.idx`), env = { ...process.env, GIT_INDEX_FILE: idx, GIT_AUTHOR_NAME: 'plant', GIT_AUTHOR_EMAIL: 'plant@invalid', GIT_COMMITTER_NAME: 'plant', GIT_COMMITTER_EMAIL: 'plant@invalid' };
-    const g = (args, input) => execFileSync('git', args, { cwd: ROOT, env, input, encoding: 'utf8' }).trim();
-    try { g(['read-tree', 'HEAD']); const blob = g(['hash-object', '-w', '--stdin'], g(['show', `HEAD:${f}`]) + extra); g(['update-index', '--cacheinfo', `100644,${blob},${f}`]);
+    const g = (args) => gitRun(args, { env }).trim();
+    try { g(['read-tree', 'HEAD']); const blob = hashBody(g, gitRun(['show', `HEAD:${f}`], { env }) + extra); g(['update-index', '--cacheinfo', `100644,${blob},${f}`]);
       return g(['commit-tree', g(['write-tree']), '-p', 'HEAD', '-m', 'planted unreviewed capp commit']); } finally { rmSync(idx, { force: true }); } };
   assert.doesNotThrow(() => capRange('HEAD'), 'premise: the committed tip is in range');
   assert.throws(() => capRange(plant('customer-app/capp.css', '\n/* planted */\n')), /capp commit\(s\) after CAPP_TIP/, '🔴 GUARD-BITES: an unreviewed capp commit after the pin fails');
@@ -322,13 +448,13 @@ test('S2 SBS: the stand-in pay binding and the native-mode injection live ONLY i
   const standin = readFileSync(join(ROOT, 'review/capp-sbs/standin-paysdk.mjs'), 'utf8'), sbs = readFileSync(join(ROOT, 'review/capp-sbs/sbs.mjs'), 'utf8');
   assert.ok(standin.includes(MARK), '🔴 premise: the stand-in carries its marker (else this guard is vacuous)');
   assert.ok(sbs.includes(`'"mode":"native"'`), '🔴 premise: the native-mode injection is the harness\'s');
-  const code = execFileSync('git', ['ls-files', '-z'], { cwd: ROOT, encoding: 'utf8' }).split('\0')
+  const code = git('ls-files', '-z').split('\0')
     .filter((f) => f && !f.startsWith('review/') && /\.(m?js|cjs|html|json)$/.test(f) && f !== 'customer-app/capp-guards.test.mjs' && existsSync(join(ROOT, f)));
   assert.ok(code.length > 100 && code.includes('customer-app/capp-ui.js'), `🔴 premise: the scan reads the tree (${code.length} files)`);
   const leaks = code.filter((f) => { const s = readFileSync(join(ROOT, f), 'utf8'); return s.includes(MARK) || s.includes(HARNESS); });
   assert.deepEqual(leaks, [], `🔴 SBS-1: a production/test file carries the stand-in or names the harness:\n${leaks.join('\n')}`);
   const P = createRequire(import.meta.url)('../platform/native/package-capp.js');
-  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
+  const head = git('rev-parse', 'HEAD').trim();
   for (const target of P.TARGETS) {
     const B = P.build({ sha: head, target, env: 'production', flags: [...P.FLAGS] });
     const bad = [...B.files].filter(([, buf]) => { const s = Buffer.from(buf).toString('latin1'); return s.includes(MARK) || s.includes(HARNESS); }).map(([f]) => f);
@@ -430,4 +556,22 @@ test('Codex #197 (P1): a member\'s ID token is read from the SDK ONLY through th
   for (const plant of ['fbAuth.idToken();', 'fbAuth.idTokenOwned();', "fbAuth['idTokenOwned']();", 'fbAuth?.idToken?.();', 'fbAuth.idToken.call(fbAuth);', 'const f = fbAuth.idTokenOwned; f();', 'const { idTokenOwned } = fbAuth;', 'const { idToken } = fbAuth; idToken();', 'S.member.getIdTokenOwned();'])
     assert.ok(tokenReadViolations('capp-shell-ui.js', ui.replace(K, `${K} ${plant}`)).length > 0, `🔴 C197-CENSUS control: «${plant}» fails the guard`);
   assert.deepEqual(tokenReadViolations('capp-signup.js', 'async function g(o) { return o.google.getIdToken({}); }'), [], 'the Google sign-in credential is allowed by name');
+});
+// The bound itself, on a git child that can never finish: hash-object on a FIFO with no writer blocks in open() (no stdin, no grandchild).
+test('C7-TIMEOUT: a git child that never finishes fails the cell within its bound, never stalls', () => {
+  const fifo = join(tmpdir(), `capp-fifo-${process.pid}-${Date.now()}`); execFileSync('mkfifo', [fifo]);
+  try { const t0 = Date.now();
+    assert.throws(() => gitRun(['hash-object', '--no-filters', '--', fifo], { timeout: 1500 }), /C7-TIMEOUT: git hash-object/, '🔴 C7-TIMEOUT: a hung git child is not reported as one');
+    assert.ok(Date.now() - t0 < 10_000, `🔴 C7-TIMEOUT: the bound took ${Date.now() - t0} ms`); } finally { rmSync(fifo, { force: true }); } });
+// Codex #384 P1-5: a merge resolution that ADDS a path its parents lack. If the merged-blob lookup times out and is read as «absent», it
+// equals the parents' genuine absence and the edit vanishes. The timeout is a real gitRun bound on the FIFO, injected only at that lookup.
+test('C7-TIMEOUT-ABSENT: a timed-out blob lookup fails resolutionEdits, never reads as an absent file', () => {
+  const P = c7Plant(), NEW = 'customer-app/c7-plant-new.txt';
+  const m = plantCommit([P.base, P.s1], P.s1, { [NEW]: 'added in the resolution\n' }, 'train merge: a path added by hand');
+  const range = ['--first-parent', `${P.base}..${m}`];
+  assert.deepEqual(resolutionEdits(m, [NEW], range).map(c7Key), [`${m} ${NEW}`], 'premise: unbounded, the added path is a resolution edit');
+  const fifo = join(tmpdir(), `capp-fifo-${process.pid}-${Date.now()}`); execFileSync('mkfifo', [fifo]);
+  const g = (...a) => (a[0] === 'rev-parse' && a.at(-1) === `${m}:${NEW}` ? gitRun(['hash-object', '--no-filters', '--', fifo], { timeout: 1500 }) : git(...a));
+  try { assert.throws(() => resolutionEdits(m, [NEW], range, g), /C7-TIMEOUT/, '🔴 C7-TIMEOUT-ABSENT: a timed-out blob lookup was read as an absent file'); }
+  finally { rmSync(fifo, { force: true }); }
 });

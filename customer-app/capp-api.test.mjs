@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -948,6 +949,166 @@ test('member token r4: tokenUsable fails CLOSED on every malformed / implausible
   ];
   for (const [why, t] of rows) assert.equal(A.tokenUsable({ idToken: t }, now), null, `🔴 member token r4: «${why}» must be unusable`);
   assert.equal(A.acceptToken({ idToken: null }, `${H}.${P(1e308)}.sig`, now), false, 'the ONE setter refuses it too');
+});
+
+// the token table both JWT cells read (the exp every valid row carries: JWT_EXP)
+const JWT_EXP = 1792000000;
+const JWT_ROWS = (() => {
+  const b = (o) => Buffer.from(typeof o === 'string' ? o : JSON.stringify(o)).toString('base64url'), H = b({ alg: 'RS256' }), exp = JWT_EXP;
+  const tok = (pl, h = H) => `${h}.${b(pl)}.sig`;
+  // [why, token, the exp in ms or null, the uid or null, the payload jwtPayload returns or null]
+  const rows = [
+    ['valid', tok({ sub: 'u1', user_id: 'u1', exp }), exp * 1000, 'u1', { sub: 'u1', user_id: 'u1', exp }],
+    ['valid, no user_id', tok({ sub: 'u1', exp }), exp * 1000, 'u1', { sub: 'u1', exp }],
+    ['missing exp', tok({ sub: 'u1' }), null, 'u1', { sub: 'u1' }],
+    ['exp fractional', tok({ sub: 'u1', exp: exp + 0.5 }), null, 'u1', { sub: 'u1', exp: exp + 0.5 }],
+    ['exp a string', tok({ sub: 'u1', exp: String(exp) }), null, 'u1', { sub: 'u1', exp: String(exp) }],
+    ['missing sub', tok({ user_id: 'u1', exp }), exp * 1000, null, { user_id: 'u1', exp }],
+    ['empty sub', tok({ sub: '', exp }), exp * 1000, null, { sub: '', exp }],
+    ['user_id disagrees', tok({ sub: 'u1', user_id: 'u2', exp }), exp * 1000, null, { sub: 'u1', user_id: 'u2', exp }],
+    ['missing signature', `${H}.${b({ sub: 'u1', exp })}`, null, null, null],
+    ['empty header', `.${b({ sub: 'u1', exp })}.sig`, null, null, null],
+    ['extra segment', `${tok({ sub: 'u1', exp })}.x`, null, null, null],
+    ['non-base64url segment', `${H}.${b({ sub: 'u1', exp })}.s+g/`, null, null, null],
+    ['header not JSON', tok({ sub: 'u1', exp }, b('not json')), null, null, null],
+    ['header an array', tok({ sub: 'u1', exp }, b([1])), null, null, null],
+    ['payload not JSON', `${H}.${b('{exp:')}.sig`, null, null, null],
+    ['payload an array', `${H}.${b([{ sub: 'u1', exp }])}.sig`, null, null, null],
+    ['not a string', 42, null, null, null],
+    ['empty string', '', null, null, null],
+  ];
+  return rows;
+})();
+// 6c backlog (DECISIONS:5643, advisor 11-23): ONE structure rule for every token read — jwtPayload. tokenExpMs (the exp) and tokenUid (the
+// user, Codex #193) take the payload from it and add only their own claim checks; every row pins BOTH readers' value, so the dedupe is
+// proven equivalent (tokenUid's one sink, capp-api.js memberToken, only ever sees a token tokenUsable passed — header check included)
+test('JWT-ONE: tokenExpMs and tokenUid read every token through ONE structure rule (jwtPayload) — equivalence table', () => {
+  assert.equal(typeof A.jwtPayload, 'function', '🔴 JWT-ONE: no jwtPayload helper');
+  const rows = JWT_ROWS;
+  for (const [why, t, wantExp, wantUid, wantPl] of rows) {
+    assert.deepEqual(A.jwtPayload(t), wantPl, `🔴 JWT-ONE «${why}»: jwtPayload`);
+    assert.equal(A.tokenExpMs(t), wantExp, `🔴 JWT-ONE «${why}»: tokenExpMs`);
+    assert.equal(A.tokenUid(t), wantUid, `🔴 JWT-ONE «${why}»: tokenUid`);
+  }
+  // ONE place: the structure rule (the segment split + the base64url test) appears once in capp-api.js
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'capp-api.js'), 'utf8');
+  assert.equal(src.split('B64URL.test(').length - 1, 1, '🔴 JWT-ONE: the token structure rule is written in more than one place');
+});
+
+// The ONE intentional tightening of the dedupe (advisor 11-23, rule 27): tokenUid now also refuses a token whose HEADER is not a JSON
+// object (it reads through jwtPayload). It is unobservable because tokenUid has ONE caller, capp-api.js memberToken, and there it only
+// ever reads a token tokenUsable passed — and tokenUsable already refuses that header. Both halves are pinned STRUCTURALLY (parsed):
+// a new caller, an alias, or an argument that is not the tokenUsable result FAILS here.
+const acornJ = createRequire(join(ROOT, 'xpizza-functions/x.js'))('acorn');
+test('JWT-ONE-SINK: tokenUid has exactly ONE caller — memberToken, on the token tokenUsable passed (parsed; a new caller fails)', () => {
+  // every tracked file outside the module and the tests: no tokenUid at all (an import / A.tokenUid / CappApi.tokenUid is a new caller)
+  const files = execFileSync('git', ['grep', '-l', 'tokenUid'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
+  assert.deepEqual(files.filter((f) => f !== 'customer-app/capp-api.js' && !/\.test\.mjs$/.test(f) && f !== 'xpizza-functions/tools/mutation-sweep.mutants.json'), [],
+    '🔴 JWT-ONE-SINK: tokenUid is read outside capp-api.js');
+  const src = readFileSync(join(ROOT, 'customer-app/capp-api.js'), 'utf8');
+  const ast = acornJ.parse(src, { ecmaVersion: 'latest', sourceType: 'script', locations: true });
+  const uses = [];
+  (function walk(n, chain) {
+    if (n.type === 'Identifier' && n.name === 'tokenUid') uses.push({ n, chain });
+    // a shorthand property `{ tokenUid }` carries the name twice (key + value): ONE use, read through its value
+    for (const [k, v] of Object.entries(n)) if (k !== 'loc' && !(n.type === 'Property' && n.shorthand && k === 'key')) for (const c of (Array.isArray(v) ? v : [v])) if (c && typeof c.type === 'string') walk(c, [...chain, n]);
+  })(ast, []);
+  const fnOf = (chain) => { for (let i = chain.length - 1; i >= 0; i--) if (chain[i].type === 'FunctionDeclaration' && chain[i].id) return chain[i]; return null; };
+  const kinds = uses.map(({ n, chain }) => {
+    const p = chain[chain.length - 1];
+    if (p.type === 'FunctionDeclaration' && p.id === n) return 'declaration';
+    if (p.type === 'Property' && p.shorthand && p.value === n && chain[chain.length - 2].type === 'ObjectExpression' && chain[chain.length - 3].type === 'ReturnStatement') return 'export';
+    if (p.type === 'CallExpression' && p.callee === n) return `call in ${fnOf(chain) ? fnOf(chain).id.name : '?'}`;
+    return `other at :${n.loc.start.line}`;
+  });
+  assert.deepEqual([...kinds].sort(), ['call in memberToken', 'declaration', 'export'], '🔴 JWT-ONE-SINK: tokenUid\'s call sites are not exactly [memberToken]');
+  // the argument: `t ? tokenUid(t) : null`, where memberToken's ONE binding t = tokenUsable(…) and t is never re-assigned
+  const { chain } = uses[kinds.indexOf('call in memberToken')];
+  const call = chain[chain.length - 1], cond = chain[chain.length - 2], fn = fnOf(chain);
+  assert.ok(call.arguments.length === 1 && call.arguments[0].type === 'Identifier', '🔴 JWT-ONE-SINK: tokenUid is not called on a bare token binding');
+  const arg = call.arguments[0].name;
+  assert.ok(cond.type === 'ConditionalExpression' && cond.consequent === call && cond.test.type === 'Identifier' && cond.test.name === arg, '🔴 JWT-ONE-SINK: tokenUid is not reached only when the usable token is present');
+  const binds = [], writes = [];
+  (function walk(n) {
+    if (n.type === 'VariableDeclarator' && n.id.type === 'Identifier' && n.id.name === arg) binds.push(n);
+    if (n.type === 'AssignmentExpression' && n.left.type === 'Identifier' && n.left.name === arg) writes.push(n);
+    if (n.type === 'UpdateExpression' && n.argument.type === 'Identifier' && n.argument.name === arg) writes.push(n);
+    for (const [k, v] of Object.entries(n)) if (k !== 'loc') for (const c of (Array.isArray(v) ? v : [v])) if (c && typeof c.type === 'string') walk(c);
+  })(fn.body);
+  assert.ok(binds.length === 1 && binds[0].init && binds[0].init.type === 'CallExpression' && binds[0].init.callee.type === 'Identifier' && binds[0].init.callee.name === 'tokenUsable' && writes.length === 0,
+    '🔴 JWT-ONE-SINK: the token tokenUid reads is not memberToken\'s one tokenUsable result');
+  // Codex #321 P3: the callee resolves to the module's OWN tokenUsable by lexical scope, not by spelling — a local `tokenUsable` (a param,
+  // a const, a hoisted var / function, a catch or loop binding) between the call and the module would shadow the validator. The binding
+  // the call resolves to must be the ONE function declaration the module exports, and nothing may re-assign it.
+  const isFn = (n) => /^(FunctionDeclaration|FunctionExpression|ArrowFunctionExpression)$/.test(n.type);
+  const patNames = (p, out = []) => { if (!p) return out;
+    if (p.type === 'Identifier') out.push(p);
+    else if (p.type === 'ObjectPattern') p.properties.forEach((q) => patNames(q.type === 'RestElement' ? q.argument : q.value, out));
+    else if (p.type === 'ArrayPattern') p.elements.forEach((q) => patNames(q, out));
+    else if (p.type === 'AssignmentPattern') patNames(p.left, out);
+    else if (p.type === 'RestElement') patNames(p.argument, out);
+    return out; };
+  const kids = (n) => Object.entries(n).filter(([k]) => k !== 'loc').flatMap(([, v]) => (Array.isArray(v) ? v : [v])).filter((c) => c && typeof c.type === 'string');
+  const lexical = (body) => body.flatMap((s) => (s.type === 'VariableDeclaration' && s.kind !== 'var' ? s.declarations.flatMap((d) => patNames(d.id))
+    : (s.type === 'ClassDeclaration' || s.type === 'FunctionDeclaration') && s.id ? [s.id] : []));
+  const hoisted = (n, out = []) => { for (const c of kids(n)) {   // var + (Annex B) block function declarations, up to the next function
+    if (c.type === 'VariableDeclaration' && c.kind === 'var') c.declarations.forEach((d) => patNames(d.id, out));
+    if (c.type === 'FunctionDeclaration' && c.id) out.push(c.id);
+    if (!isFn(c)) hoisted(c, out);
+  } return out; };
+  const declaredIn = (s) => {   // the identifiers scope node s binds itself
+    if (isFn(s)) return [...(s.type === 'FunctionExpression' && s.id ? [s.id] : []), ...s.params.flatMap((p) => patNames(p)), ...(s.body.type === 'BlockStatement' ? hoisted(s.body) : [])];
+    if (s.type === 'Program') return [...lexical(s.body), ...hoisted(s)];
+    if (s.type === 'BlockStatement' || s.type === 'StaticBlock') return lexical(s.body);
+    if (s.type === 'SwitchStatement') return lexical(s.cases.flatMap((c) => c.consequent));
+    if (s.type === 'CatchClause') return patNames(s.param);
+    if (/^For(In|Of)?Statement$/.test(s.type)) { const h = s.init || s.left; return h && h.type === 'VariableDeclaration' && h.kind !== 'var' ? h.declarations.flatMap((d) => patNames(d.id)) : []; }
+    return [];
+  };
+  const resolve = (id, chainTo) => { for (let i = chainTo.length - 1; i >= 0; i--) { const ds = declaredIn(chainTo[i]).filter((d) => d.name === id.name); if (ds.length) return ds; } return []; };
+  const pathTo = (target) => { let found = null; (function walk(n, chainTo) { if (found) return; if (n === target) { found = chainTo; return; } for (const c of kids(n)) walk(c, [...chainTo, n]); })(ast, []); return found; };
+  const callee = binds[0].init.callee, viaCall = resolve(callee, pathTo(callee));
+  const expId = (() => { let e = null; (function walk(n) { if (n.type === 'Property' && n.shorthand && n.value.type === 'Identifier' && n.value.name === 'tokenUsable') e = n.value; for (const c of kids(n)) walk(c); })(ast); return e; })();
+  const viaExport = expId ? resolve(expId, pathTo(expId)) : [];
+  const owners = [];
+  (function walk(n, chainTo) { if (n.type === 'FunctionDeclaration' && n.id && n.id.name === 'tokenUsable') owners.push({ decl: n, parent: chainTo[chainTo.length - 1] }); for (const c of kids(n)) walk(c, [...chainTo, n]); })(ast, []);
+  const writesTU = [];
+  (function walk(n) { if (n.type === 'AssignmentExpression' && patNames(n.left).some((x) => x.name === 'tokenUsable')) writesTU.push(n);
+    if (n.type === 'UpdateExpression' && n.argument.type === 'Identifier' && n.argument.name === 'tokenUsable') writesTU.push(n); for (const c of kids(n)) walk(c); })(ast);
+  assert.ok(viaCall.length === 1 && viaExport.length === 1 && viaCall[0] === viaExport[0] && owners.length === 1 && owners[0].decl.id === viaCall[0] && writesTU.length === 0,
+    '🔴 JWT-ONE-SINK: memberToken\'s tokenUsable is not the module\'s own validator (shadowed or re-bound)');
+});
+
+// the behaviour half: memberToken's outputs (the header it sends, the moved refusal, onMoved's argument) are IDENTICAL before and after
+// the dedupe across every JWT-ONE row — the pre-refactor module is the REAL writer at JWT_PRE (the dedupe's parent; re-pinned at a rebase)
+const JWT_PRE = '44b3f867d1980bda2ee7e9ad814237a6fd0833b2';
+test('JWT-ONE-EQ: memberToken answers every token row exactly as before the dedupe; a token tokenUsable refuses never reaches the uid check', async () => {
+  execFileSync('git', ['merge-base', '--is-ancestor', JWT_PRE, 'HEAD'], { cwd: ROOT });
+  const preSrc = execFileSync('git', ['show', `${JWT_PRE}:customer-app/capp-api.js`], { cwd: ROOT, encoding: 'utf8' });
+  const Mod = require('node:module'), file = join(ROOT, 'customer-app', 'capp-api.pre-jwt.js'), pm = new Mod(file);
+  pm.filename = file; pm.paths = Mod._nodeModulePaths(dirname(file)); pm._compile(preSrc, file);
+  const PRE = pm.exports;
+  assert.ok(typeof PRE.createApi === 'function' && PRE.jwtPayload === undefined, 'premise: JWT_PRE is the module BEFORE the dedupe');
+  const now = JWT_EXP * 1000 - 3600 * 1000;
+  const answer = async (M, t) => {
+    const sent = [], moved = [];
+    const m = { uid: 'u1', idToken: t, onMoved: (u) => moved.push(u) };
+    const api = M.createApi({ config: { restaurantId: 'rid_a', endpoints: { ...E, getMyLastTip: 'https://fn.test/getMyLastTip' } }, member: m, now: () => now,
+      fetch: async (url, init) => { sent.push((init && init.headers && init.headers['x-firebase-id-token']) || null); return { status: 200, ok: true, json: async () => ({ ok: true, cents: 2000 }) }; },
+      storage: memStorage(), sleep: async () => {}, setInterval: () => 0, clearInterval: () => {} });
+    const out = await api.lastTip();
+    return { out, sent, moved, isMoved: !!m.moved };
+  };
+  let usableRows = 0;
+  for (const [why, t] of JWT_ROWS) {
+    const before = await answer(PRE, t), after = await answer(A, t);
+    assert.deepEqual(after, before, `🔴 JWT-ONE-EQ «${why}»: memberToken answers differently after the dedupe`);
+    if (A.tokenUsable({ idToken: t }, now) === null) {
+      // never reached: no refusal fired, nothing sent
+      assert.deepEqual([after.isMoved, after.moved, after.sent], [false, [], []], `🔴 JWT-ONE-EQ «${why}»: an unusable token reached the uid check`);
+    } else usableRows++;
+  }
+  assert.ok(usableRows >= 3, 'premise: the table carries usable tokens (the uid check is exercised, not only skipped)');
 });
 
 // Codex cash-chips r2 P1-1 (advisor ruling: a retained replay sends ONLY the recorded body): the UI's no-quote allowance exists for a
