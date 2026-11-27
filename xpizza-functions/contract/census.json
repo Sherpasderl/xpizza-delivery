@@ -60908,14 +60908,6 @@
    "file": "xpizza-portal/calificaciones-harness.mjs",
    "fn": "get>anon",
    "base": "o",
-   "line": 43,
-   "how": "computed",
-   "rule": "page-fn"
-  },
-  {
-   "file": "xpizza-portal/calificaciones-harness.mjs",
-   "fn": "set",
-   "base": "o",
    "line": 44,
    "how": "computed",
    "rule": "page-fn"
@@ -60924,7 +60916,7 @@
    "file": "xpizza-portal/calificaciones-harness.mjs",
    "fn": "set",
    "base": "o",
-   "line": 44,
+   "line": 45,
    "how": "computed",
    "rule": "page-fn"
   },
@@ -60932,7 +60924,7 @@
    "file": "xpizza-portal/calificaciones-harness.mjs",
    "fn": "set",
    "base": "o",
-   "line": 44,
+   "line": 45,
    "how": "computed",
    "rule": "page-fn"
   },
@@ -60940,7 +60932,15 @@
    "file": "xpizza-portal/calificaciones-harness.mjs",
    "fn": "set",
    "base": "o",
-   "line": 44,
+   "line": 45,
+   "how": "computed",
+   "rule": "page-fn"
+  },
+  {
+   "file": "xpizza-portal/calificaciones-harness.mjs",
+   "fn": "set",
+   "base": "o",
+   "line": 45,
    "how": "computed",
    "rule": "page-fn"
   },

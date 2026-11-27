@@ -28,6 +28,7 @@ const MC = (() => {
   return m.exports;
 })();
 const AG = require('./ratings/aggregate.js');
+const { withPath } = require('./test/_ref-path');   // the SDK's path API on fake refs (Codex #404 P1; main's RTDB gate reads it — ratings/_rtdb-fake.js's same fix)
 const { ratingsOf } = require('./directory/directory.js');
 const { buildCreateOrderUpdates, attachCustomerAttribution } = require('./create-order-build.js');
 const { MENU_BY_RESTAURANT } = require('./menu-pricing.js');
@@ -45,7 +46,7 @@ function fakeDb(seed = {}) {
   const prune = (v) => { if (v === null || typeof v !== 'object') return v; if (Array.isArray(v)) return v.map(prune); const o = {}; for (const [k, x] of Object.entries(v)) { const p = prune(x); if (p !== null && p !== undefined && !(typeof p === 'object' && !Object.keys(p).length)) o[k] = p; } return o; };
   const snap = (v, ordered) => ({ exists: () => v != null, val: () => (v == null ? null : clone(v)),
     forEach: (cb) => { for (const [k, x] of (ordered || Object.entries(v || {}))) if (cb({ key: k, val: () => clone(x) }) === true) return true; return false; } });
-  const ref = (p = '') => ({
+  const ref = (p = '') => (withPath({
     get: async () => snap(get(p)), once: async () => snap(get(p)),
     set: async (v) => set(p, prune(v)), update: async (m) => { for (const [k, v] of Object.entries(m)) set(p ? `${p}/${k}` : k, prune(v)); },
     child: (c) => ref(p ? `${p}/${c}` : c),
@@ -65,7 +66,7 @@ function fakeDb(seed = {}) {
       if (actual !== null) { next = fn(actual); if (next === undefined) return { committed: false, snapshot: snap(get(p)) }; }
       set(p, prune(next)); return { committed: true, snapshot: snap(get(p)) };
     },
-  });
+  }, p));
   return { tree, get, set, ref };
 }
 
