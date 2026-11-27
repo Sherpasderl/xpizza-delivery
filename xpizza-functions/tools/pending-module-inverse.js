@@ -5,6 +5,11 @@
 // PLACEMENT: the newest layer — peeled INNERMOST, on the raw read, at every peel chain that reads an owned file; every older layer then
 // sees exactly the bytes it saw before this slice. ASSEMBLY: a layer newer than this one goes inside it, as the newest-innermost rule says.
 const BASE = '468a2c1d1';
+// asm14 (2e, merge-follow-up): the fake's pre-slice bytes moved under this slice — main's RTDB release (984c74199) added
+// listDocuments to catalog/firestore-fake.js, which 468a2c1d1 lacks (468a2c1d1's fake === eb177fe58's). 984c74199's fake = 468a2c1d1's +
+// listDocuments, so the fake's base is 984c74199 (on main) and its one hunk (getAll) is unchanged; every other owned file keeps BASE.
+const FILE_BASE = Object.freeze({ 'catalog/firestore-fake.js': '984c74199' });
+const baseOf = (file) => FILE_BASE[file] || BASE;
 const HUNKS = Object.freeze([
  {
   "file": "catalog/edit-catalog-handler.js",
@@ -59,4 +64,4 @@ function unapplyPendingModule(file, src) {
   }
   return out;
 }
-module.exports = { BASE, HUNKS, FILES, unapplyPendingModule };
+module.exports = { BASE, FILE_BASE, baseOf, HUNKS, FILES, unapplyPendingModule };

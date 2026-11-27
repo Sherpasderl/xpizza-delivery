@@ -8794,11 +8794,25 @@
    ]
   },
   "portal/ops-core.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/pending-wiring.guard.test.js",
+     "inverses": [
+      "tools/pending-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": []
   },
   "portal/ops-functions.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/pending-wiring.guard.test.js",
+     "inverses": [
+      "tools/pending-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": []
   },
   "portal/pause-reasons.js": {
