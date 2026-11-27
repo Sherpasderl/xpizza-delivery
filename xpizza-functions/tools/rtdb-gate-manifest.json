@@ -1322,6 +1322,7 @@
    "brands/brands-admin-core.js|runBrandsAdmin > brands/brand-store.js|observeProjectionStale > brands/brand-store.js|readNode",
    "brands/brands-admin-core.js|runBrandsAdmin > brands/brand-store.js|readIdentities > brands/brand-store.js|readNode",
    "brands/brands-admin-core.js|runBrandsAdmin > brands/brand-store.js|readNode",
+   "brands/brands-admin-core.js|runBrandsAdmin > brands/brands-admin-core.js|readBrandsRoot > brands/brand-store.js|readNode",
    "portal/branch-lifecycle-core.js|setBranchActiveCore > portal/branch-lifecycle-core.js|publishAfterCommit > brands/brand-store.js|publishBrandProjection > brands/brand-store.js|applyPublish > brands/brand-store.js|readNode",
    "portal/branch-lifecycle-core.js|setBranchActiveCore > portal/branch-lifecycle-core.js|publishAfterCommit > brands/brand-store.js|publishBrandProjection > brands/brand-store.js|observeProjectionStale > brands/brand-store.js|readNode",
    "portal/branch-lifecycle-core.js|setBranchActiveCore > portal/branch-lifecycle-core.js|publishAfterCommit > brands/brand-store.js|publishBrandProjection > brands/brand-store.js|readIdentities > brands/brand-store.js|readNode",
